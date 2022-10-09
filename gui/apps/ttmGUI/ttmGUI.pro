@@ -4,8 +4,8 @@
 
 TEMPLATE = app
 TARGET = ttmGUI
-DESTDIR = bin/ 
-DEPENDPATH += ./ ../../lib 
+DESTDIR = bin/
+DEPENDPATH += ./ ../../lib
 
 MOC_DIR = moc/
 OBJECTS_DIR = obj/
@@ -22,13 +22,13 @@ exists( $$(CONDA_PREFIX)/include ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/include
 }
 exists( $$(CONDA_PREFIX)/lib ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/lib
+    LIBPATH += $$(CONDA_PREFIX)/lib
 }
 
 MAKEFILE = makefile.ttmGUI
 
 # Input
-INCLUDEPATH += ../../lib ../../lib ../../widgets 
+INCLUDEPATH += ../../lib ../../lib ../../widgets
 
 HEADERS += ../../widgets/ttm/ttm.hpp \
            ../../widgets/xWidgets/xWidget.hpp \
@@ -37,18 +37,18 @@ HEADERS += ../../widgets/ttm/ttm.hpp \
            ../../widgets/xWidgets/statusLabel.hpp \
            ../../widgets/xWidgets/statusLineEdit.hpp \
 	   ../../lib/multiIndiManager.hpp
-           
-SOURCES += ttmGUI_main.cpp 
+
+SOURCES += ttmGUI_main.cpp
 #\
 #           ../../widgets/ttm/ttm.cpp \
-           
+
 FORMS += ../../widgets/ttm/ttm.ui \
          ../../widgets/xWidgets/statusEntry.ui \
          ../../widgets/xWidgets/fsmDisplay.ui
-     
+
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
 
-RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc 
+RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc
 
 QT += widgets

@@ -4,8 +4,8 @@
 
 TEMPLATE = app
 TARGET = loopCtrlGUI
-DESTDIR = bin/ 
-DEPENDPATH += ./ ../../lib 
+DESTDIR = bin/
+DEPENDPATH += ./ ../../lib
 
 MOC_DIR = moc/
 OBJECTS_DIR = obj/
@@ -23,7 +23,7 @@ exists( $$(CONDA_PREFIX)/include ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/include
 }
 exists( $$(CONDA_PREFIX)/lib ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/lib
+    LIBPATH += $$(CONDA_PREFIX)/lib
 }
 
 MAKEFILE = makefile.loopCtrlGUI
@@ -38,19 +38,19 @@ HEADERS += ../../widgets/loopCtrl/loopCtrl.hpp \
            ../../widgets/xWidgets/statusEntry.hpp \
            ../../widgets/xWidgets/toggleSlider.hpp \
            ../../lib/multiIndiManager.hpp
-           
-SOURCES += loopCtrlGUI_main.cpp 
+
+SOURCES += loopCtrlGUI_main.cpp
 #\
 #           ../../widgets/loopCtrl/loopCtrl.cpp \
-           
+
 FORMS += ../../widgets/loopCtrl/loopCtrl.ui \
          ../../widgets/xWidgets/gainCtrl.ui \
          ../../widgets/xWidgets/statusEntry.ui \
          ../../widgets/xWidgets/toggleSlider.ui
-     
+
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
 
-RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc 
+RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc
 
 QT += widgets

@@ -4,8 +4,8 @@
 
 TEMPLATE = app
 TARGET = offloadCtrlGUI
-DESTDIR = bin/ 
-DEPENDPATH += ./ ../../lib 
+DESTDIR = bin/
+DEPENDPATH += ./ ../../lib
 
 MOC_DIR = moc/
 OBJECTS_DIR = obj/
@@ -22,7 +22,7 @@ exists( $$(CONDA_PREFIX)/include ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/include
 }
 exists( $$(CONDA_PREFIX)/lib ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/lib
+    LIBPATH += $$(CONDA_PREFIX)/lib
 }
 
 MAKEFILE = makefile.offloadCtrlGUI
@@ -49,6 +49,6 @@ FORMS += ../../widgets/offloadCtrl/offloadCtrl.ui \
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
 
-RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc 
+RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc
 
 QT += widgets
