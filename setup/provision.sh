@@ -338,16 +338,16 @@ if [[ $MAGAOX_ROLE == AOC || $MAGAOX_ROLE == TOC || $MAGAOX_ROLE == vm ]]; then
 fi
 
 # Install first-party deps
-$MAYBE_SUDO bash -l "$DIR/steps/install_milkzmq.sh"
 # Create Python env and install Python libs that need special treatment
 # Note that subsequent steps will use libs from conda since the base
 # env activates by default.
 sudo bash -l "$DIR/steps/install_python.sh"
 sudo bash -l "$DIR/steps/configure_python.sh"
-$MAYBE_SUDO bash -l "$DIR/steps/install_milk_and_cacao.sh"  # depends on /opt/miniconda3/bin/python existing for plugin build
+sudo bash -l "$DIR/steps/install_milk_and_cacao.sh"  # depends on /opt/miniconda3/bin/python existing for plugin build
+$MAYBE_SUDO bash -l "$DIR/steps/install_milkzmq.sh"
 $MAYBE_SUDO bash -l "$DIR/steps/install_purepyindi.sh"
 $MAYBE_SUDO bash -l "$DIR/steps/install_magpyx.sh"
-$MAYBE_SUDO bash -l "$DIR/steps/install_imagestreamio_python.sh"
+sudo bash -l "$DIR/steps/install_imagestreamio_python.sh"
 
 
 # TODO:jlong: uncomment when it's back in working order

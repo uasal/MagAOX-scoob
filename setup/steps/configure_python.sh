@@ -45,6 +45,7 @@ if [[ -e $UNIT_PATH/jupyterlab.service ]]; then
 	rm $UNIT_PATH/jupyterlab.service
 fi
 
+VM_KIND='NOTAVM'
 if [[ $MAGAOX_ROLE != ci && $VM_KIND != wsl ]]; then
 	if [[ $MAGAOX_ROLE == AOC ]]; then
 		cp $DIR/../systemd_units/lookyloo.service $UNIT_PATH/lookyloo.service

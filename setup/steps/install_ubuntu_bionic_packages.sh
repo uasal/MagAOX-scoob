@@ -39,7 +39,6 @@ apt install -y \
     libboost-all-dev \
     libgsl-dev \
     bc \
-    libczmq-dev \
     liblog4cxx-dev \
     chrony \
     gdb \

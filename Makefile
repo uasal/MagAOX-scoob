@@ -230,14 +230,16 @@ scripts_install:
 		sudo ln -fs /opt/MagAOX/bin/$$script /usr/local/bin/$$script; \
 	done
 
-
-MAGAOX_ROLE_LOWER := $(shell echo "$(MAGAOX_ROLE)" | tr '[:upper:]' '[:lower:]')
+# I have no idea why this is broken
+#MAGAOX_ROLE_LOWER := $(shell echo "$(MAGAOX_ROLE)" | tr '[:upper:]' '[:lower:]')
+#rtscripts_install:
+#	if [[ $(MAGAOX_ROLE) == "ICC" || $(MAGAOX_ROLE) == "RTC" ]]; then for scriptname in cpuset procset; do \
+#		sudo install -d /opt/MagAOX/bin && \
+#			sudo install rtSetup/$(MAGAOX_ROLE)/$(MAGAOX_ROLE_LOWER)_$$scriptname /opt/MagAOX/bin && \
+#			sudo ln -fs /opt/MagAOX/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname /usr/local/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname; \
+#	done; fi
 rtscripts_install:
-	if [[ $(MAGAOX_ROLE) == "ICC" || $(MAGAOX_ROLE) == "RTC" ]]; then for scriptname in cpuset procset; do \
-		sudo install -d /opt/MagAOX/bin && \
-			sudo install rtSetup/$(MAGAOX_ROLE)/$(MAGAOX_ROLE_LOWER)_$$scriptname /opt/MagAOX/bin && \
-			sudo ln -fs /opt/MagAOX/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname /usr/local/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname; \
-	done; fi
+  
 
 utils_all: flatlogs_all
 		for app in ${utils_to_build}; do \
