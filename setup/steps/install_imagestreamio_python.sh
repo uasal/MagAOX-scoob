@@ -4,7 +4,7 @@ source $DIR/../_common.sh
 set -eo pipefail
 
 IMAGESTREAMIO_COMMIT_ISH=dev
-orgname=magao-x
+orgname=milk-org
 reponame=ImageStreamIO
 parentdir=/opt/MagAOX/source
 clone_or_update_and_cd $orgname $reponame $parentdir
