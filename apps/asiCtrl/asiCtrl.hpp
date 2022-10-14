@@ -748,7 +748,7 @@ int asiCtrl::configureAcquisition()
 
 
    ASISetControlValue(m_camNum, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE);
-   ASISetControlValue(m_camNum, ASI_FLIP, ASI_FLIP_VERT, ASI_FALSE);
+   //ASISetControlValue(m_camNum, ASI_FLIP, ASI_FLIP_VERT, ASI_FALSE);
 
    //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
    //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
@@ -767,8 +767,8 @@ int asiCtrl::configureAcquisition()
       return -1;
    }
 
-   int x0 = (m_nextROI.x - 0.5*(m_nextROI.w)) / m_nextROI.bin_x;
-   int y0 = (m_nextROI.y - 0.5*(m_nextROI.h)) / m_nextROI.bin_x;
+   int x0 = m_nextROI.x /  m_nextROI.bin_x - 0.5*(m_nextROI.w);
+   int y0 = m_nextROI.y /  m_nextROI.bin_x - 0.5*(m_nextROI.h);
    error = ASISetStartPos(m_camNum, x0, y0);
    if( error < 0 )
    {
@@ -788,8 +788,8 @@ int asiCtrl::configureAcquisition()
    ASIGetROIFormat(m_camNum, &piWidth, &piHeight, &piBin, &pImg_type);
    ASIGetStartPos(m_camNum, &piStartX, &piStartY);
 
-   m_currentROI.x = piStartX * piBin + 0.5*piWidth;
-   m_currentROI.y = piStartY * piBin + 0.5*piHeight;
+   m_currentROI.x = (piStartX + 0.5*piWidth) * piBin;
+   m_currentROI.y = (piStartY + 0.5*piHeight) * piBin;
    m_currentROI.w = piWidth;
    m_currentROI.h = piHeight;
    m_currentROI.bin_x = piBin;
