@@ -9,7 +9,7 @@
 
 int main(int argc, char ** argv)
 {
-   MagAOX::app::saguc8Ctrl ctrl;
+   MagAOX::app::aguc8Ctrl xapp;
 
-   return ctrl.main(argc, argv);
+   return xapp.main(argc, argv);
 }
