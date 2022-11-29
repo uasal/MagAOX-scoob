@@ -1,38 +1,41 @@
-/** \file smc100ccCtrl.hpp
-  * \brief The smc controller communicator
-  * \author Chris Bohlman (cbohlman@pm.me)
+/** \file aguc8Ctrl.hpp
+  * \brief The MagAO-X AGUC8 Controller header file
   *
-  * \ingroup smc100ccCtrl_files
-  *
-  * History:
-  * - 2019-01-10 created by CJB
-  *
-  * To compile:
-  * - make clean (recommended)
-  * - make CACAO=false
-  * - sudo make install
-  * - /opt/MagAOX/bin/smc100ccCtrl 
-  *   
-  *
-  * To run with cursesIndi
-  * 1. /opt/MagAOX/bin/xindiserver -n xindiserverMaths
-  * 2. /opt/MagAOX/bin/smc100ccCtrl -n ssmc100ccCtrl
-  * 3. /opt/MagAOX/bin/cursesINDI 
+  * \ingroup aguc8Ctrl_files
   */
-#ifndef smc100ccCtrl_hpp
-#define smc100ccCtrl_hpp
+
+#ifndef aguc8Ctrl_hpp
+#define aguc8Ctrl_hpp
+
+#include <map>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <vector>
-#include <sstream>
-#include <algorithm>
-#include <iterator>
-#include <bitset>
+
+#define DEBUG
+
+#ifdef DEBUG
+#define BREADCRUMB  std::cerr << __FILE__ << " " << __LINE__ << "\n";
+#else
+#define BREADCRUMB
+#endif
+
+/** \defgroup aguc8Ctrl
+  * \brief The AGUC8 Controller application.
+  *
+  * Controls a multi-channel Newport AGUC8 controller.  Each channel (axis?) gets its own thread.
+  * 
+  * <a href="../handbook/operating/software/apps/picoMotorCtrl.html">Application Documentation</a>
+  *
+  * \ingroup apps
+  *
+  */
+
+/** \defgroup aguc8Ctrl_files
+  * \ingroup aguc8Ctrl
+  */
+
 
 
 namespace MagAOX
@@ -40,133 +43,203 @@ namespace MagAOX
 namespace app
 {
 
-/** TS command: Checks if there were any errors during initialization
-  * Solid orange LED: everything is okay, TS should return 1TS00000A
-  * PW command: change all stage and motor configuration parameters
-  * OR command: gets controller to ready state (must go through homing first)
-  * In ready state, can move relative and move absolute
-  * RS command: TO get from ready to not referenced
-
-  Change to stateCodes::OPERATING and stateCodes::READY
-
+/** MagAO-X application to control a multi-channel Newport AGUC8 Controller.
+  *
+  * \todo replace telnet with serial comm (see smc100ccCtrl)
+  * \todo generalize somehow to handle units on the same channel but different axes (save for later -- assume each on axis 1 for now)
+  * 
   */
-class smc100ccCtrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevice, public dev::stdMotionStage<smc100ccCtrl>, public dev::telemeter<smc100ccCtrl>
+class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevice, public dev::telemeter<aguc8Ctrl>
 {
-
-   friend class dev::stdMotionStage<smc100ccCtrl>;
    
-   friend class dev::telemeter<smc100ccCtrl>;
+   friend class dev::telemeter<aguc8Ctrl>;
    
-protected:   
+   typedef long posT;
    
-   /** \name Configurable Parameters 
-     *
-     *@{
+   struct motorChannel
+   {
+      aguc8Ctrl * m_parent {nullptr}; ///< A pointer to this for thread starting.
+      
+      std::string m_name; ///< The name of this channel, from the config section
+      
+      std::vector<std::string> m_presetNames;
+      std::vector<posT> m_presetPositions;
+      
+      int m_channel {-1}; ///< The number of this channel, where the motor is plugged in
+      
+      posT m_currCounts {0}; ///< The current counts, the cumulative position
+      
+      bool m_doMove {false}; ///< Flag indicating that a move is requested.
+      bool m_moving {false}; ///< Flag to indicate that we are actually moving
+      
+      pcf::IndiProperty m_property;
+      pcf::IndiProperty m_indiP_presetName;
+      
+      std::thread * m_thread {nullptr}; ///< Thread for managing this channel.  A pointer to allow copying, but must be deleted in d'tor of parent.
+       
+      bool m_threadInit {true}; ///< Thread initialization flag.  
+      
+      pid_t m_threadID {0}; ///< The ID of the thread.
+   
+      pcf::IndiProperty m_threadProp; ///< The property to hold the thread details.
+   
+      motorChannel( aguc8Ctrl * p /**< [in] The parent point to set */) : m_parent(p)
+      {
+         m_thread = new std::thread;
+      }
+      
+      motorChannel( aguc8Ctrl * p,     ///< [in] The parent point to set
+                    const std::string & n, ///< [in] The name of this channel
+                    int ch                 ///< [in] The number of this channel
+                  ) : m_parent(p), m_name(n), m_channel(ch)
+      {
+         m_thread = new std::thread;
+      }
+      
+   };
+   
+   typedef std::map<std::string, motorChannel> channelMapT;
+   
+   /** \name Configurable Parameters
+     * @{
      */
-   double m_homingOffset {0};
+
+
+   //std::string m_deviceAddr; ///< The device address
+   //std::string m_devicePort {"23"}; ///< The device port
+   //std::string m_idVendor;
+   //std::string m_idProduct;
+   //std::string m_serial;
+   
+   int m_nChannels {4}; ///< The number of motor channels total on the hardware.  Number of attached motors inferred from config.
+
+   int m_writeTimeout {1000}; // time out
+   int m_readTimeout {1000};
+   float m_sleep {1};
    
    ///@}
    
+   channelMapT m_channels; ///< Map of motor names to channel.
    
-   pcf::IndiProperty m_indiP_position;   ///< Indi variable for reporting the stage position.
-   
-   std::vector<std::string> validStateCodes{};
-   
-   double m_position {0};
-   
-   double m_target {0};
+   //tty::telnetConn m_telnetConn; ///< The telnet connection manager
+   //tty::usbDevice m_usbDevice; ///< USB device manager
 
-   bool m_wasHoming {0};
+   ///Mutex for locking telnet communications.
+   std::mutex m_usbMutex;
    
-   bool m_powerOnHomed{false};
-
-public:
-
-   INDI_NEWCALLBACK_DECL(smc100ccCtrl, m_indiP_position);
-
+   public:
 
    /// Default c'tor.
-   smc100ccCtrl();
+   aguc8Ctrl();
 
-   ~smc100ccCtrl() noexcept
-   {
-   }
+   /// D'tor, declared and defined for noexcept.
+   ~aguc8Ctrl() noexcept;
 
    /// Setup the configuration system (called by MagAOXApp::setup())
    virtual void setupConfig();
 
-   /// Load the configuration system results (called by MagAOXApp::setup())
+   /// Implementation of loadConfig logic, separated for testing.
+   /** This is called by loadConfig().
+     */
+   int loadConfigImpl( mx::app::appConfigurator & _config /**< [in] an application configuration from which to load values*/);
+
+   /// load the configuration system results (called by MagAOXApp::setup())
    virtual void loadConfig();
 
-   /// Checks if the device was found during loadConfig.
+   /// Startup functions
+   /** Setsup the INDI vars.
+     *
+     */
    virtual int appStartup();
 
-   /// Changes device state based on testing connection and device status
+   /// Implementation of the FSM
+   /** 
+     * \returns 0 on no critical error
+     * \returns -1 on an error requiring shutdown
+     */
    virtual int appLogic();
 
-   /// Do any needed shutdown tasks.  Currently nothing in this app.
+   /// Implementation of the on-power-off FSM logic
+   virtual int onPowerOff();
+
+   /// Implementation of the while-powered-off FSM
+   virtual int whilePowerOff();
+
+   /// Do any needed shutdown tasks. 
    virtual int appShutdown();
-
-   virtual int onPowerOff()
-   {
-      std::cerr << "On power off\n";
-      m_powerOnHomed=false;
-      return 0;
-   }
-
-   int makeCom( std::string &str, 
-                const std::string & com
-              );
    
-   int splitResponse( int &axis, 
-                      std::string &com, 
-                      std::string &val, 
-                      std::string &resp
-                    );
-
-
-   int getCtrlState( std::string &state );
+   /// Read the current channel counts from disk at startup
+   /** Reads the counts from the file with the specified name in this apps sys directory.
+     * Returns the file contents as a posT.
+     */ 
+   posT readChannelCounts(const std::string & chName);
    
-   /// Tests if device is cabale of recieving/executing IO commands
-   /** Sends command for device to return serial number, and compares to device serial number indi property
-    * 
-    * \returns -1 on serial numbers being different, thus ensuring connection test was sucsessful
-    * \returns 0 on serial numbers being equal
-    */
-   int testConnection();
+   int writeChannelCounts( const std::string & chName,
+                           posT counts 
+                         );
 
-   /// Verifies current status of controller
-   /** Checks if controller is moving or has moved to correct position
-    * 
-    * \returns 0 if controller is currently moving or has moved correctly.
-    * \returns -1 on error with sending commands or if current position does not match target position.
-    */
-   int getPosition( double & pos  /**< [out] on output, the current position*/);
-
-   /// Returns any error controller has
-   /** Called after every command is sent
-    * 
-    * \returns 0 if no error is reported
-    * \returns -1 if an error is reported and error string is set in reference
-    */
-   int getLastError( std::string& errStr /** [out] the last error string */);
-
-   /** \name Standard Motion Stage Interface
-     * @{
-     * 
+   int writeReadError(std::string comm, std::string & resp);
+   int writeQuery(std::string comm, std::string & resp);
+   int Read(std::string & comm);
+   
+   /// Channel thread starter function
+   static void channelThreadStart( motorChannel * mc /**< [in] the channel to start controlling */);
+   
+   /// Channel thread execution function
+   /** Runs until m_shutdown is true.
      */
+   void channelThreadExec( motorChannel * mc );
    
-   int stop();
+/** \name INDI
+     * @{
+     */ 
+protected:
+
+   //declare our properties
+   std::vector<pcf::IndiProperty> m_indiP_counts;
+   //pcf::IndiProperty m_indiP_stepSize;
    
-   int startHoming();
    
-   double presetNumber();
+public:
+   /// The static callback function to be registered for relative position requests
+   /** Dispatches to the handler, which then signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+
+   //INDI_NEWCALLBACK_DECL(aguc8Ctrl, m_indiP_stepSize);
+
+   static int st_newCallBack_pos( void * app, ///< [in] a pointer to this, will be static_cast-ed to this
+                                      const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+                                    );
    
-   int moveTo(double position);
+   /// The handler function for relative position requests, called by the static callback
+   /** Signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+   int newCallBack_pos( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
    
+   /// The static callback function to be registered for position presets
+   /** Dispatches to the handler, which then signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+   static int st_newCallBack_presetName( void * app, ///< [in] a pointer to this, will be static_cast-ed to this
+                                      const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+                                    );
    
+   /// The handler function for position presets, called by the static callback
+   /** Signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+   int newCallBack_presetName( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
    ///@}
-   
    
    /** \name Telemeter Interface
      * 
@@ -174,39 +247,115 @@ public:
      */ 
    int checkRecordTimes();
    
-   int recordTelem( const telem_stage * );
+   int recordTelem( const telem_pico * );
    
+   int recordAGUC8( bool force = false );
    ///@}
+   
 };
 
-inline smc100ccCtrl::smc100ccCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
-{
-   m_powerMgtEnabled = true;
-   m_powerOnWait = 5; // default to 5 seconds for controller boot up.
-   
-   m_defaultPositions = false;
-   
+aguc8Ctrl::aguc8Ctrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
+{   
+   m_powerMgtEnabled = false;
    return;
 }
 
-void smc100ccCtrl::setupConfig()
+aguc8Ctrl::~aguc8Ctrl() noexcept
 {
-   config.add("stage.homingOffset", "", "stage.homingOffset", argType::Required, "stage", "homingOffset", false, "float", "Homing offset, a.k.a. default starting position.");
+   //Wait for each channel thread to exit, then delete it.
+   for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
+   {
+      if(it->second.m_thread != nullptr)
+      {
+         if(it->second.m_thread->joinable()) it->second.m_thread->join();
+         delete it->second.m_thread;
+      }
+   }
+}
+
+
+void aguc8Ctrl::setupConfig()
+{
+   //config.add("device.address", "", "device.address", argType::Required, "device", "address", false, "string", "The controller IP address.");
+   config.add("device.nChannels", "", "device.nChannels", argType::Required, "device", "nChannels", false, "int", "Number of motoro channels.  Default is 4.");
    
    tty::usbDevice::setupConfig(config);
    dev::ioDevice::setupConfig(config);
-   dev::stdMotionStage<smc100ccCtrl>::setupConfig(config);
    
+   dev::telemeter<aguc8Ctrl>::setupConfig(config);
 }
+#define AGUC8CTRL_E_NOMOTORS   (-5)
+#define AGUC8CTRL_E_BADCHANNEL (-6)
+#define AGUC8CTRL_E_DUPMOTOR   (-7)
+#define AGUC8CTRL_E_INDIREG    (-20)
 
-void smc100ccCtrl::loadConfig()
+int aguc8Ctrl::loadConfigImpl( mx::app::appConfigurator & _config )
 {
+   //Standard config parsing
+   //_config(m_deviceAddr, "device.address");
+   _config(m_nChannels, "device.nChannels");
+
+   //int rv = tty::usbDevice::loadConfig(_config);
+ 
+
+   // Parse the unused config options to look for motors
+   std::vector<std::string> sections;
+
+   _config.unusedSections(sections);
+
+   if( sections.size() == 0 )
+   {
+      log<text_log>("No motors found in config.", logPrio::LOG_CRITICAL);
+
+      return AGUC8CTRL_E_NOMOTORS;
+   }
+
+   //Now see if any unused sections have a channel keyword
+   for(size_t i=0;i<sections.size(); ++i)
+   {
+      int channel = -1;
+      _config.configUnused(channel, mx::app::iniFile::makeKey(sections[i], "channel" ) );
+      if( channel == -1 )
+      {
+         //not a channel
+         continue;
+      }
+      
+      if(channel < 1 || channel > m_nChannels)
+      {
+         log<text_log>("Bad channel specificiation: " + sections[i] + " " + std::to_string(channel), logPrio::LOG_CRITICAL);
+
+         return AGUC8CTRL_E_BADCHANNEL;
+      }
+
+      //Ok, valid channel.  Insert into map and check for duplicates.
+      std::pair<channelMapT::iterator, bool> insert = m_channels.insert(std::pair<std::string, motorChannel>(sections[i], motorChannel(this,sections[i],channel)));
+      
+      if(insert.second == false)
+      {
+         log<text_log>("Duplicate motor specification: " + sections[i] + " " + std::to_string(channel), logPrio::LOG_CRITICAL);
+         return AGUC8CTRL_E_DUPMOTOR;
+      }
+      else
+      {
+         _config.configUnused(insert.first->second.m_presetNames, mx::app::iniFile::makeKey(sections[i], "names" ));
+         _config.configUnused(insert.first->second.m_presetPositions, mx::app::iniFile::makeKey(sections[i], "positions" ));
+      }
+      
+      log<pico_channel>({sections[i], (uint8_t) channel});
+   }
    
-   config(m_homingOffset, "stage.homingOffset");
-   
-   this->m_baudRate = B57600; //default for SMC100CC controller.  Will be overridden by any config setting.
+   return 0;
+}
+  
+void aguc8Ctrl::loadConfig()
+{
 
    int rv = tty::usbDevice::loadConfig(config);
+   //BREADCRUMB
+   rv = tty::usbDevice::connect();
+   //BREADCRUMB
+   log<text_log>("device name is " + std::to_string(tty::usbDevice::getDeviceName()));
 
    if(rv != 0 && rv != TTY_E_NODEVNAMES && rv != TTY_E_DEVNOTFOUND) //Ignore error if not plugged in
    {
@@ -214,849 +363,617 @@ void smc100ccCtrl::loadConfig()
       log<software_error>( {__FILE__, __LINE__, rv, tty::ttyErrorString(rv)});
       m_shutdown = 1;
    }
-   
-   rv = dev::ioDevice::loadConfig(config);
-   if(rv != 0)
+
+   if( loadConfigImpl(config) < 0)
    {
-      log<software_error>({ __FILE__, __LINE__, "error loading io device configs"});
-      m_shutdown = 1;
+      log<text_log>("Error during config", logPrio::LOG_CRITICAL);
+      m_shutdown = true;
    }
    
-   dev::stdMotionStage<smc100ccCtrl>::loadConfig(config);
-   if(rv != 0)
+   if(dev::ioDevice::loadConfig(config) < 0)
    {
-      log<software_error>({ __FILE__, __LINE__, "error loading io device configs"});
-      m_shutdown = 1;
+      log<text_log>("Error during ioDevice config", logPrio::LOG_CRITICAL);
+      m_shutdown = true;
+   }
+   
+   if(dev::telemeter<aguc8Ctrl>::loadConfig(config) < 0)
+   {
+      log<text_log>("Error during ioDevice config", logPrio::LOG_CRITICAL);
+      m_shutdown = true;
    }
 }
 
-int smc100ccCtrl::appStartup()
+int aguc8Ctrl::appStartup()
 {
-   
-    REG_INDI_NEWPROP(m_indiP_position, "position", pcf::IndiProperty::Number);
-    m_indiP_position.add (pcf::IndiElement("current"));
-    m_indiP_position["current"].set(0);
-    m_indiP_position.add (pcf::IndiElement("target"));
-   
+   ///\todo read state from disk to get current counts.
 
-   if( state() == stateCodes::UNINITIALIZED )
+   //BREADCRUMB
+   
+   for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
    {
-      log<text_log>( "In appStartup but in state UNINITIALIZED.", logPrio::LOG_CRITICAL );
+      it->second.m_currCounts = readChannelCounts(it->second.m_name);
+      
+      
+      createStandardIndiNumber( it->second.m_property, it->first+"_pos", std::numeric_limits<posT>::lowest(), std::numeric_limits<posT>::max(), static_cast<posT>(1), "%d", "Position", it->first);
+      it->second.m_property["current"].set(it->second.m_currCounts);
+      it->second.m_property["target"].set(it->second.m_currCounts);
+      it->second.m_property.setState(INDI_IDLE);
+      
+      if( registerIndiPropertyNew( it->second.m_property, st_newCallBack_pos) < 0)
+      {
+         #ifndef AGUC8CTRL_TEST_NOLOG
+         log<software_error>({__FILE__,__LINE__});
+         #endif
+         return AGUC8CTRL_E_INDIREG;
+      }
+      
+      if(it->second.m_presetNames.size() > 0)
+      {
+         if(createStandardIndiSelectionSw( it->second.m_indiP_presetName, it->first, it->second.m_presetNames) < 0)
+         {
+            log<software_critical>({__FILE__, __LINE__});
+            return -1;
+         }
+         if( registerIndiPropertyNew( it->second.m_indiP_presetName, st_newCallBack_presetName) < 0)
+         {
+            log<software_error>({__FILE__,__LINE__});
+            return -1;
+         }
+      }
+      
+      //Here we start each channel thread, with 0 R/T prio.
+      threadStart( *it->second.m_thread, it->second.m_threadInit, it->second.m_threadID, it->second.m_threadProp, 0, "", it->second.m_name, &it->second, channelThreadStart);
+   }
+   
+   //Install empty signal handler for USR1, which is used to interrupt sleeps in the channel threads.
+   struct sigaction act;
+   sigset_t set;
+
+   act.sa_sigaction = &sigUsr1Handler;
+   act.sa_flags = SA_SIGINFO;
+   sigemptyset(&set);
+   act.sa_mask = set;
+
+   errno = 0;
+   if( sigaction(SIGUSR1, &act, 0) < 0 )
+   {
+      std::string logss = "Setting handler for SIGUSR1 failed. Errno says: ";
+      logss += strerror(errno);
+
+      log<software_error>({__FILE__, __LINE__, errno, 0, logss});
+
       return -1;
    }
+
+   // register INDI properties
+   //REG_INDI_NEWPROP(m_indiP_currStep, "current_stepSize", pcf::IndiProperty::Number);
+   //REG_INDI_NEWPROP(m_indiP_tgtStep, "target_stepSize", pcf::IndiProperty::Number);
    
-   if(m_presetNames.size() != m_presetPositions.size())
+   if(dev::telemeter<aguc8Ctrl>::appStartup() < 0)
    {
-      return log<text_log,-1>("must set a position for each preset", logPrio::LOG_CRITICAL);
-   }
-   
-   m_presetNames.insert(m_presetNames.begin(), "none");
-   m_presetPositions.insert(m_presetPositions.begin(), -1);
-   
-   int rv = dev::stdMotionStage<smc100ccCtrl>::appStartup();
-   if(rv != 0)
-   {
-      log<software_error>({ __FILE__, __LINE__, "error loading io device configs"});
-      m_shutdown = 1;
+      return log<software_error,-1>({__FILE__,__LINE__});
    }
    
    return 0;
 }
 
-int smc100ccCtrl::appLogic()
-{   
-   if( state() == stateCodes::INITIALIZED )
-   {
-      log<text_log>( "In appLogic but in state INITIALIZED.", logPrio::LOG_CRITICAL );
-      return -1;
+int aguc8Ctrl::appLogic()
+{
+
+   // TEMPORARILY ASSUME POWER IS ON
+   if(state()==stateCodes::INITIALIZED){
+      state(stateCodes::POWERON);
    }
+
 
    if( state() == stateCodes::POWERON)
    {
       if(!powerOnWaitElapsed()) return 0;
       
-      if(m_deviceName == "")
-      {
-         state(stateCodes::NODEVICE);
-      }
-      else
-      {
-         state(stateCodes::NOTCONNECTED);
-         if(!stateLogged())
-         {
-            std::stringstream logs;
-            logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " found in udev as " << m_deviceName;
-            log<text_log>(logs.str());
-         }
-      }
+      state(stateCodes::NOTCONNECTED);
    }
    
-   if( state() == stateCodes::NODEVICE )
+   if(state() == stateCodes::NOTCONNECTED || state() == stateCodes::ERROR)
    {
-      int rv = tty::usbDevice::getDeviceName();
-      if(rv < 0 && rv != TTY_E_DEVNOTFOUND && rv != TTY_E_NODEVNAMES)
-      {
-         state(stateCodes::FAILURE);
-         if(!stateLogged())
-         {
-            log<software_critical>({__FILE__, __LINE__, rv, tty::ttyErrorString(rv)});
-         }
-         return -1;
-      }
-
-      if(rv == TTY_E_DEVNOTFOUND || rv == TTY_E_NODEVNAMES)
-      {
-         state(stateCodes::NODEVICE);
-         if(!stateLogged())
-         {
-            std::stringstream logs;
-            logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " not found in udev";
-            log<text_log>(logs.str());
-         }
-         return 0;
-      }
-      else
-      {
-         state(stateCodes::NOTCONNECTED);
-         if(!stateLogged())
-         {
-            std::stringstream logs;
-            logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " found in udev as " << m_deviceName;
-            log<text_log>(logs.str());
-         }
-      }
-   }
-
-   if( state() == stateCodes::NOTCONNECTED )
-   {
-      int rv;
-      {//scope for elPriv
-         elevatedPrivileges elPriv(this);
-         rv = connect();
-      }
-
-      if(rv < 0) 
-      {
-         int nrv = tty::usbDevice::getDeviceName();
-         if(nrv < 0 && nrv != TTY_E_DEVNOTFOUND && nrv != TTY_E_NODEVNAMES)
-         {
-            state(stateCodes::FAILURE);
-            if(!stateLogged()) log<software_critical>({__FILE__, __LINE__, nrv, tty::ttyErrorString(nrv)});
-            return -1;
-         }
-
-         if(nrv == TTY_E_DEVNOTFOUND || nrv == TTY_E_NODEVNAMES)
-         {
-            state(stateCodes::NODEVICE);
-
-            if(!stateLogged())
-            {
-               std::stringstream logs;
-               logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " no longer found in udev";
-               log<text_log>(logs.str());
-            }
-            return 0;
-         }
-         
-         //if connect failed, and there is a device, then we have some other problem.
-         state(stateCodes::FAILURE);
-         if(!stateLogged()) log<software_error>({__FILE__,__LINE__,rv, tty::ttyErrorString(rv)});
-         return -1;
-                           
-      }
-
-      if( testConnection() == 0 ) 
+      //BREADCRUMB
+      //int rv = m_usbDevice.connect();
+      int rv = 0; // uuhhhhhhh
+      
+      if(rv == 0)
       {
          state(stateCodes::CONNECTED);
       }
-      else 
+      else
       {
-         std::string errorString;
-         if (getLastError(errorString) != 0) 
+         if(!stateLogged())
          {
-              log<software_error>({__FILE__, __LINE__,errorString});
+            log<text_log>("Failed to connect to USB device with serial " + m_serial);
+            log<text_log>(tty::ttyErrorString(rv));
+            //log<text_log>(m_usbDevice.getDeviceName());
          }
          
          return 0;
       }
       
-
-      if(state() == stateCodes::CONNECTED && !stateLogged())
-      {
-         std::stringstream logs;
-         logs << "Connected to stage(s) on " << m_deviceName;
-         log<text_log>(logs.str());
-      }
    }
-
- 
-   //If we're here, we can get state from controller...
-   std::string axState;
-   //mutex scope
-   {
-      std::unique_lock<std::mutex> lock(m_indiMutex);
-      if(getCtrlState(axState) < 0)
-      {
-         if(m_powerTargetState == 0) return 0;
-         return log<software_error, 0>({__FILE__,__LINE__});
-      }
-   }   
-
-   if(axState[0] == '0') 
-   {
-      state(stateCodes::NOTHOMED); //This always means this.
-   }
-   else if (axState[0] == '1' && axState[1] == '0')
-   {
-      //Need to download stage info
-      log<text_log>("getting stage information");
-      std::string com;
-      if(makeCom(com, "PW1") < 0)
-      {
-         log<software_error>({__FILE__, __LINE__,"Error making command PW1" });
-         return 0;
-      }
    
-      int rv = MagAOX::tty::ttyWrite( com, m_fileDescrip, m_writeTimeout); 
-      if (rv != TTY_E_NOERROR)
-      {
-         if(m_powerTargetState == 0) return 0;
-         log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-         return -1;
-      } 
-      
-      sleep(5);
-      if(makeCom(com, "ZX2") < 0)
-      {
-         log<software_error>({__FILE__, __LINE__,"Error making command ZX2" });
-         return 0;
-      }
-   
-      rv = MagAOX::tty::ttyWrite( com, m_fileDescrip, m_writeTimeout); 
-      if (rv != TTY_E_NOERROR)
-      {
-         if(m_powerTargetState == 0) return 0;
-         log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-         return -1;
-      }
-      
-      sleep(5);
-      if(makeCom(com, "PW0") < 0)
-      {
-         log<software_error>({__FILE__, __LINE__,"Error making command PW0" });
-         return 0;
-      }
-   
-      rv = MagAOX::tty::ttyWrite( com, m_fileDescrip, m_writeTimeout); 
-      if (rv != TTY_E_NOERROR)
-      {
-         if(m_powerTargetState == 0) return 0;
-         log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-         return -1;
-      }
-      
-      sleep(5);
-      log<text_log>("stage information loaded");
-      return 0;
-      
-   }
-   else if (axState[0] == '1' && (axState[1] == 'E' || axState[1] == 'F'))
+   if(state() == stateCodes::CONNECTED)
    {
-      state(stateCodes::HOMING);
-      m_moving = 1;
-      m_wasHoming = 1;
-   }
-   else if (axState[0] == '2') 
-   {
-      m_moving = 1;
-      state(stateCodes::OPERATING);
-   }
-   else if (axState[0] == '3' && isdigit(axState[1]))
-   {
-      if(m_wasHoming)
+         
+      //std::unique_lock<std::mutex> lock(m_usbMutex);
+      //BREADCRUMB
+      std::string comm = "MR";
+      std::string qresp;
+      int resp = writeReadError(comm, qresp);
+      //int rv = m_usbDevice.ttyWriteRead(resp, "MR", "\r\n", false, m_fileDescrip, m_readTimeout, m_writeTimeout); // set remote mode
+      //BREADCRUMB
+            
+      if(resp == 0)
       {
-         std::unique_lock<std::mutex> lock(m_indiMutex);
-         moveTo(m_homingOffset);
-         m_wasHoming = 0;
+         log<text_log>("Connected to the AGUC8 controller in remote mode");
       }
       else
       {
-         m_moving = 0;
-         state(stateCodes::READY);
-      }
-   }
-   else if (axState[0] == '3')
-   {
-      log<text_log>("Stage disabled.  Enabling");
-      std::string com;
-      if(makeCom(com, "MM1") < 0)
-      {
-         log<software_error>({__FILE__, __LINE__,"Error making command PW1" });
-         return 0;
-      }
-      int rv = MagAOX::tty::ttyWrite( com, m_fileDescrip, m_writeTimeout); 
-      if (rv != TTY_E_NOERROR)
-      {
-         if(m_powerTargetState == 0) return 0;
-         log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-         return -1;
-      } 
-   }
-   else if( axState[0] == '\0' && axState[1] == '\0' )
-   {
-      //a non-response, this means we should go back around and ask again
-      //this doesn't seem to be an error, but isn't documented.
-      //Occurs after a power off, but also sometimes after homing completes.
-      return 0;
-   }
-   else
-   {
-      sleep(1);
-      if(m_powerState == 0) return 0;
-      
-      log<software_error>({__FILE__,__LINE__, "Invalid state: |" + std::to_string(axState[0]) + "|" + std::to_string(axState[1]) + "|"});  
-      state(stateCodes::ERROR);
-   }
-      
-   if( state() == stateCodes::NOTHOMED)
-   {
-      if(m_powerOnHome && !m_powerOnHomed)
-      {
-         std::unique_lock<std::mutex> lock(m_indiMutex);
-         startHoming(); 
-         m_powerOnHomed = true;
-      }
-      return 0;
-   }
-   
-   if( state() == stateCodes::READY || state() == stateCodes::OPERATING)
-   {
-      std::unique_lock<std::mutex> lock(m_indiMutex);
-   
-
-      int rv = getPosition(m_position);
-            
-      if(rv < 0)
-      {
-         sleep(1);
          if(m_powerState == 0) return 0;
          
-         std::string errorString;
-      
-         if (getLastError(errorString) != 0 && errorString.size() != 0) 
-         {
-            log<software_error>({__FILE__, __LINE__,errorString});
-         }
-      
-         log<software_error>({__FILE__, __LINE__,"There's been an error with getting current controller position."});
+         log<software_error>({__FILE__, __LINE__, "wrong response to MR request"});
+         log<text_log>(std::to_string(resp));
+         state(stateCodes::ERROR);
+         return 0;
       }
 
-      updateIfChanged(m_indiP_position, "current", m_position);
+      // temporary! check error codes after MR
+      /*std::string qresp;
+      comm = "TE";
+      resp = writeRead(comm);
+      resp = Read(qresp);
+      std::cout << "got error code " << qresp << " to MR\n";*/
+
+      state(stateCodes::READY);
       
-      static int last_moving = -1;
       
-      bool changed = false;
-      if(last_moving != m_moving)
-      {
-         changed = true;
-         last_moving = m_moving;
-      }
+      return 0;
+   }
    
-      if(changed)
+   if(state() == stateCodes::READY || state() == stateCodes::OPERATING)
+   {
+      //check connection      
+      /*{
+        //std::unique_lock<std::mutex> lock(m_usbMutex);
+        //std::string comm = "MR";
+        BREADCRUMB
+        int rv = writeRead(comm);//(resp, "MR", "\r\n", false, m_fileDescrip, m_readTimeout, m_writeTimeout); // set remote mode
+        BREADCRUMB
+                
+        if(rv == 0)
+        {
+            log<text_log>("Connected to the AGUC8 controller in remote mode");
+        }
+        else
+        {
+            if(m_powerState == 0) return 0;
+            
+            log<software_error>({__FILE__, __LINE__, "wrong response to MR request"});
+            state(stateCodes::ERROR);
+            return 0;
+        }
+      }*/
+      
+      //Now check state of motors
+      bool anymoving = false;
+      
+      //This is where we'd check for moving
+      for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
       {
-         if(m_moving)
+         //std::unique_lock<std::mutex> lock(m_telnetMutex);
+      
+         // change channel and then check status 
+         //std::string comm = "CC" + std::to_string(it->second.m_channel);
+         //std::string eresp;
+         //int resp = writeReadError(comm, eresp);
+
+         // check if moving
+         // for now, just switch between axes rather than channels
+         std::string query = std::to_string(it->second.m_channel) + "TS"; //"1TS"; // always assume devices are on axis 1 for now
+         std::string qresp;
+         int resp = writeQuery(query, qresp);
+         
+         int q = (int)qresp[3] - '0';
+
+         //The check for moving here. With power off detection
+         if( q != 0) 
          {
-            m_indiP_position.setState(INDI_BUSY);
+            anymoving = true;
+            it->second.m_moving = true;
          }
          else
          {
-            m_indiP_position.setState(INDI_IDLE);
-            m_indiP_position["target"] = m_position;
+            it->second.m_moving = false;
          }
-         m_indiDriver->sendSetProperty(m_indiP_position);
-      }
-   
-   
-      int n = presetNumber();
-      if(n == -1)
-      {
-         m_preset = 0;
-         m_preset_target = 0;
-      }
-      else
-      {
-         m_preset = n;
-         m_preset_target = n;
-      }
-
-      dev::stdMotionStage<smc100ccCtrl>::updateINDI();
-   
          
-      return 0;
-   }
-
-   if( state() == stateCodes::ERROR )
-   {
-      if(m_powerTargetState == 0) return 0;
-      sleep(1);
-      if(m_powerState == 0) return 0;
-      
-      int rv = tty::usbDevice::getDeviceName();
-      if(rv < 0 && rv != TTY_E_DEVNOTFOUND && rv != TTY_E_NODEVNAMES)
-      {
-         state(stateCodes::FAILURE);
-         if(!stateLogged())
+         if(it->second.m_moving == false && it->second.m_doMove == true)
          {
-            log<software_critical>({__FILE__, __LINE__, rv, tty::ttyErrorString(rv)});
+            it->second.m_currCounts = it->second.m_property["target"].get<long>();
+            log<text_log>("moved " + it->second.m_name + " to " + std::to_string(it->second.m_currCounts) + " counts");
+            it->second.m_doMove = false;
+            recordAGUC8(true);
          }
-         return rv;
       }
-
-      if(rv == TTY_E_DEVNOTFOUND || rv == TTY_E_NODEVNAMES)
+   
+      if(anymoving == false) state(stateCodes::READY);
+      else state(stateCodes::OPERATING);
+      
+      for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
       {
-         state(stateCodes::NODEVICE);
-
-         if(!stateLogged())
+         std::unique_lock<std::mutex> lock(m_indiMutex);
+         if(it->second.m_moving) updateIfChanged(it->second.m_property, "current", it->second.m_currCounts, INDI_BUSY);
+         else updateIfChanged(it->second.m_property, "current", it->second.m_currCounts, INDI_IDLE);
+         
+         for(size_t n=0; n < it->second.m_presetNames.size(); ++n)
          {
-            std::stringstream logs;
-            logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " not found in udev";
-            log<text_log>(logs.str());
+            bool changed = false;
+            if( it->second.m_currCounts == it->second.m_presetPositions[n])
+            {
+               if(it->second.m_indiP_presetName[it->second.m_presetNames[n]] == pcf::IndiElement::Off) changed = true;
+               it->second.m_indiP_presetName[it->second.m_presetNames[n]] = pcf::IndiElement::On;
+            }
+            else
+            {
+               if(it->second.m_indiP_presetName[it->second.m_presetNames[n]] == pcf::IndiElement::On) changed = true;
+               it->second.m_indiP_presetName[it->second.m_presetNames[n]] = pcf::IndiElement::Off;
+            }
+            
+            if(changed) m_indiDriver->sendSetProperty(it->second.m_indiP_presetName);
          }
+         
+         if(writeChannelCounts(it->second.m_name, it->second.m_currCounts) < 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
+      }
+      
+      if(telemeter<aguc8Ctrl>::appLogic() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__});
          return 0;
       }
+      
+      return 0;
+   }
+   
+   
+   return 0;
+}
 
+int aguc8Ctrl::onPowerOff()
+{
+   return 0;
+}
+
+int aguc8Ctrl::whilePowerOff()
+{
+   return 0;
+}
+
+int aguc8Ctrl::appShutdown()
+{
+   //Shutdown and join the threads
+   for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
+   {
+      if(it->second.m_thread->joinable())
+      {
+         pthread_kill(it->second.m_thread->native_handle(), SIGUSR1);
+         try
+         {
+            it->second.m_thread->join(); //this will throw if it was already joined
+         }
+         catch(...)
+         {
+         }
+      }
+   }
+   
+   dev::telemeter<aguc8Ctrl>::appShutdown();
+
+   return 0;
+}
+
+aguc8Ctrl::posT aguc8Ctrl::readChannelCounts(const std::string & chName)
+{
+   std::string statusDir = sysPath;
+   statusDir += "/";
+   statusDir += m_configName;
+
+   std::string fileName = statusDir + "/" + chName;
+   
+   std::ifstream posIn;
+   posIn.open( fileName );
+   
+   if(!posIn.good())
+   {
+      log<text_log>("no position file for " + chName + " found.  initializing to 0.");
+      return 0;
+   }
+   
+   long pos;
+   posIn >> pos;
+   
+   posIn.close();
+   
+   log<text_log>("initializing " + chName + " to " + std::to_string(pos));
+   
+   return pos;
+}
+
+int aguc8Ctrl::writeChannelCounts( const std::string & chName,
+                                       posT counts 
+                                 )
+{
+   std::string statusDir = sysPath;
+   statusDir += "/";
+   statusDir += m_configName;
+
+   std::string fileName = statusDir + "/" + chName;
+   
+   elevatedPrivileges ep(this);
+   
+   std::ofstream posOut;
+   posOut.open( fileName );
+   
+   if(!posOut.good())
+   {
+      log<text_log>("could not open counts file for " + chName + " -- can not store position.", logPrio::LOG_ERROR);
+      return -1;
+   }
+   
+   posOut << counts;
+   
+   posOut.close();
+   
+   return 0;
+}
+
+int aguc8Ctrl::writeReadError( std::string comm, std::string & resp)
+{
+    std::unique_lock<std::mutex> lock(m_usbMutex);
+    //BREADCRUMB
+    //std::cout << "Sending command " << comm << "\n";
+
+    int rv = MagAOX::tty::ttyWrite( (comm+"\r\n").c_str(), m_fileDescrip, m_writeTimeout);
+    sleep(m_sleep);
+
+    // get error code of last command after reading
+    std::string tecomm = "TE";
+    std::string le = "\r\n";
+    //rv = MagAOX::tty::ttyWriteRead(resp, tecomm.c_str() , le.c_str(), false, m_fileDescrip, m_writeTimeout, m_readTimeout);
+    rv = MagAOX::tty::ttyWrite( (tecomm+"\r\n").c_str(), m_fileDescrip, m_writeTimeout);
+    rv = MagAOX::tty::ttyRead(resp, "\r\n", m_fileDescrip, m_readTimeout);
+    //std::cout << "Got error code " << resp << "from command " << comm << "\n";
+    /*if (rv != TTY_E_NOERROR){
+      return rv;
+    }
+    return std::stoi(resp);*/
+    return rv;
+}
+
+int aguc8Ctrl::writeQuery( std::string comm, std::string & resp)
+{
+    std::unique_lock<std::mutex> lock(m_usbMutex);
+    //BREADCRUMB
+    //std::cout << "Sending query " << comm << "\n";
+
+    int rv = MagAOX::tty::ttyWrite( (comm+"\r\n").c_str(), m_fileDescrip, m_writeTimeout);
+    rv = MagAOX::tty::ttyRead(resp, "\r\n", m_fileDescrip, m_readTimeout);
+    //std::cout << "Got response " << resp << "to query " << comm << "\n";
+    return rv;
+}
+
+int aguc8Ctrl::Read( std::string & resp)
+{
+    std::unique_lock<std::mutex> lock(m_usbMutex);
+    //BREADCRUMB
+    int rv = MagAOX::tty::ttyRead(resp, "\r\n", m_fileDescrip, m_readTimeout);
+    sleep(m_sleep);
+    //std::cout << resp << "\n";
+    return rv;
+}
+
+void aguc8Ctrl::channelThreadStart( motorChannel * mc )
+{
+   mc->m_parent->channelThreadExec(mc);
+}
+   
+void aguc8Ctrl::channelThreadExec( motorChannel * mc)
+{
+   //Get the thread PID immediately so the caller can return.
+   mc->m_threadID = syscall(SYS_gettid);
+   
+   //Wait for initialization to complete.
+   while( mc->m_threadInit == true && m_shutdown == 0)
+   {
       sleep(1);
-      if(m_powerState == 0) return 0;
-      
-      state(stateCodes::FAILURE);
-      if(!stateLogged())
-      {
-         log<text_log>("Error NOT due to loss of USB connection.  I can't fix it myself.", logPrio::LOG_CRITICAL);
-      }
-      return -1;
    }
-
-   return 0;
-}
-
-int smc100ccCtrl::testConnection() 
-{
-   std::string buffer{"1TS\r\n"};
-   std::string output;
    
-   int rv = MagAOX::tty::ttyWriteRead( output, buffer, "\r\n", false, m_fileDescrip, m_writeTimeout, m_readTimeout); 
-
-   if (rv != TTY_E_NOERROR)
+   //Now begin checking for state change request.
+   while(!m_shutdown)
    {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-      return -1;
-   } 
-   
-   int axis;
-   std::string com;
-   std::string val;
-   
-   splitResponse( axis, com, val, output);
+      //If told to move and not moving, start a move
+      if(mc->m_doMove && !mc->m_moving && (state() == stateCodes::READY || state() == stateCodes::OPERATING))
+      {
+         long dr = mc->m_property["target"].get<long>() - mc->m_currCounts;
+         
+         recordAGUC8(true);
+         //std::unique_lock<std::mutex> lock(m_usbMutex);
+         state(stateCodes::OPERATING);
+         mc->m_moving = true;
+         log<text_log>("moving " + mc->m_name + " by " + std::to_string(dr) + " counts");
 
-   return 0;
+         // need to change channel and then request a relative move
+         //std::string comm = "CC" + std::to_string(mc->m_channel);
+         std::string qresp;
+         //log<text_log>("changing to channel  " + comm);
+         //writeReadError(comm, qresp);
+         
+         std::string comm2 = std::to_string(mc->m_channel) + "PR" + std::to_string(dr); // this always commands axis 1 -- generalize me in the future!!!
+         log<text_log>("sending move command  " + comm2);
+         writeReadError(comm2, qresp);
+      }
+      else if( !(state() == stateCodes::READY || state() == stateCodes::OPERATING))
+      {
+         mc->m_doMove = false; //In case a move is requested when not able to move
+      }
+      
+      sleep(1);
+   }
+   
+   
 }
 
-int smc100ccCtrl::appShutdown()
+
+int aguc8Ctrl::st_newCallBack_pos( void * app,
+                                           const pcf::IndiProperty &ipRecv
+                                         )
 {
-   return 0;
+   return static_cast<aguc8Ctrl*>(app)->newCallBack_pos(ipRecv);
 }
 
-int smc100ccCtrl::makeCom( std::string &str, 
-                           const std::string & com
-                         )
+int aguc8Ctrl::newCallBack_pos( const pcf::IndiProperty &ipRecv )
 {
-   char tmp[10];
-
-   int axis = 1;
    
-   snprintf(tmp, 10, "%i", axis);
+   //Search for the channel
+   std::string propName = ipRecv.getName();
+   size_t nend = propName.rfind("_pos");
    
-   str = tmp;
-   
-   str += com;
-   
-   str += "\r\n";
-
-   return 0;
-}
-int smc100ccCtrl::splitResponse(int &axis, std::string &com, std::string &val, std::string &resp)
-{
-   if(resp.length() < 3)
+   if(nend == std::string::npos)
    {
-      log<software_error>({__FILE__,__LINE__, "Invalid response"});
+      log<software_error>({__FILE__, __LINE__, "Channel without _pos received"});
       return -1;
    }
    
-   if(isalpha(resp[0]))
+   std::string chName = propName.substr(0, nend);
+   channelMapT::iterator it = m_channels.find(chName);
+
+   if(it == m_channels.end())
    {
-      log<software_error>({__FILE__,__LINE__, "Invalid response"});
-      axis = 0;
-      com = "";
-      val = resp;
-      return 0;
+      log<software_error>({__FILE__, __LINE__, "Unknown channel name received"});
+      return -1;
    }
 
-   if(isalpha(resp[1]))
+   if(it->second.m_doMove == true)
    {
-      axis = resp[0] - '0';
-   }
-   else
-   {
-      axis = atoi(resp.substr(0,2).c_str());
-   }
-   
-   if(axis < 10)
-   {
-      
-      com = resp.substr(1,2);
-      if(resp.length() < 4 ) val = "";
-      else val = resp.substr(3, resp.length()-3);
-       if(val.size() > 1)
-      {
-         while(val[val.size()-1] == '\r' || val[val.size()-1] == '\n') 
-         {
-            val.erase(val.size()-1);
-            if(val.size() < 1) break;
-         }
-      }
-   }
-   else
-   {
-      if(resp.length() < 4)
-      {
-         log<software_error>({__FILE__,__LINE__, "Invalid response"});
-         com = "";
-         val = "";
-         return -1;
-      }
-      com = resp.substr(2,2);
-      if(resp.length() < 5) val = "";
-      else val = resp.substr(4, resp.length()-4);
-      
-      if(val.size() > 1)
-      {
-         while(val[val.size()-1] == '\r' || val[val.size()-1] == '\n') 
-         {
-            val.erase(val.size()-1);
-            if(val.size() < 1) break;
-         }
-      }
-   }
-
-   return 0;
-}
-
-int smc100ccCtrl::getCtrlState( std::string &state )
-{
-   std::string com, resp;
-   
-   if(makeCom(com, "TS") < 0)
-   {
-      log<software_error>({__FILE__, __LINE__,"Error making command TS" });
+      log<text_log>("channel " + it->second.m_name + " is already moving", logPrio::LOG_WARNING);
       return 0;
    }
    
-   int rv = MagAOX::tty::ttyWriteRead( resp, com, "\r\n", false, m_fileDescrip, m_readTimeout, m_writeTimeout); 
-   if (rv != TTY_E_NOERROR)
-   {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-      return -1;
-   } 
-   
-   //std::cerr << "TS Response: " << resp << "\n";
-   int raxis;
-   std::string rcom, rval;
-   
-   splitResponse(raxis, rcom, rval, resp);
-   
-   if(rcom == "")
-   {
-      log<software_error>({__FILE__, __LINE__, "An Error occurred"});
-      return -1;
-   }
-      
-   if(raxis != 1)
-   {
-      log<software_error>({__FILE__, __LINE__, "Wrong axis returned"});
-      return -1;
-   }
-
-   if(rcom != "TS")
-   {
-      log<software_error>({__FILE__, __LINE__, "Wrong command returned"});
-      return -1;
-   }
-   
-   if(rval.length() != 6)
-   {
-      log<software_error>({__FILE__, __LINE__,"Incorrect response length" });
-      return -1;
-   }
-
-   state = rval.substr(4, 2);
-
-   return 0;
-}
-
-
-int smc100ccCtrl::getPosition(double& current) 
-{
-   std::string buffer{"1TP\r\n"};
-   std::string output;
-   int rv = MagAOX::tty::ttyWriteRead( output, buffer, "\r\n", false, m_fileDescrip, m_writeTimeout, m_readTimeout); 
-
-   if (rv != TTY_E_NOERROR)
-   {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-      return -1;
-   } 
-
-   // Parse current and place into argument
-   try 
-   {
-      current = std::stod(output.substr(3));
-   }
-   catch (...) 
-   {
-      log<software_error>({__FILE__, __LINE__,"Error occured: Unexpected output in getPosition()"});
-      return -1;
-   }
-   return 0;
-}
-
-int smc100ccCtrl::getLastError( std::string& errorString) 
-{
-   std::string buffer{"1TE\r\n"};
-   std::string output;
-   int rv = MagAOX::tty::ttyWriteRead( output, buffer, "\r\n",false, m_fileDescrip, m_writeTimeout, m_readTimeout);
-
-   if (rv != TTY_E_NOERROR)
-   {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__});
-      std::cerr << __FILE__ << " " << __LINE__ << " " << rv << "\n";
-
-      errorString = MagAOX::tty::ttyErrorString(rv);
-      return -1;
-   } 
-
-   char status;
-   try 
-   {
-      status = output.at(3);
-   }
-   catch (const std::out_of_range& oor) 
-   {
-      log<software_error>({__FILE__, __LINE__});
-      errorString = "Unknown output; controller not responding correctly.";
-      return -1;
-   }
-
-   if (status == '@') 
-   {
-      return 0;
-   }
-   else 
-   {
-      switch(status) 
-      {
-         case 'A': 
-            errorString = "Unknown message code or floating point controller address.";
-            break;
-         case 'B': 
-            errorString = "Controller address not correct.";
-            break;
-         case 'C': 
-            errorString = "Parameter missing or out of range.";
-            break;
-         case 'D': 
-            errorString = "Command not allowed.";
-            break;
-         case 'E': 
-            errorString = "Home sequence already started.";
-            break;
-         case 'F': 
-            errorString = "ESP stage name unknown.";
-            break;
-         case 'G': 
-            errorString = "Displacement out of limits.";
-            break;
-         case 'H': 
-            errorString = "Command not allowed in NOT REFERENCED state.";
-            break;
-         case 'I': 
-            errorString = "Command not allowed in CONFIGURATION state.";
-            break;
-         case 'J': 
-            errorString = "Command not allowed in DISABLE state.";
-            break;
-         case 'K': 
-            errorString = "Command not allowed in READY state.";
-            break;
-         case 'L': 
-            errorString = "Command not allowed in HOMING state.";
-            break;
-         case 'M': 
-            errorString = "UCommand not allowed in MOVING state.";
-            break;
-         case 'N': 
-            errorString = "Current position out of software limit.";
-            break;
-         case 'S': 
-            errorString = "Communication Time Out.";
-            break;
-         case 'U': 
-            errorString = "Error during EEPROM access.";
-            break;
-         case 'V': 
-            errorString = "Error during command execution.";
-            break;
-         case 'W': 
-            errorString = "Command not allowed for PP version.";
-            break;
-         case 'X': 
-            errorString = "Command not allowed for CC version.";
-            break;
-         default:
-            errorString = "unknown status";
-            std::cerr << "unkown status: " << status << "\n";
-      }
-      
-      log<software_error>({__FILE__, __LINE__});
-      return -1;
-   }
-}
-
-INDI_NEWCALLBACK_DEFN(smc100ccCtrl, m_indiP_position)(const pcf::IndiProperty &ipRecv)
-{
-   if(!( state() == stateCodes::READY || state() == stateCodes::OPERATING))
-   {
-      log<text_log>("can not command position in current state");
-      return 0;
-   }
-   
-   if (ipRecv.getName() == m_indiP_position.getName())
-   {
-      float current = -1e55, target = -1e55;
-
-      try
-      {
-         current = ipRecv["current"].get<float>();
-      }
-      catch(...){}
-      
-      try
-      {
-         target = ipRecv["target"].get<float>();
-      }
-      catch(...){}
-      
-      if(target == -1e55) target = current;
-      
-      if(target == -1e55) return 0;
-      
-      //Lock the mutex, waiting if necessary
+   //Set the target element, and the doMove flag, and then signal the thread.
+   {//scope for mutex
       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-      updateIfChanged(m_indiP_position, "target", target, INDI_BUSY);
-      m_target = target;
-
       
-      return moveTo(target);
+      long counts; //not actually used
+      if(indiTargetUpdate( it->second.m_property, counts, ipRecv, true) < 0)
+      {
+         return log<software_error,-1>({__FILE__,__LINE__});
+      }
    }
-   return -1;
-}
-
-int smc100ccCtrl::stop()
-{
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   std::string buffer{"1ST\r\n"};
-   int rv = MagAOX::tty::ttyWrite(buffer, m_fileDescrip, m_writeTimeout); 
-
-   updateSwitchIfChanged(m_indiP_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
    
-   if (rv != TTY_E_NOERROR)
-   {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-      return -1;
-   } 
-   return 0;
-}
+   it->second.m_doMove= true;
    
-int smc100ccCtrl::startHoming()
-{
-   updateSwitchIfChanged(m_indiP_home, "request", pcf::IndiElement::Off, INDI_IDLE);
-   
-   std::string buffer{"1OR\r\n"};
-   int rv = MagAOX::tty::ttyWrite(buffer, m_fileDescrip, m_writeTimeout); 
-
-   if (rv != TTY_E_NOERROR)
-   {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
-      return -1;
-   } 
-   return 0;
-}
-
-double smc100ccCtrl::presetNumber()
-{
-   for( size_t n=1; n < m_presetPositions.size(); ++n)
-   {
-      if( fabs(m_position-m_presetPositions[n]) < 1e-3) return n;
-   }
+   pthread_kill(it->second.m_thread->native_handle(), SIGUSR1);
    
    return 0;
 }
 
-int smc100ccCtrl::moveTo(double position)
-{      
-   std::string buffer{"1PA"};
-   buffer = buffer + std::to_string(position) + "\r\n";
-   
-   int rv = MagAOX::tty::ttyWrite( buffer, m_fileDescrip, m_writeTimeout);
+int aguc8Ctrl::st_newCallBack_presetName( void * app,
+                                             const pcf::IndiProperty &ipRecv
+                                            )
+{
+   return static_cast<aguc8Ctrl*>(app)->newCallBack_presetName (ipRecv);
+}
 
-   if (rv != TTY_E_NOERROR)
+int aguc8Ctrl::newCallBack_presetName( const pcf::IndiProperty &ipRecv )
+{
+   channelMapT::iterator it = m_channels.find(ipRecv.getName());
+
+   if(it == m_channels.end())
    {
-      if(m_powerTargetState == 0) return -1;
-      log<software_error>({__FILE__, __LINE__,MagAOX::tty::ttyErrorString(rv)});
+      log<software_error>({__FILE__, __LINE__, "Unknown channel name received"});
       return -1;
    }
 
-   std::string errorString;
-   if (getLastError(errorString) == 0) 
+   if(it->second.m_doMove == true)
    {
-      state(stateCodes::OPERATING);
-      updateIfChanged(m_indiP_position, "target", position);
+      log<text_log>("channel " + it->second.m_name + " is already moving", logPrio::LOG_WARNING);
       return 0;
    }
-   else 
+   
+   long counts = -1e10;
+   
+   size_t i;
+   for(i=0; i< it->second.m_presetNames.size(); ++i) 
    {
-      log<software_error>({__FILE__, __LINE__,errorString});
-      return -1;
+      if(!ipRecv.find(it->second.m_presetNames[i])) continue;
+      
+      if(ipRecv[it->second.m_presetNames[i]].getSwitchState() == pcf::IndiElement::On)
+      {
+         if(counts != -1e10)
+         {
+            log<text_log>("More than one preset selected", logPrio::LOG_ERROR);
+            return -1;
+         }
+         
+         counts = it->second.m_presetPositions[i];
+         std::cerr << "selected: " << it->second.m_presetNames[i] << " " << counts << "\n";
+      }
    }
+   
+   //Set the target element, and the doMove flag, and then signal the thread.
+   {//scope for mutex
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+      
+      it->second.m_property["target"].set(counts);
+   }
+   
+   it->second.m_doMove= true;
+   
+   pthread_kill(it->second.m_thread->native_handle(), SIGUSR1);
+   
+   return 0;
+}
+
+int aguc8Ctrl::checkRecordTimes()
+{
+   return telemeter<aguc8Ctrl>::checkRecordTimes(telem_pico());
 }
    
-int smc100ccCtrl::checkRecordTimes()
+int aguc8Ctrl::recordTelem( const telem_pico * )
 {
-   return telemeter<smc100ccCtrl>::checkRecordTimes(telem_stage());
+   return recordAGUC8(true);
 }
-   
-int smc100ccCtrl::recordTelem( const telem_stage * )
+
+int aguc8Ctrl::recordAGUC8( bool force )
 {
-   return stdMotionStage<smc100ccCtrl>::recordStage(true);
+   static std::vector<int64_t> lastpos(m_nChannels, std::numeric_limits<long>::max());
+   
+   bool changed = false;
+   for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
+   {
+      if(it->second.m_currCounts != lastpos[it->second.m_channel-1]) changed = true;
+   }
+   
+   if( changed || force )
+   {
+      for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
+      {
+         lastpos[it->second.m_channel-1] = it->second.m_currCounts;
+      }
+   
+      telem<telem_pico>(lastpos);
+   }
+
+   return 0;
 }
 
 } //namespace app
 } //namespace MagAOX
 
-#endif //smc100ccCtrl_hpp
+#endif //aguc8Ctrl_hpp
