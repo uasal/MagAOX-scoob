@@ -30,6 +30,7 @@ Test:
 
 /* BMC SDK C Header */
 #include <BMCApi.h>
+#include <BMC_PCIeApi.h>
 
 
 /** \defgroup bmcCtrl 
@@ -344,9 +345,19 @@ int bmcCtrl::initDM()
    
    log<text_log>("BMC " + m_serialNumber + " initialized", logPrio::LOG_NOTICE);
 
+
+   // enable high resolution mode (dithering filter)
+   ret = BMC_PCIeEnableHighRes(&m_dm, true);
+   if(ret != NO_ERR)
+   {
+      const char *err;
+      err = BMCErrorString(ret);
+      log<text_log>(std::string("Enabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
+   }
+   log<text_log>("BMC high resolution mode enabled", logPrio::LOG_NOTICE);
+
    // Get number of actuators
    m_nbAct = m_dm.ActCount;
-
 
    // Load the DM map
    uint32_t *map_lut;
@@ -450,6 +461,7 @@ int bmcCtrl::commandDM(void * curr_src)
    // if every actuator is addressable.
    // Loop over addressable only?
    //double mean = 0;
+
    for (uint32_t idx = 0; idx < m_nbAct; ++idx)
    {
      int address = m_actuator_mapping[idx];
