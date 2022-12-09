@@ -592,7 +592,7 @@ int asiCtrl::connect()
 
    ;
 
-   std::cout << "Looking for cameras";
+   std::cout << "Looking for cameras\n";
 
    int numDevices = ASIGetNumOfConnectedCameras();
 
@@ -609,14 +609,14 @@ int asiCtrl::connect()
    }
 
 
-   std::cout << "Looking for cameras";
+   std::cout << "Looking for the camera\n";
 
    for(int i=0; i< numDevices; ++i)
    {
 
       ASIGetCameraProperty(&m_camInfo, i);
-      std::cout << "Camera name: " << m_camInfo.Name << "\n";
-      std::cout << "Looking for name: " << m_camName << "\n";
+      std::cout << "Found camera name: " << m_camInfo.Name << "\n";
+      std::cout << "But looking for name: " << m_camName << "\n";
 
       if( strcmp(m_camInfo.Name,m_camName.c_str()) == 0 )
       {
