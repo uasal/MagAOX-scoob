@@ -65,7 +65,9 @@ class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevic
       std::vector<std::string> m_presetNames;
       std::vector<posT> m_presetPositions;
       
-      int m_channel {-1}; ///< The number of this channel, where the motor is plugged in
+      int m_channel {-1}; ///< Software channel -- no longer maps onto hardware channel or axis (the AGUC8 has 4 hardware channels with 2 axes per channel)
+      int m_hwchannel {-1};
+      int m_hwaxis {-1};
       
       posT m_currCounts {0}; ///< The current counts, the cumulative position
       
@@ -112,6 +114,7 @@ class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevic
    //std::string m_serial;
    
    int m_nChannels {4}; ///< The number of motor channels total on the hardware.  Number of attached motors inferred from config.
+   int m_nAxes {2}; ///< The number of axes (per channel) on the hardware
 
    int m_writeTimeout {1000}; // time out
    int m_readTimeout {1000};
@@ -323,7 +326,7 @@ int aguc8Ctrl::loadConfigImpl( mx::app::appConfigurator & _config )
       
       if(channel < 1 || channel > m_nChannels)
       {
-         log<text_log>("Bad channel specificiation: " + sections[i] + " " + std::to_string(channel), logPrio::LOG_CRITICAL);
+         log<text_log>("Bad channel specification: " + sections[i] + " " + std::to_string(channel), logPrio::LOG_CRITICAL);
 
          return AGUC8CTRL_E_BADCHANNEL;
       }
@@ -340,6 +343,8 @@ int aguc8Ctrl::loadConfigImpl( mx::app::appConfigurator & _config )
       {
          _config.configUnused(insert.first->second.m_presetNames, mx::app::iniFile::makeKey(sections[i], "names" ));
          _config.configUnused(insert.first->second.m_presetPositions, mx::app::iniFile::makeKey(sections[i], "positions" ));
+         _config.configUnused(insert.first->second.m_hwchannel, mx::app::iniFile::makeKey(sections[i], "hwchannel" ));
+         _config.configUnused(insert.first->second.m_hwaxis, mx::app::iniFile::makeKey(sections[i], "hwaxis" ));
       }
       
       log<pico_channel>({sections[i], (uint8_t) channel});
@@ -353,7 +358,7 @@ void aguc8Ctrl::loadConfig()
 
    int rv = tty::usbDevice::loadConfig(config);
    //BREADCRUMB
-   rv = tty::usbDevice::connect();
+   //rv = tty::usbDevice::connect();
    //BREADCRUMB
    log<text_log>("device name is " + std::to_string(tty::usbDevice::getDeviceName()));
 
@@ -476,8 +481,8 @@ int aguc8Ctrl::appLogic()
    if(state() == stateCodes::NOTCONNECTED || state() == stateCodes::ERROR)
    {
       //BREADCRUMB
-      //int rv = m_usbDevice.connect();
-      int rv = 0; // uuhhhhhhh
+      int rv = connect(); //m_usbDevice.connect();
+      //int rv = 0; // uuhhhhhhh
       
       if(rv == 0)
       {
@@ -574,9 +579,11 @@ int aguc8Ctrl::appLogic()
 
          // check if moving
          // for now, just switch between axes rather than channels
-         std::string query = std::to_string(it->second.m_channel) + "TS"; //"1TS"; // always assume devices are on axis 1 for now
+         std::string query = std::to_string(it->second.m_hwaxis) + "TS"; //"1TS"; // always assume devices are on axis 1 for now
          std::string qresp;
          int resp = writeQuery(query, qresp);
+
+         //std::cout << std::to_string(it->second.m_channel) << " " << std::to_string(it->second.m_hwchannel) << " " << std::to_string(it->second.m_hwaxis) << "\n";
          
          int q = (int)qresp[3] - '0';
 
@@ -808,13 +815,23 @@ void aguc8Ctrl::channelThreadExec( motorChannel * mc)
          mc->m_moving = true;
          log<text_log>("moving " + mc->m_name + " by " + std::to_string(dr) + " counts");
 
-         // need to change channel and then request a relative move
-         //std::string comm = "CC" + std::to_string(mc->m_channel);
+         // check if we're on the right channel and switch if needed
+         std::string query = "CC?";
          std::string qresp;
-         //log<text_log>("changing to channel  " + comm);
-         //writeReadError(comm, qresp);
-         
-         std::string comm2 = std::to_string(mc->m_channel) + "PR" + std::to_string(dr); // this always commands axis 1 -- generalize me in the future!!!
+         int resp = writeQuery(query, qresp);
+
+         int curch = (int)qresp[2] - '0'; // I don't know what I'm doing
+         if (curch != mc->m_hwchannel)
+         {
+            // need to change channel first
+            std::string comm = "CC" + std::to_string(mc->m_hwchannel);
+            //std::string qresp;
+            log<text_log>("changing to channel  " + comm);
+            writeReadError(comm, qresp);
+         }
+
+         //  and then request a relative move
+         std::string comm2 = std::to_string(mc->m_hwaxis) + "PR" + std::to_string(dr);
          log<text_log>("sending move command  " + comm2);
          writeReadError(comm2, qresp);
       }
@@ -823,7 +840,7 @@ void aguc8Ctrl::channelThreadExec( motorChannel * mc)
          mc->m_doMove = false; //In case a move is requested when not able to move
       }
       
-      sleep(1);
+      sleep(3);
    }
    
    
