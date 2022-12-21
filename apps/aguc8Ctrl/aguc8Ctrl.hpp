@@ -68,6 +68,7 @@ class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevic
       int m_channel {-1}; ///< Software channel -- no longer maps onto hardware channel or axis (the AGUC8 has 4 hardware channels with 2 axes per channel)
       int m_hwchannel {-1};
       int m_hwaxis {-1};
+      int m_stepSize {35}; // default step size for this controller (can be set to -50 to +50)
       
       posT m_currCounts {0}; ///< The current counts, the cumulative position
       
@@ -76,6 +77,7 @@ class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevic
       
       pcf::IndiProperty m_property;
       pcf::IndiProperty m_indiP_presetName;
+      pcf::IndiProperty m_indiP_stepSize;
       
       std::thread * m_thread {nullptr}; ///< Thread for managing this channel.  A pointer to allow copying, but must be deleted in d'tor of parent.
        
@@ -204,15 +206,15 @@ protected:
    
    
 public:
+
+   //INDI_NEWCALLBACK_DECL(aguc8Ctrl, m_indiP_stepSize);
+
    /// The static callback function to be registered for relative position requests
    /** Dispatches to the handler, which then signals the relavent thread.
      * 
      * \returns 0 on success.
      * \returns -1 on error.
      */
-
-   //INDI_NEWCALLBACK_DECL(aguc8Ctrl, m_indiP_stepSize);
-
    static int st_newCallBack_pos( void * app, ///< [in] a pointer to this, will be static_cast-ed to this
                                       const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
                                     );
@@ -242,12 +244,36 @@ public:
      * \returns -1 on error.
      */
    int newCallBack_presetName( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
+
+
+   /// The static callback function to be registered for step size
+   /** Dispatches to the handler, which then signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+
+   static int st_newCallBack_stepSize( void * app, ///< [in] a pointer to this, will be static_cast-ed to this
+                                      const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+                                    );
+   
+   /// The handler function for relative position requests, called by the static callback
+   /** Signals the relavent thread.
+     * 
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+   int newCallBack_stepSize( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
+   
    ///@}
    
    /** \name Telemeter Interface
      * 
      * @{
      */ 
+
+   int setStepSize(int stepSize, int hwChannel, int hwAxis, bool changeChannel);
+
    int checkRecordTimes();
    
    int recordTelem( const telem_pico * );
@@ -345,6 +371,7 @@ int aguc8Ctrl::loadConfigImpl( mx::app::appConfigurator & _config )
          _config.configUnused(insert.first->second.m_presetPositions, mx::app::iniFile::makeKey(sections[i], "positions" ));
          _config.configUnused(insert.first->second.m_hwchannel, mx::app::iniFile::makeKey(sections[i], "hwchannel" ));
          _config.configUnused(insert.first->second.m_hwaxis, mx::app::iniFile::makeKey(sections[i], "hwaxis" ));
+         _config.configUnused(insert.first->second.m_stepSize, mx::app::iniFile::makeKey(sections[i], "stepSize" ));
       }
       
       log<pico_channel>({sections[i], (uint8_t) channel});
@@ -398,13 +425,25 @@ int aguc8Ctrl::appStartup()
    {
       it->second.m_currCounts = readChannelCounts(it->second.m_name);
       
-      
       createStandardIndiNumber( it->second.m_property, it->first+"_pos", std::numeric_limits<posT>::lowest(), std::numeric_limits<posT>::max(), static_cast<posT>(1), "%d", "Position", it->first);
       it->second.m_property["current"].set(it->second.m_currCounts);
       it->second.m_property["target"].set(it->second.m_currCounts);
       it->second.m_property.setState(INDI_IDLE);
       
       if( registerIndiPropertyNew( it->second.m_property, st_newCallBack_pos) < 0)
+      {
+         #ifndef AGUC8CTRL_TEST_NOLOG
+         log<software_error>({__FILE__,__LINE__});
+         #endif
+         return AGUC8CTRL_E_INDIREG;
+      }
+
+      createStandardIndiNumber( it->second.m_indiP_stepSize, it->first+"_stepSize", std::numeric_limits<posT>::lowest(), std::numeric_limits<posT>::max(), static_cast<posT>(1), "%i", "Step Size", it->first);
+      it->second.m_indiP_stepSize["current"].set(it->second.m_stepSize);
+      it->second.m_indiP_stepSize["target"].set(it->second.m_stepSize);
+      it->second.m_indiP_stepSize.setState(INDI_IDLE);
+
+      if( registerIndiPropertyNew( it->second.m_indiP_stepSize, st_newCallBack_stepSize) < 0)
       {
          #ifndef AGUC8CTRL_TEST_NOLOG
          log<software_error>({__FILE__,__LINE__});
@@ -533,6 +572,15 @@ int aguc8Ctrl::appLogic()
       resp = writeRead(comm);
       resp = Read(qresp);
       std::cout << "got error code " << qresp << " to MR\n";*/
+
+
+      /* // turns out step size is attached to axis only and not channel+axis, so you'll need to check and set before each move command
+      log<text_log>("Initializing step sizes across all specified channels");
+      for(channelMapT::iterator it = m_channels.begin(); it != m_channels.end(); ++ it)
+      {
+         setStepSize(it->second.m_stepSize, it->second.m_hwchannel, it->second.m_hwaxis);
+      }
+      */
 
       state(stateCodes::READY);
       
@@ -830,6 +878,18 @@ void aguc8Ctrl::channelThreadExec( motorChannel * mc)
             writeReadError(comm, qresp);
          }
 
+         // check step size (this isn't preserved across channel changes)
+         query = std::to_string(mc->m_hwaxis) + "SU+?";
+         resp = writeQuery(query, qresp);
+         //log<text_log>(qresp);
+
+         size_t nstart = qresp.rfind("+");
+         std::string stepSize = qresp.substr(nstart+1);
+         if (std::stoi(stepSize) != mc->m_stepSize)
+         {
+            setStepSize(mc->m_stepSize, mc->m_hwchannel, mc->m_hwaxis, false);
+         }
+         
          //  and then request a relative move
          std::string comm2 = std::to_string(mc->m_hwaxis) + "PR" + std::to_string(dr);
          log<text_log>("sending move command  " + comm2);
@@ -897,6 +957,102 @@ int aguc8Ctrl::newCallBack_pos( const pcf::IndiProperty &ipRecv )
    
    pthread_kill(it->second.m_thread->native_handle(), SIGUSR1);
    
+   return 0;
+}
+
+int aguc8Ctrl::st_newCallBack_stepSize( void * app,
+                                           const pcf::IndiProperty &ipRecv
+                                         )
+{
+   return static_cast<aguc8Ctrl*>(app)->newCallBack_stepSize(ipRecv);
+}
+
+int aguc8Ctrl::newCallBack_stepSize( const pcf::IndiProperty &ipRecv )
+{
+   //Search for the channel
+   std::string propName = ipRecv.getName();
+   size_t nend = propName.rfind("_stepSize");
+   
+   if(nend == std::string::npos)
+   {
+      log<software_error>({__FILE__, __LINE__, "Channel without _stepSize received"});
+      return -1;
+   }
+   
+   std::string chName = propName.substr(0, nend);
+   channelMapT::iterator it = m_channels.find(chName);
+
+   if(it == m_channels.end())
+   {
+      log<software_error>({__FILE__, __LINE__, "Unknown channel name received"});
+      return -1;
+   }
+
+   if(it->second.m_doMove == true)
+   {
+      log<text_log>("channel " + it->second.m_name + " is already moving", logPrio::LOG_WARNING);
+      return 0;
+   }
+
+   int stepSize =  ipRecv["target"].get<int>();
+
+   //Set the target element 
+   //it->second.m_indiP_stepSize["target"].set(stepSize);
+   {//scope for mutex
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+      if(indiTargetUpdate( it->second.m_indiP_stepSize, stepSize, ipRecv, true) < 0)
+      {
+         return log<software_error,-1>({__FILE__,__LINE__});
+      }
+   }
+
+   setStepSize(stepSize, it->second.m_hwchannel, it->second.m_hwaxis, true);
+
+   // update current element?
+   //it->second.m_indiP_stepSize["current"].set(stepSize);
+   updateIfChanged(it->second.m_indiP_stepSize, "current", stepSize, INDI_IDLE);
+
+   it->second.m_stepSize = stepSize;
+
+   pthread_kill(it->second.m_thread->native_handle(), SIGUSR1);
+
+   return 0;
+}
+
+int aguc8Ctrl::setStepSize(int stepSize, int hwChannel, int hwAxis, bool changeChannel)
+{
+   if (changeChannel){
+      std::string comm = "CC" + std::to_string(hwChannel);
+      std::string qresp;
+      log<text_log>("changing to channel  " + comm);
+      writeReadError(comm, qresp);
+   }
+
+   /*
+   // check the step size
+   std::string query = std::to_string(hwAxis) + "SU+?";
+   //std::string qresp;
+   int resp = writeQuery(query, qresp);
+   log<text_log>(qresp);
+
+   query = std::to_string(hwAxis) + "SU-?";
+   //std::string qresp;
+   resp = writeQuery(query, qresp);
+   log<text_log>(qresp);
+   */
+
+   // change step size
+   std::string comm = std::to_string(hwAxis) + "SU+" + std::to_string(stepSize);
+   std::string qresp;
+   log<text_log>("Changing positive step size via command: " + comm);
+   writeReadError(comm, qresp);
+   //log<text_log>(qresp);
+
+   comm = std::to_string(hwAxis) + "SU-" + std::to_string(stepSize);
+   log<text_log>("Changing negative step size via command: " + comm);
+   writeReadError(comm, qresp);
+   //log<text_log>(qresp);
+
    return 0;
 }
 
