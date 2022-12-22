@@ -66,9 +66,9 @@ public:
    /** \name app::dev Configurations
      *@{
      */
-   static constexpr bool c_stdCamera_tempControl = true; ///< app::dev config to tell stdCamera to expose temperature controls
+   static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera to expose temperature controls
    
-   static constexpr bool c_stdCamera_temp = true; ///< app::dev config to tell stdCamera to expose temperature
+   static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera to expose temperature
    
    static constexpr bool c_stdCamera_readoutSpeed = false; ///< app::dev config to tell stdCamera to expose readout speed controls
    
@@ -81,8 +81,6 @@ public:
    static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera not to expose FPS controls
 
    static constexpr bool c_stdCamera_fps = false; ///< app::dev config to tell stdCamera not to expose FPS status
-
-   static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
    
    static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
    
@@ -136,7 +134,7 @@ protected:
    //std::string m_cameraName;
    //std::string m_cameraModel;
 
-   //int m_gain;
+   int m_gain;
 
 public:
 
@@ -197,7 +195,6 @@ protected:
    int setTempSetPt();
    int setReadoutSpeed();
    //int setVShiftSpeed();
-   int getEMGain();
    int setEMGain();
    int setExpTime();
    //int capExpTime(piflt& exptime);
@@ -246,7 +243,7 @@ public:
 inline
 asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = true;
+   m_powerMgtEnabled = false;
 
    //m_acqBuff.memory_size = 0;
    //m_acqBuff.memory = 0;
@@ -371,7 +368,6 @@ int asiCtrl::appStartup()
 inline
 int asiCtrl::appLogic()
 {
-
    //and run stdCamera's appLogic
    if(dev::stdCamera<asiCtrl>::appLogic() < 0)
    {
@@ -386,18 +382,17 @@ int asiCtrl::appLogic()
 
    //state(stateCodes::READY);
 
+
    if( state() == stateCodes::NOTCONNECTED || state() == stateCodes::NODEVICE || state() == stateCodes::ERROR)
    {
       m_reconfig = true; //Trigger a f.g. thread reconfig.
 
       //Might have gotten here because of a power off.
-      //if(MagAOXAppT::m_powerState == 0) return 0;
-      if(powerState() != 1 || powerStateTarget() != 1) return 0;
+      if(MagAOXAppT::m_powerState == 0) return 0;
 
       std::unique_lock<std::mutex> lock(m_indiMutex);
       if(connect() < 0)
       {
-         if(powerState() != 1 || powerStateTarget() != 1) return 0;
          log<software_error>({__FILE__, __LINE__});
       }
 
@@ -457,6 +452,7 @@ int asiCtrl::appLogic()
          return 0;
       }
 
+      BREADCRUMB
       if(stdCamera<asiCtrl>::updateINDI() < 0)
       {
          return log<software_error,0>({__FILE__,__LINE__});
@@ -467,6 +463,7 @@ int asiCtrl::appLogic()
          return log<software_error,0>({__FILE__,__LINE__});
       }
 
+      BREADCRUMB
       if(telemeter<asiCtrl>::appLogic() < 0)
       {
          log<software_error>({__FILE__, __LINE__});
@@ -474,6 +471,7 @@ int asiCtrl::appLogic()
       }
 
    }
+
 
    //Fall through check?
    return 0;
@@ -579,7 +577,6 @@ int asiCtrl::connect()
    {
       std::cerr << "Clearing\n";
       free(m_imgBuff);
-      m_imgBuff = NULL;
       //m_acqBuff.memory = NULL;
       //m_acqBuff.memory_size = 0;
    }
@@ -599,7 +596,6 @@ int asiCtrl::connect()
 
    int numDevices = ASIGetNumOfConnectedCameras();
 
-   if(powerState() != 1 || powerStateTarget() != 1) return 0;
 
    if(numDevices <= 0)
    {
@@ -633,10 +629,6 @@ int asiCtrl::connect()
          state(stateCodes::CONNECTED);
 
          return 0;
-      }
-      else
-      {
-         if(powerState() != 1 || powerStateTarget() != 1) return 0;
       }
    }
 
@@ -696,24 +688,10 @@ int asiCtrl::setEMGain()
 
    log<text_log>( "Set gain to: " + std::to_string(m_emGainSet));
 
-   updateIfChanged(m_indiP_emGain, "current", m_emGainSet, INDI_IDLE);
-
    return 0;
 
-}
+   //updateIfChanged(m_indiP_emgain, "current", m_gain, INDI_IDLE);
 
-inline
-int asiCtrl::getEMGain()
-{
-   long gainReal;
-	ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, ASI_GAIN, &gainReal, &bAuto);
-
-   log<text_log>( "Got gain of: " + std::to_string(gainReal));
-
-   m_emGain = gainReal;
-   
-   return 0;
 }
 
 
@@ -722,7 +700,6 @@ int asiCtrl::setExpTime()
 {
 
    int rv = ASISetControlValue(m_camNum, ASI_EXPOSURE, m_expTimeSet * 1e6, ASI_FALSE);
-   sleep(1);
    
    if(rv < 0)
    {
@@ -797,6 +774,7 @@ int asiCtrl::configureAcquisition()
    //m_camera_timestamp = 0; // reset tracked timestamp
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
+
 
    ASISetControlValue(m_camNum, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE);
    //ASISetControlValue(m_camNum, ASI_FLIP, ASI_FLIP_VERT, ASI_FALSE);
@@ -903,29 +881,10 @@ int asiCtrl::configureAcquisition()
 
 
    // gain
-   //rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
-   //if(rv < 0)
-   //{
-   //   log<software_error>({__FILE__, __LINE__, "Error setting gain"});
-   //   return -1;
-   //}
-   setEMGain();
-
-   rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, 1, ASI_FALSE); // hard-coded for now, but should be an INDI property
-   
+   rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
    if(rv < 0)
    {
-      log<software_error>({__FILE__, __LINE__, "Error setting brightness!"});
-      return -1;
-   }
-
-
-   // TEMPORARY: HARD CODE HARDWARE BINNING !!!!
-   //rv = ASISetControlValue(m_camNum, ASI_HARDWARE_BIN, 2, ASI_FALSE);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting brightness!"});
+      log<software_error>({__FILE__, __LINE__, "Error setting gain"});
       return -1;
    }
 
@@ -962,41 +921,15 @@ int asiCtrl::startAcquisition()
 inline
 int asiCtrl::getTemp()
 {
-   long asiTemp;
-   getASIParameter(asiTemp, ASI_TEMPERATURE);
-   m_ccdTemp = asiTemp / 10.0;
    return 0;
 }
 
 inline
 int asiCtrl::setTempSetPt()
 {
-   int rv = ASISetControlValue(m_camNum, ASI_TARGET_TEMP, m_ccdTempSetpt , ASI_FALSE);
    return 0;
 }
 
-inline
-int asiCtrl::setTempControl()
-{  
-   if(m_tempControlStatusSet)
-   {
-      int rv = ASISetControlValue(m_camNum, ASI_COOLER_ON, ASI_TRUE , ASI_FALSE);
-      m_tempControlStatus = true;
-      m_tempControlStatusStr = "COOLING";
-      recordCamera();
-      log<text_log>("enabled temperature control");
-      return 0;
-   }
-   else
-   {
-      int rv = ASISetControlValue(m_camNum, ASI_COOLER_ON, ASI_FALSE , ASI_FALSE);
-      m_tempControlStatus = false;
-      m_tempControlStatusStr = "OFF";
-      recordCamera();
-      log<text_log>("disabled temperature control");
-      return 0;
-   }
-}
 inline
 int asiCtrl::setReadoutSpeed()
 {
@@ -1011,7 +944,7 @@ int asiCtrl::acquireAndCheckValid()
    //long imgSize = width*height*(1 + (Image_type==ASI_IMG_RAW16));
 	//unsigned char* imgBuf = new unsigned char[imgSize];
 
-   ASIGetVideoData(m_camNum, m_imgBuff, m_imgSize, 6000000); // really long time-out (100 minutes)
+   ASIGetVideoData(m_camNum, m_imgBuff, m_imgSize, 500);
 
    // timestamp
    clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
@@ -1054,8 +987,6 @@ int asiCtrl::getAcquisitionState()
 {
 
    if(MagAOXAppT::m_powerState == 0) return 0;
-
-   if(powerState() != 1 || powerStateTarget() != 1) return -1;
 
    if(m_running) state(stateCodes::OPERATING);
    else state(stateCodes::READY);
