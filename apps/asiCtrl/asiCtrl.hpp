@@ -74,7 +74,7 @@ public:
    
    static constexpr bool c_stdCamera_vShiftSpeed = false; ///< app:dev config to tell stdCamera to expose vertical shift speed control
 
-   static constexpr bool c_stdCamera_emGain = false; ///< app::dev config to tell stdCamera to expose EM gain controls 
+   static constexpr bool c_stdCamera_emGain = true; ///< app::dev config to tell stdCamera to expose EM gain controls 
 
    static constexpr bool c_stdCamera_exptimeCtrl = true; ///< app::dev config to tell stdCamera to expose exposure time controls
    
@@ -134,7 +134,7 @@ protected:
    //std::string m_cameraName;
    //std::string m_cameraModel;
 
-   int m_Gain;
+   int m_gain;
 
 public:
 
@@ -195,7 +195,7 @@ protected:
    int setTempSetPt();
    int setReadoutSpeed();
    //int setVShiftSpeed();
-   //int setEMGain();
+   int setEMGain();
    int setExpTime();
    //int capExpTime(piflt& exptime);
    //int setFPS();
@@ -262,7 +262,7 @@ asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    //powerOnDefaults();
    
-   //m_maxEMGain = 100;
+   m_maxEMGain = 450;
    
    return;
 }
@@ -658,11 +658,40 @@ int asiCtrl::powerOnDefaults()
    m_currentROI.bin_x = 2;
    m_currentROI.bin_y = 2;
 
+   //m_gain = 1;
+   m_emGainSet = 0;
+
    //m_width = 8288;
    //m_height = 5644;
    //std::cout << m_width << " " << m_height << "\n";
 
    return 0;
+}
+
+inline
+int asiCtrl::setEMGain()
+{
+   // not EM gain, but this already exists, so...
+   int rv = ASISetControlValue(m_camNum, ASI_GAIN, m_emGainSet, ASI_FALSE); 
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting gain"});
+      return -1;
+   }
+
+   // maybe report back the actual gain camera went to?
+   long gainReal;
+	ASI_BOOL bAuto;
+   ASIGetControlValue(m_camNum, ASI_GAIN, &gainReal, &bAuto);
+
+   m_emGainSet = gainReal;
+
+   log<text_log>( "Set gain to: " + std::to_string(m_emGainSet));
+
+   return 0;
+
+   //updateIfChanged(m_indiP_emgain, "current", m_gain, INDI_IDLE);
+
 }
 
 
@@ -852,7 +881,12 @@ int asiCtrl::configureAcquisition()
 
 
    // gain
-   ASISetControlValue(m_camNum,ASI_GAIN, m_Gain, ASI_FALSE); 
+   rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting gain"});
+      return -1;
+   }
 
    //Start continuous acquisition
    //ASIStartVideoCapture(m_camNum);
