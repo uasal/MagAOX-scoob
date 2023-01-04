@@ -207,7 +207,7 @@ public:
 
 bmcCtrl::bmcCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = false;
+   m_powerMgtEnabled = true;
    return;
 }
 
@@ -272,11 +272,7 @@ int bmcCtrl::appLogic()
    dev::dm<bmcCtrl,float>::appLogic();
    shmimMonitor<bmcCtrl>::appLogic();
    
-   //if(state()==stateCodes::POWEROFF) return 0;
-   if(state()==stateCodes::INITIALIZED){
-      state(stateCodes::POWERON); // SCOOB: assume the DM is powered on if bmcCtrl is running
-   }
-
+   if(state()==stateCodes::POWEROFF) return 0;
 
    if(state()==stateCodes::POWERON)
    {
