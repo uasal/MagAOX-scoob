@@ -164,6 +164,8 @@ public:
 
    static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
    
+   static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
+   
    static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
    
    static constexpr bool c_stdCamera_usesROI = true; ///< app:dev config to tell stdCamera to expose ROI controls
@@ -1600,8 +1602,31 @@ int picamCtrl::configureAcquisition()
    std::cerr << rois->roi_array[0].width << "\n";
    std::cerr << 0.5*( (float) (rois->roi_array[0].width - 1.0)) << "\n";
    
-   m_currentROI.x = (rois->roi_array[0].x) + 0.5*( (float) (rois->roi_array[0].width - 1.0)) ;
-   m_currentROI.y = (rois->roi_array[0].y) + 0.5*( (float) (rois->roi_array[0].height - 1.0)) ;
+
+   if(m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR)
+   {
+      m_currentROI.x = (1023.0-rois->roi_array[0].x) - 0.5*( (float) (rois->roi_array[0].width - 1.0)) ;
+      //nextroi.x = ((1023-m_nextROI.x) - 0.5*( (float) m_nextROI.w - 1.0));
+   }
+   else
+   {
+      m_currentROI.x = (rois->roi_array[0].x) + 0.5*( (float) (rois->roi_array[0].width - 1.0)) ;
+   }
+
+   
+   if(m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR)
+   {
+      m_currentROI.y = (1023.0-rois->roi_array[0].y) - 0.5*( (float) (rois->roi_array[0].height - 1.0)) ;
+      //nextroi.y = ((1023 - m_nextROI.y) - 0.5*( (float) m_nextROI.h - 1.0));
+   }
+   else
+   {
+      m_currentROI.y = (rois->roi_array[0].y) + 0.5*( (float) (rois->roi_array[0].height - 1.0)) ;
+   }
+
+
+
+   
    
    m_currentROI.w = rois->roi_array[0].width;
    m_currentROI.h = rois->roi_array[0].height;
@@ -1617,6 +1642,23 @@ int picamCtrl::configureAcquisition()
    updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
+
+
+   //We also update target to the settable values
+   m_nextROI.x = m_currentROI.x;
+   m_nextROI.y = m_currentROI.y;
+   m_nextROI.w = m_currentROI.w;
+   m_nextROI.h = m_currentROI.h;
+   m_nextROI.bin_x = m_currentROI.bin_x;
+   m_nextROI.bin_y = m_currentROI.bin_y;
+
+   updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
+   updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
+   updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
+   updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
+   
    
    //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
    //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*

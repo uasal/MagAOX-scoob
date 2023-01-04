@@ -405,6 +405,8 @@ public:
 
    static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
    
+   static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
+
    static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
    
    static constexpr bool c_stdCamera_usesROI = true; ///< app:dev config to tell stdCamera to expose ROI controls
@@ -1261,6 +1263,8 @@ int andorCtrl::getEMGain()
       return -1;
    }
 
+   if(gain == 0) gain = 1;
+
    m_emGain = gain;
    
    return 0;
@@ -1365,6 +1369,9 @@ int andorCtrl::setEMGain()
    }
    
    int emg = m_emGainSet;
+
+   if(emg == 1) emg = 0;
+
    if(emg < 0)
    {
       emg = 0;
@@ -1617,15 +1624,7 @@ int andorCtrl::checkNextROI()
 
 inline 
 int andorCtrl::setNextROI()
-{
-   std::cerr << "setNextROI:\n";
-   std::cerr << "  m_nextROI.x = " << m_nextROI.x << "\n";
-   std::cerr << "  m_nextROI.y = " << m_nextROI.y << "\n";
-   std::cerr << "  m_nextROI.w = " << m_nextROI.w << "\n";
-   std::cerr << "  m_nextROI.h = " << m_nextROI.h << "\n";
-   std::cerr << "  m_nextROI.bin_x = " << m_nextROI.bin_x << "\n";
-   std::cerr << "  m_nextROI.bin_y = " << m_nextROI.bin_y << "\n";
- 
+{ 
    recordCamera(true);
    AbortAcquisition();
    state(stateCodes::CONFIGURING);
@@ -1803,8 +1802,15 @@ int andorCtrl::configureAcquisition()
    updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
-   
+
    //We also update target to the settable values
+   m_nextROI.x = m_currentROI.x;
+   m_nextROI.y = m_currentROI.y;
+   m_nextROI.w = m_currentROI.w;
+   m_nextROI.h = m_currentROI.h;
+   m_nextROI.bin_x = m_currentROI.bin_x;
+   m_nextROI.bin_y = m_currentROI.bin_y;
+
    updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
    updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
    updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);

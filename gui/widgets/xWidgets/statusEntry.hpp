@@ -2,7 +2,6 @@
 #define statusEntry_hpp
 
 #include <QWidget>
-#include <QTimer>
 
 #include <cmath>
 #include "statusLineEdit.hpp"
@@ -128,6 +127,10 @@ public slots:
    void updateGUI();
 
    void on_value_returnPressed();
+
+   void setEditText(const QString & qs);
+
+   void stopEditing();
 
 private:
      
@@ -426,6 +429,15 @@ void statusEntry::updateGUI()
 
 } //updateGUI()
 
+void statusEntry::setEditText(const QString & qs)
+{
+   ui.value->setEditText(qs);
+}
+
+void statusEntry::stopEditing()
+{
+   ui.value->stopEditing();
+}
 
 } //namespace xqt
    

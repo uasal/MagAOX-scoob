@@ -19,16 +19,6 @@ CONFIG(release, debug|release) {
 }
 CONFIG += c++14
 CONFIG += qwt
-exists( $$(CONDA_PREFIX)/include ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/include
-    #This is needed for AOC conda env:
-    LIBS += -lfftw3_threads -lfftw3f_threads -lfftw3l_threads
-}
-exists( $$(CONDA_PREFIX)/lib ) {
-    LIBPATH += $$(CONDA_PREFIX)/lib
-}
-
-
 MAKEFILE = makefile.pwrGUI
 
 # Input

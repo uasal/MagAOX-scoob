@@ -1,12 +1,28 @@
 #!/bin/bash
 SETUPDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-if [[ "$SHELLOPTS" =~ "nounset" ]]; then
-  _WAS_NOUNSET=1
-else
-  _WAS_NOUNSET=0
+
+
+instrument_user=xsup
+instrument_group=magaox
+instrument_dev_group=magaox-dev
+if [[ $MAGAOX_ROLE == vm ]]; then
+  # Heuristic detection of which automatically created user account to use
+  # based on home directory existing.
+  if [[ -d /home/vagrant ]]; then
+    instrument_user=vagrant
+  elif [[ -d /home/ubuntu ]]; then
+    instrument_user=ubuntu
+    instrument_group=ubuntu
+    instrument_dev_group=ubuntu
+  fi
 fi
+
 function log_error() {
     echo -e "$(tput setaf 1 2>/dev/null)$1$(tput sgr0 2>/dev/null)"
+}
+function exit_error() {
+  log_error "$1"
+  exit 1
 }
 function log_success() {
     echo -e "$(tput setaf 2 2>/dev/null)$1$(tput sgr0 2>/dev/null)"
@@ -67,9 +83,10 @@ function _cached_fetch() {
 }
 
 VM_WINDOWS_HOST=0
+VM_SHARED_FOLDER="$SETUPDIR/../vm"
+VM_KIND=$(systemd-detect-virt)
 if [[ ${WSL_DISTRO_NAME:-none} != "none" ]]; then
   VM_KIND=wsl
-  VM_SHARED_FOLDER="$SETUPDIR/../vm"
   VM_WINDOWS_HOST=1
 elif [[ -d /vagrant ]]; then
   VM_KIND=vagrant
@@ -101,17 +118,18 @@ function clone_or_update_and_cd() {
       git clone https://github.com/$orgname/$reponame.git $CLONE_DEST
       sudo rsync -av $CLONE_DEST/ $destdir/
       cd $destdir/
+      git config --global safe.directory $(realpath $destdir)
       log_success "Cloned new $destdir"
       rm -rf $CLONE_DEST
       log_success "Removed temporary clone at $CLONE_DEST"
     else
       cd $destdir
-      git pull
+      git pull --ff-only
       log_success "Updated $destdir"
     fi
     git config core.sharedRepository group
     if [[ $MAGAOX_ROLE != vm ]]; then
-      sudo chown -R :magaox-dev $destdir
+      sudo chown -R :$instrument_dev_group $destdir
       sudo chmod -R g=rwX $destdir
       # n.b. can't be recursive because g+s on files means something else
       # so we find all directories and individually chmod them:
@@ -136,29 +154,29 @@ function createuser() {
   if getent passwd $username > /dev/null 2>&1; then
     log_info "User account $username exists"
   else
-    sudo useradd -U $username
-    echo -e "$DEFAULT_PASSWORD\n$DEFAULT_PASSWORD" | sudo passwd $username
+    sudo useradd -U $username || exit 1
+    echo -e "$DEFAULT_PASSWORD\n$DEFAULT_PASSWORD" | sudo passwd $username || exit 1
     log_success "Created user account $username with default password $DEFAULT_PASSWORD"
   fi
-  sudo usermod -a -G magaox $username
+  sudo usermod -a -G magaox $username || exit 1
   log_info "Added user $username to group magaox"
-  sudo mkdir -p /home/$username/.ssh
-  sudo touch /home/$username/.ssh/authorized_keys
-  sudo chmod -R u=rwx,g=,o= /home/$username/.ssh
-  sudo chmod u=rw,g=,o= /home/$username/.ssh/authorized_keys
-  sudo chown -R $username:magaox /home/$username
-  sudo chsh $username -s $(which bash)
+  sudo mkdir -p /home/$username/.ssh || exit 1
+  sudo touch /home/$username/.ssh/authorized_keys || exit 1
+  sudo chmod -R u=rwx,g=,o= /home/$username/.ssh || exit 1
+  sudo chmod u=rw,g=,o= /home/$username/.ssh/authorized_keys || exit 1
+  sudo chown -R $username:$instrument_group /home/$username || exit 1
+  sudo chsh $username -s $(which bash) || exit 1
   log_info "Append an ecdsa or ed25519 key to /home/$username/.ssh/authorized_keys to enable SSH login"
 
   data_path="/data/users/$username/"
-  sudo mkdir -p "$data_path"
-  sudo chown "$username:magaox" "$data_path"
-  sudo chmod g+rxs "$data_path"
+  sudo mkdir -p "$data_path" || exit 1
+  sudo chown "$username:$instrument_group" "$data_path" || exit 1
+  sudo chmod g+rxs "$data_path" || exit 1
   log_success "Created $data_path"
 
   link_name="/home/$username/data"
   if sudo test ! -L "$link_name"; then
-    sudo ln -sv "$data_path" "$link_name"
+    sudo ln -sv "$data_path" "$link_name" || exit 1
     log_success "Linked $link_name -> $data_path"
   fi
 }

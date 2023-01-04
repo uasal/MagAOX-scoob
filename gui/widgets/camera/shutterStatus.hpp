@@ -25,10 +25,10 @@ protected:
    QTimer * m_tgtTimer {nullptr}; ///< Timer to normalize target if shutter stalls (5 seconds).
 
 public:
-   shutterStatus( const std::string & camName,
-                  QWidget * Parent = 0, 
-                  Qt::WindowFlags f = Qt::WindowFlags()
-                );
+   explicit shutterStatus( const std::string & camName,
+                           QWidget * Parent = 0, 
+                           Qt::WindowFlags f = Qt::WindowFlags()
+                         );
    
    ~shutterStatus();
 
@@ -50,6 +50,10 @@ public slots:
 
    void timeout();
 
+signals:
+
+   void tgtTimerStart(int);
+
 protected:
      
    Ui::shutterStatus ui;
@@ -64,6 +68,7 @@ shutterStatus::shutterStatus( const std::string & camName,
    m_tgtTimer = new QTimer(this);
    
    connect(m_tgtTimer, SIGNAL(timeout()), this, SLOT(timeout()));
+   connect(this, SIGNAL(tgtTimerStart(int)), m_tgtTimer, SLOT(start(int)));
 
    onDisconnect();
 }
@@ -175,7 +180,7 @@ void shutterStatus::on_shutter_sliderReleased()
     
       sendNewProperty(ipFreq);  
       m_tgt_state = 1;
-      m_tgtTimer->start(5000);
+      emit tgtTimerStart(5000);
    }
    else if(state == 0)
    {
@@ -188,7 +193,7 @@ void shutterStatus::on_shutter_sliderReleased()
     
       sendNewProperty(ipFreq); 
       m_tgt_state = 0;
-      m_tgtTimer->start(5000);
+      emit tgtTimerStart(5000);
    }
    else
    {

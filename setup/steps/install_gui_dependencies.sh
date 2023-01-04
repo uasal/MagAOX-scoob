@@ -7,6 +7,13 @@ source /etc/os-release
 if [[ $ID == ubuntu ]]; then
     sudo apt install -y \
         x11-apps \
+        libgl-dev \
+        qtbase5-dev \
+        qtchooser \
+        qt5-qmake \
+        qtbase5-dev-tools \
+        libqt5svg5-dev \
+        wmctrl \
     ;
 elif [[ $ID == centos && $VERSION_ID == 7 ]]; then
     sudo yum install -y \

@@ -13,42 +13,48 @@ apps_common = \
 	shmimIntegrator \
 	timeSeriesSimulator
 
-apps_rtcicc = alpaoCtrl
+apps_rtcicc = alpaoCtrl \
+              cacaoInterface \
+				  userGainCtrl \
+				  zaberCtrl \
+	           zaberLowLevel
 
 apps_rtc = \
 	ocam2KCtrl \
 	siglentSDG \
 	ttmModulator \
 	bmcCtrl \
-        rhusbMon \
+   rhusbMon \
 	pi335Ctrl \
 	pupilFit \
 	t2wOffloader \
-        cacaoInterface \
 	dmSpeckle \
-        w2tcsOffloader
+   w2tcsOffloader \
+	pwfsSlopeCalc
 
 apps_icc = \
    acronameUsbHub \
-   cacaoInterface \
+	flipperCtrl \
 	filterWheelCtrl \
 	hsfwCtrl \
 	baslerCtrl \
-	zaberCtrl \
-	zaberLowLevel \
 	picamCtrl \
 	smc100ccCtrl \
 	andorCtrl \
 	usbtempMon \
 	xt1121Ctrl \
 	xt1121DCDU \
-   picoMotorCtrl 
+   picoMotorCtrl \
+	koolanceCtrl \
 
 apps_aoc = \
 	trippLitePDU \
-   tcsInterface \
-   adcTracker \
-   kTracker
+	tcsInterface \
+	adcTracker \
+	kTracker \
+	koolanceCtrl \
+	observerCtrl \
+	siglentSDG
 
 # apps_vm = none yet
 apps_tic = \
@@ -85,7 +91,8 @@ all_guis = \
 	coronAlignGUI \
    loopCtrlGUI \
 	roiGUI \
-	cameraGUI
+	cameraGUI \
+	stageGUI
 
 ifeq ($(MAGAOX_ROLE),RTC)
   guis_to_build =
@@ -129,7 +136,12 @@ scripts_to_install = magaox \
 	shmimTCPreceive \
 	shmimTCPtransmit \
 	lookyloo \
-	obs_to_movie
+	obs_to_movie \
+	instrument_backup_sync \
+	cacao_startup_if_present \
+	git_check_all \
+	collect_camera_configs_for_darks \
+	shot_in_the_dark
 
 all: indi_all libs_all flatlogs apps_all guis_all utils_all
 
@@ -229,17 +241,19 @@ scripts_install:
 		sudo install scripts/$$script /opt/MagAOX/bin  && \
 		sudo ln -fs /opt/MagAOX/bin/$$script /usr/local/bin/$$script; \
 	done
-
-# I have no idea why this is broken
-#MAGAOX_ROLE_LOWER := $(shell echo "$(MAGAOX_ROLE)" | tr '[:upper:]' '[:lower:]')
-#rtscripts_install:
-#	if [[ $(MAGAOX_ROLE) == "ICC" || $(MAGAOX_ROLE) == "RTC" ]]; then for scriptname in cpuset procset; do \
-#		sudo install -d /opt/MagAOX/bin && \
-#			sudo install rtSetup/$(MAGAOX_ROLE)/$(MAGAOX_ROLE_LOWER)_$$scriptname /opt/MagAOX/bin && \
-#			sudo ln -fs /opt/MagAOX/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname /usr/local/bin/$(MAGAOX_ROLE_LOWER)_$$scriptname; \
-#	done; fi
+	
 rtscripts_install:
-  
+	for scriptname in make_cpusets procs_to_cpusets; do \
+		sudo install -d /opt/MagAOX/bin && \
+		if [ -e rtSetup/$(MAGAOX_ROLE)/$$scriptname ]; then \
+			sudo install rtSetup/$(MAGAOX_ROLE)/$$scriptname /opt/MagAOX/bin/$$scriptname && \
+			sudo ln -fs /opt/MagAOX/bin/$$scriptname /usr/local/bin/$$scriptname; \
+		else \
+			echo "echo 'No $$scriptname for $$MAGAOX_ROLE'\nexit 0" | sudo tee /opt/MagAOX/bin/$$scriptname && \
+			sudo chmod +x /opt/MagAOX/bin/$$scriptname && \
+			sudo ln -fs /opt/MagAOX/bin/$$scriptname /usr/local/bin/$$scriptname; \
+		fi \
+	; done
 
 utils_all: flatlogs_all
 		for app in ${utils_to_build}; do \
