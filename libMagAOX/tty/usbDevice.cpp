@@ -91,6 +91,9 @@ int usbDevice::loadConfig( mx::app::appConfigurator & config )
       case 384000:
          m_baudRate = B38400;
          break;
+      case 921600:
+         m_baudRate = B921600;
+         break;
       default:
          break;
    }
