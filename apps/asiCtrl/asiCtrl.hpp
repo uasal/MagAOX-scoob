@@ -134,7 +134,7 @@ protected:
    //std::string m_cameraName;
    //std::string m_cameraModel;
 
-   int m_gain;
+   //int m_gain;
 
 public:
 
@@ -195,6 +195,7 @@ protected:
    int setTempSetPt();
    int setReadoutSpeed();
    //int setVShiftSpeed();
+   int getEMGain();
    int setEMGain();
    int setExpTime();
    //int capExpTime(piflt& exptime);
@@ -688,10 +689,24 @@ int asiCtrl::setEMGain()
 
    log<text_log>( "Set gain to: " + std::to_string(m_emGainSet));
 
+   updateIfChanged(m_indiP_emGain, "current", m_emGainSet, INDI_IDLE);
+
    return 0;
 
-   //updateIfChanged(m_indiP_emgain, "current", m_gain, INDI_IDLE);
+}
 
+inline
+int asiCtrl::getEMGain()
+{
+   long gainReal;
+	ASI_BOOL bAuto;
+   ASIGetControlValue(m_camNum, ASI_GAIN, &gainReal, &bAuto);
+
+   log<text_log>( "Got gain of: " + std::to_string(gainReal));
+
+   m_emGain = gainReal;
+   
+   return 0;
 }
 
 
@@ -881,12 +896,13 @@ int asiCtrl::configureAcquisition()
 
 
    // gain
-   rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting gain"});
-      return -1;
-   }
+   //rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
+   //if(rv < 0)
+   //{
+   //   log<software_error>({__FILE__, __LINE__, "Error setting gain"});
+   //   return -1;
+   //}
+   setEMGain();
 
    //Start continuous acquisition
    //ASIStartVideoCapture(m_camNum);
