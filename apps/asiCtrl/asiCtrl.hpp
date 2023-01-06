@@ -81,6 +81,8 @@ public:
    static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera not to expose FPS controls
 
    static constexpr bool c_stdCamera_fps = false; ///< app::dev config to tell stdCamera not to expose FPS status
+
+   static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
    
    static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
    
