@@ -7,7 +7,6 @@
 #ifndef alpaoCtrl_hpp
 #define alpaoCtrl_hpp
 
-
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
@@ -190,7 +189,7 @@ public:
 
 alpaoCtrl::alpaoCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = true;
+   m_powerMgtEnabled = false;
    return;
 }
 
@@ -257,17 +256,20 @@ int alpaoCtrl::appLogic()
    dev::dm<alpaoCtrl,float>::appLogic();
    shmimMonitor<alpaoCtrl>::appLogic();
    
-   if(state()==stateCodes::POWEROFF) return 0;
-   
+   // no power state on WCC testbed
+   if(state()==stateCodes::INITIALIZED){
+      state(stateCodes::POWERON);
+   }
+
    if(state() == stateCodes::POWERON)
    {
       if(!powerOnWaitElapsed()) 
       {
          return 0;
       }
-      
       return initDM();
    }
+   
    
    if(m_nsat > m_satThresh)
    {
