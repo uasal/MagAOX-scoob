@@ -3,6 +3,6 @@ allall: all
 
 OTHER_HEADERS=
 TARGET=alpaoCtrl
-LDLIBS+= -lasdk
+LDLIBS+= -lASDK
 include ../../Make/magAOXApp.mk
 
