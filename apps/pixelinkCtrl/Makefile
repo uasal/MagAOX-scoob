@@ -1,0 +1,16 @@
+
+allall: all
+
+OTHER_HEADERS=
+OTHER_OBJS=
+TARGET=pixelinkCtrl
+
+PIXELINK_PATH=/opt/pixelink/include
+
+PIXELINK_INCLUDES=-I$(PIXELINK_PATH)
+PIXELINK_LIBS = -libPxLApi
+
+INCLUDES += $(PIXELINK_INCLUDES)
+LDLIBS += $(PIXELINK_LIBS)
+
+include ../../Make/magAOXApp.mk
