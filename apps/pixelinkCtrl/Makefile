@@ -8,10 +8,9 @@ TARGET=pixelinkCtrl
 PIXELINK_PATH=/opt/pixelink/include
 
 PIXELINK_INCLUDES=-I$(PIXELINK_PATH)
-PIXELINK_LIBS = -lPxLApi
+PIXELINK_LIBS = -libPxLApi
 
 INCLUDES += $(PIXELINK_INCLUDES)
-LDFLAGS += -L/opt/pixelink/lib
 LDLIBS += $(PIXELINK_LIBS)
 
 include ../../Make/magAOXApp.mk
