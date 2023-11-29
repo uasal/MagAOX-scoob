@@ -1,0 +1,270 @@
+/** \file fsmCtrl.hpp
+  * \brief The MagAO-X XXXXXX header file
+  *
+  * \ingroup fsmCtrl_files
+  */
+
+#ifndef fsmCtrl_hpp
+#define fsmCtrl_hpp
+
+#include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
+#include "../../magaox_git_version.h"
+
+#include <string.h>
+#include <stdio.h>
+
+#include <iostream>
+using namespace std;
+
+#include <pthread.h>
+
+#include "BinaryUart.hpp"
+#include "CGraphPacket.hpp"
+#include "linux_pinout_client_socket.hpp"
+
+/** \defgroup fsmCtrl
+  * \brief The XXXXXX application to do YYYYYYY
+  *
+  * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
+  *
+  * \ingroup apps
+  *
+  */
+
+/** \defgroup fsmCtrl_files
+  * \ingroup fsmCtrl
+  */
+
+namespace MagAOX
+{
+namespace app
+{
+
+/// The MagAO-X xxxxxxxx
+/**
+  * \ingroup fsmCtrl
+  */
+class fsmCtrl : public MagAOXApp<true>, public dev::telemeter<fsmCtrl>
+// class fsmCtrl : public MagAOXApp<true>
+{
+
+  //Give the test harness access.
+  friend class fsmCtrl_test;
+
+  friend class dev::telemeter<fsmCtrl>;
+  typedef dev::telemeter<fsmCtrl> telemeterT;
+
+protected:
+
+   /** \name Configurable Parameters
+     *@{
+     */
+  std::string type;
+  std::string PortName;
+  int nHostPort;
+  int period_s;
+   //here add parameters which will be config-able at runtime
+   ///@}
+
+  char Buffer[4096];
+  CGraphPacket SocketProtocol;
+  linux_pinout_client_socket LocalPortPinout;
+  BinaryUart UartParser;
+
+public:
+   /// Default c'tor.
+   fsmCtrl();
+
+   /// D'tor, declared and defined for noexcept.
+   ~fsmCtrl() noexcept
+   {}
+
+   virtual void setupConfig();
+
+   /// Implementation of loadConfig logic, separated for testing.
+   /** This is called by loadConfig().
+     */
+   int loadConfigImpl( mx::app::appConfigurator & _config /**< [in] an application configuration from which to load values*/);
+
+   virtual void loadConfig();
+
+   /// Startup function
+   /**
+     *
+     */
+   virtual int appStartup();
+
+   /// Implementation of the FSM for fsmCtrl.
+   /**
+     * \returns 0 on no critical error
+     * \returns -1 on an error requiring shutdown
+     */
+   virtual int appLogic();
+
+   /// Shutdown the app.
+   /**
+     *
+     */
+   virtual int appShutdown();
+
+
+   /** \name Telemeter Interface
+     *
+     * @{
+     */
+   int checkRecordTimes();
+
+   int recordTelem( const telem_fsm * );
+
+   int recordFsm( bool force = false );
+
+   ///@}
+
+};
+
+fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), UartParser(LocalPortPinout, SocketProtocol, PacketCallbacks, false)
+{
+   return;
+}
+
+void fsmCtrl::setupConfig()
+{
+  config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
+  config.add("parameters.period_s", "", "parameters.period_s", argType::Required, "parameters", "period_s", false, "int", "The period of status queries to the fsm.");
+
+  config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Required, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
+  config.add("socket.host_port", "", "socket.host_port", argType::Required, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+
+  telemeterT::setupConfig(config);
+}
+
+int fsmCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
+{
+  _config(type, "parameters.connection_type");
+  _config(period_s, "parameters.period_s");
+
+  _config(PortName, "socket.client_entrance_ip");
+	_config(nHostPort, "socket.host_port");
+
+  return 0;
+}
+
+void fsmCtrl::loadConfig()
+{
+  if( loadConfigImpl(config) < 0)
+  {
+    log<text_log>("Error during config", logPrio::LOG_CRITICAL);
+    m_shutdown = true;
+  }
+
+  if(telemeterT::loadConfig(config) < 0)
+  {
+    log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+    m_shutdown = true;
+  }
+}
+
+int fsmCtrl::appStartup()
+{
+
+	//Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
+	setvbuf(stdout, NULL, _IONBF, 0);
+
+	cout << "\n\n\n\nWelcome to SerialPortBinaryCmdr!";
+	cout << "\n\nIn order to tunnel to the lab use the following command before running this program: \"ssh -L 1337:localhost:1337 -N -f fsm\" (where fsm is the ssh alias of the remote server)!\n\n";
+
+  int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
+  if (IUart::IUartOK != err)
+  {
+      cout << "SerialPortBinaryCmdr: can't open socket (" << PortName << ":" << nHostPort << "), exiting.\n";
+      exit(-1);
+  }
+
+	cout << "\n\nStarting to do something";
+
+	// UartParser.Debug(true);
+	UartParser.Debug(false);
+
+  if(telemeterT::appStartup() < 0)
+  {
+    return log<software_error,-1>({__FILE__,__LINE__});
+  }
+
+  return 0;
+}
+
+int fsmCtrl::appLogic()
+{
+  log<text_log>("PZTStatus: Querying.\n");
+  (&UartParser)->TxBinaryPacket(6, 0, NULL, 0);
+
+  // Allow time for fsm to respond, it's not instantaneous
+  sleep(3);
+
+  // The packet is read byte by byte, so keep going while there are bytes left
+  bool Bored = false;
+  while (!Bored) {
+      Bored = true;
+      if (UartParser.Process())
+      {
+        Bored = false;
+      }
+
+      if (false == LocalPortPinout.connected())
+      {
+          int err = LocalPortPinout.init(nHostPort, PortName.c_str());
+          if (IUart::IUartOK != err)
+          {
+              cout << "SerialPortBinaryCmdr: can't open socket (" << PortName << ":" << nHostPort << ").\n";
+              //~ exit(-1);
+          }
+      }
+  }
+
+  recordFsm(false);
+
+  if(telemeterT::appLogic() < 0)
+  {
+      log<software_error>({__FILE__, __LINE__});
+      return 0;
+  }
+
+  return 0;
+}
+
+int fsmCtrl::appShutdown()
+{
+  telemeterT::appShutdown();
+
+  return 0;
+}
+
+
+int fsmCtrl::checkRecordTimes()
+{
+  return telemeterT::checkRecordTimes(telem_fsm());
+}
+
+int fsmCtrl::recordTelem(const telem_fsm *)
+{
+  return recordFsm(true);
+}
+
+int fsmCtrl::recordFsm( bool force )
+{
+  static CGraphPZTStatusPayload LastStatus; ///< Structure holding the previous fsm voltage measurement.
+
+  if( !(LastStatus == UartParser.Status) || force )
+  {
+    LastStatus = UartParser.Status;
+    telem<telem_fsm>({LastStatus.P1V2, LastStatus.P2V2, LastStatus.P24V, LastStatus.P2V5, LastStatus.P3V3A, LastStatus.P6V, LastStatus.P5V, LastStatus.P3V3D, LastStatus.P4V3, LastStatus.N5V, LastStatus.N6V, LastStatus.P150V});
+  }
+
+  return 0;
+}
+
+
+} //namespace app
+} //namespace MagAOX
+
+#endif //fsmCtrl_hpp
