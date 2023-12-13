@@ -33,9 +33,9 @@
 // #include "format/formatf.h"
 
 // #include "uart/IProtocol.hpp"
-#include "IPacket.hpp"
+#include "iPacket.hpp"
 
-#include "CGraphPacket.hpp"
+#include "cGraphPacket.hpp"
 
 struct BinaryUartCallbacks
 {
@@ -52,48 +52,9 @@ struct BinaryUartCallbacks
 	virtual void EveryPacket(const IPacket* Packet, const size_t& PacketLen) { }
 
 	//Seems like someone, sometime might wanna handle this...
-	virtual void BufferOverflow(const uint8_t* Buffer, const size_t& BufferLen) { }
+	virtual void BufferOverflow(const size_t& BufferLen) { }
 };
 
-
-struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
-{
-	SocketBinaryUartCallbacks() { }
-	virtual ~SocketBinaryUartCallbacks() { }
-
-	//Malformed/corrupted packet handler:
-	virtual void InvalidPacket(const uint8_t* Buffer, const size_t& BufferLen)
-	{
-		if ( (NULL == Buffer) || (BufferLen < 1) ) { cout << "\nSocketUartCallbacks: NULL(" << BufferLen << ") InvalidPacket!\n\n"; return; }
-
-		size_t len = BufferLen;
-		if (len > 32) { len = 32; }
-		cout << "\nSocketUartCallbacks: InvalidPacket! contents: :";
-		for(size_t i = 0; i < len; i++) { cout << Buffer[i] << ":"; }
-		cout << "\n\n";
-	}
-
-	//Packet with no matching command handler:
-	virtual void UnHandledPacket(const IPacket* Packet, const size_t& PacketLen)
-	{
-		if ( (NULL == Packet) || (PacketLen < sizeof(CGraphPacketHeader)) ) { cout << "\nSocketUartCallbacks: NULL(" << PacketLen << ") UnHandledPacket!\n\n"; return; }
-
-		const CGraphPacketHeader* Header = reinterpret_cast<const CGraphPacketHeader*>(Packet);
-		cout << "\nSocketUartCallbacks: Unhandled packet(" << PacketLen << "): ";
-		Header->formatf();
-		cout << "\n\n";
-	}
-
-	//In case we need to look at every packet that goes by...
-	//~ virtual void EveryPacket(const IPacket& Packet, const size_t& PacketLen) { }
-
-	//We just wanna see if this is happening, not much to do about it
-	virtual void BufferOverflow(const uint8_t* Buffer, const size_t& BufferLen)
-	{
-		cout << "\nSocketBinaryUartCallbacks: BufferOverflow(" << BufferLen << ")!\n";
-	}
-
-} PacketCallbacks;
 
 struct BinaryUart
 {
@@ -114,7 +75,7 @@ struct BinaryUart
 	uint64_t SerialNum;
 	static const uint64_t InvalidSerialNumber = 0xFFFFFFFFFFFFFFFFULL;
 
-    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const bool verbose = true, const uint64_t serialnum = InvalidSerialNumber)
+    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const uint64_t serialnum = InvalidSerialNumber)
         :
 		RxCount(0),
         Pinout(pinout),
@@ -189,7 +150,7 @@ struct BinaryUart
 		{
 			if (debug) { cout << "\n\nBinaryUart: Buffer(" << RxBuffer <<") overflow; this packet will not fit (" << RxCount << "b), flushing buffer.\n"; }
 
-			Callbacks.BufferOverflow(RxBuffer, RxCount);
+			Callbacks.BufferOverflow(RxCount);
 
 			InPacket = false;
 			RxCount = 0;
@@ -216,9 +177,9 @@ struct BinaryUart
 
 				if (RxCount >= Packet.PayloadLen(RxBuffer, RxCount, PacketStart) + Packet.HeaderLen() + Packet.FooterLen())
 				{
-					if (Packet.IsValid(RxBuffer, RxCount, PacketStart, PacketEnd))
+					if (Packet.IsValid(RxBuffer, RxCount, PacketStart))
 					{
-						if ( (SerialNum == InvalidSerialNumber) || (Packet.IsBroadcastSerialNum(RxBuffer, PacketStart, PacketEnd)) || (SerialNum == Packet.SerialNum(RxBuffer, PacketStart, PacketEnd)) )
+						if ( (SerialNum == InvalidSerialNumber) || (SerialNum == Packet.SerialNum() ) )
 						{
 
 							//strip the part of the line with the arguments to this command (chars following command) for compatibility with the  parsing code, the "params" officially start with the s/n
@@ -242,7 +203,7 @@ struct BinaryUart
 						}
 						else
 						{
-							if (debug) { cout << "\n\nBinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum(RxBuffer, PacketStart, PacketEnd) << ").\n"; }
+							if (debug) { cout << "\n\nBinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum() << ").\n"; }
 
 							Callbacks.UnHandledPacket(reinterpret_cast<IPacket*>(&RxBuffer[PacketStart]), PacketEnd - PacketStart);
 						}
@@ -309,7 +270,7 @@ struct BinaryUart
 		return(Processed);
     }
 
-	void TxBinaryPacket(const uint16_t PayloadType, const uint32_t SerialNumber, const void* PayloadData, const size_t PayloadLen) const
+	void TxBinaryPacket(const uint16_t PayloadType, const void* PayloadData, const size_t PayloadLen) const
 	{
 		uint8_t TxBuffer[TxBufferLenBytes];
 		size_t PacketLen = Packet.MakePacket(TxBuffer, TxBufferLenBytes, PayloadData, PayloadType, PayloadLen);
@@ -320,10 +281,3 @@ struct BinaryUart
 
 	}
 };
-
-// //Slightly ugly hack cause our CmdSystem is C, not C++, but whatever...
-// __inline__ void TxBinaryPacket(const void* TxPktContext, const uint16_t PayloadTypeToken, const uint32_t SerialNumber, const void* PayloadData, const size_t PayloadLen)
-// {
-// 	if (NULL != TxPktContext) { reinterpret_cast<const BinaryUart*>(TxPktContext)->TxBinaryPacket(PayloadTypeToken, SerialNumber, PayloadData, PayloadLen); }
-// 	else { cout << "\n\nTxBinaryPacket: NULL PacketContext! (Should be BinaryUart*) Please recompile this binary...\n"; }
-// };

@@ -18,9 +18,10 @@ using namespace std;
 
 #include <pthread.h>
 
-#include "BinaryUart.hpp"
-#include "CGraphPacket.hpp"
+#include "binaryUart.hpp"
+#include "cGraphPacket.hpp"
 #include "linux_pinout_client_socket.hpp"
+#include "socket.hpp"
 
 /** \defgroup fsmCtrl
   * \brief The XXXXXX application to do YYYYYYY
@@ -107,6 +108,7 @@ public:
      */
    virtual int appShutdown();
 
+   int queryStatus();
 
    /** \name Telemeter Interface
      *
@@ -117,7 +119,6 @@ public:
    int recordTelem( const telem_fsm * );
 
    int recordFsm( bool force = false );
-
    ///@}
 
 };
@@ -170,24 +171,22 @@ int fsmCtrl::appStartup()
 	//Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	cout << "\n\n\n\nWelcome to SerialPortBinaryCmdr!";
-	cout << "\n\nIn order to tunnel to the lab use the following command before running this program: \"ssh -L 1337:localhost:1337 -N -f fsm\" (where fsm is the ssh alias of the remote server)!\n\n";
+  log<text_log>("\n\n\n\nWelcome to SerialPortBinaryCmdr!");
+  log<text_log>("\n\nIn order to tunnel to the lab use the following command before running this program: \"ssh -L 1337:localhost:1337 -N -f fsm\" (where fsm is the ssh alias of the remote server)!\n\n");
 
   int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
   if (IUart::IUartOK != err)
   {
-      cout << "SerialPortBinaryCmdr: can't open socket (" << PortName << ":" << nHostPort << "), exiting.\n";
-      exit(-1);
+    return log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
   }
 
-	cout << "\n\nStarting to do something";
+  log<text_log>("\n\nStarting to do something");
 
-	// UartParser.Debug(true);
 	UartParser.Debug(false);
 
   if(telemeterT::appStartup() < 0)
   {
-    return log<software_error,-1>({__FILE__,__LINE__});
+    return log<software_error, -1>({__FILE__,__LINE__});
   }
 
   return 0;
@@ -195,8 +194,28 @@ int fsmCtrl::appStartup()
 
 int fsmCtrl::appLogic()
 {
+  queryStatus();
+
+  if(telemeterT::appLogic() < 0)
+  {
+      log<software_error>({__FILE__, __LINE__});
+      return 0;
+  }
+
+  return 0;
+}
+
+int fsmCtrl::appShutdown()
+{
+  telemeterT::appShutdown();
+
+  return 0;
+}
+
+int fsmCtrl::queryStatus() 
+{
   log<text_log>("PZTStatus: Querying.\n");
-  (&UartParser)->TxBinaryPacket(6, 0, NULL, 0);
+  (&UartParser)->TxBinaryPacket(6, NULL, 0);
 
   // Allow time for fsm to respond, it's not instantaneous
   sleep(3);
@@ -215,28 +234,12 @@ int fsmCtrl::appLogic()
           int err = LocalPortPinout.init(nHostPort, PortName.c_str());
           if (IUart::IUartOK != err)
           {
-              cout << "SerialPortBinaryCmdr: can't open socket (" << PortName << ":" << nHostPort << ").\n";
-              //~ exit(-1);
+            log<software_error>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort)});            
           }
       }
   }
 
   recordFsm(false);
-
-  if(telemeterT::appLogic() < 0)
-  {
-      log<software_error>({__FILE__, __LINE__});
-      return 0;
-  }
-
-  return 0;
-}
-
-int fsmCtrl::appShutdown()
-{
-  telemeterT::appShutdown();
-
-  return 0;
 }
 
 

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "IPacket.hpp"
+#include "iPacket.hpp"
 
 uint32_t CRC32(const uint8_t* data, const size_t length);
 
@@ -73,8 +73,7 @@ public:
 	virtual size_t FooterLen() const { return(sizeof(CGraphPacketHeader)); }
 	virtual size_t PayloadOffset() const { return(sizeof(CGraphPacketHeader)); }
 	virtual size_t MaxPayloadLength() const { return(0xFFFFU); }
-	virtual bool IsBroadcastSerialNum(const uint8_t* Buffer, const size_t PacketStartPos, const size_t PacketEndPos) const { return(false); }
-	virtual uint64_t SerialNum(const uint8_t* Buffer, const size_t PacketStartPos, const size_t PacketEndPos) const { return(0); }
+	virtual uint64_t SerialNum() const { return(0); }
 
 	virtual size_t PayloadLen(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const
 	{
@@ -90,17 +89,15 @@ public:
 		return(Packet->PayloadType);
 	}
 
-	virtual bool DoesPayloadTypeMatch(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const size_t PacketEndPos, const uint32_t CmdType) const
+	virtual bool DoesPayloadTypeMatch(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const uint32_t CmdType) const
 	{
-		//~ if ( ((PacketStartPos + sizeof(CGraphPacketHeader)) > BufferCount) || (NULL == CmdType) ) { return(false); }
 		if ( ((PacketStartPos + sizeof(CGraphPacketHeader)) > BufferCount) ) { return(false); }
 		const CGraphPacketHeader* Packet = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
-		//~ ::printf("\nCGraphPacketHeader: DoesPayloadTypeMatch: Cmd: 0x%X, PayloadType: %u\n\n", CmdType, Packet->PayloadType);
 		if (CmdType == Packet->PayloadType) { return(true); }
 		return(false);
 	}
 
-	virtual bool IsValid(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const size_t PacketEndPos) const
+	virtual bool IsValid(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const
 	{
 		if ((PacketStartPos + sizeof(CGraphPacketHeader) + sizeof(CGraphPacketFooter)) > BufferCount) { return(false); }
 		const CGraphPacketHeader* Header = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
