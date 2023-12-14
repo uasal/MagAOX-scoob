@@ -25,10 +25,6 @@ exists( $$(CONDA_PREFIX)/include ) {
 exists( $$(CONDA_PREFIX)/lib ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/lib
 }
-exists( $$(CONDA_PREFIX)/lib ) {
-    LIBPATH += $$(CONDA_PREFIX)/lib
-}
-
 
 MAKEFILE = makefile.pwrGUI
 

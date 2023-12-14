@@ -4,8 +4,8 @@
 
 TEMPLATE = app
 TARGET = coronAlignGUI
-DESTDIR = bin/
-DEPENDPATH += ./ ../../lib
+DESTDIR = bin/ 
+DEPENDPATH += ./ ../../lib 
 
 MOC_DIR = moc/
 OBJECTS_DIR = obj/
@@ -22,7 +22,7 @@ exists( $$(CONDA_PREFIX)/include ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/include
 }
 exists( $$(CONDA_PREFIX)/lib ) {
-    LIBPATH += $$(CONDA_PREFIX)/lib
+    INCLUDEPATH += $$(CONDA_PREFIX)/lib
 }
 
 MAKEFILE = makefile.coronAlignGUI
@@ -32,17 +32,17 @@ INCLUDEPATH += ../../lib ../../widgets/coronAlign
 
 HEADERS += ../../widgets/coronAlign/coronAlign.hpp \
            ../../widgets/xWidgets/xWidget.hpp \
-           ../../lib/multiIndiManager.hpp
-
-SOURCES += coronAlignGUI_main.cpp
-
+           ../../lib/multiIndiManager.hpp 
+           
+SOURCES += coronAlignGUI_main.cpp 
+           
 FORMS += ../../widgets/coronAlign/coronAlign.ui
-
+     
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
 
-RESOURCES += ../../resources/magaox.qrc
+RESOURCES += ../../resources/magaox.qrc 
 
-RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc
+RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc 
 
 QT += widgets

@@ -4,8 +4,8 @@
 
 TEMPLATE = app
 TARGET = roiGUI
-DESTDIR = bin/
-DEPENDPATH += ./ ../../lib
+DESTDIR = bin/ 
+DEPENDPATH += ./ ../../lib 
 
 MOC_DIR = moc/
 OBJECTS_DIR = obj/
@@ -22,7 +22,7 @@ exists( $$(CONDA_PREFIX)/include ) {
     INCLUDEPATH += $$(CONDA_PREFIX)/include
 }
 exists( $$(CONDA_PREFIX)/lib ) {
-    LIBPATH += $$(CONDA_PREFIX)/lib
+    INCLUDEPATH += $$(CONDA_PREFIX)/lib
 }
 
 MAKEFILE = makefile.roiGUI
@@ -37,16 +37,16 @@ HEADERS += ../../widgets/xWidgets/xWidget.hpp \
            ../../lib/multiIndiSubscriber.hpp
            ../../lib/multiIndiPublisher.hpp
            ../../lib/multiIndiManager.hpp
-
-SOURCES += roiGUI_main.cpp
+           
+SOURCES += roiGUI_main.cpp 
 #\
 #           ../../widgets/roi/roi.cpp \
-
+           
 FORMS += ../../widgets/roi/roi.ui
-
+     
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
 
-RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc
+RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc 
 
 QT += widgets
