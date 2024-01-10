@@ -202,6 +202,8 @@ public:
 
 	virtual char putcqq(char c)
 	{
+		printf("\nChar: %u", c);
+
 		if (-1 != hSocket)
 		{
 			int numbytes = send(hSocket,&c,1,0);

@@ -108,7 +108,7 @@ public:
      */
    virtual int appShutdown();
 
-   int queryStatus();
+   void queryStatus();
 
    /** \name Telemeter Interface
      *
@@ -212,9 +212,9 @@ int fsmCtrl::appShutdown()
   return 0;
 }
 
-int fsmCtrl::queryStatus() 
+void fsmCtrl::queryStatus() 
 {
-  log<text_log>("PZTStatus: Querying.\n");
+  log<text_log>("PZTStatus: Querying status.\n");
   (&UartParser)->TxBinaryPacket(6, NULL, 0);
 
   // Allow time for fsm to respond, it's not instantaneous
@@ -238,6 +238,8 @@ int fsmCtrl::queryStatus()
           }
       }
   }
+
+  log<text_log>("PZTStatus: Finished querying status.\n");
 
   recordFsm(false);
 }

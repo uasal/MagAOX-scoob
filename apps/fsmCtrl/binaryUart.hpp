@@ -274,6 +274,9 @@ struct BinaryUart
 	{
 		uint8_t TxBuffer[TxBufferLenBytes];
 		size_t PacketLen = Packet.MakePacket(TxBuffer, TxBufferLenBytes, PayloadData, PayloadType, PayloadLen);
+
+		printf("\nPacket length: %lu", PacketLen);	
+
 		for (size_t i = 0; i < PacketLen; i++) { Pinout.putcqq(TxBuffer[i]); }
 		printf("\n\nBinary Uart: Sending packet(%u, %lu): ", PayloadType, PayloadLen);
 		for(size_t i = 0; i < PacketLen; i++) { printf("%.2X:", TxBuffer[i]); }
