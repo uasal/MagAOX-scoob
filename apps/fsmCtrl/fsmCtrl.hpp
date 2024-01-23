@@ -18,10 +18,13 @@ using namespace std;
 
 #include <pthread.h>
 
+typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; //This needs to be before the other header files for logging to work
+
 #include "binaryUart.hpp"
 #include "cGraphPacket.hpp"
 #include "linux_pinout_client_socket.hpp"
 #include "socket.hpp"
+#include "fsmCommands.hpp"
 
 /** \defgroup fsmCtrl
   * \brief The XXXXXX application to do YYYYYYY
@@ -67,10 +70,14 @@ protected:
    //here add parameters which will be config-able at runtime
    ///@}
 
+  uint16_t CGraphPayloadType;
   char Buffer[4096];
   CGraphPacket SocketProtocol;
   linux_pinout_client_socket LocalPortPinout;
   BinaryUart UartParser;
+  StatusQuery statusQuery;
+  AdcsQuery adcsQuery;
+  DacsQuery dacsQuery;
 
 public:
    /// Default c'tor.
@@ -108,7 +115,27 @@ public:
      */
    virtual int appShutdown();
 
+   /// TODO: Test the connection to the device
+   int testConnection();
+
+   /// Connect to fsm via Socket
+   /**
+     * 
+     * \returns 0 if connection successful
+     * \returns -1 on an error
+     */ 
+   int socketConnect();
+
+   /// Query fsm status
    void queryStatus();
+   
+   /// Query fsm's ADCs   
+   void queryAdcs();
+   
+   /// Query fsm's DACs   
+   void queryDacs();
+
+   void query(PZTQuery&);
 
    /** \name Telemeter Interface
      *
@@ -125,6 +152,7 @@ public:
 
 fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), UartParser(LocalPortPinout, SocketProtocol, PacketCallbacks, false)
 {
+   m_powerMgtEnabled = true;  
    return;
 }
 
@@ -167,23 +195,6 @@ void fsmCtrl::loadConfig()
 
 int fsmCtrl::appStartup()
 {
-
-	//Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
-	setvbuf(stdout, NULL, _IONBF, 0);
-
-  log<text_log>("\n\n\n\nWelcome to SerialPortBinaryCmdr!");
-  log<text_log>("\n\nIn order to tunnel to the lab use the following command before running this program: \"ssh -L 1337:localhost:1337 -N -f fsm\" (where fsm is the ssh alias of the remote server)!\n\n");
-
-  int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
-  if (IUart::IUartOK != err)
-  {
-    return log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
-  }
-
-  log<text_log>("\n\nStarting to do something");
-
-	UartParser.Debug(false);
-
   if(telemeterT::appStartup() < 0)
   {
     return log<software_error, -1>({__FILE__,__LINE__});
@@ -194,12 +205,42 @@ int fsmCtrl::appStartup()
 
 int fsmCtrl::appLogic()
 {
-  queryStatus();
-
-  if(telemeterT::appLogic() < 0)
+  if(state() == stateCodes::POWERON)
   {
-      log<software_error>({__FILE__, __LINE__});
+    if(!powerOnWaitElapsed()) 
+    {
       return 0;
+    }
+    else
+    {
+      state(stateCodes::NOTCONNECTED);
+    }  
+  }
+
+  if( state() == stateCodes::NOTCONNECTED)
+  {
+    int rv;
+    rv = socketConnect();
+
+    if (rv==0)
+    {
+      state(stateCodes::CONNECTED);
+    }  
+  }
+
+  if( state() == stateCodes::CONNECTED)
+  {
+    queryStatus();
+
+    queryAdcs();   
+
+    queryDacs();   
+
+    if(telemeterT::appLogic() < 0)
+    {
+        log<software_error>({__FILE__, __LINE__});
+        return 0;
+    }
   }
 
   return 0;
@@ -212,10 +253,66 @@ int fsmCtrl::appShutdown()
   return 0;
 }
 
-void fsmCtrl::queryStatus() 
+/// TODO: Test the connection to the device
+int fsmCtrl::testConnection()
 {
-  log<text_log>("PZTStatus: Querying status.\n");
-  (&UartParser)->TxBinaryPacket(6, NULL, 0);
+  return 0;
+}
+
+int fsmCtrl::socketConnect()
+{
+  //Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
+	setvbuf(stdout, NULL, _IONBF, 0);
+
+  log<text_log>("Welcome to SerialPortBinaryCmdr!");
+  log<text_log>("In order to tunnel to the lab use the following command before running this program: \"ssh -L 1337:localhost:1337 -N -f fsm\" (where fsm is the ssh alias of the remote server)!");
+
+  int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
+  if (IUart::IUartOK != err)
+  {
+    log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
+    return -1;
+  }
+
+  log<text_log>("Starting to do something");
+
+	UartParser.Debug(false);
+  return 0;
+}
+
+
+// Function to request fsm Status 
+void fsmCtrl::queryStatus() {
+  log<text_log>(statusQuery.startLog);  
+  query(statusQuery);
+  log<text_log>(statusQuery.endLog);
+  recordFsm(false);
+
+  // statusQuery.logReply();
+}
+
+// Function to request fsm ADCs
+void fsmCtrl::queryAdcs() {
+  log<text_log>(adcsQuery.startLog); 
+  query(adcsQuery);  
+  log<text_log>(adcsQuery.endLog);
+
+  adcsQuery.logReply();
+}
+
+// Function to request fsm DACs
+void fsmCtrl::queryDacs() {
+  log<text_log>(dacsQuery.startLog); 
+  query(dacsQuery);  
+  log<text_log>(dacsQuery.endLog);
+
+  dacsQuery.logReply();
+}
+
+void fsmCtrl::query(PZTQuery& pztQuery) 
+{
+  // Send command packet
+  (&UartParser)->TxBinaryPacket(CGraphPayloadType, NULL, 0);
 
   // Allow time for fsm to respond, it's not instantaneous
   sleep(3);
@@ -224,7 +321,7 @@ void fsmCtrl::queryStatus()
   bool Bored = false;
   while (!Bored) {
       Bored = true;
-      if (UartParser.Process())
+      if (UartParser.Process(pztQuery))
       {
         Bored = false;
       }
@@ -238,12 +335,7 @@ void fsmCtrl::queryStatus()
           }
       }
   }
-
-  log<text_log>("PZTStatus: Finished querying status.\n");
-
-  recordFsm(false);
 }
-
 
 int fsmCtrl::checkRecordTimes()
 {
@@ -259,9 +351,9 @@ int fsmCtrl::recordFsm( bool force )
 {
   static CGraphPZTStatusPayload LastStatus; ///< Structure holding the previous fsm voltage measurement.
 
-  if( !(LastStatus == UartParser.Status) || force )
+  if( !(LastStatus == statusQuery.Status) || force )
   {
-    LastStatus = UartParser.Status;
+    LastStatus = statusQuery.Status;
     telem<telem_fsm>({LastStatus.P1V2, LastStatus.P2V2, LastStatus.P24V, LastStatus.P2V5, LastStatus.P3V3A, LastStatus.P6V, LastStatus.P5V, LastStatus.P3V3D, LastStatus.P4V3, LastStatus.N5V, LastStatus.N6V, LastStatus.P150V});
   }
 

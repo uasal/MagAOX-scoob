@@ -19,23 +19,26 @@
 // Tucson, AZ 85710
 // USA
 //
+
 #pragma once
 
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdint.h>
 
-// #include "fixedqueue.hpp"
-//~ #include <queue> //Using std::queue calls malloc and screws everything up....
+#include <sstream> // for stringstreams
 
 #include "IUart.h"
 
-// #include "format/formatf.h"
-
-// #include "uart/IProtocol.hpp"
 #include "iPacket.hpp"
 
 #include "cGraphPacket.hpp"
+#include "fsmCommands.hpp"
+
+namespace MagAOX
+{
+namespace app
+{
 
 struct BinaryUartCallbacks
 {
@@ -58,7 +61,6 @@ struct BinaryUartCallbacks
 
 struct BinaryUart
 {
-	const CGraphPZTStatusPayload* Status;
     //This is where the received characters go while we are building a line up from the input
 	static const size_t RxBufferLenBytes = 4096;
 	static const size_t TxBufferLenBytes = 4096;
@@ -86,7 +88,6 @@ struct BinaryUart
 		InPacket(false),
 		PacketStart(0),
 		PacketLen(0),
-		//~ Argument(argument),
 		SerialNum(serialnum)
 
     {
@@ -104,15 +105,14 @@ struct BinaryUart
         RxCount = 0;
         memset(RxBuffer, '\0', RxBufferLenBytes);
 
-		cout << "\n\nBinary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").\n";
+        std::ostringstream oss;
+        oss << "Binary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").";
+        MagAOXAppT::log<text_log>(oss.str());
 
         return(0);
     }
 
-	//~ void SetArgument(const void* argument) { Argument = argument; }
-	//~ const void* GetArgument() { return(Argument); }
-
-    bool Process()
+    bool Process(MagAOX::app::PZTQuery& pztQuery)
     {
 	    //New char?
         if ( !(Pinout.dataready()) ) { return(false); }
@@ -124,22 +124,15 @@ struct BinaryUart
 			//~ printf(".%.2x", c);
 		//~ }
 
-        //~ bool GotCmd = ProcessChar(c);
 		ProcessByte(c);
+		CheckPacketStart();
+		CheckPacketEnd(pztQuery);
 
-		//~ return(GotCmd);
 		return(true); //We just want to know if there's chars in the buffer to put threads to sleep or not...
 	}
 
-	bool ProcessByte(const char c)
+	void ProcessByte(const char c)
 	{
-		bool Processed = false;
-		size_t PacketEnd = 0;
-
-		//~ stdio_hook_putc(c);
-        //~ ::formatf(":0x%.2X", c);
-        //~ ::formatf("\"%c\":", c);
-
 		//Put the current character into the buffer
 		if (RxCount < RxBufferLenBytes)
 		{
@@ -148,7 +141,12 @@ struct BinaryUart
 		}
 		else
 		{
-			if (debug) { cout << "\n\nBinaryUart: Buffer(" << RxBuffer <<") overflow; this packet will not fit (" << RxCount << "b), flushing buffer.\n"; }
+			if (debug) 
+			{
+				std::ostringstream oss;
+				oss << "BinaryUart: Buffer(" << RxBuffer <<") overflow; this packet will not fit (" << RxCount << "b), flushing buffer.";
+				MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
+			}				
 
 			Callbacks.BufferOverflow(RxCount);
 
@@ -156,24 +154,33 @@ struct BinaryUart
 			RxCount = 0;
 			RxBuffer[0] = 0;
 		}
+	}
 
+	void CheckPacketStart()
+	{
 		//Packet Start?
 		if ( (!InPacket) && (RxCount >= Packet.HeaderLen()) )
 		{
 			if (Packet.FindPacketStart(RxBuffer, RxCount, PacketStart)) //This is wasteful, we really only need to look at the 4 newest bytes every time...
 			{
-				if (debug) { cout << "\n\nBinaryUart: Packet start detected! Buffering.\n"; }
+				if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet start detected! Buffering."}); }
 
 				InPacket = true;
 			}
 		}
+	}
+
+	bool CheckPacketEnd(MagAOX::app::PZTQuery& pztQuery)
+	{
+		bool Processed = false;
+		size_t PacketEnd = 0;
 
 		//Packet End?
 		if ( (InPacket) && (RxCount >= (Packet.HeaderLen() + Packet.FooterLen())) )
 		{
 			if (Packet.FindPacketEnd(RxBuffer, RxCount, PacketEnd)) //This is wasteful, we really only need to look at the 4 newest bytes every time...
 			{
-				if (debug) { cout << "\n\nBinaryUart: Packet end detected; Looking for matching packet handlers.\n"; }
+				if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet end detected; Looking for matching packet handlers."}); }
 
 				if (RxCount >= Packet.PayloadLen(RxBuffer, RxCount, PacketStart) + Packet.HeaderLen() + Packet.FooterLen())
 				{
@@ -185,25 +192,21 @@ struct BinaryUart
 							//strip the part of the line with the arguments to this command (chars following command) for compatibility with the  parsing code, the "params" officially start with the s/n
 							const char* Params = reinterpret_cast<char*>(&(RxBuffer[PacketStart + Packet.PayloadOffset()]));
 
-							//call the actual command
-
 							const size_t ParamsLen = Packet.PayloadLen(RxBuffer, RxCount, PacketStart);
-							if ( (NULL != Params) && (ParamsLen >= (3 * sizeof(double))) )
-							{
-								Status = reinterpret_cast<const CGraphPZTStatusPayload*>(Params);
-
-								printf("\n\nBinaryPZTStatus Command complete.\n\n");
-							}
-							else
-							{
-								cout << "\nBinaryPZTAdcsFPCommand: Short packet: " << ParamsLen << " (expected " << (3 * sizeof(double)) << " bytes): ";
-							}
+							
+							//call the actual command							
+							pztQuery.processReply(Params, Packet.PayloadLen(RxBuffer, RxCount, PacketStart));
 
 							Processed = true;
 						}
 						else
 						{
-							if (debug) { cout << "\n\nBinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum() << ").\n"; }
+							if (debug)
+							{ 
+								std::ostringstream oss;
+								oss << "BinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum() << ").";
+								MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});								
+							}
 
 							Callbacks.UnHandledPacket(reinterpret_cast<IPacket*>(&RxBuffer[PacketStart]), PacketEnd - PacketStart);
 						}
@@ -213,14 +216,10 @@ struct BinaryUart
 					}
 					else
 					{
-						if (debug) { cout << "\n\nBinaryUart: Packet received, but invalid.\n"; }
+						if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet received, but invalid."}); }
 
 						Callbacks.InvalidPacket(reinterpret_cast<uint8_t*>(RxBuffer), RxCount);
 					}
-
-					//~ ::formatf("\n\nBinaryUart: PacketEnd. (%u, %u): ", PacketEnd, RxCount);
-					//~ for(size_t i = PacketEnd - 4; i < RxCount; i++) { printf("%.2X:", RxBuffer[i]); }
-					//~ printf("\n\n");
 
 					InPacket = false;
 
@@ -237,7 +236,6 @@ struct BinaryUart
 							RxBuffer[clr] = 0;
 						}
 						RxCount = pos;
-						//~ ::formatf("\n\nBinary Uart: PacketEnd. (%u, %u, %u): ", RxCount, (PacketEnd + 4), clr);
 					}
 					else
 					{
@@ -249,8 +247,12 @@ struct BinaryUart
 				{
 					if ( ((Packet.PayloadLen(RxBuffer, RxCount, PacketStart)) > RxBufferLenBytes) || ((Packet.PayloadLen(RxBuffer, RxCount, PacketStart)) > Packet.MaxPayloadLength())  )
 					{
-						//~ if (debug) { ::formatf("\n\nBinaryUart: Short packet (%lu bytes) with unrealistic payload len; ignoring corrupted packet (should have been header(%lu) + payload(%lu) + footer(%lu).\n", RxCount, sizeof(BinaryPacketHeader), PacketHeader->PayloadLen, sizeof(BinaryPacketFooter)); }
-						if (debug) { cout << "\n\nBinaryUart: Short packet (" << RxCount << " bytes) with unrealistic payload len; ignoring corrupted packet (should have been header() + payload(" << Packet.PayloadLen(RxBuffer, RxCount, PacketStart) << ") + footer().\n"; }
+						if (debug)
+						{ 
+							std::ostringstream oss;
+							oss << "BinaryUart: Short packet (" << RxCount << " bytes) with unrealistic payload len; ignoring corrupted packet (should have been header() + payload(" << Packet.PayloadLen(RxBuffer, RxCount, PacketStart) << ") + footer().";
+							MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});				
+						}
 
 						Callbacks.InvalidPacket(reinterpret_cast<uint8_t*>(RxBuffer), RxCount);
 
@@ -260,11 +262,16 @@ struct BinaryUart
 					}
 					else
 					{
-						if (debug) { cout << "\n\nBinaryUart: Short packet (" << RxCount << " bytes); we'll assume the packet footer was part of the payload data and keep searching for the packet end (should have been header() + payload(" << Packet.PayloadLen(RxBuffer, RxCount, PacketStart) << ") + footer().\n"; }
+						if (debug)
+						{
+							std::ostringstream oss;
+							oss << "BinaryUart: Short packet (" << RxCount << " bytes); we'll assume the packet footer was part of the payload data and keep searching for the packet end (should have been header() + payload(" << Packet.PayloadLen(RxBuffer, RxCount, PacketStart) << ") + footer().";
+							MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
+						}
 					}
 				}
 			}
-			else { if (debug) { cout << "\n\nBinaryUart: Still waiting for packet end...\n"; } }
+			else { if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Still waiting for packet end..."}); } }
 		}
 
 		return(Processed);
@@ -275,12 +282,22 @@ struct BinaryUart
 		uint8_t TxBuffer[TxBufferLenBytes];
 		size_t PacketLen = Packet.MakePacket(TxBuffer, TxBufferLenBytes, PayloadData, PayloadType, PayloadLen);
 
-		printf("\nPacket length: %lu", PacketLen);	
+        std::ostringstream oss;
+        oss << "Packet length: " << PacketLen;
+        MagAOXAppT::log<text_log>(oss.str());
 
 		for (size_t i = 0; i < PacketLen; i++) { Pinout.putcqq(TxBuffer[i]); }
-		printf("\n\nBinary Uart: Sending packet(%u, %lu): ", PayloadType, PayloadLen);
-		for(size_t i = 0; i < PacketLen; i++) { printf("%.2X:", TxBuffer[i]); }
-		printf("\n\n");
+
+		oss.str("");
+        oss << "Binary Uart: Sending packet(" << PayloadType << ", " << PayloadLen << "): ";
+        MagAOXAppT::log<text_log>(oss.str());	
+
+		oss.str("");
+		for(size_t i = 0; i < PacketLen; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(TxBuffer[i]) << ":"; }
+		MagAOXAppT::log<text_log>(oss.str());		
 
 	}
 };
+
+} //namespace app
+} //namespace MagAOX

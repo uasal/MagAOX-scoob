@@ -6,14 +6,18 @@
 /// The functionality for the Packet hardware when polled on the Atmel AVR processor
 
 #pragma once
-#ifndef _IPacket_H_
-#define _IPacket_H_
 
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sstream> // for stringstreams
 
 #include "iPacket.hpp"
+
+namespace MagAOX
+{
+namespace app
+{
 
 uint32_t CRC32(const uint8_t* data, const size_t length);
 
@@ -33,7 +37,11 @@ struct CGraphPacketHeader
 
 	void* PayloadDataNonConst() { return(reinterpret_cast<void*>(&(this[1]))); }
 
-	void formatf() const { cout << "CGraphPacketHeader: StartToken: 0x" << (long)PacketStartToken << ", PayloadType: " << (unsigned long)PayloadType << ", PayloadLen: " << (unsigned long)PayloadLen; }
+	void formatf() const {
+		std::ostringstream oss;
+		oss << "CGraphPacketHeader: StartToken: 0x" << (long)PacketStartToken << ", PayloadType: " << (unsigned long)PayloadType << ", PayloadLen: " << (unsigned long)PayloadLen;
+		MagAOXAppT::log<text_log>(oss.str());
+	}
 
 } __attribute__((__packed__));
 
@@ -126,46 +134,6 @@ public:
 	}
 };
 
-static const uint16_t CGraphPayloadTypePZTStatus = 0x0006U;
-struct CGraphPZTStatusPayload
-{
-	double P1V2;
-	double P2V2;
-	double P24V;
-	double P2V5;
-	double P3V3A;
-	double P6V;
-	double P5V;
-	double P3V3D;
-	double P4V3;
-	double N5V;
-	double N6V;
-	double P150V;
-
-   bool operator==(const CGraphPZTStatusPayload* p /**< [in] the pointer to the struct to compare to*/)
-   {
-		return (P1V2 == p->P1V2 && P2V2 == p->P2V2 && P24V == p->P24V && P2V5 == p->P2V5 && P3V3A == p->P3V3A && P6V == p->P6V && P5V == p->P5V &&
-				P3V3D == p->P3V3D && P4V3 == p->P4V3 && N5V == p->N5V && N6V == p->N6V && P150V == p->P150V);
-   }
-
-   CGraphPZTStatusPayload& operator=(const CGraphPZTStatusPayload* p /**< [in] the pointer to the struct to be copied*/)
-   {
-		this->P1V2 = p->P1V2;
-		this->P2V2 = p->P2V2;
-		this->P24V = p->P24V;
-		this->P2V5 = p->P2V5;
-		this->P3V3A = p->P3V3A;
-		this->P6V = p->P6V;
-		this->P5V = p->P5V;
-		this->P3V3D = p->P3V3D;
-		this->P4V3 = p->P4V3;
-		this->N5V = p->N5V;
-		this->N6V = p->N6V;
-		this->P150V = p->P150V;
-		return *this;
-   }
-};
-
 
 //This technically is a "BZIP2CRC32", not an "ANSICRC32"; seealso: https://crccalc.com/
 uint32_t CRC32(const uint8_t* data, const size_t length)
@@ -251,4 +219,5 @@ uint32_t CRC32(const uint8_t* data, const size_t length)
 }
 
 
-#endif // _IPacket_H_
+} //namespace app
+} //namespace MagAOX

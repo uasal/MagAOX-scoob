@@ -4,35 +4,33 @@
 /// $Date: 2009/11/14 00:20:04 $
 /// $Author: steve $
 
-#ifndef _linux_pinout_client_socket_h
-#define _linux_pinout_client_socket_h
 #pragma once
 
 #include <stdio.h>   /* Standard input/output definitions */
 #include <string.h>  /* String function definitions */
-#ifdef WIN32
-	//~ #include <windows.h>
-	#include <io.h>
-	#include <winsock.h>
-#else
-	#include <unistd.h>  /* UNIX standard function definitions */
-	#include <fcntl.h>   /* File control definitions */
-	#include <errno.h>   /* Error number definitions */
-	#include <termios.h> /* POSIX terminal control definitions */
-	#include <sys/ioctl.h> /* ioctl() */
-	#include <sys/socket.h> /* FIONREAD on cygwin */
-	#include <netinet/in.h> /* struct sockaddr_in */
-	#include <netinet/ip.h>
-	#include <netdb.h>
-	#include <sys/types.h>
-	#include <sys/stat.h>
-#endif
+
+#include <unistd.h>  /* UNIX standard function definitions */
+#include <fcntl.h>   /* File control definitions */
+#include <errno.h>   /* Error number definitions */
+#include <termios.h> /* POSIX terminal control definitions */
+#include <sys/ioctl.h> /* ioctl() */
+#include <sys/socket.h> /* FIONREAD on cygwin */
+#include <netinet/in.h> /* struct sockaddr_in */
+#include <netinet/ip.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 // #include "format/formatf.h"
 
 #include "IUart.h"
 
 #define HOST_NAME_SIZE      255
+
+namespace MagAOX
+{
+namespace app
+{
 
 class linux_pinout_client_socket : public IUart
 {
@@ -63,43 +61,29 @@ public:
 			nHostPort = HostPort;
 		}
 
-		#ifdef WIN32
-		formatf("\nStarting Winsock");
-		WSADATA wsaData;
-		if (WSAStartup(MAKEWORD(2,0), &wsaData) != 0)
-		{
-			printf("\nZigSockServer: WSAStartup failed.\n");
-			return 0;
-		}
-		#endif
-
-		printf("\nlinux_pinout_client_socket::init(): Making a socket");
+		MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Making a socket");
 		/* make a socket */
 		hSocket=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 
 		if(hSocket == -1)
 		{
-			#ifdef WIN32
-			printf("\nlinux_pinout_client_socket::init(): Could not make a socket: %d\n", WSAGetLastError());
-			#else
-			printf("\nlinux_pinout_client_socket::init(): Could not make a socket\n");
-			#endif
+			MagAOXAppT::log<software_error>({__FILE__, __LINE__, "linux_pinout_client_socket::init(): Could not make a socket"});
 			return(errno);
 		}
 		else
 		{
-			printf("\nlinux_pinout_client_socket::init(): Socket handle: %d\n", hSocket);
+			std::ostringstream oss;
+			oss << "linux_pinout_client_socket::init(): Socket handle: " << hSocket;
+			MagAOXAppT::log<text_log>(oss.str());
 		}
 
 		/* get IP address from name */
 		pHostInfo=gethostbyname(strHostName);
 		if (NULL == pHostInfo)
 		{
-			#ifdef WIN32
-			printf("\nlinux_pinout_client_socket::init(): Could not gethostbyname(): %d\n", WSAGetLastError());
-			#else
-			printf("\nlinux_pinout_client_socket::init(): Could not gethostbyname(): %s", strerror(errno));
-			#endif
+			std::ostringstream oss;
+			oss << "linux_pinout_client_socket::init(): Could not gethostbyname(): " << strerror(errno);
+			MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
 			return(errno);
 		}
 		/* copy address into long */
@@ -110,21 +94,20 @@ public:
 		Address.sin_port=htons(nHostPort);
 		Address.sin_family=AF_INET;
 
-		printf("\nlinux_pinout_client_socket::init(): Connecting to %s", strHostName);
-		printf(" on port %d", nHostPort);
+		std::ostringstream oss;
+		oss << "linux_pinout_client_socket::init(): Connecting to " << strHostName << " on port " << nHostPort;
+		MagAOXAppT::log<text_log>(oss.str());
 
 		int isConnected = connect(hSocket,(struct sockaddr*)&Address,sizeof(Address));
 		/* connect to host */
 		if(isConnected == -1)
 		{
-			#ifdef WIN32
-			printf("\nlinux_pinout_client_socket::init(): Could not connect to host: %d\n", WSAGetLastError());
-			#else
-			printf("\nlinux_pinout_client_socket::init(): Could not connect to host: %s", strerror(errno));
-			#endif
+			std::ostringstream oss;
+			oss << "linux_pinout_client_socket::init(): Could not connect to host: " << strerror(errno);
+			MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
 			return(errno);
 		}
-		else { printf("\nlinux_pinout_client_socket::init(): Connected.\n"); }
+		else { MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Connected."); }
 
 		return(IUartOK);
 	}
@@ -133,20 +116,12 @@ public:
 	{
 		if (-1 != hSocket)
 		{
-			printf("\nlinux_pinout_client_socket::deinit(): Closing socket\n");
+			MagAOXAppT::log<text_log>("linux_pinout_client_socket::deinit(): Closing socket");
 
-			#ifdef WIN32
-			closesocket(hSocket);
-			#else
 			close(hSocket);
-			#endif
 
 			hSocket = -1;
 		}
-
-		#ifdef WIN32
-		WSACleanup();
-		#endif
 	}
 
 	virtual bool dataready() const
@@ -178,23 +153,18 @@ public:
 			int numbytes = recv(hSocket,&c,1,0);
 			if (1 != numbytes)
 			{
-				#ifdef WIN32
-				formatf("linux_pinout_client_socket::getcqq(): read from socket error (%d bytes gave: %u [errno: %u])\n", numbytes, WSAGetLastError(), errno);
-				#else
-				cout << "linux_pinout_client_socket::getcqq(): read from socket error (" << numbytes << " bytes gave: " << errno << ")\n";
-				#endif
+				std::ostringstream oss;
+				oss << "linux_pinout_client_socket::getcqq(): read from socket error (" << numbytes << " bytes gave: " << errno << ")";
+				MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});				
 
 				deinit();
 
 				return(0);
 			}
-			//~ else { formatf("<-'x%.2X'", c); fflush(stdout); }
-			//~ putchar(c);
-			//~ formatf("%c", c);
 		}
 		else
 		{
-			printf("linux_pinout_client_socket::getcqq(): read on uninitialized socket; please open socket!\n");
+			MagAOXAppT::log<text_log>("linux_pinout_client_socket::getcqq(): read on uninitialized socket; please open socket!");			
 		}
 
   		return(c);
@@ -202,7 +172,9 @@ public:
 
 	virtual char putcqq(char c)
 	{
-		printf("\nChar: %u", c);
+		// std::ostringstream oss;
+		// oss << "Char: " << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(c);
+		// MagAOXAppT::log<text_log>(oss.str());		
 
 		if (-1 != hSocket)
 		{
@@ -210,11 +182,9 @@ public:
 
 			if (1 != numbytes)
 			{
-				#ifdef WIN32
-				formatf("linux_pinout_client_socket::putcqq(): write from socket error (%d bytes gave: %u [errno: %u])\n", numbytes, WSAGetLastError(), errno);
-				#else
-				cout << "linux_pinout_client_socket::putcqq(): write from socket error (" << numbytes << " bytes gave: " << errno << ")\n";
-				#endif
+				std::ostringstream oss;
+				oss << "linux_pinout_client_socket::putcqq(): write from socket error (" << numbytes << " bytes gave: " << errno << ")";
+				MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});						 
 
 				deinit();
 
@@ -223,7 +193,7 @@ public:
 		}
 		else
 		{
-			printf("linux_pinout_client_socket::putcqq(): write on uninitialized socket; please open socket!\n");
+			MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): write on uninitialized socket; please open socket!"});			
 		}
 
  		return (c);
@@ -233,14 +203,11 @@ public:
 	{
 		if (-1 != hSocket)
 		{
-			#ifdef WIN32
-			#else
 			fsync(hSocket);
-			#endif
 		}
 		else
 		{
-			printf("linux_pinout_client_socket::flushout(): fflush on uninitialized socket; please open socket!\n");
+			MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): fflush on uninitialized socket; please open socket!"});				
 		}
 	}
 
@@ -261,4 +228,5 @@ public:
 		int hSocket;                 /* handle to socket */
 };
 
-#endif //linux_pinout_client_socket_h
+} //namespace app
+} //namespace MagAOX
