@@ -112,7 +112,7 @@ struct BinaryUart
         return(0);
     }
 
-    bool Process(MagAOX::app::PZTQuery& pztQuery)
+    bool Process(MagAOX::app::PZTQuery* pztQuery)
     {
 	    //New char?
         if ( !(Pinout.dataready()) ) { return(false); }
@@ -170,7 +170,7 @@ struct BinaryUart
 		}
 	}
 
-	bool CheckPacketEnd(MagAOX::app::PZTQuery& pztQuery)
+	bool CheckPacketEnd(MagAOX::app::PZTQuery* pztQuery)
 	{
 		bool Processed = false;
 		size_t PacketEnd = 0;
@@ -195,7 +195,7 @@ struct BinaryUart
 							const size_t ParamsLen = Packet.PayloadLen(RxBuffer, RxCount, PacketStart);
 							
 							//call the actual command							
-							pztQuery.processReply(Params, Packet.PayloadLen(RxBuffer, RxCount, PacketStart));
+							pztQuery->processReply(Params, Packet.PayloadLen(RxBuffer, RxCount, PacketStart));
 
 							Processed = true;
 						}

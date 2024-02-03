@@ -42,6 +42,12 @@ struct CGraphPZTStatusPayload
 				P3V3D == p->P3V3D && P4V3 == p->P4V3 && N5V == p->N5V && N6V == p->N6V && P150V == p->P150V);
    }
 
+   bool operator==(const CGraphPZTStatusPayload p /**< [in] the struct to compare to*/)
+   {
+		return (P1V2 == p.P1V2 && P2V2 == p.P2V2 && P24V == p.P24V && P2V5 == p.P2V5 && P3V3A == p.P3V3A && P6V == p.P6V && P5V == p.P5V &&
+				P3V3D == p.P3V3D && P4V3 == p.P4V3 && N5V == p.N5V && N6V == p.N6V && P150V == p.P150V);
+   }
+
    CGraphPZTStatusPayload& operator=(const CGraphPZTStatusPayload* p /**< [in] the pointer to the struct to be copied*/)
    {
 		this->P1V2 = p->P1V2;
@@ -56,6 +62,23 @@ struct CGraphPZTStatusPayload
 		this->N5V = p->N5V;
 		this->N6V = p->N6V;
 		this->P150V = p->P150V;
+		return *this;
+   }
+
+   CGraphPZTStatusPayload& operator=(const CGraphPZTStatusPayload& p /**< [in] struct to be copied*/)
+   {
+		this->P1V2 = p.P1V2;
+		this->P2V2 = p.P2V2;
+		this->P24V = p.P24V;
+		this->P2V5 = p.P2V5;
+		this->P3V3A = p.P3V3A;
+		this->P6V = p.P6V;
+		this->P5V = p.P5V;
+		this->P3V3D = p.P3V3D;
+		this->P4V3 = p.P4V3;
+		this->N5V = p.N5V;
+		this->N6V = p.N6V;
+		this->P150V = p.P150V;
 		return *this;
    }
 };
@@ -86,30 +109,56 @@ union AdcAccumulator
 // Base class
 class PZTQuery {
 public:
-    const uint16_t CGraphPayloadType = -1;
-    const std::string startLog = "";
-    const std::string endLog = "";
+    std::string startLog = "";
+    std::string endLog = "";
 
     virtual ~PZTQuery() = default;
     virtual void errorLogString(const size_t ParamsLen) = 0;
     virtual void processReply(char const* Params, const size_t ParamsLen) = 0;
     virtual void logReply() = 0;
+    virtual uint16_t getPayloadType() const {
+        return PayloadType;
+    }
+    virtual void* getPayloadData() const {
+        return PayloadData;
+    }
+    virtual uint16_t getPayloadLen() const {
+        return PayloadLen;
+    }
+    virtual void setPayload(void* newPayloadData, uint16_t newPayloadLen) {
+        PayloadData = newPayloadData;
+        PayloadLen = newPayloadLen;
+    }
+    virtual void resetPayload() {
+        PayloadData = DefaultPayloadData;
+        PayloadLen = DefaultPayloadLen;
+    }
 
+protected:
+    uint16_t PayloadType = -1;
+    void* DefaultPayloadData = NULL; 
+    size_t DefaultPayloadLen = 0;    
+    void* PayloadData = DefaultPayloadData; 
+    size_t PayloadLen = DefaultPayloadLen;    
 };
 
 // Derived classes
 class StatusQuery : public PZTQuery {
 public:
-    const uint16_t CGraphPayloadType = CGraphPayloadTypePZTStatus;
-    const std::string startLog = "PZTStatus: Querying status.";
-    const std::string endLog = "PZTStatus: Finished querying status.";
+    StatusQuery() {
+        PayloadType = CGraphPayloadTypePZTStatus;
+        startLog = "PZTStatus: Querying status.";
+        endLog = "PZTStatus: Finished querying status.";
+    }
 
-    const CGraphPZTStatusPayload* Status = nullptr;
+    const CGraphPZTStatusPayload* ParamsPtr = nullptr;
+    CGraphPZTStatusPayload Status;
 
     void processReply(char const* Params, const size_t ParamsLen) override {
         if ( (NULL != Params) && (ParamsLen >= (3 * sizeof(double))) )
         {
-            Status = reinterpret_cast<const CGraphPZTStatusPayload*>(Params);
+            ParamsPtr = reinterpret_cast<const CGraphPZTStatusPayload*>(Params);
+            Status = *ParamsPtr;
         }
         else
         {
@@ -129,34 +178,38 @@ public:
     {
         std::ostringstream oss;        
 		oss << "BinaryPZTStatus Command: Values with corrected units follow:\n";
-        oss << "P1V2: " << std::fixed << std::setprecision(6) << Status->P1V2 << " V\n";
-        oss << "P2V2: " << std::fixed << std::setprecision(6) << Status->P2V2 << " V\n";
-        oss << "P24V: " << std::fixed << std::setprecision(6) << Status->P24V << " V\n";
-        oss << "P2V5: " << std::fixed << std::setprecision(6) << Status->P2V5 << " V\n";
-        oss << "P3V3A: " << std::fixed << std::setprecision(6) << Status->P3V3A << " V\n";
-        oss << "P6V: " << std::fixed << std::setprecision(6) << Status->P6V << " V\n";
-        oss << "P5V: " << std::fixed << std::setprecision(6) << Status->P5V << " V\n";
-        oss << "P3V3D: " << std::fixed << std::setprecision(6) << Status->P3V3D << " V\n";
-        oss << "P4V3: " << std::fixed << std::setprecision(6) << Status->P4V3 << " V\n";
-        oss << "N5V: " << std::fixed << std::setprecision(6) << Status->N5V << " V\n";
-        oss << "N6V: " << std::fixed << std::setprecision(6) << Status->N6V << " V\n";
-        oss << "P150V: " << std::fixed << std::setprecision(6) << Status->P150V << " V";
+        oss << "P1V2: " << std::fixed << std::setprecision(6) << Status.P1V2 << " V\n";
+        oss << "P2V2: " << std::fixed << std::setprecision(6) << Status.P2V2 << " V\n";
+        oss << "P24V: " << std::fixed << std::setprecision(6) << Status.P24V << " V\n";
+        oss << "P2V5: " << std::fixed << std::setprecision(6) << Status.P2V5 << " V\n";
+        oss << "P3V3A: " << std::fixed << std::setprecision(6) << Status.P3V3A << " V\n";
+        oss << "P6V: " << std::fixed << std::setprecision(6) << Status.P6V << " V\n";
+        oss << "P5V: " << std::fixed << std::setprecision(6) << Status.P5V << " V\n";
+        oss << "P3V3D: " << std::fixed << std::setprecision(6) << Status.P3V3D << " V\n";
+        oss << "P4V3: " << std::fixed << std::setprecision(6) << Status.P4V3 << " V\n";
+        oss << "N5V: " << std::fixed << std::setprecision(6) << Status.N5V << " V\n";
+        oss << "N6V: " << std::fixed << std::setprecision(6) << Status.N6V << " V\n";
+        oss << "P150V: " << std::fixed << std::setprecision(6) << Status.P150V << " V";
         MagAOXAppT::log<text_log>(oss.str());
     } 
 };
 
 class AdcsQuery : public PZTQuery {
 public:
-    const uint16_t CGraphPayloadType = CGraphPayloadTypePZTAdcs;
-    const std::string startLog = "PZTAdcs: Querying ADCs.";
-    const std::string endLog = "PZTStatus: Finished querying ADCs.";
+    AdcsQuery() {
+        PayloadType = CGraphPayloadTypePZTAdcs;
+        startLog = "PZTAdcs: Querying ADCs.";
+        endLog = "PZTAdcs: Finished querying ADCs.";
+    }
 
-    const AdcAccumulator* AdcVals = nullptr;
+    const AdcAccumulator* ParamsPtr = nullptr;
+    AdcAccumulator AdcVals[3];;
 
     void processReply(char const* Params, const size_t ParamsLen) override {
         if ( (NULL != Params) && (ParamsLen >= (3 * sizeof(AdcAccumulator))) )
         {
-            AdcVals = reinterpret_cast<const AdcAccumulator*>(Params);
+            ParamsPtr = reinterpret_cast<const AdcAccumulator*>(Params);
+            std::copy(ParamsPtr, ParamsPtr + 3, AdcVals);
         }
         else
         {
@@ -182,16 +235,25 @@ public:
 
 class DacsQuery : public PZTQuery {
 public:
-    const uint16_t CGraphPayloadType = CGraphPayloadTypePZTDacs;
-    const std::string startLog = "PZTDacs: Querying DACs.";
-    const std::string endLog = "PZTStatus: Finished querying DACs.";
+    DacsQuery() {
+        PayloadType = CGraphPayloadTypePZTDacs;
+        startLog = "PZTDacs: Querying DACs.";
+        endLog = "PZTDacs: Finished querying DACs.";
+    }
 
-    const uint32_t* DacSetpoints = nullptr;
+    const uint32_t* ParamsPtr = nullptr;
+    uint32_t DacSetpoints[3];
+
+    virtual void setPayload(const void* Setpoints, uint16_t SetpointsLen) {
+        PayloadData = const_cast<void*>(Setpoints);;
+        PayloadLen = SetpointsLen;
+    }
 
     void processReply(char const* Params, const size_t ParamsLen) override {
         if ( (NULL != Params) && (ParamsLen >= (3 * sizeof(uint32_t))) )
         {
-            const uint32_t* DacSetpoints = reinterpret_cast<const uint32_t*>(Params);
+            ParamsPtr = reinterpret_cast<const uint32_t*>(Params);
+            std::copy(ParamsPtr, ParamsPtr + 3, DacSetpoints);
         }
         else
         {
@@ -209,8 +271,7 @@ public:
     void logReply() override 
     {
         std::ostringstream oss;
-  
-        oss << "BinaryPZTDacsCommand: 0x" << std::hex << DacSetpoints[0] << " | 0x" << std::hex << DacSetpoints[1] << " | 0x " << std::hex << DacSetpoints[2];
+        oss << "BinaryPZTDacsCommand: 0x" << std::hex << DacSetpoints[0] << " | 0x" << std::hex << DacSetpoints[1] << " | 0x" << std::hex << DacSetpoints[2];
         MagAOXAppT::log<text_log>(oss.str());
     }
 };
