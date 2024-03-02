@@ -270,6 +270,30 @@ namespace MagAOX
                 {
                     ParamsPtr = reinterpret_cast<const uint32_t *>(Params);
                     std::copy(ParamsPtr, ParamsPtr + 3, DacSetpoints);
+
+                    // 1. Currently the fsm appends 58 to query (not set) dac response packages
+                    // (24 vs 32 bytes -> there are 8 free bytes that currently are
+                    // filled with 58; can replace with another meaningful value if helpful,
+                    // details from Summer) - need to remove that.
+                    // 2. Also, the returned value is half of the actual value (bit shift operation
+                    // on the fsm side) - so will need to multiply by two for the forseeable
+                    // future.
+                    // NOTE: This is only the case for the queries that 'get' the dac values, not
+                    // for the ones that 'set' them, so we need to first check which type of query
+                    // we're dealing with. 'Set' queries have an empty payload
+
+                    if (PayloadLen == 0)
+                    {
+                        // Drop the first two hex digits
+                        DacSetpoints[0] = DacSetpoints[0] & 0x00FFFFFF; // Mask out the first two bytes
+                        DacSetpoints[1] = DacSetpoints[1] & 0x00FFFFFF; // Mask out the first two bytes
+                        DacSetpoints[2] = DacSetpoints[2] & 0x00FFFFFF; // Mask out the first two bytes
+
+                        // Double
+                        DacSetpoints[0] *= 2;
+                        DacSetpoints[1] *= 2;
+                        DacSetpoints[2] *= 2;
+                    }
                 }
                 else
                 {
