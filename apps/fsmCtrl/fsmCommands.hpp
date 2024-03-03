@@ -1,5 +1,5 @@
 /** \file fsmCommands.hpp
- * \brief Currently defined commands for the fsmCtrl app
+ * \brief Utility file for the fsmCtrl app with structre and class definitions for commands to be sent to the fsm
  *
  * \ingroup fsmCtrl_files
  */
@@ -15,12 +15,21 @@ namespace MagAOX
 {
     namespace app
     {
-
+        /**
+         * @brief Payload types for the commands
+         *
+         * The payload type is sent with the command packet and
+         * tells the fsm what command is being sent.
+         */
         static const uint16_t CGraphPayloadTypePZTDacs = 0x0002U;              // Payload: 3 uint32's
         static const uint16_t CGraphPayloadTypePZTDacsFloatingPoint = 0x0003U; // Payload: 3 double-precision floats
         static const uint16_t CGraphPayloadTypePZTAdcs = 0x0004U;              // Payload: 3 AdcAcumulators
         static const uint16_t CGraphPayloadTypePZTAdcsFloatingPoint = 0x0005U; // Payload: 3 double-precision floats
         static const uint16_t CGraphPayloadTypePZTStatus = 0x0006U;
+
+        /**
+         * @brief Structure for the response payload of the Status command
+         */
         struct CGraphPZTStatusPayload
         {
             double P1V2;
@@ -83,6 +92,9 @@ namespace MagAOX
             }
         };
 
+        /**
+         * @brief Structure for the response payload of the ADC query command
+         */
         union AdcAccumulator
         {
             uint64_t all;
@@ -105,7 +117,13 @@ namespace MagAOX
 
         } __attribute__((__packed__));
 
-        // Base class
+        /**
+         * @brief Base class for all the fsm queries
+         *
+         * PZTQuery is the class from which all the query classes inherit.
+         * It ensures that the all implement a minimal interfaces that includes
+         * processReply, logReply and errorLogString.
+         */
         class PZTQuery
         {
         public:
@@ -148,6 +166,9 @@ namespace MagAOX
         };
 
         // Derived classes
+        /**
+         * @brief Child query class that handles sending a status query to the fsm
+         */
         class StatusQuery : public PZTQuery
         {
         public:
@@ -201,6 +222,9 @@ namespace MagAOX
             }
         };
 
+        /**
+         * @brief Child query class that handles querying the fsm for the ADC values
+         */
         class AdcsQuery : public PZTQuery
         {
         public:
@@ -244,6 +268,10 @@ namespace MagAOX
             }
         };
 
+        /**
+         * @brief Child query class that handles querying the fsm for the DAC values
+         * and sending new DAC values to the fsm
+         */
         class DacsQuery : public PZTQuery
         {
         public:
@@ -260,7 +288,6 @@ namespace MagAOX
             virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen)
             {
                 PayloadData = const_cast<void *>(Setpoints);
-                ;
                 PayloadLen = SetpointsLen;
             }
 

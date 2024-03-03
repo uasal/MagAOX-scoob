@@ -17,7 +17,7 @@ using namespace std;
 
 #include <pthread.h>
 
-typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work
+typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
 
 #include "conversion.hpp"
 #include "fsmCommands.hpp"
@@ -27,7 +27,7 @@ typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the 
 #include "socket.hpp"
 
 /** \defgroup fsmCtrl
- * \brief The XXXXXX application to do YYYYYYY
+ * \brief Application to interface with ESC FSM
  *
  * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
  *
@@ -44,7 +44,7 @@ namespace MagAOX
   namespace app
   {
 
-    /// The MagAO-X xxxxxxxx
+    /// The MagAO-X ESC FSM interface
     /**
      * \ingroup fsmCtrl
      */
@@ -83,7 +83,6 @@ namespace MagAOX
       // here add parameters which will be config-able at runtime
       ///@}
 
-      // uint16_t CGraphPayloadType;
       char Buffer[4096];
       CGraphPacket SocketProtocol;
       linux_pinout_client_socket LocalPortPinout;
@@ -97,14 +96,6 @@ namespace MagAOX
       double m_dac2{0};
       double m_dac3{0};
 
-      // double m_v1{0};
-      // double m_v2{0};
-      // double m_v3{0};
-
-      // double m_alpha{0};
-      // double m_beta{0};
-      // double m_z{0};
-
       const std::string DACS = "dacs";
       const std::string VOLTAGES = "voltages";
       const std::string ANGLES = "angles";
@@ -117,12 +108,6 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_dac1;
       pcf::IndiProperty m_indiP_dac2;
       pcf::IndiProperty m_indiP_dac3;
-      // pcf::IndiProperty m_indiP_v1;
-      // pcf::IndiProperty m_indiP_v2;
-      // pcf::IndiProperty m_indiP_v3;
-      // pcf::IndiProperty m_indiP_alpha;
-      // pcf::IndiProperty m_indiP_beta;
-      // pcf::IndiProperty m_indiP_z;
       pcf::IndiProperty m_conversion_factors;
       pcf::IndiProperty m_input;
 
@@ -133,12 +118,6 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac1);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac2);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac3);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_v1);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_v2);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_v3);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_alpha);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_beta);
-      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_z);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_conversion_factors);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_input);
 
@@ -161,12 +140,12 @@ namespace MagAOX
       virtual void loadConfig();
 
       /// Startup function
-      /**
+      /** Set up INDI props & other startup prep
        *
        */
       virtual int appStartup();
 
-      /// Implementation of the FSM for fsmCtrl.
+      /// Implementation of the logic for fsmCtrl.
       /**
        * \returns 0 on no critical error
        * \returns -1 on an error requiring shutdown
@@ -179,7 +158,7 @@ namespace MagAOX
        */
       virtual int appShutdown();
 
-      /// TODO: Test the connection to the device
+      /// TODO: Test the connection to the fsm
       int testConnection();
 
       /// Connect to fsm via Socket
@@ -190,32 +169,94 @@ namespace MagAOX
        */
       int socketConnect();
 
-      /// Query fsm status
+      /**
+       * @brief Request fsm status
+       *
+       * Wrapper that calls query() with instance of StatusQuery.
+       * Response is stored in instance's Status member.
+       * It returns fsm telemetry that is logged every 10s by the telemeter.
+       * Output in /opt/telem/fsmCtrl_xxxxx.bintel
+       */
       void queryStatus();
 
-      /// Query fsm's ADCs
+      /**
+       * @brief Request fsm's ADC values
+       *
+       * Wrapper that calls query() with instance of AdcsQuery.
+       * Response is stored in instance's AdcVals member.
+       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       */
       void queryAdcs();
 
-      /// Query fsm's DACs
+      /**
+       * @brief Request fsm's DAC values
+       *
+       * Wrapper that calls query() with instance of DacsQuery.
+       * Response is stored in instance's DacSetpoints member.
+       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       */
       void queryDacs();
 
-      /// Set fsm's DACs
-      //  void setDacs();
+      /**
+       * @brief Set fsm's DACs values to those in the argument.
+       *
+       * Wrapper that calls query() with instance of DacsQuery and
+       * three new values for the DACs.
+       * Response is stored in instance's DacSetpoints member.
+       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       *
+       * @param Setpoints pointer to an array of three uint32_t values
+       */
       int setDacs(uint32_t *);
 
-      // Query interface for the fsm
+      /**
+       * @brief Query interface for the fsm
+       *
+       * Function that sends a command packet to the fsm and waits for a response.
+       * If a response it received it processes the response as appropriate for the
+       * command sent.
+       *
+       * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
+       */
       void query(PZTQuery *);
 
+      /**
+       * @brief Utility function that sets 'current' INDI values, if updated
+       *
+       * Function that takes the values in m_dac1, m_dac2 and m_dac3, transforms them
+       * (if necessary) to the type specified by m_inputType and updates the corresponding
+       * INDI parameter's 'current' value.
+       */
       void updateINDICurrentParams();
 
       /** \name Telemeter Interface
        *
        * @{
        */
+      /**
+       * @brief Required by Telemeter Interface
+       *
+       * \returns 0 on succcess
+       * \returns -1 on error
+       */
       int checkRecordTimes();
 
+      /**
+       * @brief Required by Telemeter Interface
+       *
+       * @param telem_fsm_ptr pointer to telem_fsm flatbuffer_log structure describing telem inputs & outputs
+       * \returns 0 on succcess
+       * \returns -1 on error
+       */
       int recordTelem(const telem_fsm *);
 
+      /**
+       * @brief Required by Telemeter Interface
+       *
+       * @param force boolean; Telemetry is recorded every m_maxInterval (default value of 10) seconds.
+       *  If 'true', force telemetry record outside of interval.
+       * \returns 0 on succcess
+       */
       int recordFsm(bool force = false);
       ///@}
 
@@ -224,17 +265,36 @@ namespace MagAOX
        * @{
        */
 
-      /// Called after shmimMonitor connects to the dmXXdisp stream.  Checks for proper size.
       /**
+       * Called after shmimMonitor connects to the fsm stream.
+       *
        * \returns 0 on success
        * \returns -1 if incorrect size or data type in stream.
        */
       int allocate(const dev::shmimT &sp);
 
-      /// Called by shmimMonitor when a new fsm command is available.
+      /**
+       * Called by shmimMonitor when a new fsm command is available.
+       *
+       * \returns 0 on success
+       * \returns -1 if incorrect size or data type in stream.
+       */
       int processImage(void *curr_src,
                        const dev::shmimT &sp);
 
+      /**
+       * @brief Send to fsm new DAC values from shmim
+       *
+       * Called as part of processImage.
+       * Checks shmim has an inputType keyword and that its value is 'dacs', 'voltages' or 'angles'.
+       * Updates INDI input.type property, if different.
+       * Updates corresponding INDI 'target' values with shmim values.
+       * Converts shmim values from specified inputType to DACs.
+       * Calls setDacs function with new DAC values.
+       *
+       * \returns 0 on success
+       * \returns -1 if incorrect size or data type in stream.
+       */
       int commandFSM(void *curr_src);
       ///@}
     };
@@ -363,69 +423,6 @@ namespace MagAOX
       m_indiP_val3.add(pcf::IndiElement("target"));
       m_indiP_val3["current"] = -99999;
       m_indiP_val3["target"] = -99999;
-
-      // // dacs
-      // REG_INDI_NEWPROP(m_indiP_dac1, "dac_1", pcf::IndiProperty::Number);
-      // m_indiP_dac1.add(pcf::IndiElement("current"));
-      // m_indiP_dac1.add(pcf::IndiElement("target"));
-      // m_indiP_dac1.add(pcf::IndiElement("min"));
-      // m_indiP_dac1.add(pcf::IndiElement("max"));
-      // m_indiP_dac1["current"] = -99999;
-      // m_indiP_dac1["target"] = -99999;
-      // m_indiP_dac1["min"] = m_dac1_min;
-      // m_indiP_dac1["max"] = m_dac1_max;
-      // REG_INDI_NEWPROP(m_indiP_dac2, "dac_2", pcf::IndiProperty::Number);
-      // m_indiP_dac2.add(pcf::IndiElement("current"));
-      // m_indiP_dac2.add(pcf::IndiElement("target"));
-      // m_indiP_dac2.add(pcf::IndiElement("min"));
-      // m_indiP_dac2.add(pcf::IndiElement("max"));
-      // m_indiP_dac2["current"] = -99999;
-      // m_indiP_dac2["target"] = -99999;
-      // m_indiP_dac2["min"] = m_dac2_min;
-      // m_indiP_dac2["max"] = m_dac2_max;
-      // REG_INDI_NEWPROP(m_indiP_dac3, "dac_3", pcf::IndiProperty::Number);
-      // m_indiP_dac3.add(pcf::IndiElement("current"));
-      // m_indiP_dac3.add(pcf::IndiElement("target"));
-      // m_indiP_dac3.add(pcf::IndiElement("min"));
-      // m_indiP_dac3.add(pcf::IndiElement("max"));
-      // m_indiP_dac3["current"] = -99999;
-      // m_indiP_dac3["target"] = -99999;
-      // m_indiP_dac3["min"] = m_dac3_min;
-      // m_indiP_dac3["max"] = m_dac3_max;
-
-      // // voltages
-      // REG_INDI_NEWPROP(m_indiP_v1, "v_1", pcf::IndiProperty::Number);
-      // m_indiP_v1.add(pcf::IndiElement("current"));
-      // m_indiP_v1.add(pcf::IndiElement("target"));
-      // m_indiP_v1["current"] = -99999;
-      // m_indiP_v1["target"] = -99999;
-      // REG_INDI_NEWPROP(m_indiP_v2, "v_2", pcf::IndiProperty::Number);
-      // m_indiP_v2.add(pcf::IndiElement("current"));
-      // m_indiP_v2.add(pcf::IndiElement("target"));
-      // m_indiP_v2["current"] = -99999;
-      // m_indiP_v2["target"] = -99999;
-      // REG_INDI_NEWPROP(m_indiP_v3, "v_3", pcf::IndiProperty::Number);
-      // m_indiP_v3.add(pcf::IndiElement("current"));
-      // m_indiP_v3.add(pcf::IndiElement("target"));
-      // m_indiP_v3["current"] = -99999;
-      // m_indiP_v3["target"] = -99999;
-
-      // // angles
-      // REG_INDI_NEWPROP(m_indiP_alpha, "alpha", pcf::IndiProperty::Number);
-      // m_indiP_alpha.add(pcf::IndiElement("current"));
-      // m_indiP_alpha.add(pcf::IndiElement("target"));
-      // m_indiP_alpha["current"] = -99999;
-      // m_indiP_alpha["target"] = -99999;
-      // REG_INDI_NEWPROP(m_indiP_beta, "beta", pcf::IndiProperty::Number);
-      // m_indiP_beta.add(pcf::IndiElement("current"));
-      // m_indiP_beta.add(pcf::IndiElement("target"));
-      // m_indiP_beta["current"] = -99999;
-      // m_indiP_beta["target"] = -99999;
-      // REG_INDI_NEWPROP(m_indiP_z, "z", pcf::IndiProperty::Number);
-      // m_indiP_z.add(pcf::IndiElement("current"));
-      // m_indiP_z.add(pcf::IndiElement("target"));
-      // m_indiP_z["current"] = -99999;
-      // m_indiP_z["target"] = -99999;
 
       // conversion_factors
       REG_INDI_NEWPROP(m_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
@@ -556,8 +553,6 @@ namespace MagAOX
       query(statusQuery);
       log<text_log>(statusQuery->endLog);
       recordFsm(false);
-
-      // statusQuery->logReply();
     }
 
     // Function to request fsm ADCs
@@ -591,13 +586,6 @@ namespace MagAOX
     // Function to set fsm DACs
     int fsmCtrl::setDacs(uint32_t *Setpoints)
     {
-      // void fsmCtrl::setDacs() {
-      // uint32_t Setpoints[3];
-
-      // Setpoints[0] = 60000;
-      // Setpoints[1] = 60000;
-      // Setpoints[2] = 60000;
-
       if (Setpoints[0] < m_dac1_min || Setpoints[0] > m_dac1_max)
       {
         std::ostringstream oss;
@@ -720,22 +708,6 @@ namespace MagAOX
       if (err)
         return -1;
 
-      //  m_instSatMap.resize(m_dmWidth,m_dmHeight);
-      //  m_instSatMap.setZero();
-
-      //  m_accumSatMap.resize(m_dmWidth,m_dmHeight);
-      //  m_accumSatMap.setZero();
-
-      //  m_satPercMap.resize(m_dmWidth,m_dmHeight);
-      //  m_satPercMap.setZero();
-
-      //  if(findDMChannels() < 0)
-      //  {
-      //     log<software_critical>({__FILE__,__LINE__, "error finding DM channels"});
-
-      //     return -1;
-      //  }
-
       return 0;
     }
 
@@ -797,6 +769,10 @@ namespace MagAOX
       val2 = ((float *)curr_src)[1];
       val3 = ((float *)curr_src)[2];
 
+      updateIfChanged(m_indiP_val1, "target", val1);
+      updateIfChanged(m_indiP_val2, "target", val2);
+      updateIfChanged(m_indiP_val3, "target", val3);
+
       if (m_inputType == DACS)
       {
         dacs[0] = val1;
@@ -816,10 +792,6 @@ namespace MagAOX
         dacs[1] = angles_to_dac2(val1, val2, val3, m_a, m_b);
         dacs[2] = angles_to_dac3(val1, val2, val3, m_a, m_b);
       }
-
-      updateIfChanged(m_indiP_val1, "target", val1);
-      updateIfChanged(m_indiP_val2, "target", val2);
-      updateIfChanged(m_indiP_val3, "target", val3);
 
       std::ostringstream oss;
       oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
@@ -857,27 +829,6 @@ namespace MagAOX
       updateIfChanged(m_indiP_val2, "current", val2);
       updateIfChanged(m_indiP_val3, "current", val3);
     }
-
-    // void fsmCtrl::updateINDICurrentParams()
-    // {
-    //   updateIfChanged(m_indiP_dac1, "current", m_dac1);
-    //   updateIfChanged(m_indiP_dac2, "current", m_dac2);
-    //   updateIfChanged(m_indiP_dac3, "current", m_dac3);
-
-    //   m_v1 = get_v1(m_dac1, m_v);
-    //   m_v2 = get_v2(m_dac2, m_v);
-    //   m_v3 = get_v3(m_dac3, m_v);
-    //   updateIfChanged(m_indiP_v1, "current", m_v1);
-    //   updateIfChanged(m_indiP_v2, "current", m_v2);
-    //   updateIfChanged(m_indiP_v3, "current", m_v3);
-
-    //   m_alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-    //   m_beta = get_beta(m_dac2, m_dac3, m_b);
-    //   m_z = get_z(m_dac1, m_dac2, m_dac3);
-    //   updateIfChanged(m_indiP_alpha, "current", m_alpha);
-    //   updateIfChanged(m_indiP_beta, "current", m_beta);
-    //   updateIfChanged(m_indiP_z, "current", m_z);
-    // }
 
     // callback from setting m_indiP_val1
     // only 'target' is editable ('current' should be updated by code)
@@ -1065,429 +1016,6 @@ namespace MagAOX
       }
       return -1;
     }
-
-    // // callback from setting m_indiP_dac1
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac1)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_dac1.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_dac1, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = target;
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_dac2
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac2)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_dac2.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_dac2, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = target;
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_dac3
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac3)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_dac3.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_dac3, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = target;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_alpha
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_alpha)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_alpha.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_alpha, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = angles_to_dac1(target, m_z, m_a);
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_beta
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_beta)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_beta.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_beta, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = angles_to_dac2(m_alpha, target, m_z, m_a, m_b);
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_z
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_z)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_z.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_z, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = angles_to_dac3(m_alpha, m_beta, target, m_a, m_b);
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_v1
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_v1)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_v1.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_v1, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = v1_to_dac1(target, m_v);
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_v2
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_v2)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_v2.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_v2, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = v2_to_dac2(target, m_v);
-    //       dacs[2] = m_dac3;
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
-
-    // // callback from setting m_indiP_v3
-    // // only 'target' is editable ('current' should be updated by code)
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_v3)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   if (ipRecv.createUniqueKey() == m_indiP_v3.createUniqueKey())
-    //   {
-    //     float current = -999999, target = -999999;
-
-    //     if (ipRecv.find("current"))
-    //     {
-    //       current = ipRecv["current"].get<float>();
-    //     }
-
-    //     if (ipRecv.find("target"))
-    //     {
-    //       target = ipRecv["target"].get<float>();
-    //     }
-
-    //     if (target == -999999)
-    //       target = current;
-
-    //     if (target == -999999)
-    //       return 0;
-
-    //     if (state() == stateCodes::READY)
-    //     {
-    //       // Lock the mutex, waiting if necessary
-    //       std::unique_lock<std::mutex> lock(m_indiMutex);
-
-    //       updateIfChanged(m_indiP_v3, "target", target);
-
-    //       uint32_t dacs[3] = {0, 0, 0};
-    //       dacs[0] = m_dac1;
-    //       dacs[1] = m_dac2;
-    //       dacs[2] = v3_to_dac3(target, m_v);
-
-    //       std::ostringstream oss;
-    //       oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-    //       log<text_log>(oss.str());
-
-    //       return setDacs(dacs);
-    //     }
-    //   }
-    //   return -1;
-    // }
 
     // callback from setting conversion_factors
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_conversion_factors)
