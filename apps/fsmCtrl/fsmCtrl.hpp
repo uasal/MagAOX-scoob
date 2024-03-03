@@ -77,8 +77,9 @@ namespace MagAOX
       double m_dac3_min;
       double m_dac3_max;
 
-      // Shmim-related Parameters
+      // input parameters
       std::string m_inputType;
+      std::string m_inputToggle;
 
       // here add parameters which will be config-able at runtime
       ///@}
@@ -99,6 +100,8 @@ namespace MagAOX
       const std::string DACS = "dacs";
       const std::string VOLTAGES = "voltages";
       const std::string ANGLES = "angles";
+      const std::string SHMIM = "shmim";
+      const std::string INDI = "indi";
 
     protected:
       // INDI properties
@@ -331,7 +334,9 @@ namespace MagAOX
 
       config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the FSM in actuators.");
       config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the FSM in actuators.");
-      config.add("shmimMonitor.inputType", "", "shmimMonitor.inputType", argType::Required, "shmimMonitor", "inputType", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'angles'.");
+
+      config.add("input.type", "", "input.type", argType::Required, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'angles'.");
+      config.add("input.toggle", "", "input.toggle", argType::Required, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'.");
       telemeterT::setupConfig(config);
     }
 
@@ -355,8 +360,11 @@ namespace MagAOX
 
       _config(shmimMonitor::m_width, "shmimMonitor.width");
       _config(shmimMonitor::m_height, "shmimMonitor.height");
+
       m_inputType = DACS;
-      _config(m_inputType, "shmimMonitor.inputType");
+      _config(m_inputType, "input.type");
+      m_inputToggle = INDI;
+      _config(m_inputToggle, "input.toggle");
 
       shmimMonitor::loadConfig(_config);
       return 0;
@@ -435,8 +443,10 @@ namespace MagAOX
 
       // input
       REG_INDI_NEWPROP(m_input, "input", pcf::IndiProperty::Text);
+      m_input.add(pcf::IndiElement("toggle"));
+      m_input["toggle"] = m_inputType;
       m_input.add(pcf::IndiElement("type"));
-      m_input["type"] = m_inputType;
+      m_input["type"] = m_inputToggle;
 
       return 0;
     }
@@ -478,29 +488,24 @@ namespace MagAOX
       {
         // queryAdcs();
 
-        // Get current values for dacs & alpha/beta/z
+        // Get current dac values
         queryDacs();
 
         // Get telemetry
         queryStatus();
 
-        state(stateCodes::OPERATING);
+        if (m_inputToggle == SHMIM)
+        {
+          state(stateCodes::OPERATING);
+        }
+        if (m_inputToggle == INDI)
+        {
+          state(stateCodes::READY);
+        }
       }
 
-      // (For now?)
-      // if (state() == stateCodes::READY)
-      if (state() == stateCodes::OPERATING)
+      if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
       {
-        std::ostringstream oss;
-        oss << "State is: " << state();
-        log<text_log>(oss.str());
-
-        // queryAdcs();
-
-        log<text_log>("Doing something");
-
-        sleep(10);
-
         if (telemeterT::appLogic() < 0)
         {
           log<software_error>({__FILE__, __LINE__});
@@ -518,6 +523,10 @@ namespace MagAOX
 
       return 0;
     }
+
+    //////////////
+    // CONNECTION
+    //////////////
 
     /// TODO: Test the connection to the device
     int fsmCtrl::testConnection()
@@ -545,6 +554,10 @@ namespace MagAOX
       UartParser.Debug(false);
       return 0;
     }
+
+    //////////////
+    // FSM QUERIES
+    //////////////
 
     // Function to request fsm Status
     void fsmCtrl::queryStatus()
@@ -630,7 +643,7 @@ namespace MagAOX
       updateINDICurrentParams();
 
       queryDacs();
-      // queryAdcs();
+      queryAdcs();
       return 0;
     }
 
@@ -663,6 +676,10 @@ namespace MagAOX
       }
     }
 
+    /////////////////////////
+    // TELEMETER INTERFACE
+    /////////////////////////
+
     int fsmCtrl::checkRecordTimes()
     {
       return telemeterT::checkRecordTimes(telem_fsm());
@@ -686,6 +703,10 @@ namespace MagAOX
 
       return 0;
     }
+
+    /////////////////////////
+    // SHMIMMONITOR INTERFACE
+    /////////////////////////
 
     int fsmCtrl::allocate(const dev::shmimT &sp)
     {
@@ -802,33 +823,9 @@ namespace MagAOX
       return setDacs(dacs);
     }
 
-    void fsmCtrl::updateINDICurrentParams()
-    {
-      float val1, val2, val3;
-
-      if (m_inputType == DACS)
-      {
-        val1 = m_dac1;
-        val2 = m_dac2;
-        val3 = m_dac3;
-      }
-      else if (m_inputType == VOLTAGES)
-      {
-        val1 = get_v1(m_dac1, m_v);
-        val2 = get_v2(m_dac2, m_v);
-        val3 = get_v3(m_dac3, m_v);
-      }
-      else if (m_inputType == ANGLES)
-      {
-        val1 = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-        val2 = get_beta(m_dac2, m_dac3, m_b);
-        val3 = get_z(m_dac1, m_dac2, m_dac3);
-      }
-
-      updateIfChanged(m_indiP_val1, "current", val1);
-      updateIfChanged(m_indiP_val2, "current", val2);
-      updateIfChanged(m_indiP_val3, "current", val3);
-    }
+    ////////////////////
+    // INDI CALLBACKS
+    ////////////////////
 
     // callback from setting m_indiP_val1
     // only 'target' is editable ('current' should be updated by code)
@@ -1079,11 +1076,30 @@ namespace MagAOX
             // Update current values
             updateINDICurrentParams();
           }
+
+          std::ostringstream oss;
+          oss << "INDI input type callback: " << m_inputType;
+          log<text_log>(oss.str());
         }
 
-        std::ostringstream oss;
-        oss << "INDI input callback: " << m_inputType;
-        log<text_log>(oss.str());
+        if (ipRecv.find("toggle"))
+        {
+          std::string toggle = ipRecv["toggle"].get<std::string>();
+          if (toggle == SHMIM)
+          {
+            state(stateCodes::OPERATING);
+            updateIfChanged(m_input, "toggle", toggle);
+          }
+          if (toggle == INDI)
+          {
+            state(stateCodes::READY);
+            updateIfChanged(m_input, "toggle", toggle);
+          }
+
+          std::ostringstream oss;
+          oss << "INDI input toggle: " << m_inputToggle;
+          log<text_log>(oss.str());
+        }
       }
 
       log<text_log>("INDI callback.");
@@ -1175,6 +1191,38 @@ namespace MagAOX
 
       log<text_log>("INDI callback.");
       return 0;
+    }
+
+    /////////
+    // UTILS
+    /////////
+
+    void fsmCtrl::updateINDICurrentParams()
+    {
+      float val1, val2, val3;
+
+      if (m_inputType == DACS)
+      {
+        val1 = m_dac1;
+        val2 = m_dac2;
+        val3 = m_dac3;
+      }
+      else if (m_inputType == VOLTAGES)
+      {
+        val1 = get_v1(m_dac1, m_v);
+        val2 = get_v2(m_dac2, m_v);
+        val3 = get_v3(m_dac3, m_v);
+      }
+      else if (m_inputType == ANGLES)
+      {
+        val1 = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
+        val2 = get_beta(m_dac2, m_dac3, m_b);
+        val3 = get_z(m_dac1, m_dac2, m_dac3);
+      }
+
+      updateIfChanged(m_indiP_val1, "current", val1);
+      updateIfChanged(m_indiP_val2, "current", val2);
+      updateIfChanged(m_indiP_val3, "current", val3);
     }
 
   } // namespace app
