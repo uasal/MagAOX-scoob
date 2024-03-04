@@ -444,9 +444,9 @@ namespace MagAOX
       // input
       REG_INDI_NEWPROP(m_input, "input", pcf::IndiProperty::Text);
       m_input.add(pcf::IndiElement("toggle"));
-      m_input["toggle"] = m_inputType;
+      m_input["toggle"] = m_inputToggle;
       m_input.add(pcf::IndiElement("type"));
-      m_input["type"] = m_inputToggle;
+      m_input["type"] = m_inputType;
 
       return 0;
     }
