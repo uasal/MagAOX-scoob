@@ -97,6 +97,10 @@ namespace MagAOX
       double m_dac2{0};
       double m_dac3{0};
 
+      double m_adc1{0};
+      double m_adc2{0};
+      double m_adc3{0};
+
       const std::string DACS = "dacs";
       const std::string VOLTAGES = "voltages";
       const std::string ANGLES = "angles";
@@ -111,6 +115,9 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_dac1;
       pcf::IndiProperty m_indiP_dac2;
       pcf::IndiProperty m_indiP_dac3;
+      pcf::IndiProperty m_indiP_adc1;
+      pcf::IndiProperty m_indiP_adc2;
+      pcf::IndiProperty m_indiP_adc3;
       pcf::IndiProperty m_conversion_factors;
       pcf::IndiProperty m_input;
 
@@ -121,6 +128,9 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac1);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac2);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac3);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc1);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc2);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc3);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_conversion_factors);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_input);
 
@@ -363,7 +373,7 @@ namespace MagAOX
 
       m_inputType = DACS;
       _config(m_inputType, "input.type");
-      m_inputToggle = INDI;
+      m_inputToggle = SHMIM;
       _config(m_inputToggle, "input.toggle");
 
       shmimMonitor::loadConfig(_config);
@@ -398,7 +408,7 @@ namespace MagAOX
       }
 
       // set up the  INDI properties
-      // dacs
+      // dac boundaries
       REG_INDI_NEWPROP(m_indiP_dac1, "dac_1", pcf::IndiProperty::Number);
       m_indiP_dac1.add(pcf::IndiElement("min"));
       m_indiP_dac1.add(pcf::IndiElement("max"));
@@ -415,7 +425,7 @@ namespace MagAOX
       m_indiP_dac3["min"] = m_dac3_min;
       m_indiP_dac3["max"] = m_dac3_max;
 
-      // dacs
+      // vals
       REG_INDI_NEWPROP(m_indiP_val1, "val_1", pcf::IndiProperty::Number);
       m_indiP_val1.add(pcf::IndiElement("current"));
       m_indiP_val1.add(pcf::IndiElement("target"));
@@ -431,6 +441,17 @@ namespace MagAOX
       m_indiP_val3.add(pcf::IndiElement("target"));
       m_indiP_val3["current"] = -99999;
       m_indiP_val3["target"] = -99999;
+
+      // adcs
+      REG_INDI_NEWPROP(m_indiP_adc1, "adc_1", pcf::IndiProperty::Number);
+      m_indiP_adc1.add(pcf::IndiElement("current"));
+      m_indiP_adc1["current"] = -99999;
+      REG_INDI_NEWPROP(m_indiP_adc2, "adc_2", pcf::IndiProperty::Number);
+      m_indiP_adc2.add(pcf::IndiElement("current"));
+      m_indiP_adc2["current"] = -99999;
+      REG_INDI_NEWPROP(m_indiP_adc3, "adc_3", pcf::IndiProperty::Number);
+      m_indiP_adc3.add(pcf::IndiElement("current"));
+      m_indiP_adc3["current"] = -99999;
 
       // conversion_factors
       REG_INDI_NEWPROP(m_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
@@ -486,7 +507,8 @@ namespace MagAOX
 
       if (state() == stateCodes::CONNECTED)
       {
-        // queryAdcs();
+        // Get current adc values
+        queryAdcs();
 
         // Get current dac values
         queryDacs();
@@ -574,6 +596,16 @@ namespace MagAOX
       log<text_log>(adcsQuery->startLog);
       query(adcsQuery);
       log<text_log>(adcsQuery->endLog);
+
+      AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
+
+      m_adc1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
+      m_adc2 = static_cast<double>(castAdcsQuery->AdcVals[1].Samples);
+      m_adc3 = static_cast<double>(castAdcsQuery->AdcVals[2].Samples);
+
+      updateIfChanged(m_indiP_adc1, "current", m_adc1);
+      updateIfChanged(m_indiP_adc2, "current", m_adc2);
+      updateIfChanged(m_indiP_adc3, "current", m_adc3);
 
       adcsQuery->logReply();
     }
@@ -1189,6 +1221,30 @@ namespace MagAOX
         log<text_log>(oss.str());
       }
 
+      log<text_log>("INDI callback.");
+      return 0;
+    }
+
+    // callback from setting m_indiP_adc1 - not a settable param
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc1)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      log<text_log>("INDI callback.");
+      return 0;
+    }
+
+    // callback from setting m_indiP_adc2 - not a settable param
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc2)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      log<text_log>("INDI callback.");
+      return 0;
+    }
+
+    // callback from setting m_indiP_adc3 - not a settable param
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc3)
+    (const pcf::IndiProperty &ipRecv)
+    {
       log<text_log>("INDI callback.");
       return 0;
     }

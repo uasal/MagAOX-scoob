@@ -237,7 +237,6 @@ namespace MagAOX
 
             const AdcAccumulator *ParamsPtr = nullptr;
             AdcAccumulator AdcVals[3];
-            ;
 
             void processReply(char const *Params, const size_t ParamsLen) override
             {
