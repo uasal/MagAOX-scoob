@@ -120,6 +120,7 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_adc3;
       pcf::IndiProperty m_conversion_factors;
       pcf::IndiProperty m_input;
+      pcf::IndiProperty m_query;
 
     public:
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val1);
@@ -133,6 +134,7 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc3);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_conversion_factors);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_input);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_query);
 
     public:
       /// Default c'tor.
@@ -468,6 +470,11 @@ namespace MagAOX
       m_input["toggle"] = m_inputToggle;
       m_input.add(pcf::IndiElement("type"));
       m_input["type"] = m_inputType;
+
+      // type of query
+      REG_INDI_NEWPROP(m_query, "status", pcf::IndiProperty::Text);
+      m_query.add(pcf::IndiElement("query"));
+      m_query["query"] = "none";
 
       return 0;
     }
@@ -1245,6 +1252,39 @@ namespace MagAOX
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc3)
     (const pcf::IndiProperty &ipRecv)
     {
+      log<text_log>("INDI callback.");
+      return 0;
+    }
+
+    // callback from setting m_query - trigger adc or dac query
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_query)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      if (ipRecv.createUniqueKey() == m_query.createUniqueKey())
+      {
+        if (ipRecv.find("query"))
+        {
+          std::string query = ipRecv["query"].get<std::string>();
+          if (query == "adc")
+          {
+            log<text_log>("INDI query ADCs.");
+            queryAdcs();
+            updateIfChanged(m_query, "query", "adc");
+          }
+          else if (query == "dac")
+          {
+            log<text_log>("INDI query ADCs.");
+            queryDacs();
+            updateIfChanged(m_query, "query", "dac");
+          }
+          else
+          {
+            log<text_log>("INDI query of unknown.");
+            updateIfChanged(m_query, "query", "none");
+          }
+        }
+      }
+
       log<text_log>("INDI callback.");
       return 0;
     }
