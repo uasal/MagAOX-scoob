@@ -606,9 +606,17 @@ namespace MagAOX
 
       AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
 
-      m_adc1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
-      m_adc2 = static_cast<double>(castAdcsQuery->AdcVals[1].Samples);
-      m_adc3 = static_cast<double>(castAdcsQuery->AdcVals[2].Samples);
+      double samples1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
+      double samples2 = static_cast<double>(castAdcsQuery->AdcVals[1].Samples);
+      double samples3 = static_cast<double>(castAdcsQuery->AdcVals[2].Samples);
+
+      double numAccums1 = static_cast<double>(castAdcsQuery->AdcVals[0].NumAccums);
+      double numAccums2 = static_cast<double>(castAdcsQuery->AdcVals[1].NumAccums);
+      double numAccums3 = static_cast<double>(castAdcsQuery->AdcVals[2].NumAccums);
+
+      m_adc1 = (8.192 * ((samples1 - 0) / numAccums1)) / 16777216.0;
+      m_adc2 = (8.192 * ((samples2 - 0) / numAccums2)) / 16777216.0;
+      m_adc3 = (8.192 * ((samples3 - 0) / numAccums3)) / 16777216.0;
 
       updateIfChanged(m_indiP_adc1, "current", m_adc1);
       updateIfChanged(m_indiP_adc2, "current", m_adc2);
