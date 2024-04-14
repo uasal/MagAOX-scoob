@@ -118,9 +118,9 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_adc1;
       pcf::IndiProperty m_indiP_adc2;
       pcf::IndiProperty m_indiP_adc3;
-      pcf::IndiProperty m_conversion_factors;
-      pcf::IndiProperty m_input;
-      pcf::IndiProperty m_query;
+      pcf::IndiProperty m_indiP_conversion_factors;
+      pcf::IndiProperty m_indiP_input;
+      pcf::IndiProperty m_indiP_query;
 
     public:
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val1);
@@ -129,12 +129,12 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac1);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac2);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac3);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc1);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc2);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc3);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_conversion_factors);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_input);
-      INDI_NEWCALLBACK_DECL(fsmCtrl, m_query);
+      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc1);
+      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc2);
+      // INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adc3);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_conversion_factors);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_input);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_query);
 
     public:
       /// Default c'tor.
@@ -445,36 +445,36 @@ namespace MagAOX
       m_indiP_val3["target"] = -99999;
 
       // adcs
-      REG_INDI_NEWPROP(m_indiP_adc1, "adc_1", pcf::IndiProperty::Number);
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc1, "adc_1", pcf::IndiProperty::Number);
       m_indiP_adc1.add(pcf::IndiElement("current"));
       m_indiP_adc1["current"] = -99999;
-      REG_INDI_NEWPROP(m_indiP_adc2, "adc_2", pcf::IndiProperty::Number);
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc2, "adc_2", pcf::IndiProperty::Number);
       m_indiP_adc2.add(pcf::IndiElement("current"));
       m_indiP_adc2["current"] = -99999;
-      REG_INDI_NEWPROP(m_indiP_adc3, "adc_3", pcf::IndiProperty::Number);
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc3, "adc_3", pcf::IndiProperty::Number);
       m_indiP_adc3.add(pcf::IndiElement("current"));
       m_indiP_adc3["current"] = -99999;
 
       // conversion_factors
-      REG_INDI_NEWPROP(m_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
-      m_conversion_factors.add(pcf::IndiElement("a"));
-      m_conversion_factors["a"] = m_a;
-      m_conversion_factors.add(pcf::IndiElement("b"));
-      m_conversion_factors["b"] = m_b;
-      m_conversion_factors.add(pcf::IndiElement("v"));
-      m_conversion_factors["v"] = m_v;
+      REG_INDI_NEWPROP(m_indiP_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
+      m_indiP_conversion_factors.add(pcf::IndiElement("a"));
+      m_indiP_conversion_factors["a"] = m_a;
+      m_indiP_conversion_factors.add(pcf::IndiElement("b"));
+      m_indiP_conversion_factors["b"] = m_b;
+      m_indiP_conversion_factors.add(pcf::IndiElement("v"));
+      m_indiP_conversion_factors["v"] = m_v;
 
       // input
-      REG_INDI_NEWPROP(m_input, "input", pcf::IndiProperty::Text);
-      m_input.add(pcf::IndiElement("toggle"));
-      m_input["toggle"] = m_inputToggle;
-      m_input.add(pcf::IndiElement("type"));
-      m_input["type"] = m_inputType;
+      REG_INDI_NEWPROP(m_indiP_input, "input", pcf::IndiProperty::Text);
+      m_indiP_input.add(pcf::IndiElement("toggle"));
+      m_indiP_input["toggle"] = m_inputToggle;
+      m_indiP_input.add(pcf::IndiElement("type"));
+      m_indiP_input["type"] = m_inputType;
 
       // type of query
-      REG_INDI_NEWPROP(m_query, "status", pcf::IndiProperty::Text);
-      m_query.add(pcf::IndiElement("query"));
-      m_query["query"] = "none";
+      REG_INDI_NEWPROP(m_indiP_query, "status", pcf::IndiProperty::Text);
+      m_indiP_query.add(pcf::IndiElement("query"));
+      m_indiP_query["query"] = "none";
 
       return 0;
     }
@@ -816,7 +816,7 @@ namespace MagAOX
           }
 
           m_inputType = inputType;
-          updateIfChanged(m_input, "type", m_inputType);
+          updateIfChanged(m_indiP_input, "type", m_inputType);
         }
         kwn++;
       }
@@ -879,61 +879,60 @@ namespace MagAOX
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val1)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_val1.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val1, ipRecv);
+
+      float current = -999999, target = -999999;
+
+      if (ipRecv.find("current"))
       {
-        float current = -999999, target = -999999;
-
-        if (ipRecv.find("current"))
-        {
-          current = ipRecv["current"].get<float>();
-        }
-
-        if (ipRecv.find("target"))
-        {
-          target = ipRecv["target"].get<float>();
-        }
-
-        if (target == -999999)
-          target = current;
-
-        if (target == -999999)
-          return 0;
-
-        if (state() == stateCodes::READY)
-        {
-          // Lock the mutex, waiting if necessary
-          std::unique_lock<std::mutex> lock(m_indiMutex);
-
-          updateIfChanged(m_indiP_val1, "target", target);
-
-          uint32_t dacs[3] = {0, 0, 0};
-
-          if (m_inputType == DACS)
-          {
-            dacs[0] = target;
-          }
-          else if (m_inputType == VOLTAGES)
-          {
-            dacs[0] = v1_to_dac1(target, m_v);
-          }
-          else if (m_inputType == ANGLES)
-          {
-            // Get current z to calculate dac1 from the target
-            double z = get_z(m_dac1, m_dac2, m_dac3);
-            dacs[0] = angles_to_dac1(target, z, m_a);
-          }
-
-          dacs[1] = m_dac2;
-          dacs[2] = m_dac3;
-
-          std::ostringstream oss;
-          oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-          log<text_log>(oss.str());
-
-          return setDacs(dacs);
-        }
+        current = ipRecv["current"].get<float>();
       }
-      return -1;
+
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<float>();
+      }
+
+      if (target == -999999)
+        target = current;
+
+      if (target == -999999)
+        return 0;
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val1, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+
+        if (m_inputType == DACS)
+        {
+          dacs[0] = target;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[0] = v1_to_dac1(target, m_v);
+        }
+        else if (m_inputType == ANGLES)
+        {
+          // Get current z to calculate dac1 from the target
+          double z = get_z(m_dac1, m_dac2, m_dac3);
+          dacs[0] = angles_to_dac1(target, z, m_a);
+        }
+
+        dacs[1] = m_dac2;
+        dacs[2] = m_dac3;
+
+        std::ostringstream oss;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
     }
 
     // callback from setting m_indiP_val2
@@ -941,62 +940,60 @@ namespace MagAOX
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val2)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_val2.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val2, ipRecv);
+      float current = -999999, target = -999999;
+
+      if (ipRecv.find("current"))
       {
-        float current = -999999, target = -999999;
-
-        if (ipRecv.find("current"))
-        {
-          current = ipRecv["current"].get<float>();
-        }
-
-        if (ipRecv.find("target"))
-        {
-          target = ipRecv["target"].get<float>();
-        }
-
-        if (target == -999999)
-          target = current;
-
-        if (target == -999999)
-          return 0;
-
-        if (state() == stateCodes::READY)
-        {
-          // Lock the mutex, waiting if necessary
-          std::unique_lock<std::mutex> lock(m_indiMutex);
-
-          updateIfChanged(m_indiP_val2, "target", target);
-
-          uint32_t dacs[3] = {0, 0, 0};
-          dacs[0] = m_dac1;
-
-          if (m_inputType == DACS)
-          {
-            dacs[1] = target;
-          }
-          else if (m_inputType == VOLTAGES)
-          {
-            dacs[1] = v2_to_dac2(target, m_v);
-          }
-          else if (m_inputType == ANGLES)
-          {
-            // Get current alpha and z to calculate dac2 from the target
-            double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-            double z = get_z(m_dac1, m_dac2, m_dac3);
-            dacs[1] = angles_to_dac2(alpha, target, z, m_a, m_b);
-          }
-
-          dacs[2] = m_dac3;
-
-          std::ostringstream oss;
-          oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-          log<text_log>(oss.str());
-
-          return setDacs(dacs);
-        }
+        current = ipRecv["current"].get<float>();
       }
-      return -1;
+
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<float>();
+      }
+
+      if (target == -999999)
+        target = current;
+
+      if (target == -999999)
+        return 0;
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val2, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+        dacs[0] = m_dac1;
+
+        if (m_inputType == DACS)
+        {
+          dacs[1] = target;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[1] = v2_to_dac2(target, m_v);
+        }
+        else if (m_inputType == ANGLES)
+        {
+          // Get current alpha and z to calculate dac2 from the target
+          double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
+          double z = get_z(m_dac1, m_dac2, m_dac3);
+          dacs[1] = angles_to_dac2(alpha, target, z, m_a, m_b);
+        }
+
+        dacs[2] = m_dac3;
+
+        std::ostringstream oss;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
     }
 
     // callback from setting m_indiP_val3
@@ -1004,297 +1001,270 @@ namespace MagAOX
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val3)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_val3.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val3, ipRecv);
+      float current = -999999, target = -999999;
+
+      if (ipRecv.find("current"))
       {
-        float current = -999999, target = -999999;
-
-        if (ipRecv.find("current"))
-        {
-          current = ipRecv["current"].get<float>();
-        }
-
-        if (ipRecv.find("target"))
-        {
-          target = ipRecv["target"].get<float>();
-        }
-
-        if (target == -999999)
-          target = current;
-
-        if (target == -999999)
-          return 0;
-
-        if (state() == stateCodes::READY)
-        {
-          // Lock the mutex, waiting if necessary
-          std::unique_lock<std::mutex> lock(m_indiMutex);
-
-          updateIfChanged(m_indiP_val3, "target", target);
-
-          uint32_t dacs[3] = {0, 0, 0};
-          dacs[0] = m_dac1;
-          dacs[1] = m_dac2;
-
-          if (m_inputType == DACS)
-          {
-            dacs[2] = target;
-          }
-          else if (m_inputType == VOLTAGES)
-          {
-            dacs[2] = v3_to_dac3(target, m_v);
-          }
-          else if (m_inputType == ANGLES)
-          {
-            // Get current alpha and beta to calculate dac3 from the target
-            double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-            double beta = get_beta(m_dac2, m_dac3, m_b);
-            dacs[2] = angles_to_dac3(alpha, beta, target, m_a, m_b);
-          }
-
-          std::ostringstream oss;
-          oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-          log<text_log>(oss.str());
-
-          return setDacs(dacs);
-        }
+        current = ipRecv["current"].get<float>();
       }
-      return -1;
-    }
 
-    // callback from setting conversion_factors
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_conversion_factors)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      if (ipRecv.createUniqueKey() == m_conversion_factors.createUniqueKey())
+      if (ipRecv.find("target"))
       {
-        if (ipRecv.find("a"))
-        {
-          m_a = ipRecv["a"].get<float>();
-          updateIfChanged(m_conversion_factors, "a", m_a);
-        }
+        target = ipRecv["target"].get<float>();
+      }
 
-        if (ipRecv.find("b"))
-        {
-          m_b = ipRecv["b"].get<float>();
-          updateIfChanged(m_conversion_factors, "b", m_b);
-        }
+      if (target == -999999)
+        target = current;
 
-        if (ipRecv.find("v"))
+      if (target == -999999)
+        return 0;
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val3, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+        dacs[0] = m_dac1;
+        dacs[1] = m_dac2;
+
+        if (m_inputType == DACS)
         {
-          m_v = ipRecv["v"].get<float>();
-          updateIfChanged(m_conversion_factors, "v", m_v);
+          dacs[2] = target;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[2] = v3_to_dac3(target, m_v);
+        }
+        else if (m_inputType == ANGLES)
+        {
+          // Get current alpha and beta to calculate dac3 from the target
+          double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
+          double beta = get_beta(m_dac2, m_dac3, m_b);
+          dacs[2] = angles_to_dac3(alpha, beta, target, m_a, m_b);
         }
 
         std::ostringstream oss;
-        oss << "INDI conversion_factors callback: " << m_a << " | " << m_b << " | " << m_v;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
+    }
+
+    // callback from setting conversion_factors
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_conversion_factors)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_conversion_factors, ipRecv);
+      if (ipRecv.find("a"))
+      {
+        m_a = ipRecv["a"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "a", m_a);
+      }
+
+      if (ipRecv.find("b"))
+      {
+        m_b = ipRecv["b"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "b", m_b);
+      }
+
+      if (ipRecv.find("v"))
+      {
+        m_v = ipRecv["v"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "v", m_v);
+      }
+
+      std::ostringstream oss;
+      oss << "INDI conversion_factors callback: " << m_a << " | " << m_b << " | " << m_v;
+      log<text_log>(oss.str());
+    }
+
+    // callback from setting m_indiP_input (dacs, voltages, angles)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_input)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_input, ipRecv);
+      if (ipRecv.find("type"))
+      {
+        std::string type = ipRecv["type"].get<std::string>();
+        if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == ANGLES))
+        {
+          std::ostringstream oss;
+          oss << "input.type '" << m_inputType << "' not dacs, voltages or angles";
+          log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+          return -1;
+        }
+
+        if (state() == stateCodes::READY)
+        {
+          m_inputType = type;
+          updateIfChanged(m_indiP_input, "type", m_inputType);
+
+          // Reset target values
+          updateIfChanged(m_indiP_val1, "target", -99999);
+          updateIfChanged(m_indiP_val2, "target", -99999);
+          updateIfChanged(m_indiP_val3, "target", -99999);
+          // Update current values
+          updateINDICurrentParams();
+        }
+
+        std::ostringstream oss;
+        oss << "INDI input type callback: " << m_inputType;
         log<text_log>(oss.str());
       }
 
-      log<text_log>("INDI callback.");
-      return 0;
-    }
-
-    // callback from setting m_input (dacs, voltages, angles)
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_input)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      if (ipRecv.createUniqueKey() == m_input.createUniqueKey())
+      if (ipRecv.find("toggle"))
       {
-        if (ipRecv.find("type"))
+        std::string toggle = ipRecv["toggle"].get<std::string>();
+        if (toggle == SHMIM)
         {
-          std::string type = ipRecv["type"].get<std::string>();
-          if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == ANGLES))
-          {
-            std::ostringstream oss;
-            oss << "input.type '" << m_inputType << "' not dacs, voltages or angles";
-            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-            return -1;
-          }
-
-          if (state() == stateCodes::READY)
-          {
-            m_inputType = type;
-            updateIfChanged(m_input, "type", m_inputType);
-
-            // Reset target values
-            updateIfChanged(m_indiP_val1, "target", -99999);
-            updateIfChanged(m_indiP_val2, "target", -99999);
-            updateIfChanged(m_indiP_val3, "target", -99999);
-            // Update current values
-            updateINDICurrentParams();
-          }
-
-          std::ostringstream oss;
-          oss << "INDI input type callback: " << m_inputType;
-          log<text_log>(oss.str());
+          state(stateCodes::OPERATING);
+          updateIfChanged(m_indiP_input, "toggle", toggle);
+        }
+        if (toggle == INDI)
+        {
+          state(stateCodes::READY);
+          updateIfChanged(m_indiP_input, "toggle", toggle);
         }
 
-        if (ipRecv.find("toggle"))
-        {
-          std::string toggle = ipRecv["toggle"].get<std::string>();
-          if (toggle == SHMIM)
-          {
-            state(stateCodes::OPERATING);
-            updateIfChanged(m_input, "toggle", toggle);
-          }
-          if (toggle == INDI)
-          {
-            state(stateCodes::READY);
-            updateIfChanged(m_input, "toggle", toggle);
-          }
-
-          std::ostringstream oss;
-          oss << "INDI input toggle: " << m_inputToggle;
-          log<text_log>(oss.str());
-        }
+        std::ostringstream oss;
+        oss << "INDI input toggle: " << m_inputToggle;
+        log<text_log>(oss.str());
       }
-
-      log<text_log>("INDI callback.");
-      return 0;
     }
 
     // callback from setting m_indiP_dac1 (min, max)
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac1)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_dac1.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac1, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
       {
-        std::ostringstream oss;
-
-        if (ipRecv.find("min"))
-        {
-          m_dac1_min = ipRecv["min"].get<uint32_t>();
-          oss << "INDI dac1 min callback: " << m_dac1_min;
-          updateIfChanged(m_indiP_dac1, "min", m_dac1_min);
-        }
-
-        if (ipRecv.find("max"))
-        {
-          m_dac1_max = ipRecv["max"].get<uint32_t>();
-          oss << "INDI dac1 max callback: " << m_dac1_max;
-          updateIfChanged(m_indiP_dac1, "max", m_dac1_max);
-        }
-
-        log<text_log>(oss.str());
+        m_dac1_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac1 min callback: " << m_dac1_min;
+        updateIfChanged(m_indiP_dac1, "min", m_dac1_min);
       }
 
-      log<text_log>("INDI callback.");
-      return 0;
+      if (ipRecv.find("max"))
+      {
+        m_dac1_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac1 max callback: " << m_dac1_max;
+        updateIfChanged(m_indiP_dac1, "max", m_dac1_max);
+      }
+
+      log<text_log>(oss.str());
+
     }
 
     // callback from setting m_indiP_dac2 (min, max)
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac2)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_dac2.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac2, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
       {
-        std::ostringstream oss;
-
-        if (ipRecv.find("min"))
-        {
-          m_dac2_min = ipRecv["min"].get<uint32_t>();
-          oss << "INDI dac2 min callback: " << m_dac2_min;
-          updateIfChanged(m_indiP_dac2, "min", m_dac2_min);
-        }
-
-        if (ipRecv.find("max"))
-        {
-          m_dac2_max = ipRecv["max"].get<uint32_t>();
-          oss << "INDI dac2 max callback: " << m_dac2_max;
-          updateIfChanged(m_indiP_dac2, "max", m_dac2_max);
-        }
-
-        log<text_log>(oss.str());
+        m_dac2_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac2 min callback: " << m_dac2_min;
+        updateIfChanged(m_indiP_dac2, "min", m_dac2_min);
       }
 
-      log<text_log>("INDI callback.");
-      return 0;
+      if (ipRecv.find("max"))
+      {
+        m_dac2_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac2 max callback: " << m_dac2_max;
+        updateIfChanged(m_indiP_dac2, "max", m_dac2_max);
+      }
+
+      log<text_log>(oss.str());
     }
 
     // callback from setting m_indiP_dac3 (min, max)
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac3)
     (const pcf::IndiProperty &ipRecv)
     {
-      if (ipRecv.createUniqueKey() == m_indiP_dac3.createUniqueKey())
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac3, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
       {
-        std::ostringstream oss;
-
-        if (ipRecv.find("min"))
-        {
-          m_dac3_min = ipRecv["min"].get<uint32_t>();
-          oss << "INDI dac3 min callback: " << m_dac3_min;
-          updateIfChanged(m_indiP_dac3, "min", m_dac3_min);
-        }
-
-        if (ipRecv.find("max"))
-        {
-          m_dac3_max = ipRecv["max"].get<uint32_t>();
-          oss << "INDI dac3 max callback: " << m_dac3_max;
-          updateIfChanged(m_indiP_dac3, "max", m_dac3_max);
-        }
-
-        log<text_log>(oss.str());
+        m_dac3_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac3 min callback: " << m_dac3_min;
+        updateIfChanged(m_indiP_dac3, "min", m_dac3_min);
       }
 
-      log<text_log>("INDI callback.");
-      return 0;
-    }
-
-    // callback from setting m_indiP_adc1 - not a settable param
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc1)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      log<text_log>("INDI callback.");
-      return 0;
-    }
-
-    // callback from setting m_indiP_adc2 - not a settable param
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc2)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      log<text_log>("INDI callback.");
-      return 0;
-    }
-
-    // callback from setting m_indiP_adc3 - not a settable param
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc3)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      log<text_log>("INDI callback.");
-      return 0;
-    }
-
-    // callback from setting m_query - trigger adc or dac query
-    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_query)
-    (const pcf::IndiProperty &ipRecv)
-    {
-      if (ipRecv.createUniqueKey() == m_query.createUniqueKey())
+      if (ipRecv.find("max"))
       {
-        if (ipRecv.find("query"))
-        {
-          std::string query = ipRecv["query"].get<std::string>();
-          if (query == "adc")
-          {
-            log<text_log>("INDI query ADCs.");
-            queryAdcs();
-            updateIfChanged(m_query, "query", "adc");
-          }
-          else if (query == "dac")
-          {
-            log<text_log>("INDI query ADCs.");
-            queryDacs();
-            updateIfChanged(m_query, "query", "dac");
-          }
-          else
-          {
-            log<text_log>("INDI query of unknown.");
-            updateIfChanged(m_query, "query", "none");
-          }
-        }
+        m_dac3_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac3 max callback: " << m_dac3_max;
+        updateIfChanged(m_indiP_dac3, "max", m_dac3_max);
       }
 
-      log<text_log>("INDI callback.");
-      return 0;
+      log<text_log>(oss.str());
+    }
+
+    // // callback from setting m_indiP_adc1 - not a settable param
+    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc1)
+    // (const pcf::IndiProperty &ipRecv)
+    // {
+    //   log<text_log>("INDI callback.");
+    //   return 0;
+    // }
+
+    // // callback from setting m_indiP_adc2 - not a settable param
+    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc2)
+    // (const pcf::IndiProperty &ipRecv)
+    // {
+    //   log<text_log>("INDI callback.");
+    //   return 0;
+    // }
+
+    // // callback from setting m_indiP_adc3 - not a settable param
+    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc3)
+    // (const pcf::IndiProperty &ipRecv)
+    // {
+    //   log<text_log>("INDI callback.");
+    //   return 0;
+    // }
+
+    // callback from setting m_indiP_query - trigger adc or dac query
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_query)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_query, ipRecv);
+
+      if (ipRecv.find("query"))
+      {
+        std::string query = ipRecv["query"].get<std::string>();
+        if (query == "adc")
+        {
+          log<text_log>("INDI query ADCs.");
+          queryAdcs();
+          updateIfChanged(m_indiP_query, "query", "adc");
+        }
+        else if (query == "dac")
+        {
+          log<text_log>("INDI query ADCs.");
+          queryDacs();
+          updateIfChanged(m_indiP_query, "query", "dac");
+        }
+        else
+        {
+          log<text_log>("INDI query of unknown.");
+          updateIfChanged(m_indiP_query, "query", "none");
+        }
+      }
     }
 
     /////////
