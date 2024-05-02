@@ -699,9 +699,6 @@ namespace MagAOX
       // Send command packet
       (&UartParser)->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
 
-      // Allow time for fsm to respond, it's not instantaneous
-      sleep(3);
-
       // The packet is read byte by byte, so keep going while there are bytes left
       bool Bored = false;
       while (!Bored)
