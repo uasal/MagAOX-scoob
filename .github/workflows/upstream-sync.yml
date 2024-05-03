@@ -1,0 +1,74 @@
+name: Sync three branches with MagAOX upstream dev branch
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron:  '0 23 * * Sun'
+  workflow_dispatch:
+
+jobs:
+  sync_dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev_upstream_sync            
+          fetch-depth: 0
+      - name: Get current branch
+        id: check_step
+        run: |
+            branch=$(git rev-parse --abbrev-ref HEAD)
+            echo "{name}=branch" >> $GITHUB_OUTPUT
+            echo "Branch is $branch." 
+      - name: Sync dev_upstream_sync with MagAOX dev branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"        
+          git remote add upstream https://github.com/magao-x/MagAOX.git
+          git fetch upstream
+          git rebase upstream/dev && (echo "Success" && git push --force-with-lease origin $branch) || (echo "Fail" && git rebase --abort)          
+
+  sync_dev_dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev_dev_upstream_sync
+          fetch-depth: 0
+      - name: Get current branch
+        id: check_step
+        run: |
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          echo "{name}=branch" >> $GITHUB_OUTPUT
+          echo "Branch is $branch."                
+      - name: Sync dev_dev_upstream_sync with MagAOX dev branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"        
+          git remote add upstream https://github.com/magao-x/MagAOX.git
+          git fetch upstream
+          git rebase upstream/dev && (echo "Success" && git push --force-with-lease origin $branch) || (echo "Fail" && git rebase --abort)                    
+
+
+  sync_dev_dev_fsm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev_dev_fsm
+          fetch-depth: 0
+      - name: Get current branch
+        id: check_step
+        run: |
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          echo "{name}=branch" >> $GITHUB_OUTPUT
+          echo "Branch is $branch."                
+      - name: Sync dev_dev_fsm with MagAOX dev branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"        
+          git remote add upstream https://github.com/magao-x/MagAOX.git
+          git fetch upstream
+          git rebase upstream/dev && (echo "Success" && git push --force-with-lease origin $branch) || (echo "Fail" && git rebase --abort)                    
