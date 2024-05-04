@@ -53,18 +53,18 @@ SCENARIO( "INDI Callbacks", "[fsmCtrl]" )
 
 
 
-SCENARIO("")
-{
-   GIVEN("")
-   {
-      WHEN("")
-      {
-        REQUIRE();
-        REQUIRE();
-        REQUIRE();
-     }   
-   }
-}
+// SCENARIO("")
+// {
+//    GIVEN("")
+//    {
+//       WHEN("")
+//       {
+//         REQUIRE();
+//         REQUIRE();
+//         REQUIRE();
+//      }   
+//    }
+// }
 
 
 } //namespace FSMTEST 

@@ -26,13 +26,14 @@ public:
     bool dataready() const override { return false; }
     char getcqq() override { return '\0'; }
     char putcqq(char c) override { 
-        // Convert the byte to its hexadecimal representation
-        std::stringstream ss;
-        ss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(c);
-        std::string hexByte = ss.str();
+        // // Convert the byte to its hexadecimal representation
+        // std::stringstream ss;
+        // ss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(c);
+        // std::string hexByte = ss.str();
 
-        // Append the hexadecimal representation to sentData
-        sentData += hexByte;
+        // // Append the hexadecimal representation to sentData
+        // sentData += hexByte;
+        sentData += c;
         return c;
     }
     void flushoutput() override { }
@@ -649,88 +650,25 @@ SCENARIO("Testing TxBinaryPacket", "[BinaryUart]")
         WHEN("Called with given PayloadType, pointer to start of PayloadData and PayloadLen")
         {
             const uint16_t payloadType = 0x00000;
-            const uint64_t payloadData = 12345;
-            size_t payloadLen = sizeof(payloadData);
+            const char testChar = 'a';
+            uint8_t payloadData[3] = {static_cast<uint8_t>(testChar), static_cast<uint8_t>(testChar), static_cast<uint8_t>(testChar)};
+            size_t payloadLen = 3 * sizeof(uint8_t);
 
-            CAPTURE(pinout->sentData);
-            CAPTURE(payloadData);
-            CAPTURE(uart.TxBuffer[0]);
-            CAPTURE(uart.TxBuffer[1]);
-            CAPTURE(uart.TxBuffer[2]);
-            CAPTURE(uart.TxBuffer[3]);
-            CAPTURE(uart.TxBuffer[4]);
-            CAPTURE(uart.TxBuffer[5]);
-            CAPTURE(uart.TxBuffer[6]);
-            CAPTURE(uart.TxBuffer[7]);
-            CAPTURE(uart.TxBuffer[8]);
-            CAPTURE(uart.TxBuffer[9]);
-
-            uart.TxBinaryPacket(payloadType, &payloadData, payloadLen);
-
-            CAPTURE(pinout->sentData);
-            CAPTURE(payloadData);
-            CAPTURE(uart.TxBuffer[0]);
-            CAPTURE(uart.TxBuffer[1]);
-            CAPTURE(uart.TxBuffer[2]);
-            CAPTURE(uart.TxBuffer[3]);
-            CAPTURE(uart.TxBuffer[4]);
-            CAPTURE(uart.TxBuffer[5]);
-            CAPTURE(uart.TxBuffer[6]);
-            CAPTURE(uart.TxBuffer[7]);
-            CAPTURE(uart.TxBuffer[8]);
-            CAPTURE(uart.TxBuffer[9]);
+            uart.TxBinaryPacket(payloadType, reinterpret_cast<void *>(payloadData), payloadLen);
 
             THEN("Builds and sends non-empty packet")            
             {
                 // Convert payloadData to a string representation for comparison
-                std::ostringstream oss;
-                oss << std::hex << std::setw(2) << std::setfill('0') << payloadData;
+                ostringstream oss("");
+                for (int temp = 0; temp < 3; temp++)
+                    oss << static_cast<char>(payloadData[temp]);
                 std::string expectedData = oss.str();
 
-                // Convert sentData to a string representation in hexadecimal
-                std::ostringstream ossSent;
-                for (char c : pinout->sentData) {
-                    ossSent << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
-                }
-                std::string actualData = ossSent.str();
-
-                REQUIRE(actualData == expectedData);
+                REQUIRE(expectedData == pinout->sentData);
 
             }
         }
     }
 }
-
-
-// SCENARIO("BinaryUart tests", "[BinaryUart]") {
-//     GIVEN("A BinaryUart instance") {
-//         MockIUart uart;
-//         MockIPacket packet;
-//         MockBinaryUartCallbacks callbacks;
-//         MagAOX::app::BinaryUart binaryUart(uart, packet, callbacks);
-
-//         WHEN("Initializing BinaryUart") {
-//             int rv = binaryUart.Init(123);
-//             THEN("Initialization should succeed") {
-//                 REQUIRE(rv == 0);
-//                 // ...
-//             }
-//         }
-
-//         WHEN("Processing data") {
-//             // Setup input data
-//             uint32_t serialNum = 123;
-//             binaryUart.Init(serialNum);
-//             uart.setDataReady(true);  // Simulate data available on the UART
-//             bool processed = binaryUart.Process(nullptr);
-//             THEN("Processing should succeed") {
-//                 REQUIRE(processed == true);
-//                 // ...
-//             }
-//         }
-
-//         // ...
-//     }
-// }
 
 } //namespace binaryUart_test 

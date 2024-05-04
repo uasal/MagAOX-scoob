@@ -25,3 +25,4 @@
 ../apps/zaberCtrl/tests/zaberCtrl_test
 
 ../apps/fsmCtrl/tests/fsmCtrl_test
+../apps/fsmCtrl/tests/binaryUart_test
