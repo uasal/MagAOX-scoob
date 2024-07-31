@@ -115,7 +115,7 @@ class aguc8Ctrl : public MagAOXApp<>, public tty::usbDevice, public dev::ioDevic
    //std::string m_idProduct;
    //std::string m_serial;
    
-   int m_nChannels {4}; ///< The number of motor channels total on the hardware.  Number of attached motors inferred from config.
+   int m_nChannels {8}; ///< The number of motor channels total on the hardware.  Number of attached motors inferred from config.
    int m_nAxes {2}; ///< The number of axes (per channel) on the hardware
 
    int m_writeTimeout {1000}; // time out
