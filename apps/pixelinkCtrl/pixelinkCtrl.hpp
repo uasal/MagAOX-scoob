@@ -85,9 +85,9 @@ public:
 
    static constexpr bool c_stdCamera_exptimeCtrl = true; ///< app::dev config to tell stdCamera to expose exposure time controls
    
-   static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera not to expose FPS controls
+   static constexpr bool c_stdCamera_fpsCtrl = true; ///< app::dev config to tell stdCamera not to expose FPS controls
 
-   static constexpr bool c_stdCamera_fps = false; ///< app::dev config to tell stdCamera not to expose FPS status
+   static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
    
    static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
    
@@ -119,6 +119,7 @@ protected:
    
    HANDLE m_cameraHandle {0};
    bool m_running;
+   bool m_streaming {true};
    float m_bodyTemp;
    float m_sensorTemp;
 
@@ -170,6 +171,8 @@ protected:
 
    int getTemps();
 
+   int toggleStreaming();
+
    // stdCamera interface:
    
    //This must set the power-on default values of
@@ -210,9 +213,13 @@ protected:
 protected:
 
    pcf::IndiProperty m_indiP_readouttime;
+   pcf::IndiProperty m_indiP_bodyTemp;
+   pcf::IndiProperty m_indiP_sensorTemp;
+   pcf::IndiProperty m_indiP_streamSwitch;
 
 public:
    INDI_NEWCALLBACK_DECL(pixelinkCtrl, m_indiP_adcquality);
+   INDI_NEWCALLBACK_DECL(pixelinkCtrl, m_indiP_streamSwitch);
 
    /** \name Telemeter Interface
      * 
@@ -301,6 +308,25 @@ int pixelinkCtrl::appStartup()
    //createROIndiNumber( m_indiP_readouttime, "readout_time", "Readout Time (s)");
    //indi::addNumberElement<float>( m_indiP_readouttime, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%0.1f", "readout time");
    //registerIndiPropertyReadOnly( m_indiP_readouttime );
+
+   createROIndiNumber( m_indiP_sensorTemp, "temp_sensor", "sensor temperature (C)");
+   indi::addNumberElement<float>( m_indiP_sensorTemp, "current", 0.0, std::numeric_limits<float>::max(), 0.0,  "%0.1f", "sensor temperature (C)");
+   registerIndiPropertyReadOnly( m_indiP_sensorTemp );
+
+   createROIndiNumber( m_indiP_bodyTemp, "temp_body", "body temperature (C)");
+   indi::addNumberElement<float>( m_indiP_bodyTemp, "current", 0.0, std::numeric_limits<float>::max(), 0.0,  "%0.1f", "body temperature (C)");
+   registerIndiPropertyReadOnly( m_indiP_bodyTemp );
+
+   // streaming switch
+   createStandardIndiToggleSw( m_indiP_streamSwitch, "streaming", "streaming switch");
+   //indi::addSwitchElement<bool>()
+   //registerIndiPropertyNew( m_indiP_streamSwitch) ;
+   if( registerIndiPropertyNew( m_indiP_streamSwitch, INDI_NEWCALLBACK(m_indiP_streamSwitch)) < 0)
+   {
+      log<software_error>({__FILE__,__LINE__});
+      return -1;
+   }
+
 
    m_minROIx = 0;
    m_maxROIx = 1023;
@@ -455,12 +481,17 @@ int pixelinkCtrl::onPowerOff()
 {
    std::lock_guard<std::mutex> lock(m_indiMutex);
 
+   log<software_error>({__FILE__, __LINE__, "hello?"});
+
+
    if(m_cameraHandle)
    {
+      log<software_error>({__FILE__, __LINE__, "HEY I AM STOPPING THIS RIGHT NOW"});
       PxLSetStreamState(m_cameraHandle, STOP_STREAM);
 	   //ASSERT(API_SUCCESS(rc));
 	   PxLUninitialize(m_cameraHandle);
-	  // ASSERT(API_SUCCESS(rc));
+	   //ASSERT(API_SUCCESS(rc));
+      m_cameraHandle = 0;
    }
 
    if(stdCamera<pixelinkCtrl>::onPowerOff() < 0)
@@ -490,7 +521,6 @@ int pixelinkCtrl::whilePowerOff()
 inline
 int pixelinkCtrl::appShutdown()
 {
-   dev::frameGrabber<pixelinkCtrl>::appShutdown();
 
    log<software_error>({__FILE__, __LINE__, "beepboop"});
 
@@ -500,7 +530,8 @@ int pixelinkCtrl::appShutdown()
       PxLSetStreamState(m_cameraHandle, STOP_STREAM);
 	   //ASSERT(API_SUCCESS(rc));
 	   PxLUninitialize(m_cameraHandle);
-	  // ASSERT(API_SUCCESS(rc));
+	   //ASSERT(API_SUCCESS(rc));
+      m_cameraHandle = 0;
    }
 
    ///\todo error check these base class fxns.
@@ -533,7 +564,7 @@ int pixelinkCtrl::connect()
    // for now, just connect to first camera found
    rc = PxLInitializeEx(0, &m_cameraHandle, 0);
    if (!API_SUCCESS(rc)) {
-		log<software_error>({__FILE__,__LINE__, "Error connecting to camera or no camera found."});
+		log<software_error>({__FILE__,__LINE__, rc, "Error connecting to camera or no camera found."});
       state(stateCodes::NODEVICE);
 		return 0;
 	}
@@ -551,6 +582,8 @@ int pixelinkCtrl::getAcquisitionState()
 
 
    if(MagAOXAppT::m_powerState == 0) return 0;
+
+   if(!m_streaming) return 0;
 
    if(m_running) state(stateCodes::OPERATING);
    else state(stateCodes::READY);
@@ -585,6 +618,40 @@ int pixelinkCtrl::getTemps()
    m_bodyTemp = bodyTemperature;
 
    recordCamera();
+
+   // update indi properties
+   updateIfChanged( m_indiP_sensorTemp, "current", m_sensorTemp, INDI_IDLE);
+   updateIfChanged( m_indiP_bodyTemp, "current", m_bodyTemp, INDI_IDLE);
+
+   return 0;
+}
+
+int pixelinkCtrl::toggleStreaming()
+{
+   if(m_running)
+   {
+      // stop streaming and update INDI
+      if(PxLSetStreamState (m_cameraHandle, STOP_STREAM) < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Error stopping continuous acquisition"});
+         state(stateCodes::ERROR);
+         return -1;
+      }
+      m_running = false;
+      m_streaming = false;
+      state(stateCodes::CONNECTED);
+   } else
+   {
+      if(PxLSetStreamState (m_cameraHandle, START_STREAM) < 0){
+         log<software_error>({__FILE__, __LINE__, "Error starting continuous acquisition"});
+         state(stateCodes::ERROR);
+         return -1;
+      }
+      // start streaming and update INDI
+      m_running = true;
+      m_streaming = true;
+      state(stateCodes::OPERATING);
+   }
 
    return 0;
 }
@@ -726,14 +793,14 @@ int pixelinkCtrl::configureAcquisition()
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
 
-   // special camera mode
+   /*// special camera mode
    F32 paramMode = FEATURE_SPECIAL_CAMERA_MODE_FIXED_FRAME_RATE;
    if(PxLSetFeature(m_cameraHandle, FEATURE_SPECIAL_CAMERA_MODE, FEATURE_FLAG_MANUAL, 1, &paramMode) < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting special camera mode"});
       state(stateCodes::ERROR);
       return -1;
-   }
+   }*/
 
    // FIX ME: exposure time
    setExpTime();
@@ -741,6 +808,8 @@ int pixelinkCtrl::configureAcquisition()
    // FIX ME: gain
    setEMGain();
 
+   //setFPS();
+   
    // set bit depth
    F32 paramsDepth = PIXEL_FORMAT_MONO16;
    PXL_RETURN_CODE rc = PxLSetFeature(m_cameraHandle, FEATURE_PIXEL_FORMAT, FEATURE_FLAG_MANUAL, 1, &paramsDepth);
@@ -761,11 +830,11 @@ int pixelinkCtrl::configureAcquisition()
    paramsROI[FEATURE_ROI_PARAM_HEIGHT] =  m_nextROI.h;//m_nextROI.bin_y*m_nextROI.h;
 
    std::cout<<paramsROI[0]<<","<<paramsROI[1]<<","<<paramsROI[2]<<","<<paramsROI[3]<<"\n";
-   if(rc = PxLSetFeature(m_cameraHandle, FEATURE_ROI, FEATURE_FLAG_MANUAL, numParamsROI, paramsROI) < 0)
+   if((rc = PxLSetFeature(m_cameraHandle, FEATURE_ROI, FEATURE_FLAG_MANUAL, numParamsROI, paramsROI)) < 0)
    {
       log<software_error>({__FILE__, __LINE__, rc, "Error setting ROI"});
       state(stateCodes::ERROR);
-      return -1;
+      //return -1;
    }
 
    // FIX ME: binning
@@ -841,6 +910,20 @@ float pixelinkCtrl::fps()
 }
 
 inline
+int pixelinkCtrl::setFPS()
+{
+   // how to do?!?!?!
+   PXL_RETURN_CODE rc = PxLSetFeature(m_cameraHandle, FEATURE_FRAME_RATE, FEATURE_FLAG_MANUAL, 1, &m_fps);
+
+   if(rc < 0){
+      log<software_error>({__FILE__, __LINE__, rc, "Error changing frame rate"});
+      return -1;
+   }
+   std::cout<< "Well!\n";
+   return 0;
+}
+
+inline
 int pixelinkCtrl::startAcquisition()
 {
    if(PxLSetStreamState (m_cameraHandle, START_STREAM) < 0){
@@ -900,7 +983,6 @@ int pixelinkCtrl::loadImageIntoStream(void * dest)
 inline
 int pixelinkCtrl::reconfig()
 {
-   // FIX ME: stop streaming, then????
 
    if(PxLSetStreamState(m_cameraHandle, STOP_STREAM) < 0)
    {
@@ -922,6 +1004,17 @@ int pixelinkCtrl::checkRecordTimes()
 int pixelinkCtrl::recordTelem(const telem_stdcam *)
 {
    return recordCamera(true);
+}
+
+INDI_NEWCALLBACK_DEFN(pixelinkCtrl, m_indiP_streamSwitch)(const pcf::IndiProperty &ipRecv)
+{
+   if(ipRecv.getName() != m_indiP_streamSwitch.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "invalid indi property received"});
+      return -1;
+   }
+
+   return toggleStreaming();
 }
 
 
