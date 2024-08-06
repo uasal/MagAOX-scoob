@@ -1,0 +1,20 @@
+namespace MagAOX.logger;
+
+table Telem_fsm_fb
+{
+   P1V2:double;
+   P2V2:double;
+   P24V:double;
+   P2V5:double;
+   P3V3A:double;
+   P6V:double;
+   P5V:double;
+   P3V3D:double;
+   P4V3:double;
+   N5V:double;
+   N6V:double;
+   P150V:double;
+}
+
+root_type Telem_fsm_fb;
+
