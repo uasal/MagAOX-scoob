@@ -168,6 +168,7 @@ int logdump::execute()
    {
       if(m_file.find('/') == std::string::npos)
       {
+         //-------- HERE STRIP DEV NAME AND ADD SUBDIR */
          m_file = m_dir + '/' + m_file;
       }
       std::cerr << "m_file: " << m_file << "\n";
@@ -176,7 +177,7 @@ int logdump::execute()
    }
    else
    {
-      logs = mx::ioutils::getFileNames( m_dir, m_prefixes[0], "", m_ext);
+      logs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], m_prefixes[0], "", m_ext);
    }
 
    ///\todo if follow is set, then should nfiles default to 1 unless explicitly set?
@@ -240,7 +241,7 @@ int logdump::execute()
                   {
                      //Check if a new file exists now.
                      size_t oldsz = logs.size();
-                     logs = mx::ioutils::getFileNames( m_dir, m_prefixes[0], "", m_ext);
+                     logs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], m_prefixes[0], "", m_ext);
                      if(logs.size() > oldsz)
                      {
                         //new file(s) detected;

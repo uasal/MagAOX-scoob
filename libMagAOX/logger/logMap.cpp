@@ -118,7 +118,16 @@ int logMap::loadAppToFileMap( const std::string & dir,
                               const std::string & ext
                             )
 {
-   std::vector<std::string> flist = mx::ioutils::getFileNames(dir, "", "", ext);
+   //---- make this get directories
+   std::vector<std::string> dlist = mx::ioutils::getFileNames(dir, "", "", "");
+
+   //---- then build flist by scanning each directory
+   std::vector<std::string> flist;
+   for(auto & subdir : dlist)
+   {
+      std::vector<std::string> tmp_flist = mx::ioutils::getFileNames(subdir, "", "", ext);
+      flist.insert(flist.end(), tmp_flist.begin(), tmp_flist.end());
+   }
 
    for(size_t n=0;n<flist.size(); ++n)
    {

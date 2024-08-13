@@ -111,8 +111,18 @@ int logFileRaw::createFile(flatlogs::timespecX & ts)
 {
    std::string tstamp = ts.timeStamp();
 
-   //Create the standard log name
-   std::string fname = m_logPath + "/" + m_logName + "_" + tstamp + "." + m_logExt;
+   //Create the standard log directory path
+   std::string fname = m_logPath + "/" + m_logName + "/"; 
+   
+   //Create directory
+   ///\todo should get mxlib to return error code, or switch to using std::file_system directly here
+   if( mx::ioutils::createDirectories(fname) < 0) //this does nothing if fname already exists
+   {
+      std::cerr << "logFileRaw::createFile: Error by createDirectories. At: " << __FILE__ << " " << __LINE__ << "\n";
+      std::cerr << "logFileRaw::createFile: fname = " << fname << "\n";
+   }
+   //Now add standard log name
+   fname += m_logName + "_" + tstamp + "." + m_logExt;
 
    if(m_fout) fclose(m_fout);
 
