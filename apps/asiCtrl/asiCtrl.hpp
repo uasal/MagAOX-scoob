@@ -133,6 +133,7 @@ protected:
 
    long m_imgSize;
    unsigned char* m_imgBuff;
+   float m_blacklevel;
    //std::string m_cameraName;
    //std::string m_cameraModel;
 
@@ -226,10 +227,13 @@ protected:
    //INDI:
 protected:
 
+   pcf::IndiProperty m_indiP_blacklevel;
+
    //pcf::IndiProperty m_indiP_readouttime;
 
 public:
    //INDI_NEWCALLBACK_DECL(asiCtrl, m_indiP_adcquality);
+   INDI_NEWCALLBACK_DECL(asiCtrl, m_indiP_blacklevel);
 
    /** \name Telemeter Interface
      * 
@@ -266,6 +270,7 @@ asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    //powerOnDefaults();
    
    m_maxEMGain = 450;
+   m_blacklevel = 0;
    
    return;
 }
@@ -315,6 +320,12 @@ int asiCtrl::appStartup()
    //createROIndiNumber( m_indiP_readouttime, "readout_time", "Readout Time (s)");
    //indi::addNumberElement<float>( m_indiP_readouttime, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%0.1f", "readout time");
    //registerIndiPropertyReadOnly( m_indiP_readouttime );
+
+
+   createStandardIndiNumber<float>(m_indiP_blacklevel, "blacklevel", 0, 0, 1, "%f");
+   m_indiP_blacklevel["current"] = m_blacklevel;
+   m_indiP_blacklevel["target"] = m_blacklevel;
+   registerIndiPropertyNew(m_indiP_blacklevel, INDI_NEWCALLBACK(m_indiP_blacklevel));
 
    
    //m_minTemp = -55;
@@ -720,6 +731,14 @@ int asiCtrl::getEMGain()
 inline
 int asiCtrl::setExpTime()
 {
+   /*
+   // check for min/max values
+   ASI_CONTROL_CAPS expCtrl;
+   ASIGetControlCaps(m_camNum, ASI_EXPOSURE, &expCtrl);
+   int expmin = expCtrl.MinValue;
+   int expmax = expCtrl.MaxValue;
+   std::cerr << "Got a min/max for exposure time of: " << expmin << " and " << expmax << "\n";
+   */
 
    int rv = ASISetControlValue(m_camNum, ASI_EXPOSURE, m_expTimeSet * 1e6, ASI_FALSE);
    sleep(1);
@@ -911,23 +930,17 @@ int asiCtrl::configureAcquisition()
    //}
    setEMGain();
 
-   rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, 1, ASI_FALSE); // hard-coded for now, but should be an INDI property
+   rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, m_blacklevel, ASI_FALSE); // hard-coded for now, but should be an INDI property
    
    if(rv < 0)
    {
-      log<software_error>({__FILE__, __LINE__, "Error setting brightness!"});
+      log<software_error>({__FILE__, __LINE__, "Error setting black level!"});
       return -1;
    }
 
 
    // TEMPORARY: HARD CODE HARDWARE BINNING !!!!
    //rv = ASISetControlValue(m_camNum, ASI_HARDWARE_BIN, 2, ASI_FALSE);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting brightness!"});
-      return -1;
-   }
 
    //Start continuous acquisition
    //ASIStartVideoCapture(m_camNum);
@@ -1074,6 +1087,58 @@ int asiCtrl::checkRecordTimes()
 int asiCtrl::recordTelem(const telem_stdcam *)
 {
    return recordCamera(true);
+}
+
+INDI_NEWCALLBACK_DEFN(asiCtrl, m_indiP_blacklevel)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_blacklevel.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   float bl = 0;
+
+   if (ipRecv.find("current"))
+   {
+      bl = ipRecv["current"].get<float>();
+   }
+
+   if (ipRecv.find("target"))
+   {
+      bl = ipRecv["target"].get<float>();
+   }
+
+   // check for min/max values
+   /*ASI_CONTROL_CAPS blCtrl;
+   ASIGetControlCaps(m_camNum, ASI_BRIGHTNESS, &blCtrl);
+   long blmin = blCtrl.MinValue;
+   long blmax = blCtrl.MaxValue;
+   std::cerr << "Got a min/max for blacklevel of: " << blmin << " and " << blmax << "\n";*/
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_blacklevel = bl;
+   int rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, bl, ASI_FALSE);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting black level!"});
+      return -1;
+   }
+
+   // check that we got the expected black level
+   long blReal;
+	ASI_BOOL bAuto;
+   sleep(1);
+   ASIGetControlValue(m_camNum, ASI_GAIN, &blReal, &bAuto); // this is always 0 *sigh*
+   sleep(1);
+
+   updateIfChanged(m_indiP_blacklevel, "target", bl);
+   //m_blacklevel = blReal;
+   //std::cerr << "Got a black level of " << m_blacklevel << "\n";
+   updateIfChanged(m_indiP_blacklevel, "current", m_blacklevel);
+
+   return 0;
 }
 
 
