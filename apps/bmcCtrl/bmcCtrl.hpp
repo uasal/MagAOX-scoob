@@ -30,7 +30,7 @@ Test:
 
 /* BMC SDK C Header */
 #include <BMCApi.h>
-
+#include <BMC_PCIeApi.h>
 
 /** \defgroup bmcCtrl 
   * \brief The MagAO-X application to control a BMC DM
@@ -340,9 +340,18 @@ int bmcCtrl::initDM()
    
    log<text_log>("BMC " + m_serialNumber + " initialized", logPrio::LOG_NOTICE);
 
+   // enable high resolution mode (dithering filter)
+   ret = BMC_PCIeEnableHighRes(&m_dm, 1);
+   if(ret != NO_ERR)
+   {
+      const char *err;
+      err = BMCErrorString(ret);
+      log<text_log>(std::string("Enabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
+   }
+   log<text_log>("BMC high resolution mode enabled", logPrio::LOG_NOTICE);
+
    // Get number of actuators
    m_nbAct = m_dm.ActCount;
-
 
    // Load the DM map
    uint32_t *map_lut;
@@ -548,6 +557,16 @@ int bmcCtrl::releaseDM()
       log<text_log>(std::string("DM reset failed: ") + err, logPrio::LOG_ERROR);
       return -1;
    }
+
+    // disable high resolution mode (releasing segfaults unless you disable)
+   ret = BMC_PCIeEnableHighRes(&m_dm, 0);
+   if(ret != NO_ERR)
+   {
+      const char *err;
+      err = BMCErrorString(ret);
+      log<text_log>(std::string("Disabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
+   }
+   log<text_log>("BMC high resolution mode disabled", logPrio::LOG_NOTICE);
    
    // Close BMC connection
    ret = BMCClose(&m_dm);
