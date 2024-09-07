@@ -36,7 +36,7 @@ struct telem_fsm : public flatbuffer_log
         ///Construct from components
         messageT(const double & P1V2,
                 const double & P2V2,
-                const double & P24V,
+                const double & P28V,
                 const double & P2V5,
                 const double & P3V3A,
                 const double & P6V,
@@ -48,7 +48,7 @@ struct telem_fsm : public flatbuffer_log
                 const double & P150V
                 )
         {
-        auto fp = CreateTelem_fsm_fb(builder, P1V2, P2V2, P24V, P2V5, P3V3A, P6V, P5V, P3V3D, P4V3, N5V, N6V, P150V);
+        auto fp = CreateTelem_fsm_fb(builder, P1V2, P2V2, P28V, P2V5, P3V3A, P6V, P5V, P3V3D, P4V3, N5V, N6V, P150V);
         builder.Finish(fp);
         }
    };
@@ -76,8 +76,8 @@ struct telem_fsm : public flatbuffer_log
     msg += "P2V2: ";
     msg += std::to_string(fbs->P2V2()) + " V ";
 
-    msg += "P24V: ";
-    msg += std::to_string(fbs->P24V()) + " V ";
+    msg += "P28V: ";
+    msg += std::to_string(fbs->P28V()) + " V ";
 
     msg += "P2V5: ";
     msg += std::to_string(fbs->P2V5()) + " V ";

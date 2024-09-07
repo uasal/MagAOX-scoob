@@ -88,7 +88,7 @@ namespace MagAOX
       CGraphPacket SocketProtocol;
       linux_pinout_client_socket LocalPortPinout;
       BinaryUart UartParser;
-      PZTQuery *statusQuery = new StatusQuery();
+      PZTQuery *telemetryQuery = new TelemetryQuery();
       PZTQuery *adcsQuery = new AdcsQuery();
       PZTQuery *dacsQuery = new DacsQuery();
       uint32_t targetSetpoints[3];
@@ -185,14 +185,14 @@ namespace MagAOX
       int socketConnect();
 
       /**
-       * @brief Request fsm status
+       * @brief Request fsm telemetry
        *
-       * Wrapper that calls query() with instance of StatusQuery.
-       * Response is stored in instance's Status member.
+       * Wrapper that calls query() with instance of TelemetryQuery.
+       * Response is stored in instance's Telemetry member.
        * It returns fsm telemetry that is logged every 10s by the telemeter.
        * Output in /opt/telem/fsmCtrl_xxxxx.bintel
        */
-      void queryStatus();
+      void queryTelemetry();
 
       /**
        * @brief Request fsm's ADC values
@@ -326,7 +326,7 @@ namespace MagAOX
       shmimMonitor::setupConfig(config);
 
       config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Required, "parameters", "period_s", false, "int", "The period of status queries to the fsm.");
+      config.add("parameters.period_s", "", "parameters.period_s", argType::Required, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
 
       config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Required, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
       config.add("socket.host_port", "", "socket.host_port", argType::Required, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
@@ -373,7 +373,7 @@ namespace MagAOX
       _config(shmimMonitor::m_width, "shmimMonitor.width");
       _config(shmimMonitor::m_height, "shmimMonitor.height");
 
-      m_inputType = DACS;
+      m_inputType = VOLTAGES;
       _config(m_inputType, "input.type");
       m_inputToggle = SHMIM;
       _config(m_inputToggle, "input.toggle");
@@ -472,7 +472,7 @@ namespace MagAOX
       m_indiP_input["type"] = m_inputType;
 
       // type of query
-      REG_INDI_NEWPROP(m_indiP_query, "status", pcf::IndiProperty::Text);
+      REG_INDI_NEWPROP(m_indiP_query, "telemetry", pcf::IndiProperty::Text);
       m_indiP_query.add(pcf::IndiElement("query"));
       m_indiP_query["query"] = "none";
 
@@ -514,14 +514,14 @@ namespace MagAOX
 
       if (state() == stateCodes::CONNECTED)
       {
-        // Get current adc values
-        queryAdcs();
+        // // Get current adc values
+        // queryAdcs();
 
-        // Get current dac values
-        queryDacs();
+        // // Get current dac values
+        // queryDacs();
 
         // Get telemetry
-        queryStatus();
+        queryTelemetry();
 
         if (m_inputToggle == SHMIM)
         {
@@ -531,6 +531,8 @@ namespace MagAOX
         {
           state(stateCodes::READY);
         }
+
+        sleep(10);
       }
 
       if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
@@ -588,12 +590,12 @@ namespace MagAOX
     // FSM QUERIES
     //////////////
 
-    // Function to request fsm Status
-    void fsmCtrl::queryStatus()
+    // Function to request fsm Telemetry
+    void fsmCtrl::queryTelemetry()
     {
-      log<text_log>(statusQuery->startLog);
-      query(statusQuery);
-      log<text_log>(statusQuery->endLog);
+      log<text_log>(telemetryQuery->startLog);
+      query(telemetryQuery);
+      log<text_log>(telemetryQuery->endLog);
       recordFsm(false);
     }
 
@@ -736,13 +738,14 @@ namespace MagAOX
 
     int fsmCtrl::recordFsm(bool force)
     {
-      static CGraphPZTStatusPayload LastStatus; ///< Structure holding the previous fsm voltage measurement.
-      StatusQuery *statusQueryPtr = dynamic_cast<StatusQuery *>(statusQuery);
+      static CGraphFSMTelemetryPayload LastTelemetry; ///< Structure holding the previous fsm voltage measurement.
+      TelemetryQuery *telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery);
 
-      if (!(LastStatus == statusQueryPtr->Status) || force)
+      if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
       {
-        LastStatus = statusQueryPtr->Status;
-        telem<telem_fsm>({LastStatus.P1V2, LastStatus.P2V2, LastStatus.P24V, LastStatus.P2V5, LastStatus.P3V3A, LastStatus.P6V, LastStatus.P5V, LastStatus.P3V3D, LastStatus.P4V3, LastStatus.N5V, LastStatus.N6V, LastStatus.P150V});
+        LastTelemetry = telemetryQueryPtr->Telemetry;
+        telem<telem_fsm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P3V3A, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.N5V, LastTelemetry.N6V, LastTelemetry.P150V});
+        telemetryQueryPtr->logReply();
       }
 
       return 0;
