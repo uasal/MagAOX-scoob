@@ -4,7 +4,7 @@ table Telem_fsm_fb
 {
    P1V2:double;
    P2V2:double;
-   P24V:double;
+   P28V:double;
    P2V5:double;
    P3V3A:double;
    P6V:double;
