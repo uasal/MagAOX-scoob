@@ -11,8 +11,34 @@
 #include "../../magaox_git_version.h"
 
 
+#include <iostream>
+#include <cstdlib>
+#include <stdexcept> 
+#include <fcntl.h>
 #include <linux/videodev2.h>
 
+// config for the camera needs to be mapped to a path, usually /dev/video0
+
+
+/* --set-fmt-video
+        width
+        height
+        pixelFormat
+    --set-ctrl
+        bypass_mode
+        gain
+        exposure
+        blacklevel (default 4095, min 0, max 65535)
+        frame_rate
+        sensor_configuration
+        group_hold
+        low_latency_mode (bool, 0 or 1)
+    --stream-mmap 
+    --stream-count
+        1
+    --stream-to
+        .bin file?
+*/
 
 namespace MagAOX
 {
@@ -69,6 +95,11 @@ public:
    
    static constexpr bool c_frameGrabber_flippable = false; ///< app:dev config to tell framegrabber this camera can not be flipped
    
+   static int m_camera_num = 0; //hard code to 0 for now. /dev/camera0 is what this gets translated into
+
+   static std::string camera_string = "/dev/camera0" // hard coded path to the camera for now
+
+
    ///@}
 
 protected:
@@ -81,7 +112,7 @@ protected:
 
    std::string m_configFile; ///< The path, relative to configDir, where to write and read the temporary config file.
    
-   bool m_libInit {false}; ///< Whether or not the Andor SDK library is initialized.
+   bool m_init {false}; ///< Whether or not the nsvCam is initialized.
 
    bool m_poweredOn {false};
 
@@ -118,13 +149,13 @@ public:
    /// Do any needed shutdown tasks.  Currently nothing in this app.
    virtual int appShutdown();
 
-   int cameraSelect();
+   //int cameraSelect();
 
    float getTemp();
    
-   float getFPS();
-   
-   int setFPS(float fps);
+   int setFPS();
+
+   int getFPS();
    
    bool getPowerState();
    
@@ -133,10 +164,6 @@ public:
    float getGain();
    
    int setGain(float gain);
-   
-   int setExposure(float exposure);
-   
-   float getExposure();
    
    int getBitDepth(); //12, 14, 16
    
@@ -157,6 +184,10 @@ public:
    float getHeartBeat();
 
    int writeConfig();
+
+   int startCapture();
+
+   int stopCapture();
    
    /** \name stdCamera Interface 
      * 
@@ -245,19 +276,19 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_powerMgtEnabled = true;
    m_powerOnWait = 10;
    
-   m_startupTemp = -45;
+   //m_startupTemp = -45;  //can't control the cooler anyway on this NSV cam?
    
-   m_defaultReadoutSpeed  = "emccd_17MHz";
-   m_readoutSpeedNames = {"ccd_00_08MHz", "ccd_01MHz", "ccd_03MHz", "emccd_01MHz", "emccd_05MHz", "emccd_10MHz", "emccd_17MHz"};
-   m_readoutSpeedNameLabels = {"CCD 0.08 MHz", "CCD 1 MHz", "CCD 3 MHz", "EMCCD 1 MHz", "EMCCD 5 MHz", "EMCCD 10 MHz", "EMCCD 17 MHz"};
+   //m_defaultReadoutSpeed  = "emccd_17MHz";
+   //m_readoutSpeedNames = {"ccd_00_08MHz", "ccd_01MHz", "ccd_03MHz", "emccd_01MHz", "emccd_05MHz", "emccd_10MHz", "emccd_17MHz"};
+   //m_readoutSpeedNameLabels = {"CCD 0.08 MHz", "CCD 1 MHz", "CCD 3 MHz", "EMCCD 1 MHz", "EMCCD 5 MHz", "EMCCD 10 MHz", "EMCCD 17 MHz"};
    
-   m_defaultVShiftSpeed = "3_3us";
-   m_vShiftSpeedNames = {"0_3us", "0_5us", "0_9us", "1_7us", "3_3us"};
-   m_vShiftSpeedNameLabels = {"0.3 us", "0.5 us", "0.9 us", "1.7 us", "3.3 us"};
-   
-   m_maxEMGain = 300;
+   m_maxEMGain = 360;
+   m_emGainSet = 10;
+   m_maxExposure = 3600000000;
+   m_minExposure = 69;
+   m_maxFrameRate = 10000000;
+   m_minFrameRate = 10000000;
 
-      
    m_default_x = 255.5; 
    m_default_y = 255.5; 
    m_default_w = 512;  
@@ -270,10 +301,10 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
    
-   m_full_x = 255.5; 
-   m_full_y = 255.5; 
-   m_full_w = 512; 
-   m_full_h = 512; 
+   m_full_x = 3121.5; 
+   m_full_y = 2093.5; 
+   m_full_w = 6244; 
+   m_full_h = 4188; 
    
    
    return;
@@ -290,14 +321,8 @@ void nsvCtrl::setupConfig()
 {
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::edtCamera<nsvCtrl>::setupConfig(config);
-   
-   
-   
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
-
    dev::telemeter<nsvCtrl>::setupConfig(config);
-   
-
 }
 
 inline
@@ -305,10 +330,10 @@ void nsvCtrl::loadConfig()
 {
    dev::stdCamera<nsvCtrl>::loadConfig(config);
    
-   m_configFile = "/tmp/andor_";
+   m_configFile = "/tmp/nsv_";
    m_configFile += configName();
    m_configFile += ".cfg";
-   m_cameraModes["onlymode"] = dev::cameraConfig({m_configFile, "", 255, 255, 512, 512, 1, 1, 1000});
+   m_cameraModes["onlymode"] = dev::cameraConfig({m_configFile, "", 255, 255, 512, 512, 1, 1, 1, 1 1000});
    m_startupMode = "onlymode";
    
    if(writeConfig() < 0)
@@ -320,17 +345,16 @@ void nsvCtrl::loadConfig()
    
    dev::edtCamera<nsvCtrl>::loadConfig(config);
 
-
-   if(m_maxEMGain < 1)
+   if(m_maxGain < 1)
    {
-      m_maxEMGain = 1;
-      log<text_log>("maxEMGain set to 1");
+      m_maxGain = 1;
+      log<text_log>("maxGain set to 1");
    }
 
-   if(m_maxEMGain > 300)
+   if(m_maxGain > 360)
    {
-      m_maxEMGain = 300;
-      log<text_log>("maxEMGain set to 300");
+      m_maxGain = 360;
+      log<text_log>("maxGain set to 360");
    }
 
    dev::frameGrabber<nsvCtrl>::loadConfig(config);
@@ -498,10 +522,10 @@ int nsvCtrl::appLogic()
 inline
 int nsvCtrl::onPowerOff()
 {
-   if(m_libInit)
+   if(m_init)
    {
       ShutDown();
-      m_libInit = false;
+      m_init = false;
    }
       
    m_powerOnCounter = 0;
@@ -555,10 +579,10 @@ int nsvCtrl::whilePowerOff()
 inline
 int nsvCtrl::appShutdown()
 {
-   if(m_libInit)
+   if(m_init)
    {
       ShutDown();
-      m_libInit = false;
+      m_init = false;
    }
       
    dev::frameGrabber<nsvCtrl>::appShutdown();
@@ -570,373 +594,35 @@ int nsvCtrl::appShutdown()
 
  
 inline
-int nsvCtrl::cameraSelect()
+int nsvCtrl::cameraSelect()  //should this just be a parameter passed in? cam1 corresponds to video1?
 {
    unsigned int error;
-   
-   if(!m_libInit)
-   {
-      char path[] = "/usr/local/etc/andor/";
-      error = Initialize(path);
-
-      if(error == DRV_USBERROR || error == DRV_ERROR_NOCAMERA || error == DRV_VXDNOTINSTALLED)
-      {
-         state(stateCodes::NODEVICE);
-         if(!stateLogged())
-         {
-            log<text_log>("No Andor USB camera found", logPrio::LOG_WARNING);
-         }
-
-         ShutDown();
-
-         //Not an error, appLogic should just go on.
-         return 0;
-      }
-      else if(error!=DRV_SUCCESS)
-      {
-         log<software_critical>({__FILE__, __LINE__, "ANDOR SDK initialization failed: " + andorSDKErrorName(error)});
-         ShutDown();
-         return -1;
-      }
-      
-      m_libInit = true;
-   }
-   
-   at_32 lNumCameras = 0;
-   error = GetAvailableCameras(&lNumCameras);
-
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetAvailableCameras failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   if(lNumCameras < 1)
-   {
-      if(!stateLogged())
-      {
-         log<text_log>("No Andor cameras found after initialization", logPrio::LOG_WARNING);
-      }
-      state(stateCodes::NODEVICE);
-      return 0;
-   }
-   
-   int iSelectedCamera = 0; //We're hard-coded for just one camera!
-
-   int serialNumber = 0;
-   error = GetCameraSerialNumber(&serialNumber);
-   
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetCameraSerialNumber failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   log<text_log>(std::string("Found Andor USB Camera with serial number ") + std::to_string(serialNumber));
-   
-   at_32 lCameraHandle;
-   error = GetCameraHandle(iSelectedCamera, &lCameraHandle);
-
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetCameraHandle failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   error = SetCurrentCamera(lCameraHandle);
-
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK SetCurrentCamera failed: "  + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   char name[MAX_PATH];
-   
-   error = GetHeadModel(name);
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetHeadModel failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-
-   state(stateCodes::CONNECTED);
-   log<text_log>(std::string("Connected to ") + name +  " with serial number " + std::to_string(serialNumber));
-   
-   unsigned int eprom;
-   unsigned int cofFile;
-   unsigned int vxdRev;
-   unsigned int vxdVer;
-   unsigned int dllRev;
-   unsigned int dllVer;
-   error = GetSoftwareVersion(&eprom, &cofFile, &vxdRev, &vxdVer, &dllRev, &dllVer);
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetSoftwareVersion failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-
-   log<text_log>(std::string("eprom: ") + std::to_string(eprom));
-   log<text_log>(std::string("cofFile: ") + std::to_string(cofFile));
-   log<text_log>(std::string("vxd: ") + std::to_string(vxdVer) + "." + std::to_string(vxdRev));
-   log<text_log>(std::string("dll: ") + std::to_string(dllVer) + "." + std::to_string(dllRev));
-   
-   unsigned int PCB;
-   unsigned int Decode;
-   unsigned int dummy1;
-   unsigned int dummy2;
-   unsigned int CameraFirmwareVersion;
-   unsigned int CameraFirmwareBuild;
-   error = GetHardwareVersion(&PCB, &Decode, &dummy1, &dummy2, &CameraFirmwareVersion, &CameraFirmwareBuild);
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK GetHardwareVersion failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   log<text_log>(std::string("PCB: ") + std::to_string(PCB));
-   log<text_log>(std::string("Decode: ") + std::to_string(Decode));
-   log<text_log>(std::string("f/w: ") + std::to_string(CameraFirmwareVersion) + "." + std::to_string(CameraFirmwareBuild));
-   
-#if 0 //We don't normally need to do this, but keep here in case we want to check in the future
-   int em_speeds;
-   error=GetNumberHSSpeeds(0,0, &em_speeds);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from GetNumberHSSpeeds: ") + andorSDKErrorName(error)});
-   }
-   
-   std::cerr << "Number of EM HS speeds: " << em_speeds << "\n";
-   for(int i=0; i< em_speeds; ++i)
-   {  
-      float speed;
-      error=GetHSSpeed(0,0,i, &speed);
-      std::cerr << i << " " << speed << "\n";
-   }
-   
-   int conv_speeds;
-   error=GetNumberHSSpeeds(0,1, &conv_speeds);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from GetNumberHSSpeeds: ") + andorSDKErrorName(error)});
-   }
-   
-   std::cerr << "Number of Conventional HS speeds: " << conv_speeds << "\n";
-   for(int i=0; i< conv_speeds; ++i)
-   {  
-      float speed;
-      error=GetHSSpeed(0,1,i, &speed);
-      std::cerr << i << " " << speed << "\n";
-   }
-#endif
-#if 0 //We don't normally need to do this, but keep here in case we want to check in the future
-   int v_speeds;
-   error=GetNumberVSSpeeds(&v_speeds);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from GetNumberVSSpeeds: ") + andorSDKErrorName(error)});
-   }
-   
-   std::cerr << "Number of VS speeds: " << v_speeds << "\n";
-   for(int i=0; i< v_speeds; ++i)
-   {  
-      float speed;
-      error=GetVSSpeed(i, &speed);
-      std::cerr << i << " " << speed << "\n";
-   }
-#endif
-   
-   
-   //Initialize Shutter to SHUT
-   int ss = 2;
-   if(m_shutterState == 1) ss = 1;
-   else m_shutterState = 0; //handles startup case
-   error = SetShutter(1,ss,500,500);
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK SetShutter failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   // Set CameraLink
-   error = SetCameraLinkMode(1);
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK SetCameraLinkMode failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-   //Set Read Mode to --Image--
-   error = SetReadMode(4);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from SetReadMode: " + andorSDKErrorName(error)});
-   }
-   
-   //Set Acquisition mode to --Run Till Abort--
-   error = SetAcquisitionMode(5);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from SetAcquisitionMode: " + andorSDKErrorName(error)});
-   }
-
-   //Set to frame transfer mode
-   error = SetFrameTransferMode(1);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from SetFrameTransferMode: " + andorSDKErrorName(error)});
-   }
-   
-   //Set to real gain mode 
-   error = SetEMGainMode(3);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from SetEMGainMode: " + andorSDKErrorName(error)});
-   }
-   
-   //Set default amplifier and speed
-   m_readoutSpeedName = m_defaultReadoutSpeed;
-   m_readoutSpeedNameSet = m_readoutSpeedName;
-
-   int newa;
-   int newhss;
-   
-   if(readoutParams(newa, newhss, m_readoutSpeedNameSet) < 0)
-   {
-      return log<text_log,-1>("invalid default readout speed: " + m_readoutSpeedNameSet, logPrio::LOG_ERROR);
-   }
-   
-   // Set the HSSpeed to first index
-   /* See page 284
-    */
-   error = SetHSSpeed(newa,newhss);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetHSSpeed: ") + andorSDKErrorName(error)});
-   }
-   
-   m_vShiftSpeedName = m_defaultVShiftSpeed;
-   m_vShiftSpeedNameSet = m_vShiftSpeedName;
-   
-   int newvs;
-   float vs;
-   if(vshiftParams(newvs,m_vShiftSpeedNameSet, vs) < 0)
-   {
-      return log<text_log,-1>("invalid default vert. shift speed: " + m_vShiftSpeedNameSet, logPrio::LOG_ERROR);
-   }
-   
-   // Set the VSSpeed to first index
-   error = SetVSSpeed(newvs);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetVSSpeed: ") + andorSDKErrorName(error)});
-   }
-
-   m_vshiftSpeed = vs;
-   // Set the amplifier
-   /* See page 298
-    */
-   error = SetOutputAmplifier(newa);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetOutputAmplifier: ") + andorSDKErrorName(error)});
-   }
-   
-   //Set initial exposure time
-   error = SetExposureTime(0.1);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from SetExposureTime: " + andorSDKErrorName(error)});
-   }
-   
-   //Turn cooling on:
-   if(m_ccdTempSetpt > -999)
-   {
-      error = CoolerON();
-      if(error != DRV_SUCCESS)
-      {
-         log<software_critical,-1>({__FILE__, __LINE__, "ANDOR SDK CoolerON failed: " + andorSDKErrorName(error)});
-      }
-      m_tempControlStatus = true;
-      m_tempControlStatusStr = "COOLING";
-      log<text_log>("enabled temperature control");
-   }
-   
-   int nc;
-   GetNumberADChannels(&nc);
-   std::cout << "NumberADChannels: " << nc << "\n";
-   
-   GetNumberAmp(&nc);
-   std::cout << "NumberAmp; " << nc << "\n";
-   
    return 0;
-
 }
 
 inline
 int nsvCtrl::getTemp()
 {
-   //unsigned int error;
-   //int temp_low {999}, temp_high {999};
-   //error = GetTemperatureRange(&temp_low, &temp_high); 
-
    float temp = -999;
-   unsigned int status = GetTemperatureF(&temp);
-   
-   std::string cooling;
-   switch(status)
-   {
-      case DRV_TEMPERATURE_OFF: 
-         m_tempControlStatusStr =  "OFF"; 
-         m_tempControlStatus = false;
-         m_tempControlOnTarget = false;
-         break;
-      case DRV_TEMPERATURE_STABILIZED: 
-         m_tempControlStatusStr = "STABILIZED"; 
-         m_tempControlStatus = true;
-         m_tempControlOnTarget = true;
-         break;
-      case DRV_TEMPERATURE_NOT_REACHED: 
-         m_tempControlStatusStr = "COOLING";
-         m_tempControlStatus = true;
-         m_tempControlOnTarget = false;
-         break;
-      case DRV_TEMPERATURE_NOT_STABILIZED: 
-         m_tempControlStatusStr = "NOT STABILIZED";
-         m_tempControlStatus = true;
-         m_tempControlOnTarget = false;
-         break;
-      case DRV_TEMPERATURE_DRIFT: 
-         m_tempControlStatusStr = "DRIFTING";
-         m_tempControlStatus = true;
-         m_tempControlOnTarget = false;
-         break;
-      default: 
-         m_tempControlStatusStr =  "UNKOWN";
-         m_tempControlStatus = false;
-         m_tempControlOnTarget = false;
-         m_ccdTemp = -999;
-         log<software_error>({__FILE__, __LINE__, "ANDOR SDK GetTemperatureF:" + andorSDKErrorName(status)});
-         return -1;
-   }
+
+   // get temperature parameter from nsv
+   // in this dir? /sys/devices/virtual/thermal/thermal_zone?
 
    m_ccdTemp = temp;
-   recordCamera();
-      
-   return 0;
 
+   return 0;
 }
 
 inline
-int nsvCtrl::getEMGain()
+int nsvCtrl::getGain()
 {
    unsigned int error;
    int gain;
 
-   error = GetEMCCDGain(&gain);
-   if( error !=DRV_SUCCESS)
+   error = (&gain);
+   if( error !=)
    {
-      log<software_error>({__FILE__,__LINE__, "Andor SDK error from GetEMCCDGain: " + andorSDKErrorName(error)});
+      log<software_error>({__FILE__,__LINE__, "nsvCam error from getGain"});
       return -1;
    }
 
@@ -948,128 +634,34 @@ int nsvCtrl::getEMGain()
 }
 
 inline
-int nsvCtrl::setReadoutSpeed()
-{
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
-
-   int newa;
-   int newhss;
-   
-   if( readoutParams(newa, newhss, m_readoutSpeedNameSet) < 0)
-   {
-      return log<text_log,-1>("invalid readout speed: " + m_readoutSpeedNameSet);
-   }
-   
-   if(newa == 1 && m_cropMode)
-   {
-      log<text_log>("disabling crop mode for CCD readout", logPrio::LOG_NOTICE);
-      m_cropModeSet = false;
-   }
-   // Set the HSSpeed to first index
-   /* See page 284
-    */
-   unsigned int error = SetHSSpeed(newa,newhss);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetHSSpeed: ") + andorSDKErrorName(error)});
-   }
-   
-   // Set the amplifier
-   /* See page 298
-    */
-   error = SetOutputAmplifier(newa);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetOutputAmplifier: ") + andorSDKErrorName(error)});
-   }
-
-   log<text_log>("Set readout speed to " + m_readoutSpeedNameSet + " (" + std::to_string(newa) + "," + std::to_string(newhss) + ")");
-
-      
-   m_readoutSpeedName = m_readoutSpeedNameSet;
-   
-   m_nextMode = m_modeName;
-   m_reconfig = true;
-
-   return 0;
-}
-
-
-
-inline
-int nsvCtrl::setVShiftSpeed()
-{
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
-
-   int newvs;
-   float vs;
-   if( vshiftParams(newvs, m_vShiftSpeedNameSet, vs) < 0)
-   {
-      return log<text_log,-1>("invalid vertical shift speed: " + m_vShiftSpeedNameSet);
-   }
-   
-   // Set the VSSpeed
-   unsigned int error = SetVSSpeed(newvs);
-   if(error != DRV_SUCCESS)
-   {
-      return log<software_error,-1>({__FILE__, __LINE__, std::string("Andor SDK Error from SetVSSpeed: ") + andorSDKErrorName(error)});
-   }
-   
-
-   log<text_log>("Set vertical shift speed to " + m_vShiftSpeedNameSet + " (" + std::to_string(newvs) + ")");
-
-      
-   m_vShiftSpeedName = m_vShiftSpeedNameSet;
-   m_vshiftSpeed = vs;
-
-   m_nextMode = m_modeName;
-   m_reconfig = true;
-
-   return 0;
-}
-
-inline
 int nsvCtrl::setEMGain()
 {
-   int amp;
-   int hss;
-      
-   readoutParams(amp,hss, m_readoutSpeedName);
-      
-   if(amp != 0)
-   {
-      log<text_log>("Attempt to set EM gain while in conventional amplifier.", logPrio::LOG_NOTICE);
-      return 0;
-   }
    
-   int emg = m_emGainSet;
+   int gain_to_set = m_emGainSet;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
 
-   if(emg == 1) emg = 0;
-
-   if(emg < 0)
+   if(gain_to_set < 0)
    {
-      emg = 0;
-      log<text_log>("EM gain limited to 0", logPrio::LOG_WARNING);
+      gain_to_set = 0;
+      log<text_log>("Gain limited to 0", logPrio::LOG_WARNING);
    }
    
-   if(emg > m_maxEMGain)
+   if(gain_to_set > m_maxEMGain)
    {
-      emg = m_maxEMGain;
-      log<text_log>("EM gain limited to maxEMGain = " + std::to_string(emg), logPrio::LOG_WARNING);
+      gain_to_set = m_maxEMGain;
+      log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    }
    
-   unsigned int error = SetEMCCDGain(emg);
-   if( error !=DRV_SUCCESS)
+   // call to v4l2-ctl 
+    const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + std::to_string(camera_string); 
+    int result = std::system(command.c_str());
+  
+   if( result != 0)
    {
-      log<software_error>({__FILE__,__LINE__, "Andor SDK error from SetEMCCDGain: " + andorSDKErrorName(error)});
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setGain: " + error});
       return -1;
    }
 
-   log<text_log>("Set EM Gain to: " + std::to_string(emg), logPrio::LOG_WARNING);
+   log<text_log>("Set Gain to: " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    
    return 0;
 }
@@ -1114,7 +706,7 @@ int nsvCtrl::setShutter( unsigned os )
       int error = SetShutter(1,2,500,500);
       if(error != DRV_SUCCESS)
       {
-         return log<software_error, -1>({__FILE__, __LINE__, "ANDOR SDK SetShutter failed: " + andorSDKErrorName(error)});
+         return log<software_error, -1>({__FILE__, __LINE__, "nsvCam SDK SetShutter failed: " + nsvCamSDKErrorName(error)});
       }
 
       m_shutterState = 0;
@@ -1124,7 +716,7 @@ int nsvCtrl::setShutter( unsigned os )
       int error = SetShutter(1,1,500,500);
       if(error != DRV_SUCCESS)
       {
-         return log<software_error, -1>({__FILE__, __LINE__, "ANDOR SDK SetShutter failed: " + andorSDKErrorName(error)});
+         return log<software_error, -1>({__FILE__, __LINE__, "nsvCam SDK SetShutter failed: " + nsvCamSDKErrorName(error)});
       }
 
       m_shutterState = 1;
@@ -1144,7 +736,7 @@ int nsvCtrl::setShutter( unsigned os )
 inline 
 int nsvCtrl::writeConfig()
 {
-   std::string configFile = "/tmp/andor_";
+   std::string configFile = "/tmp/nsvCam_";
    configFile += configName();
    configFile += ".cfg";
    
@@ -1160,7 +752,7 @@ int nsvCtrl::writeConfig()
    int w = m_nextROI.w / m_nextROI.bin_x;
    int h = m_nextROI.h / m_nextROI.bin_y;
    
-   fout << "camera_class:                  \"Andor\"\n";
+   fout << "camera_class:                  \"nsvCam\"\n";
    fout << "camera_model:                  \"iXon Ultra 897\"\n";
    fout << "camera_info:                   \"512x512 (1-tap, freerun)\"\n";
    fout << "width:                         " << w << "\n";
@@ -1205,101 +797,137 @@ int nsvCtrl::powerOnDefaults()
    return 0;
 }
 
-inline
-int nsvCtrl::setTempControl()
-{  
-   if(m_tempControlStatusSet)
-   {
-      unsigned int error = CoolerON();
-      if(error != DRV_SUCCESS)
-      {
-         log<software_critical>({__FILE__, __LINE__, "ANDOR SDK CoolerON failed: " + andorSDKErrorName(error)});
-         return -1;
-      }
-      m_tempControlStatus = true;
-      m_tempControlStatusStr = "COOLING";
-      recordCamera();
-      log<text_log>("enabled temperature control");
-      return 0;
-   }
-   else
-   {
-      unsigned int error = CoolerOFF();
-      if(error != DRV_SUCCESS)
-      {
-         log<software_critical>({__FILE__, __LINE__, "ANDOR SDK CoolerOFF failed: " + andorSDKErrorName(error)});
-         return -1;
-      }
-      m_tempControlStatus = false;
-      m_tempControlStatusStr = "OFF";
-      recordCamera();
-      log<text_log>("disabled temperature control");
-      return 0;
-   }
+std::string nsvCtrl::cmdRes(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+
+    // Check for errors messages such as:
+      //    Cannot open device /dev/video5, exiting.
+      //    unknown control 'some_invalid_param_name'
+    if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
+        log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + std::to_string(cmd) + ": " + result});
+        return "error"; 
+    }
+
+    // Return substring after the space, ex: "frame_rate: 1000" becomes "1000"
+    size_t space_pos = result.find(' ');
+    if (space_pos != std::string::npos) {
+        return result.substr(space_pos + 1); 
+    }
+
+    return "error"; 
 }
 
-inline
-int nsvCtrl::setTempSetPt()
-{
-   int temp = m_ccdTempSetpt + 0.5;
-   
-   unsigned int error = SetTemperature(temp);
-   
-   if(error != DRV_SUCCESS)
-   {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK setTemperature failed: " + andorSDKErrorName(error)});
-      return -1;
-   }
-   
-  return 0;
-
-}
 
 inline
 int nsvCtrl::getFPS()
 {
-   float exptime;
-   float accumCycletime;
-   float kinCycletime;
+   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + std::to_string(camera_string); 
+   std::string result = cmdRes(command.c_str());
 
-   unsigned int error = GetAcquisitionTimings(&exptime, &accumCycletime, &kinCycletime);
-   if(error != DRV_SUCCESS)
+   if( result == "error") 
    {
-      return log<software_error,-1>({__FILE__, __LINE__, "ANDOR SDK error from GetAcquisitionTimings: " + andorSDKErrorName(error)});
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getFPS"});
+      return -1;
    }
 
-   m_expTime = exptime;
-   
-   float readoutTime;
-   error = GetReadOutTime(&readoutTime);
-   if(error != DRV_SUCCESS)
+   m_fps = std::stoi(result);
+
+   return 0;
+}
+
+inline
+int nsvCtrl::setFPS()
+{
+   int fr_to_set = m_fpsSet; 
+
+   if(fr_to_set < m_minFPS)
    {
-      return log<software_error,-1>({__FILE__, __LINE__, "ANDOR SDK error from GetReadOutTime: " + andorSDKErrorName(error)});
+      fr_to_set = m_minFPS;
+      log<text_log>("FPS limited to min of: " + std::to_string(m_minFPS), logPrio::LOG_WARNING);
    }
    
-   m_fps = 1.0/accumCycletime;
+   if(fr_to_set > m_maxFPS)
+   {
+      fr_to_set = m_maxFPS;
+      log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
+   }
+   
+   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + std::to_string(camera_string); 
+   int result = std::system(command.c_str());
+  
+   // really should do a v4l2-ctl --get-ctrl=frame_rate (getFPS call) to confirm camera took the new fr
+   //getFPS();
+
+   if( result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setFPS setting FPS to: " + std::to_string(fr_to_set)});
+      return -1;
+   }
+
+   log<text_log>("Set FPS to: " + std::to_string(fr_to_set), logPrio::LOG_WARNING);
    
    return 0;
+}
 
+
+inline 
+int nsvCtrl::getExpTime()
+{
+   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + std::to_string(camera_string); 
+   std::string result = cmdRes(command.c_str());
+
+   if( result == "error") 
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getExpTime"});
+      return -1;
+   }
+
+   m_expTime = std::stoi(result);
+
+   return 0;
 }
 
 inline 
 int nsvCtrl::setExpTime()
 {
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
    
-   unsigned int error = SetExposureTime(m_expTimeSet);
-   if(error != DRV_SUCCESS)
+   int exp_to_set = m_expTimeSet;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
+
+   if(exp_to_set < m_minExpTime)
    {
-      log<software_critical>({__FILE__, __LINE__, "ANDOR SDK SetExposureTime failed: " + andorSDKErrorName(error)});
+      exp_to_set = m_minExpTime;
+      log<text_log>("Exp limited to min of: " + std::to_string(m_minExpTime), logPrio::LOG_WARNING);
+   }
+   
+   if(exp_to_set > m_maxExpTime)
+   {
+      exp_to_set = m_maxExpTime;
+      log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
+   }
+   
+   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + std::to_string(camera_string); 
+   int result = std::system(command.c_str());
+  
+   // really should do a v4l2-ctl --get-ctrl=exposure (getExpTime) to confirm camera took the new fr
+   //getExpTime();
+
+   if( result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setExpTime setting Exp to: " + std::to_string(exp_to_set)});
       return -1;
    }
-   m_nextMode = m_modeName;
-   m_reconfig = true;
+
+   log<text_log>("Set Exp to: " + std::to_string(exp_to_set), logPrio::LOG_WARNING);
+   
    return 0;
 }
+
 
 inline 
 int nsvCtrl::checkNextROI()
@@ -1310,15 +938,6 @@ int nsvCtrl::checkNextROI()
 inline 
 int nsvCtrl::setNextROI()
 { 
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
-   
-   m_nextMode = m_modeName;
-   m_reconfig = true;
-
-   updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
-   
    return 0;
 }
 
@@ -1339,7 +958,7 @@ int nsvCtrl::configureAcquisition()
    if(error != DRV_SUCCESS)
    {
       state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from GetStatus: " + andorSDKErrorName(error)});
+      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from GetStatus: " + nsvCamSDKErrorName(error)});
    }
    
    if(status != DRV_IDLE) 
@@ -1384,7 +1003,7 @@ int nsvCtrl::configureAcquisition()
          }
          else
          {
-            log<software_error>({__FILE__, __LINE__, "Andor SDK Error from SetIsolatedCropModeEx: " + andorSDKErrorName(error)});
+            log<software_error>({__FILE__, __LINE__, "nsvCam SDK Error from SetIsolatedCropModeEx: " + nsvCamSDKErrorName(error)});
          }
          
          m_nextROI.x = m_currentROI.x;
@@ -1404,7 +1023,7 @@ int nsvCtrl::configureAcquisition()
       error = SetIsolatedCropModeType(1);
       if(error != DRV_SUCCESS)
       {
-         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeType: " + andorSDKErrorName(error)});
+         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeType: " + nsvCamSDKErrorName(error)});
       }
    }
    else
@@ -1414,7 +1033,7 @@ int nsvCtrl::configureAcquisition()
       error = SetIsolatedCropModeEx(0, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
       if(error != DRV_SUCCESS)
       {
-         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeEx(0,): " + andorSDKErrorName(error)});
+         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeEx(0,): " + nsvCamSDKErrorName(error)});
       }
             
       //Setup Image dimensions
@@ -1455,7 +1074,7 @@ int nsvCtrl::configureAcquisition()
          }
          else
          {
-            log<software_error>({__FILE__, __LINE__, "Andor SDK Error from SetImage: " + andorSDKErrorName(error)});
+            log<software_error>({__FILE__, __LINE__, "nsvCam SDK Error from SetImage: " + nsvCamSDKErrorName(error)});
          }
       
          m_nextROI.x = m_currentROI.x;
@@ -1533,7 +1152,7 @@ int nsvCtrl::startAcquisition()
    if(error != DRV_SUCCESS)
    {
       state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from GetStatus: " + andorSDKErrorName(error)});
+      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from GetStatus: " + nsvCamSDKErrorName(error)});
    }
    
    if(status != DRV_IDLE) 
@@ -1546,7 +1165,7 @@ int nsvCtrl::startAcquisition()
    if(error != DRV_SUCCESS)
    {
       state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "Andor SDK Error from StartAcquisition: " + andorSDKErrorName(error)});
+      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from StartAcquisition: " + nsvCamSDKErrorName(error)});
    }
    
    state(stateCodes::OPERATING);
