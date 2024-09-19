@@ -184,7 +184,7 @@ namespace MagAOX
 
             void processReply(char const *Params, const size_t ParamsLen) override
             {
-                if ((NULL != Params) && (ParamsLen >= (3 * sizeof(double))))
+                if ((NULL != Params) && (ParamsLen >= (sizeof(CGraphFSMTelemetryPayload))) )
                 {
                     ParamsPtr = reinterpret_cast<const CGraphFSMTelemetryPayload *>(Params);
                     Telemetry = *ParamsPtr;

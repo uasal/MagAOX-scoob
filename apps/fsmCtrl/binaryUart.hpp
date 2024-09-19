@@ -62,9 +62,9 @@ struct BinaryUartCallbacks
 struct BinaryUart
 {
 	//Default values
-	static const uint64_t RxCountInit = 0;
-	static const uint64_t PacketStartInit = 0;
-	static const uint64_t PacketLenInit = 0;
+	static const uint16_t RxCountInit = 0;
+	static const size_t PacketStartInit = 0;
+	static const size_t PacketLenInit = 0;
 	static const bool InPacketInit = false;
 	static const bool debugDefault = false;
 	static const char EmptyBufferChar = '\0';
@@ -128,7 +128,7 @@ struct BinaryUart
         return(0);
     }
 
-    bool Process(MagAOX::app::PZTQuery* pztQuery)
+    bool Process()
     {
 	    //New char?
         if ( !(Pinout.dataready()) ) { return(false); }
@@ -138,7 +138,7 @@ struct BinaryUart
 
 		ProcessByte(c);
 		CheckPacketStart();
-		CheckPacketEnd(pztQuery);
+		CheckPacketEnd();
 
 		return(true); //We just want to know if there's chars in the buffer to put threads to sleep or not...
 	}
@@ -180,7 +180,7 @@ struct BinaryUart
 		}
 	}
 
-	bool CheckPacketEnd(MagAOX::app::PZTQuery* pztQuery)
+	bool CheckPacketEnd()
 	{
 		packetEnd = 0;
 		bool Processed = false;
@@ -237,6 +237,12 @@ struct BinaryUart
 			if ( (SerialNum == InvalidSerialNumber) || (SerialNum == Packet.SerialNum() ) )
 			{
 
+				std::ostringstream oss;
+				oss << "Binary Uart: Processing params ";
+				// for(size_t i = PacketStart + Packet.PayloadOffset(); i < RxCount; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(RxBuffer[i]) << ":"; }
+				oss << "with payloadLen " << payloadLen << "from RXCount " << RxCount << ", PacketStart " << PacketStart << " add PayloadOffset " << Packet.PayloadOffset() <<"\n";
+				MagAOXAppT::log<text_log>(oss.str());
+
 				//strip the part of the line with the arguments to this command (chars following command) for compatibility with the  parsing code, the "params" officially start with the s/n
 				const char* Params = reinterpret_cast<char*>(&(RxBuffer[PacketStart + Packet.PayloadOffset()]));
 
@@ -271,6 +277,11 @@ struct BinaryUart
 
 		if (RxCount > (packetEnd + 4) )
 		{
+
+			std::ostringstream oss;
+			oss << "Binary Uart: Over packetEnd +4:  Current RxCount " << RxCount;
+			MagAOXAppT::log<text_log>(oss.str());	
+
 			size_t pos = 0;
 			size_t clr = 0;
 			for (; pos < (RxCount - (packetEnd + 4)); pos++)
@@ -282,6 +293,10 @@ struct BinaryUart
 				RxBuffer[clr] = 0;
 			}
 			RxCount = pos;
+
+			oss.str("");
+			oss << "Binary Uart: Over packetEnd +4:  Current RxCount " << RxCount;
+			MagAOXAppT::log<text_log>(oss.str());	
 		}
 		else
 		{

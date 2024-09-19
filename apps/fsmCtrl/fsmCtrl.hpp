@@ -91,6 +91,7 @@ namespace MagAOX
       PZTQuery *telemetryQuery = new TelemetryQuery();
       PZTQuery *adcsQuery = new AdcsQuery();
       PZTQuery *dacsQuery = new DacsQuery();
+      const PZTQuery PZTQueries[] = {*telemetryQuery, *adcsQuery, *dacsQuery}
       uint32_t targetSetpoints[3];
 
       double m_dac1{0};
@@ -521,7 +522,7 @@ namespace MagAOX
         // queryDacs();
 
         // Get telemetry
-        queryTelemetry();
+        // queryTelemetry();
 
         if (m_inputToggle == SHMIM)
         {
@@ -532,7 +533,6 @@ namespace MagAOX
           state(stateCodes::READY);
         }
 
-        sleep(10);
       }
 
       if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
@@ -596,7 +596,7 @@ namespace MagAOX
       log<text_log>(telemetryQuery->startLog);
       query(telemetryQuery);
       log<text_log>(telemetryQuery->endLog);
-      recordFsm(false);
+      // recordFsm(false);
     }
 
     // Function to request fsm ADCs
@@ -700,13 +700,16 @@ namespace MagAOX
     {
       // Send command packet
       (&UartParser)->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
+      receive();
+    }
 
+    void fsmCtrl::receive() {
       // The packet is read byte by byte, so keep going while there are bytes left
       bool Bored = false;
       while (!Bored)
       {
         Bored = true;
-        if (UartParser.Process(pztQuery))
+        if (UartParser.Process())
         {
           Bored = false;
         }
@@ -733,6 +736,7 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
+      queryTelemetry();
       return recordFsm(true);
     }
 
