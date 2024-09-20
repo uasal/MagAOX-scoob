@@ -315,10 +315,10 @@ namespace MagAOX
                         DacSetpoints[1] = DacSetpoints[1] & 0x00FFFFFF; // Mask out the first two bytes
                         DacSetpoints[2] = DacSetpoints[2] & 0x00FFFFFF; // Mask out the first two bytes
 
-                        // Double
-                        DacSetpoints[0] *= 2;
-                        DacSetpoints[1] *= 2;
-                        DacSetpoints[2] *= 2;
+                        // // Double
+                        // DacSetpoints[0] *= 2;
+                        // DacSetpoints[1] *= 2;
+                        // DacSetpoints[2] *= 2;
                     }
                 }
                 else

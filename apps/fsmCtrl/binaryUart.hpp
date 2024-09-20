@@ -76,6 +76,7 @@ struct BinaryUart
     IUart& Pinout;
 	IPacket& Packet;
 	BinaryUartCallbacks& Callbacks;
+	const std::vector<PZTQuery*>& Queries;
     bool debug;
     bool InPacket;
 	size_t PacketStart;
@@ -85,12 +86,13 @@ struct BinaryUart
 	uint64_t SerialNum;
 	static const uint64_t InvalidSerialNumber = 0xFFFFFFFFFFFFFFFFULL;
 
-    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const uint64_t serialnum = InvalidSerialNumber)
+    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const std::vector<PZTQuery*>& queries, const uint64_t serialnum = InvalidSerialNumber)
         :
 		RxCount(RxCountInit),
         Pinout(pinout),
 		Packet(packet),
 		Callbacks(callbacks),
+		Queries(queries),
 		debug(debugDefault),
 		//~ debug(true),
 		InPacket(InPacketInit),
@@ -236,18 +238,17 @@ struct BinaryUart
 		{
 			if ( (SerialNum == InvalidSerialNumber) || (SerialNum == Packet.SerialNum() ) )
 			{
-
-				std::ostringstream oss;
-				oss << "Binary Uart: Processing params ";
-				// for(size_t i = PacketStart + Packet.PayloadOffset(); i < RxCount; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(RxBuffer[i]) << ":"; }
-				oss << "with payloadLen " << payloadLen << "from RXCount " << RxCount << ", PacketStart " << PacketStart << " add PayloadOffset " << Packet.PayloadOffset() <<"\n";
-				MagAOXAppT::log<text_log>(oss.str());
-
 				//strip the part of the line with the arguments to this command (chars following command) for compatibility with the  parsing code, the "params" officially start with the s/n
 				const char* Params = reinterpret_cast<char*>(&(RxBuffer[PacketStart + Packet.PayloadOffset()]));
 
-				//call the actual command							
-				pztQuery->processReply(Params, payloadLen);
+				//Check which query the packet corresponds to
+			    for (PZTQuery* query : Queries) {
+					if (Packet.DoesPayloadTypeMatch(RxBuffer, RxCount, PacketStart, static_cast<uint32_t>(query->getPayloadType()))) {
+						// Process the packet
+						query->processReply(Params, payloadLen);
+						query->logReply();
+					}
+				}
 
 				Processed = true;
 			}
@@ -277,11 +278,6 @@ struct BinaryUart
 
 		if (RxCount > (packetEnd + 4) )
 		{
-
-			std::ostringstream oss;
-			oss << "Binary Uart: Over packetEnd +4:  Current RxCount " << RxCount;
-			MagAOXAppT::log<text_log>(oss.str());	
-
 			size_t pos = 0;
 			size_t clr = 0;
 			for (; pos < (RxCount - (packetEnd + 4)); pos++)
@@ -294,9 +290,6 @@ struct BinaryUart
 			}
 			RxCount = pos;
 
-			oss.str("");
-			oss << "Binary Uart: Over packetEnd +4:  Current RxCount " << RxCount;
-			MagAOXAppT::log<text_log>(oss.str());	
 		}
 		else
 		{
