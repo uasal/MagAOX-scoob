@@ -11,7 +11,7 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <cmath>  // For cos() and M_PI
+#include <cmath>  // For pow(), cos() and M_PI
 
 #include <iostream>
 using namespace std;
@@ -83,8 +83,7 @@ namespace MagAOX
       // Defaults
       double m_voltage_max = 100.0; // in volts
       double m_stroke_max = 10.0; // in micrometers
-      double m_v;
-      // double m_v = (4.096 / (2.0**24)) * 60;
+      double m_v = (4.096 / (std::pow(2.0, 24))) * 60;
       double d_piston = 5.0; // in micrometers 
 
       // input parameters
@@ -383,7 +382,7 @@ namespace MagAOX
       _config(nHostPort, "socket.host_port");
 
       _config(m_L, "fsm.L");
-      m_B = m_L * cos(m_L * (M_PI / 180.0));
+      m_B = m_L * cos(30 * (M_PI / 180.0));
       _config(m_B, "fsm.B");
 
       _config(m_v, "fsm.v");
@@ -790,22 +789,74 @@ namespace MagAOX
     {
       static_cast<void>(sp); // be unused
 
-      int err = 0;
+      uint32_t imsize[3] = {m_height, m_width};
+      std::string inputType = "";
 
-      //  if(m_width != m_fsmWidth)
-      //  {
-      //     log<software_critical>({__FILE__,__LINE__, "shmim width does not match configured FSM width"});
-      //     ++err;
-      //  }
+      // If imageStream exists
+      if(&m_imageStream != nullptr)
+      {
+        // If it has the wrong shape, destroy it
+        if(m_imageStream.md->size[0] != m_height || m_imageStream.md->size[1] != m_width)
+        {
+          ImageStreamIO_destroyIm(&m_imageStream);
+        }
 
-      //  if(m_height != m_fsmHeight)
-      //  {
-      //     log<software_critical>({__FILE__,__LINE__, "shmim height does not match configured FSM height"});
-      //     ++err;
-      //  }
+        // Check that shmim has inputType keyword
+        int kwn = 0;
+        bool kw_found = false;
+        while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
+        {
+          std::string name(m_imageStream.kw[kwn].name);
+          if (name == "inputType")
+          {
+            kw_found = true;
+            inputType = m_imageStream.kw[kwn].value.valstr;
+            if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
+            {
+              std::ostringstream oss;
+              oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
+              log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+              return -1;
+            }
 
-      if (err)
-        return -1;
+            m_inputType = inputType;
+            updateIfChanged(m_indiP_input, "type", m_inputType);
+          }
+          kwn++;
+        }
+
+        // If imageStream doesn't have an inputType keyword, destroy it
+        if(m_imageStream.kw[0].name != "inputType")
+        {
+          ImageStreamIO_destroyIm(&m_imageStream);
+        }
+      }
+
+      // At this point ImageStream either exists and it's good or it doesn't and we need to create it
+      if(&m_imageStream == nullptr) {
+        std::cerr << "Creating: " << m_shmimName << " " << m_width << " " << m_height << " " << "\n";
+    
+        ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 1, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);     
+
+        if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+        {
+          std::ostringstream oss;
+          oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
+          log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+          return -1;
+        } else {
+          // Set name of first keyword is 'inputType'
+          strncpy(m_imageStream.kw[0].name, "inputType", sizeof(m_imageStream.kw[0].name));
+          // Ensure null termination
+          m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
+          // Set type
+          m_imageStream.kw[0].type = 'S';
+          // Set keyword value
+          strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+          // Ensure null termination
+          m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+        }
+      }
 
       return 0;
     }
@@ -866,7 +917,12 @@ namespace MagAOX
       float val1, val2, val3;
       val1 = ((float *)curr_src)[0];
       val2 = ((float *)curr_src)[1];
-      val3 = ((float *)curr_src)[2];
+      
+      if (m_inputType == TTP) {
+        val3 = d_piston;
+      } else {
+        val3 = ((float *)curr_src)[2];
+      }
 
       updateIfChanged(m_indiP_val1, "target", val1);
       updateIfChanged(m_indiP_val2, "target", val2);
@@ -884,12 +940,12 @@ namespace MagAOX
         dacs[1] = vi_to_daci(val2, m_v);
         dacs[2] = vi_to_daci(val3, m_v);
       }
-      // else if (m_inputType == TTP)
-      // {
-      //   dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V);
-      //   dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
-      //   dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
-      // }
+      else if (m_inputType == TTP)
+      {
+        dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
+        dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+        dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+      }
 
       std::ostringstream oss;
       oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
@@ -947,10 +1003,10 @@ namespace MagAOX
         {
           dacs[0] = vi_to_daci(target, m_v);
         }
-        // else if (m_inputType == TTP)
-        // {
-        //   dacs[0] = ttp_to_dac1(target, d_piston, m_B, D_per_V, m_v);
-        // }
+        else if (m_inputType == TTP)
+        {
+          dacs[0] = ttp_to_dac1(target, d_piston, m_B, D_per_V, m_v);
+        }
 
         dacs[1] = m_dac2;
         dacs[2] = m_dac3;
@@ -1006,12 +1062,12 @@ namespace MagAOX
         {
           dacs[1] = vi_to_daci(target, m_v);
         }
-        // else if (m_inputType == TTP)
-        // {
-        //   // Get current alpha and z to calculate dac2 from the target
-        //   double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-        //   dacs[1] = ttp_to_dac2(alpha, target, d_piston, m_B, m_L, D_per_V, m_v);
-        // }
+        else if (m_inputType == TTP)
+        {
+          // Get current alpha and z to calculate dac2 from the target
+          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+          dacs[1] = ttp_to_dac2(tip, target, d_piston, m_B, m_L, D_per_V, m_v);
+        }
 
         dacs[2] = m_dac3;
 
@@ -1067,13 +1123,13 @@ namespace MagAOX
         {
           dacs[2] = vi_to_daci(target, m_v);
         }
-        // else if (m_inputType == TTP)
-        // {
-        //   // Get current alpha and beta to calculate dac3 from the target
-        //   double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-        //   double beta = get_beta(m_dac2, m_dac3, m_b);
-        //   dacs[2] = ttp_to_dac3(alpha, beta, target, m_a, m_b);
-        // }
+        else if (m_inputType == TTP)
+        {
+          // Get current tip and beta to calculate dac3 from the target
+          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+          double tilt = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+          dacs[2] = ttp_to_dac3(tip, tilt, target, m_B, m_L, D_per_V, m_v);
+        }
 
         std::ostringstream oss;
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
@@ -1322,16 +1378,16 @@ namespace MagAOX
       }
       else if (m_inputType == VOLTAGES)
       {
-        val1 = get_vi(m_dac1, m_v);
-        val2 = get_vi(m_dac2, m_v);
-        val3 = get_vi(m_dac3, m_v);
+        val1 = daci_to_vi(m_dac1, m_v);
+        val2 = daci_to_vi(m_dac2, m_v);
+        val3 = daci_to_vi(m_dac3, m_v);
       }
-      // else if (m_inputType == TTP)
-      // {
-      //   val1 = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-      //   val2 = get_beta(m_dac2, m_dac3, m_b);
-      //   val3 = get_z(m_dac1, m_dac2, m_dac3);
-      // }
+      else if (m_inputType == TTP)
+      {
+        val1 = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+        val2 = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+        val3 = d_piston;
+      }
 
       updateIfChanged(m_indiP_val1, "current", val1);
       updateIfChanged(m_indiP_val2, "current", val2);

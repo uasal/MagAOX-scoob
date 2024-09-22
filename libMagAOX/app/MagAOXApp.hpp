@@ -1463,23 +1463,23 @@ int MagAOXApp<_useINDI>::execute() // virtual
 //----------------------------------------//
 //        Check user
 //----------------------------------------//
-// #ifndef XWC_DISABLE_USER_CHECK
-//     struct stat logstat;
+#ifndef XWC_DISABLE_USER_CHECK
+    struct stat logstat;
 
-//     if( stat( m_log.logPath().c_str(), &logstat ) < 0 )
-//     {
-//         state( stateCodes::FAILURE );
-//         std::cerr << "\nCRITICAL: Can not stat the log path.\n\n";
-//         return -1;
-//     }
+    if( stat( m_log.logPath().c_str(), &logstat ) < 0 )
+    {
+        state( stateCodes::FAILURE );
+        std::cerr << "\nCRITICAL: Can not stat the log path.\n\n";
+        return -1;
+    }
 
-//     if( logstat.st_uid != geteuid() )
-//     {
-//         state( stateCodes::FAILURE );
-//         std::cerr << "\nCRITICAL: You are running this app as the wrong user.\n\n";
-//         return -1;
-//     }
-// #endif
+    if( logstat.st_uid != geteuid() )
+    {
+        state( stateCodes::FAILURE );
+        std::cerr << "\nCRITICAL: You are running this app as the wrong user.\n\n";
+        return -1;
+    }
+#endif
 
     //----------------------------------------//
     //        Get the PID Lock
