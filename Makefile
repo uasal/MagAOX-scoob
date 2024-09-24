@@ -15,10 +15,10 @@ apps_common = \
     sysMonitor \
 	mzmqServer \
 	streamWriter \
-	dmMode \
 	shmimIntegrator \
 	closedLoopIndi \
 	dbIngest
+	#dmMode
 
 #Apps common to RTC and ICC on MagAO-X
 apps_rtcicc = \
@@ -114,16 +114,17 @@ else ifeq ($(MAGAOX_ROLE),SS)
 endif
 
 all_guis = \
-	dmCtrlGUI \
-	dmModeGUI \
-	offloadCtrlGUI \
-	pupilGuideGUI \
-	pwr \
-	coronAlignGUI \
-	loopCtrlGUI \
-	roiGUI \
-	cameraGUI \
-	stageGUI
+	roiGUI 
+	#cameraGUI \
+	#stageGUI
+	#dmModeGUI
+	#dmCtrlGUI
+	#pupilGuideGUI
+	#offloadCtrlGUI
+	#pwr
+	#coronAlignGUI
+	#loopCtrlGUI
+
 
 ifeq ($(MAGAOX_ROLE),RTC)
   guis_to_build =
