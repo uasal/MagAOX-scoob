@@ -1,7 +1,7 @@
 /** \file nsvCtrl.hpp
-  * \brief The MagAO-X ALPAO DM controller header file
+  * \brief The MagAO-X nsvCtrl controller header file
   *
-  * \ingroup alpaoCtrl_files
+  * \ingroup nsvCtrl_files
   */
 
 #ifndef alpaoCtrl_hpp
@@ -10,52 +10,22 @@
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
+#include "v4l2lib.hpp"
 
-#include <iostream>
 #include <cstdlib>
-#include <stdexcept> 
 #include <fcntl.h>
-#include <linux/videodev2.h>
 
-// config for the camera needs to be mapped to a path, usually /dev/video0
-
-
-/* --set-fmt-video
-        width
-        height
-        pixelFormat
-    --set-ctrl
-        bypass_mode
-        gain
-        exposure
-        blacklevel (default 4095, min 0, max 65535)
-        frame_rate
-        sensor_configuration
-        group_hold
-        low_latency_mode (bool, 0 or 1)
-    --stream-mmap 
-    --stream-count
-        1
-    --stream-to
-        .bin file?
-*/
+#include <unistd.h>
 
 namespace MagAOX
 {
 namespace app
 {
-/*
- Data
-    Images
-    DarkFrame
-    LightFrame?
-*/ 
 
-class nsvCtrl : public MagAOXApp<>, public dev::stdCamera<nsvCtrl>, public dev::edtCamera<nsvCtrl>,
-                                    public dev::frameGrabber<nsvCtrls>, public dev::telemeter<nsvCtrl>
+class nsvCtrl : public MagAOXApp<>, public dev::stdCamera<nsvCtrl>,
+                                    public dev::frameGrabber<nsvCtrl>, public dev::telemeter<nsvCtrl>
 {
     friend class dev::stdCamera<nsvCtrl>;
-    friend class dev::edtCamera<nsvCtrl>;
     friend class dev::frameGrabber<nsvCtrl>;
     friend class dev::telemeter<nsvCtrl>;
 
@@ -63,13 +33,13 @@ public:
      /** \name app::dev Configurations
      *@{
      */
-   static constexpr bool c_stdCamera_tempControl = true; ///< app::dev config to tell stdCamera to expose temperature controls
+   static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera to expose temperature controls
    
-   static constexpr bool c_stdCamera_temp = true; ///< app::dev config to tell stdCamera to expose temperature
+   static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera to expose temperature
    
-   static constexpr bool c_stdCamera_readoutSpeed = true; ///< app::dev config to tell stdCamera to expose readout speed controls
+   static constexpr bool c_stdCamera_readoutSpeed = false; ///< app::dev config to tell stdCamera to expose readout speed controls
    
-   static constexpr bool c_stdCamera_vShiftSpeed = true; ///< app:dev config to tell stdCamera to expose vertical shift speed control
+   static constexpr bool c_stdCamera_vShiftSpeed = false; ///< app:dev config to tell stdCamera to expose vertical shift speed control
    
    static constexpr bool c_stdCamera_emGain = true; ///< app::dev config to tell stdCamera to expose EM gain controls 
 
@@ -77,28 +47,21 @@ public:
    
    static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera to not expose FPS controls
 
-   static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
+   static constexpr bool c_stdCamera_fps = false; ///< app::dev config to tell stdCamera not to expose FPS status
    
    static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
 
    static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
    
-   static constexpr bool c_stdCamera_usesROI = true; ///< app:dev config to tell stdCamera to expose ROI controls
+   static constexpr bool c_stdCamera_usesROI = false; ///< app:dev config to tell stdCamera to expose ROI controls
 
-   static constexpr bool c_stdCamera_cropMode = true; ///< app:dev config to tell stdCamera to expose Crop Mode controls
+   static constexpr bool c_stdCamera_cropMode = false; ///< app:dev config to tell stdCamera to expose Crop Mode controls
    
-   static constexpr bool c_stdCamera_hasShutter = true; ///< app:dev config to tell stdCamera to expose shutter controls
+   static constexpr bool c_stdCamera_hasShutter = false; ///< app:dev config to tell stdCamera to expose shutter controls
 
    static constexpr bool c_stdCamera_usesStateString = false; ///< app::dev confg to tell stdCamera to expose the state string property
 
-   static constexpr bool c_edtCamera_relativeConfigPath = false; ///< app::dev config to tell edtCamera to use absolute path to camera config file
-   
    static constexpr bool c_frameGrabber_flippable = false; ///< app:dev config to tell framegrabber this camera can not be flipped
-   
-   static int m_camera_num = 0; //hard code to 0 for now. /dev/camera0 is what this gets translated into
-
-   static std::string camera_string = "/dev/camera0" // hard coded path to the camera for now
-
 
    ///@}
 
@@ -116,14 +79,14 @@ protected:
 
    bool m_poweredOn {false};
 
+   std::string camera_string = "/dev/video0"; // hard code to one camera for now. add cam select 
 
 public:
 
-   ///Default constructortor
    nsvCtrl();
-
-   ///Destructor
    ~nsvCtrl() noexcept;
+
+   std::string cmdRes(const char* cmd);
 
    /// Setup the configuration system (called by MagAOXApp::setup())
    virtual void setupConfig();
@@ -146,49 +109,34 @@ public:
    /// Implementation of the while-powered-off FSM
    virtual int whilePowerOff();
 
-   /// Do any needed shutdown tasks.  Currently nothing in this app.
    virtual int appShutdown();
 
-   //int cameraSelect();
+   int cameraSelect();
 
-   float getTemp();
-   
-   int setFPS();
+   int getTemp();
+
+   int setTempControl();
 
    int getFPS();
    
-   bool getPowerState();
+   float getEMGain();
    
-   int setPowerState(bool on);
-   
-   float getGain();
-   
-   int setGain(float gain);
-   
-   int getBitDepth(); //12, 14, 16
-   
-   int setBitDepth(int bitDepth);
+   int setEMGain();
 
-   int setROI(int offsetX, int ofsetY, int widthX, int heightY);
-   
-   int getXOffset()
-   
-   int getYOffset();
-   
-   int getXWidth(); //max 6244
-   
-   int getYWidth(); //max 4188
+   int setCropMode();
 
-   int setBinning(int x, int y); //1x1 nominal, 2x2, 4x4, etc (couple with width) 
+   int setShutter( unsigned os);
 
-   float getHeartBeat();
+   int setFPS();
+
+   int getExpTime();  // set is part of stdCamera
+
+   //int getBitDepth(); //12, 14, 16
+   
+   //int setBitDepth(int bitDepth);
 
    int writeConfig();
 
-   int startCapture();
-
-   int stopCapture();
-   
    /** \name stdCamera Interface 
      * 
      * @{
@@ -200,21 +148,7 @@ public:
      * \returns -1 on error
      */ 
    int powerOnDefaults();
-   
-   /// Turn temperature control on or off.
-   /** Sets temperature control on or off based on the current value of m_tempControlStatus
-     * \returns 0 on success
-     * \returns -1 on error
-     */ 
-   int setTempControl();
-   
-   /// Set the CCD temperature setpoint [stdCamera interface].
-   /** Sets the temperature to m_ccdTempSetpt.
-     * \returns 0 on success
-     * \returns -1 on error
-     */
-   int setTempSetPt();
-   
+
    /// Required by stdCamera, but this does not do anything for this camera [stdCamera interface]
    /**
      * \returns 0 always
@@ -273,26 +207,25 @@ public:
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = true;
-   m_powerOnWait = 10;
-   
-   //m_startupTemp = -45;  //can't control the cooler anyway on this NSV cam?
+   m_powerMgtEnabled = false;
+   //m_powerOnWait = 10;
+   //m_startupTemp = -45;  
    
    //m_defaultReadoutSpeed  = "emccd_17MHz";
    //m_readoutSpeedNames = {"ccd_00_08MHz", "ccd_01MHz", "ccd_03MHz", "emccd_01MHz", "emccd_05MHz", "emccd_10MHz", "emccd_17MHz"};
    //m_readoutSpeedNameLabels = {"CCD 0.08 MHz", "CCD 1 MHz", "CCD 3 MHz", "EMCCD 1 MHz", "EMCCD 5 MHz", "EMCCD 10 MHz", "EMCCD 17 MHz"};
    
    m_maxEMGain = 360;
-   m_emGainSet = 10;
-   m_maxExposure = 3600000000;
-   m_minExposure = 69;
-   m_maxFrameRate = 10000000;
-   m_minFrameRate = 10000000;
+   m_emGainSet = 100;
+   m_maxExpTime = 3600000000;
+   m_minExpTime = 69;
+   m_maxFPS = 10000000;
+   m_minFPS = 10000000;
 
-   m_default_x = 255.5; 
-   m_default_y = 255.5; 
-   m_default_w = 512;  
-   m_default_h = 512;  
+   m_default_x = 3072; 
+   m_default_y = 2105; 
+   m_default_w = 6144;  
+   m_default_h = 4210;  
       
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
@@ -301,10 +234,10 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
    
-   m_full_x = 3121.5; 
-   m_full_y = 2093.5; 
-   m_full_w = 6244; 
-   m_full_h = 4188; 
+   m_full_x = 3072; //3121.5; 
+   m_full_y = 2105; //2093.5; 
+   m_full_w = 6144; //6244; 
+   m_full_h = 4210; //4188; 
    
    
    return;
@@ -320,7 +253,6 @@ inline
 void nsvCtrl::setupConfig()
 {
    dev::stdCamera<nsvCtrl>::setupConfig(config);
-   dev::edtCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
    dev::telemeter<nsvCtrl>::setupConfig(config);
 }
@@ -333,7 +265,7 @@ void nsvCtrl::loadConfig()
    m_configFile = "/tmp/nsv_";
    m_configFile += configName();
    m_configFile += ".cfg";
-   m_cameraModes["onlymode"] = dev::cameraConfig({m_configFile, "", 255, 255, 512, 512, 1, 1, 1, 1 1000});
+   m_cameraModes["onlymode"] = dev::cameraConfig({m_configFile, "", 255, 255, 512, 512, 1, 1, 1, 1, 1000});
    m_startupMode = "onlymode";
    
    if(writeConfig() < 0)
@@ -342,18 +274,16 @@ void nsvCtrl::loadConfig()
       m_shutdown = true;
       return;
    }
-   
-   dev::edtCamera<nsvCtrl>::loadConfig(config);
 
-   if(m_maxGain < 1)
+   if(m_maxEMGain < 1)
    {
-      m_maxGain = 1;
+      m_maxEMGain = 1;
       log<text_log>("maxGain set to 1");
    }
 
-   if(m_maxGain > 360)
+   if(m_maxEMGain > 360)
    {
-      m_maxGain = 360;
+      m_maxEMGain = 360;
       log<text_log>("maxGain set to 360");
    }
 
@@ -367,11 +297,6 @@ inline
 int nsvCtrl::appStartup()
 {
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
-   {
-      return log<software_critical,-1>({__FILE__,__LINE__});
-   }
-
-   if(dev::edtCamera<nsvCtrl>::appStartup() < 0)
    {
       return log<software_critical,-1>({__FILE__,__LINE__});
    }
@@ -392,19 +317,11 @@ int nsvCtrl::appStartup()
 
 }
 
-
-
 inline
 int nsvCtrl::appLogic()
 {
    //run stdCamera's appLogic
    if(dev::stdCamera<nsvCtrl>::appLogic() < 0)
-   {
-      return log<software_error, -1>({__FILE__, __LINE__});
-   }
-   
-   //run edtCamera's appLogic
-   if(dev::edtCamera<nsvCtrl>::appLogic() < 0)
    {
       return log<software_error, -1>({__FILE__, __LINE__});
    }
@@ -440,16 +357,6 @@ int nsvCtrl::appLogic()
       m_shutterStatus = "READY";
 
       state(stateCodes::READY);
-
-      if(m_poweredOn && m_ccdTempSetpt > -999)
-      {
-         m_poweredOn = false;
-         if(setTempSetPt() < 0)
-         {
-            if(powerState() != 1 || powerStateTarget() != 1) return 0;
-            return log<software_error,0>({__FILE__,__LINE__});
-         }
-      }
    }
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
@@ -460,6 +367,7 @@ int nsvCtrl::appLogic()
       //but don't wait for it, just go back around.
       if(!lock.owns_lock()) return 0;
 
+      /*
       if(getTemp() < 0)
       {
          if(m_powerState == 0) return 0;
@@ -467,6 +375,7 @@ int nsvCtrl::appLogic()
          state(stateCodes::ERROR);
          return 0;
       }
+      */
 
      if(getFPS() < 0)
       {
@@ -476,14 +385,14 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      if(getEMGain () < 0)
+      if(getEMGain() < 0)
       {
          if(m_powerState == 0) return 0;
 
          state(stateCodes::ERROR);
          return 0;
       }
-   
+
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
          log<software_error>({__FILE__, __LINE__});
@@ -498,19 +407,11 @@ int nsvCtrl::appLogic()
          return 0;
       }
       
-      if(edtCamera<nsvCtrl>::updateINDI() < 0)
-      {
-         log<software_error>({__FILE__, __LINE__});
-         state(stateCodes::ERROR);
-         return 0;
-      }
-      
       if(telemeter<nsvCtrl>::appLogic() < 0)
       {
          log<software_error>({__FILE__, __LINE__});
          return 0;
       }
-      
    }
 
    //Fall through check?
@@ -524,7 +425,7 @@ int nsvCtrl::onPowerOff()
 {
    if(m_init)
    {
-      ShutDown();
+      //ShutDown();
       m_init = false;
    }
       
@@ -539,12 +440,7 @@ int nsvCtrl::onPowerOff()
    {
       log<software_error>({__FILE__, __LINE__});
    }
-   
-   if(edtCamera<nsvCtrl>::onPowerOff() < 0)
-   {
-      log<software_error>({__FILE__, __LINE__});
-   }
-   
+
    if(frameGrabber<nsvCtrl>::onPowerOff() < 0)
    {
       log<software_error>({__FILE__, __LINE__});
@@ -556,6 +452,7 @@ int nsvCtrl::onPowerOff()
    return 0;
 }
 
+
 inline
 int nsvCtrl::whilePowerOff()
 {
@@ -563,11 +460,6 @@ int nsvCtrl::whilePowerOff()
    m_shutterState = 0;
    
    if(stdCamera<nsvCtrl>::whilePowerOff() < 0)
-   {
-      log<software_error>({__FILE__, __LINE__});
-   }
-   
-   if(edtCamera<nsvCtrl>::whilePowerOff() < 0)
    {
       log<software_error>({__FILE__, __LINE__});
    }
@@ -581,7 +473,7 @@ int nsvCtrl::appShutdown()
 {
    if(m_init)
    {
-      ShutDown();
+      //ShutDown();
       m_init = false;
    }
       
@@ -594,9 +486,61 @@ int nsvCtrl::appShutdown()
 
  
 inline
-int nsvCtrl::cameraSelect()  //should this just be a parameter passed in? cam1 corresponds to video1?
+int nsvCtrl::cameraSelect()  
 {
    unsigned int error;
+   
+   char path[] = "/dev/video0";
+   if(openCamera(path) == -1){
+      log<text_log>("No nsv camera found on path", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+   // set all the initial camera parameters in here -- mode, ROI, vshift, exposure, framerate, blacklevel, gain  
+   if(initCamera(6144,4210) == -1){
+      log<text_log>("Failed to initialize camera", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+   CameraParams params = getCameraParams();
+   std::cout << "Camera params - Width: " << params.width
+                  << ", Height: " << params.height
+                  << ", Pixel Format: " << params.pixelFormat << std::endl;
+
+
+
+   if(requestBuffers(1)  == -1 ||
+      queryBuffers()     == -1) {
+      log<text_log>("Failed to initialize camera buffers", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+   if(startStreaming() == -1){
+      log<text_log>("Failed to start camera stream", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+   if(queueBuffer(0) == -1){
+      log<text_log>("Failed to start queueing images", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+    if(dequeueBuffer() == -1){
+      log<text_log>("Failed to start queueing images", logPrio::LOG_WARNING);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
+
+
+   state(stateCodes::CONNECTED);
+
+   m_cropModeSet = false; // move this somewhere it makes sense
+
    return 0;
 }
 
@@ -614,22 +558,22 @@ int nsvCtrl::getTemp()
 }
 
 inline
-int nsvCtrl::getGain()
+float nsvCtrl::getEMGain()
 {
    unsigned int error;
    int gain;
 
-   error = (&gain);
-   if( error !=)
+   const std::string command = "v4l2-ctl --get-ctrl gain -d " + camera_string; 
+   std::string result = cmdRes(command.c_str());
+   if( result == "error") 
    {
-      log<software_error>({__FILE__,__LINE__, "nsvCam error from getGain"});
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getGain"});
       return -1;
    }
 
-   if(gain == 0) gain = 1;
-
+   gain = std::stoi(result);
+   //if(gain == 0) gain = 1;
    m_emGain = gain;
-   
    return 0;
 }
 
@@ -637,7 +581,7 @@ inline
 int nsvCtrl::setEMGain()
 {
    
-   int gain_to_set = m_emGainSet;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
+   int gain_to_set = m_emGainSet;  
 
    if(gain_to_set < 0)
    {
@@ -651,13 +595,12 @@ int nsvCtrl::setEMGain()
       log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    }
    
-   // call to v4l2-ctl 
-    const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + std::to_string(camera_string); 
-    int result = std::system(command.c_str());
+   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + camera_string; 
+   int result = std::system(command.c_str());
   
    if( result != 0)
    {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setGain: " + error});
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setEMGain:"});
       return -1;
    }
 
@@ -669,68 +612,14 @@ int nsvCtrl::setEMGain()
 inline
 int nsvCtrl::setCropMode()
 {
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
-   
-   //Check if we're in the EMCCD amplifier
-   if(m_cropModeSet == true)
-   {
-      int amp;
-      int hss;
-      
-      readoutParams(amp,hss, m_readoutSpeedName);
-   
-      if(amp == 1)
-      {
-         m_cropModeSet = false;
-         log<text_log>("Can not set crop mode in CCD mode", logPrio::LOG_ERROR);
-      }
-   }
-   
-   m_nextMode = m_modeName;
-   m_reconfig = true;
-   
    return 0;
 }
 
 inline
 int nsvCtrl::setShutter( unsigned os )
 {
-   recordCamera(true);
-   AbortAcquisition();
-   state(stateCodes::CONFIGURING);
-    
-   if(os == 0) //Shut
-   {
-      int error = SetShutter(1,2,500,500);
-      if(error != DRV_SUCCESS)
-      {
-         return log<software_error, -1>({__FILE__, __LINE__, "nsvCam SDK SetShutter failed: " + nsvCamSDKErrorName(error)});
-      }
-
-      m_shutterState = 0;
-   }
-   else //Open
-   {
-      int error = SetShutter(1,1,500,500);
-      if(error != DRV_SUCCESS)
-      {
-         return log<software_error, -1>({__FILE__, __LINE__, "nsvCam SDK SetShutter failed: " + nsvCamSDKErrorName(error)});
-      }
-
-      m_shutterState = 1;
-   }
-
-   m_nextMode = m_modeName;
-   m_reconfig = true;
-
    return 0;
 }
-
-
-
-
 
 
 inline 
@@ -745,7 +634,7 @@ int nsvCtrl::writeConfig()
    
    if(fout.fail())
    {
-      log<software_error>({__FILE__, __LINE__, "error opening config file for writing"});
+      log<software_error>({__FILE__, __LINE__, " error opening config file" + configFile + " for writing"});
       return -1;
    }
 
@@ -753,8 +642,8 @@ int nsvCtrl::writeConfig()
    int h = m_nextROI.h / m_nextROI.bin_y;
    
    fout << "camera_class:                  \"nsvCam\"\n";
-   fout << "camera_model:                  \"iXon Ultra 897\"\n";
-   fout << "camera_info:                   \"512x512 (1-tap, freerun)\"\n";
+   //fout << "camera_model:                  \"iXon Ultra 897\"\n";
+   //fout << "camera_info:                   \"512x512 (1-tap, freerun)\"\n";
    fout << "width:                         " << w << "\n";
    fout << "height:                        " << h << "\n";
    fout << "depth:                         16\n";
@@ -797,6 +686,12 @@ int nsvCtrl::powerOnDefaults()
    return 0;
 }
 
+inline
+int nsvCtrl::setTempControl()
+{
+   return 0;   // these cameras don't implement this
+}
+
 std::string nsvCtrl::cmdRes(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -809,8 +704,9 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
     // Check for errors messages such as:
       //    Cannot open device /dev/video5, exiting.
       //    unknown control 'some_invalid_param_name'
+    std::string str(cmd);
     if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
-        log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + std::to_string(cmd) + ": " + result});
+        log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + str + ": " + result});
         return "error"; 
     }
 
@@ -827,7 +723,7 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
 inline
 int nsvCtrl::getFPS()
 {
-   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + std::to_string(camera_string); 
+   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + camera_string; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -858,7 +754,7 @@ int nsvCtrl::setFPS()
       log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + std::to_string(camera_string); 
+   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + camera_string; 
    int result = std::system(command.c_str());
   
    // really should do a v4l2-ctl --get-ctrl=frame_rate (getFPS call) to confirm camera took the new fr
@@ -879,7 +775,7 @@ int nsvCtrl::setFPS()
 inline 
 int nsvCtrl::getExpTime()
 {
-   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + std::to_string(camera_string); 
+   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + camera_string; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -911,7 +807,7 @@ int nsvCtrl::setExpTime()
       log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + std::to_string(camera_string); 
+   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + camera_string; 
    int result = std::system(command.c_str());
   
    // really should do a v4l2-ctl --get-ctrl=exposure (getExpTime) to confirm camera took the new fr
@@ -953,89 +849,19 @@ int nsvCtrl::configureAcquisition()
 
    unsigned int error;
 
-   int status;
-   error = GetStatus(&status);
-   if(error != DRV_SUCCESS)
-   {
-      state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from GetStatus: " + nsvCamSDKErrorName(error)});
-   }
-   
-   if(status != DRV_IDLE) 
-   {
-      return 0;
-   }
-
    int x0 = (m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
    int y0 = (m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
-    
+
+   m_cropMode = m_cropModeSet;
+
    if(m_cropModeSet)
-   {
-      m_cropMode = m_cropModeSet;
-      
-      error = SetIsolatedCropModeEx(1, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
-      
-      if(error != DRV_SUCCESS)
-      {
-         if(error == DRV_P2INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid height: ") + std::to_string(m_nextROI.h), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P3INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid width: ") + std::to_string(m_nextROI.w), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P4INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid y binning: ") + std::to_string(m_nextROI.bin_y), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P5INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid x binning: ") + std::to_string(m_nextROI.bin_x), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P6INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid x center: ") + std::to_string(m_nextROI.x) + "/" + std::to_string(x0), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P7INVALID)
-         {
-            log<text_log>(std::string("crop mode invalid y center: ") + std::to_string(m_nextROI.y) + "/" + std::to_string(y0), logPrio::LOG_ERROR);
-         }
-         else
-         {
-            log<software_error>({__FILE__, __LINE__, "nsvCam SDK Error from SetIsolatedCropModeEx: " + nsvCamSDKErrorName(error)});
-         }
-         
-         m_nextROI.x = m_currentROI.x;
-         m_nextROI.y = m_currentROI.y;
-         m_nextROI.w = m_currentROI.w;
-         m_nextROI.h = m_currentROI.h;
-         m_nextROI.bin_x = m_currentROI.bin_x;
-         m_nextROI.bin_y = m_currentROI.bin_y;
-               
-         m_nextMode = m_modeName;
-      
-         state(stateCodes::ERROR);
-         return -1;
-      }
-      
-      //Set low-latency crop mode
-      error = SetIsolatedCropModeType(1);
-      if(error != DRV_SUCCESS)
-      {
-         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeType: " + nsvCamSDKErrorName(error)});
-      }
+   { 
+      //error = SetIsolatedCropModeEx(1, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
+      // set some ROI or binning parameters
+
    }
    else
-   {
-      m_cropMode = m_cropModeSet;
-      
-      error = SetIsolatedCropModeEx(0, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
-      if(error != DRV_SUCCESS)
-      {
-         log<software_error>({__FILE__, __LINE__, "SetIsolatedCropModeEx(0,): " + nsvCamSDKErrorName(error)});
-      }
-            
+   {          
       //Setup Image dimensions
       /* SetImage(int hbin, int vbin, int hstart, int hend, int vstart, int vend)
        * hbin: number of pixels to bin horizontally
@@ -1045,50 +871,9 @@ int nsvCtrl::configureAcquisition()
        * vstart: Start row (inclusive)
        * vend: End row (inclusive)
        */
-      error = SetImage(m_nextROI.bin_x, m_nextROI.bin_y, x0, x0 + m_nextROI.w - 1, y0, y0 + m_nextROI.h - 1);
-      if(error != DRV_SUCCESS)
-      {
-         if(error == DRV_P1INVALID)
-         {
-            log<text_log>(std::string("invalid x-binning: ") + std::to_string(m_nextROI.bin_x), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P2INVALID)
-         {
-            log<text_log>(std::string("invalid y-binning: ") + std::to_string(m_nextROI.bin_y), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P3INVALID)
-         {
-            log<text_log>(std::string("invalid x-center: ") + std::to_string(m_nextROI.x) + "/" + std::to_string(x0), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P4INVALID)
-         {
-            log<text_log>(std::string("invalid width: ") + std::to_string(m_nextROI.w), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P5INVALID)
-         {
-            log<text_log>(std::string("invalid y-center: ") + std::to_string(m_nextROI.y) + "/" + std::to_string(y0), logPrio::LOG_ERROR);
-         }
-         else if(error == DRV_P6INVALID)
-         {
-            log<text_log>(std::string("invalid height: ") + std::to_string(m_nextROI.h), logPrio::LOG_ERROR);
-         }
-         else
-         {
-            log<software_error>({__FILE__, __LINE__, "nsvCam SDK Error from SetImage: " + nsvCamSDKErrorName(error)});
-         }
-      
-         m_nextROI.x = m_currentROI.x;
-         m_nextROI.y = m_currentROI.y;
-         m_nextROI.w = m_currentROI.w;
-         m_nextROI.h = m_currentROI.h;
-         m_nextROI.bin_x = m_currentROI.bin_x;
-         m_nextROI.bin_y = m_currentROI.bin_y;
-               
-         m_nextMode = m_modeName;
-      
-         state(stateCodes::ERROR);
-         return -1;
-      }
+      //error = SetImage(m_nextROI.bin_x, m_nextROI.bin_y, x0, x0 + m_nextROI.w - 1, y0, y0 + m_nextROI.h - 1);
+
+      // SetImageROI(int xbin, int ybin, int xstart, int xend, int ystart, int yend)
       
       
    }
@@ -1126,11 +911,7 @@ int nsvCtrl::configureAcquisition()
    ///\todo This should check whether we have a match between EDT and the camera right?
    m_width = m_currentROI.w/m_currentROI.bin_x;
    m_height = m_currentROI.h/m_currentROI.bin_y;
-   m_dataType = _DATATYPE_INT16;
-
-   
-   // Print Detector Frame Size
-   //std::cout << "Detector Frame is: " << width << "x" << height << "\n";
+   m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output?
 
    recordCamera(true);
 
@@ -1146,47 +927,40 @@ float nsvCtrl::fps()
 inline
 int nsvCtrl::startAcquisition()
 {
-   unsigned int error;
-   int status;
-   error = GetStatus(&status);
-   if(error != DRV_SUCCESS)
-   {
+
+   if(startStreaming() == -1){
       state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from GetStatus: " + nsvCamSDKErrorName(error)});
+      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to start acquisition"});
    }
-   
-   if(status != DRV_IDLE) 
-   {
-      state(stateCodes::OPERATING);
-      return 0;
-   }
-   
-   error = StartAcquisition();
-   if(error != DRV_SUCCESS)
-   {
-      state(stateCodes::ERROR);
-      return log<software_error,-1>({__FILE__, __LINE__, "nsvCam SDK Error from StartAcquisition: " + nsvCamSDKErrorName(error)});
-   }
-   
    state(stateCodes::OPERATING);
    recordCamera();
    
    sleep(1); //make sure camera is rully running before we try to synch with it.
 
-   return edtCamera<nsvCtrl>::pdvStartAcquisition();
+   return 0;
 }
 
 inline
 int nsvCtrl::acquireAndCheckValid()
 {
-   return edtCamera<nsvCtrl>::pdvAcquire( m_currImageTimestamp );
+   uint dmaTimeStamp[2];
+   int bufferIndex;
+   queueBuffer(0);
+   bufferIndex = dequeueBuffer();
+   
+   dmaTimeStamp[0] = 0;  // TODO timing info for cam
+   dmaTimeStamp[1] = 1;
 
+   m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
+   m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+
+   return 0;
 }
 
 inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
-   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, m_image_p, m_width, m_height, m_typeSize) == nullptr) return -1;
+   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[0], m_width, m_height, m_typeSize) == nullptr) return -1;
 
    return 0;
  }
@@ -1197,13 +971,12 @@ int nsvCtrl::reconfig()
    //lock mutex
    //std::unique_lock<std::mutex> lock(m_indiMutex);
    recordCamera(true);
-   AbortAcquisition();
+   stopStreaming();
    state(stateCodes::CONFIGURING);
 
+   // add some reconfig stuff here
+   startStreaming();
    writeConfig();
-   
-   int rv = edtCamera<nsvCtrl>::pdvReconfig();
-   if(rv < 0) return rv;
    
    state(stateCodes::READY);
 
