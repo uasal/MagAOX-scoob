@@ -6,114 +6,191 @@
 
 #pragma once
 
+#include <cmath>  // For M_PI
+
 namespace MagAOX
 {
     namespace app
     {
-
-        // (dac1, dac2, dac3) ---> (alpha, beta, z)
-
-        double get_alpha(double dac1, double dac2, double dac3, double a)
-        {
-            return 1. / a * (dac1 - 0.5 * (dac2 + dac3));
-        }
-
-        double get_beta(double dac2, double dac3, double b)
-        {
-            return 1. / b * (dac2 - dac3);
-        }
-
-        double get_z(double dac1, double dac2, double dac3)
-        {
-            return 1. / 3. * (dac1 + dac2 + dac3);
-        }
-
-        // (alpha, beta, z) ---> (dac1, dac2, dac3)
-
-        double angles_to_dac1(double alpha, double z, double a)
-        {
-            return z + 2. / 3. * a * alpha;
-        }
-
-        double angles_to_dac2(double alpha, double beta, double z, double a, double b)
-        {
-            return 0.5 * b * beta + z - 1. / 3. * a * alpha;
-        }
-
-        double angles_to_dac3(double alpha, double beta, double z, double a, double b)
-        {
-            return z - 1. / 3. * a * alpha - 1. / 2. * b * beta;
-        }
-
-        // vectors
-
-        double DAC_to_angles(double dac1, double dac2, double dac3, double a, double b)
-        {
-            return get_alpha(dac1, dac2, dac3, a), get_beta(dac2, dac3, b), get_z(dac1, dac2, dac3);
-        }
-
-        double angles_to_DAC(double alpha, double beta, double z, double a, double b)
-        {
-            return angles_to_dac1(alpha, z, a), angles_to_dac2(alpha, beta, z, a, b), angles_to_dac3(alpha, beta, z, a, b);
-        }
-
-        // constraints
-
-        double get_alpha_min(double dac1_min, double dac2_max, double dac3_max, double a)
-        {
-            return 1. / a * (dac1_min - 0.5 * (dac2_max + dac3_max));
-        }
-
-        double get_alpha_max(double dac1_max, double dac2_min, double dac3_min, double a)
-        {
-            return 1. / a * (dac1_max - 0.5 * (dac2_min + dac3_min));
-        }
-
-        double get_beta_min(double dac2_min, double dac3_max, double b)
-        {
-            return 1. / b * (dac2_min - dac3_max);
-        }
-
-        double get_beta_max(double dac2_max, double dac3_min, double b)
-        {
-            return 1. / b * (dac2_max - dac3_min);
-        }
-
         ////////////////////////////////////////////////////////
+        /// V -> DAC
         ////////////////////////////////////////////////////////
 
         // (v1, v2, v3) ---> (dac1, dac2, dac3)
-        double v1_to_dac1(double v1, double v)
+        double vi_to_daci(double vi, double v)
         {
-            return v1 / v;
+            return vi / v;
         }
 
-        double v2_to_dac2(double v2, double v)
-        {
-            return v2 / v;
-        }
-
-        double v3_to_dac3(double v3, double v)
-        {
-            return v3 / v;
-            // ((4.096 / pow(2.0, 24)) * 60);
-        }
+        ////////////////////////////////////////////////////////
+        /// DAC -> V
+        ////////////////////////////////////////////////////////
 
         // (dac1, dac2, dac3) ---> (v1, v2, v3)
-        double get_v1(double dac1, double v)
+        double daci_to_vi(double daci, double v)
         {
-            return dac1 * v;
+            return daci * v;
         }
 
-        double get_v2(double dac2, double v)
+        ////////////////////////////////////////////////////////
+        /// TTP -> V
+        ////////////////////////////////////////////////////////
+
+        // (alpha/tip, beta/tilt, z/piston) ---> (v1, v2, v3)
+
+        // alpha in arsecs, B & L in um, D_per_V in um/V 
+        double ttp_to_v1(double alpha, double z, double B, double D_per_V)
         {
-            return dac2 * v;
+            alpha = (alpha / 3600. ) * M_PI / 180.;
+
+            double dA = z + 2. / 3. * B * alpha;
+
+            return dA / D_per_V;
         }
 
-        double get_v3(double dac3, double v)
+        // alpha & beta in arsecs, B & L in um, D_per_V in um/V
+        double ttp_to_v2(double alpha, double beta, double z, double B, double L, double D_per_V)
         {
-            return dac3 * v;
+            alpha = (alpha / 3600. ) * M_PI / 180.;
+            beta = (beta / 3600. ) * M_PI / 180.;
+
+            double dB = 0.5 * L * beta + z - 1. / 3. * B * alpha;
+
+            return dB / D_per_V;
         }
+
+        // alpha & beta in arsecs, B & L in um, D_per_V in um/V
+        double ttp_to_v3(double alpha, double beta, double z, double B, double L, double D_per_V)
+        {
+            alpha = (alpha / 3600. ) * M_PI / 180.;
+            beta = (beta / 3600. ) * M_PI / 180.;
+
+            double dC = z - 1. / 3. * B * alpha - 1. / 2. * L * beta;
+
+            return dC / D_per_V;
+        }
+
+        ////////////////////////////////////////////////////////
+        /// V -> TTP
+        ////////////////////////////////////////////////////////
+
+        // (v1, v2, v3) ---> (alpha/tip, beta/tilt, z/piston)
+
+        double vi_to_tip(double dvA, double dvB, double dvC, double B, double D_per_V)
+        {
+            double dA = dvA * D_per_V;
+            double dB = dvB * D_per_V;
+            double dC = dvC * D_per_V;
+            return (1. / B * (dA - 0.5 * (dB + dC))) * (3600 * 180 / M_PI);
+        }
+
+        double vi_to_tilt(double dvB, double dvC, double L, double D_per_V)
+        {
+            double dB = dvB * D_per_V;
+            double dC = dvC * D_per_V;
+            return (1. / L * (dB - dC)) * (3600 * 180 / M_PI);
+        }
+
+        double vi_to_piston(double dvA, double dvB, double dvC, double D_per_V)
+        {
+            double dA = dvA * D_per_V;
+            double dB = dvB * D_per_V;
+            double dC = dvC * D_per_V;
+            return (1. / 3. * (dA + dB + dC)) * (3600 * 180 / M_PI);
+        }     
+
+        ////////////////////////////////////////////////////////
+        /// TTP -> DAC
+        ////////////////////////////////////////////////////////
+
+        // (alpha/tip, beta/tilt, z/piston) ---> (dac1, dac2, dac3)
+
+        // alpha in arsecs, B & L in um, D_per_V in um/V 
+        double ttp_to_dac1(double alpha, double z, double B, double D_per_V, double v)
+        {
+            double dvA = ttp_to_v1(alpha, z, B, D_per_V);
+            return vi_to_daci(dvA, v);
+        }
+
+        // alpha & beta in arsecs, B & L in um, D_per_V in um/V
+        double ttp_to_dac2(double alpha, double beta, double z, double B, double L, double D_per_V, double v)
+        {
+
+            double dvB = ttp_to_v2(alpha, beta, z, B, L, D_per_V);
+            return vi_to_daci(dvB, v);
+        }
+
+        // alpha & beta in arsecs, B & L in um, D_per_V in um/V
+        double ttp_to_dac3(double alpha, double beta, double z, double B, double L, double D_per_V, double v)
+        {
+            double dvC = ttp_to_v3(alpha, beta, z, B, L, D_per_V);
+            return vi_to_daci(dvC, v);
+        }
+
+    
+        ////////////////////////////////////////////////////////
+        /// DAC - > TTP
+        ////////////////////////////////////////////////////////
+
+        // (dac1, dac2, dac3) ---> (alpha/tip, beta/tilt, z/piston)
+
+        double daci_to_tip(double dac1, double dac2, double dac3, double B, double D_per_V, double v)
+        {
+            double dvA = daci_to_vi(dac1, v);
+            double dvB = daci_to_vi(dac2, v);
+            double dvC = daci_to_vi(dac3, v);
+            return vi_to_tip(dvA, dvB, dvC, B, D_per_V);
+        }
+
+        double daci_to_tilt(double dac2, double dac3, double L, double D_per_V, double v)
+        {
+            double dvB = daci_to_vi(dac2, v);
+            double dvC = daci_to_vi(dac3, v);            
+            return vi_to_tilt(dvB, dvC, L, D_per_V);
+        }
+
+        double daci_to_piston(double dac1, double dac2, double dac3, double D_per_V, double v)
+        {
+            double dvA = daci_to_vi(dac1, v);
+            double dvB = daci_to_vi(dac2, v);
+            double dvC = daci_to_vi(dac3, v);            
+            return vi_to_piston(dvA, dvB, dvC, D_per_V);
+        }        
+
+        // // vectors
+
+        // double DAC_to_ttp(double dac1, double dac2, double dac3, double B, double L)
+        // {
+        //     return get_alpha(dac1, dac2, dac3, B), get_beta(dac2, dac3, L), get_z(dac1, dac2, dac3);
+        // }
+
+        // double ttp_to_DAC(double alpha, double beta, double z, double B, double L)
+        // {
+        //     return ttp_to_dac1(alpha, z, B), ttp_to_dac2(alpha, beta, z, B, L), ttp_to_dac3(alpha, beta, z, B, L);
+        // }
+
+        // // constraints
+
+        // double get_alpha_min(double dac1_min, double dac2_max, double dac3_max, double B)
+        // {
+        //     return 1. / B * (dac1_min - 0.5 * (dac2_max + dac3_max));
+        // }
+
+        // double get_alpha_max(double dac1_max, double dac2_min, double dac3_min, double B)
+        // {
+        //     return 1. / B * (dac1_max - 0.5 * (dac2_min + dac3_min));
+        // }
+
+        // double get_beta_min(double dac2_min, double dac3_max, double L)
+        // {
+        //     return 1. / L * (dac2_min - dac3_max);
+        // }
+
+        // double get_beta_max(double dac2_max, double dac3_min, double L)
+        // {
+        //     return 1. / L * (dac2_max - dac3_min);
+        // }
+
 
     } // namespace app
 } // namespace MagAOX
