@@ -661,8 +661,8 @@ int baslerCtrl::configureAcquisition()
 	  	The CenterX/Y has to be set to false otherwise the software tries to auto-center the frames.
 		See: https://docs.baslerweb.com/image-roi
 	   */
-	   m_camera->CenterX.SetValue(false);
-	   m_camera->CenterY.SetValue(false);
+	  // m_camera->CenterX.SetValue(false);
+	  // m_camera->CenterY.SetValue(false);
 
       //set offsets to 0 so any valid w/h will work.
       m_camera->OffsetX.SetValue(0);
