@@ -62,9 +62,9 @@ struct BinaryUartCallbacks
 struct BinaryUart
 {
 	//Default values
-	static const uint64_t RxCountInit = 0;
-	static const uint64_t PacketStartInit = 0;
-	static const uint64_t PacketLenInit = 0;
+	static const uint16_t RxCountInit = 0;
+	static const size_t PacketStartInit = 0;
+	static const size_t PacketLenInit = 0;
 	static const bool InPacketInit = false;
 	static const bool debugDefault = false;
 	static const char EmptyBufferChar = '\0';
@@ -76,6 +76,7 @@ struct BinaryUart
     IUart& Pinout;
 	IPacket& Packet;
 	BinaryUartCallbacks& Callbacks;
+	const std::vector<PZTQuery*>& Queries;
     bool debug;
     bool InPacket;
 	size_t PacketStart;
@@ -85,12 +86,13 @@ struct BinaryUart
 	uint64_t SerialNum;
 	static const uint64_t InvalidSerialNumber = 0xFFFFFFFFFFFFFFFFULL;
 
-    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const uint64_t serialnum = InvalidSerialNumber)
+    BinaryUart(struct IUart& pinout, struct IPacket& packet, struct BinaryUartCallbacks& callbacks, const std::vector<PZTQuery*>& queries, const uint64_t serialnum = InvalidSerialNumber)
         :
 		RxCount(RxCountInit),
         Pinout(pinout),
 		Packet(packet),
 		Callbacks(callbacks),
+		Queries(queries),
 		debug(debugDefault),
 		//~ debug(true),
 		InPacket(InPacketInit),
@@ -128,7 +130,7 @@ struct BinaryUart
         return(0);
     }
 
-    bool Process(MagAOX::app::PZTQuery* pztQuery)
+    bool Process()
     {
 	    //New char?
         if ( !(Pinout.dataready()) ) { return(false); }
@@ -138,7 +140,7 @@ struct BinaryUart
 
 		ProcessByte(c);
 		CheckPacketStart();
-		CheckPacketEnd(pztQuery);
+		CheckPacketEnd();
 
 		return(true); //We just want to know if there's chars in the buffer to put threads to sleep or not...
 	}
@@ -180,7 +182,7 @@ struct BinaryUart
 		}
 	}
 
-	bool CheckPacketEnd(MagAOX::app::PZTQuery* pztQuery)
+	bool CheckPacketEnd()
 	{
 		packetEnd = 0;
 		bool Processed = false;
@@ -236,12 +238,17 @@ struct BinaryUart
 		{
 			if ( (SerialNum == InvalidSerialNumber) || (SerialNum == Packet.SerialNum() ) )
 			{
-
 				//strip the part of the line with the arguments to this command (chars following command) for compatibility with the  parsing code, the "params" officially start with the s/n
 				const char* Params = reinterpret_cast<char*>(&(RxBuffer[PacketStart + Packet.PayloadOffset()]));
 
-				//call the actual command							
-				pztQuery->processReply(Params, payloadLen);
+				//Check which query the packet corresponds to
+			    for (PZTQuery* query : Queries) {
+					if (Packet.DoesPayloadTypeMatch(RxBuffer, RxCount, PacketStart, static_cast<uint32_t>(query->getPayloadType()))) {
+						// Process the packet
+						query->processReply(Params, payloadLen);
+						query->logReply();
+					}
+				}
 
 				Processed = true;
 			}
@@ -282,6 +289,7 @@ struct BinaryUart
 				RxBuffer[clr] = 0;
 			}
 			RxCount = pos;
+
 		}
 		else
 		{
