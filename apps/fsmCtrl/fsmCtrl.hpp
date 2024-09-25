@@ -85,6 +85,9 @@ namespace MagAOX
       double m_stroke_max = 10.0; // in micrometers
       double m_v = (4.096 / (std::pow(2.0, 24))) * 60;
       double d_piston = 5.0; // in micrometers 
+      double width = 3; // shm size
+      double height = 1; // shm size
+      std::string kw_name = "inputType";
 
       // input parameters
       std::string m_inputType;
@@ -300,6 +303,7 @@ namespace MagAOX
        */
 
       /**
+       * @brief Required by smimMonitor Interface
        * Called after shmimMonitor connects to the fsm stream.
        *
        * \returns 0 on success
@@ -308,6 +312,7 @@ namespace MagAOX
       int allocate(const dev::shmimT &sp);
 
       /**
+       * @brief Required by smimMonitor Interface
        * Called by shmimMonitor when a new fsm command is available.
        *
        * \returns 0 on success
@@ -330,6 +335,30 @@ namespace MagAOX
        * \returns -1 if incorrect size or data type in stream.
        */
       int commandFSM(void *curr_src);
+
+      /**
+       * @brief Checks if shmim exists
+       *
+       * \returns true if shmim exists
+       * \returns false otherwise
+       */
+      bool streamExists();
+
+      /**
+       * @brief Checks if shmim has expected size & keyword. If it doesn't deletes it.
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int validateStream();
+
+      /**
+       * @brief Create shmim if it doesn't exist
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int createStream();
       ///@}
     };
 
@@ -400,13 +429,28 @@ namespace MagAOX
       _config(m_dac3_min, "fsm.dac3_min");
       _config(m_dac3_max, "fsm.dac3_max");
 
-      _config(shmimMonitor::m_width, "shmimMonitor.width");
-      _config(shmimMonitor::m_height, "shmimMonitor.height");
+      _config(width, "shmimMonitor.width");
+      _config(height, "shmimMonitor.height");
 
       m_inputType = VOLTAGES;
       _config(m_inputType, "input.type");
+      if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+
       m_inputToggle = SHMIM;
       _config(m_inputToggle, "input.toggle");
+      if (!(m_inputToggle == SHMIM || m_inputToggle == INDI))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets m_inputToggle to a value other than 'shmim', or 'indi': " << m_inputToggle;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }      
 
       shmimMonitor::loadConfig(_config);
       return 0;
@@ -509,6 +553,13 @@ namespace MagAOX
       REG_INDI_NEWPROP(m_indiP_query, "telemetry", pcf::IndiProperty::Text);
       m_indiP_query.add(pcf::IndiElement("query"));
       m_indiP_query["query"] = "none";
+
+      if(!streamExists()) {
+        if (createStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+      }
 
       return 0;
     }
@@ -789,74 +840,13 @@ namespace MagAOX
     {
       static_cast<void>(sp); // be unused
 
-      uint32_t imsize[3] = {m_height, m_width};
-      std::string inputType = "";
-
-      // If imageStream exists
-      if(&m_imageStream != nullptr)
-      {
-        // If it has the wrong shape, destroy it
-        if(m_imageStream.md->size[0] != m_height || m_imageStream.md->size[1] != m_width)
-        {
-          ImageStreamIO_destroyIm(&m_imageStream);
-        }
-
-        // Check that shmim has inputType keyword
-        int kwn = 0;
-        bool kw_found = false;
-        while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
-        {
-          std::string name(m_imageStream.kw[kwn].name);
-          if (name == "inputType")
-          {
-            kw_found = true;
-            inputType = m_imageStream.kw[kwn].value.valstr;
-            if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
-            {
-              std::ostringstream oss;
-              oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
-              log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-              return -1;
-            }
-
-            m_inputType = inputType;
-            updateIfChanged(m_indiP_input, "type", m_inputType);
-          }
-          kwn++;
-        }
-
-        // If imageStream doesn't have an inputType keyword, destroy it
-        if(m_imageStream.kw[0].name != "inputType")
-        {
-          ImageStreamIO_destroyIm(&m_imageStream);
-        }
-      }
-
-      // At this point ImageStream either exists and it's good or it doesn't and we need to create it
-      if(&m_imageStream == nullptr) {
-        std::cerr << "Creating: " << m_shmimName << " " << m_width << " " << m_height << " " << "\n";
-    
-        ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 1, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);     
-
-        if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
-        {
-          std::ostringstream oss;
-          oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
-          log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+      // validateStream will delete & recreate stream if it doesn't match size & kw requirements
+      if (streamExists()) {
+        if (validateStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
           return -1;
-        } else {
-          // Set name of first keyword is 'inputType'
-          strncpy(m_imageStream.kw[0].name, "inputType", sizeof(m_imageStream.kw[0].name));
-          // Ensure null termination
-          m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
-          // Set type
-          m_imageStream.kw[0].type = 'S';
-          // Set keyword value
-          strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
-          // Ensure null termination
-          m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
         }
-      }
+      }   
 
       return 0;
     }
@@ -879,38 +869,6 @@ namespace MagAOX
 
     int fsmCtrl::commandFSM(void *curr_src)
     {
-      std::string inputType = "";
-
-      // Check that shmim has inputType keyword
-      int kwn = 0;
-      while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
-      {
-        std::string name(m_imageStream.kw[kwn].name);
-        if (name == "inputType")
-        {
-          inputType = m_imageStream.kw[kwn].value.valstr;
-          if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
-          {
-            std::ostringstream oss;
-            oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
-            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-            return -1;
-          }
-
-          m_inputType = inputType;
-          updateIfChanged(m_indiP_input, "type", m_inputType);
-        }
-        kwn++;
-      }
-
-      if (inputType == "")
-      {
-        std::ostringstream oss;
-        oss << "Shmim '" << shmimMonitor::m_shmimName << "' does not have an inputType keyword with a value of 'dacs', 'voltages', or 'ttp'.";
-        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-        return -1;
-      }
-
       uint32_t dacs[3] = {0, 0, 0};
 
       //  if(state() != stateCodes::OPERATING) return 0;
@@ -954,6 +912,113 @@ namespace MagAOX
       std::unique_lock<std::mutex> lock(m_indiMutex);
 
       return setDacs(dacs);
+    }
+
+    bool fsmCtrl::streamExists() { 
+      // Check if ImageStream exists.
+      // From shmimMonitor::smThreadExec.
+      int SM_fd;
+      char SM_fname[200];
+      ImageStreamIO_filename(SM_fname, sizeof(SM_fname), m_shmimName.c_str());
+      SM_fd = open(SM_fname, O_RDWR);
+      if (SM_fd == -1)
+      {
+          close(SM_fd);
+          return false;
+      } else {
+        return true;
+      }
+    }
+
+    int fsmCtrl::validateStream() { 
+      std::string inputType = "";
+
+      // If it has the wrong shape, destroy it
+      if(m_imageStream.md->size[0] != height || m_imageStream.md->size[1] != width)
+      {
+        std::ostringstream oss;
+        oss << "Shmim '" << shmimMonitor::m_shmimName << "' has the wrong shape: height = " << m_height << ", width = " << m_width << ". Destroying it." << std::endl;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+
+        ImageStreamIO_destroyIm(&m_imageStream);
+        if (createStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+        return 0;        
+      }
+
+      // Check if shmim has inputType keyword
+      int kwn = 0;
+      bool kw_found = false;
+      while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
+      {
+        // std::string name(m_imageStream.kw[kwn].name);
+        // if (name == kw_name)
+        if (std::string(m_imageStream.kw[kwn].name) == kw_name)
+        {
+          kw_found = true;
+          inputType = std::string(m_imageStream.kw[kwn].value.valstr);
+          if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
+          {
+            std::ostringstream oss;
+            oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
+            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+            return -1;
+          }
+
+          // If keyword exists, it takes precedence
+          m_inputType = inputType;
+          updateIfChanged(m_indiP_input, "type", m_inputType);
+        }
+        kwn++;
+      }
+
+      if(!kw_found) 
+      {
+        // // If imageStream doesn't have an inputType keyword, destroy it        
+        // std::ostringstream oss;
+        // oss << "Shmim '" << shmimMonitor::m_shmimName << "' doesn't have an inputType keyword specifying its data type. Destroying it." << std::endl;
+        // log<software_warning>({__FILE__, __LINE__, errno, oss.str()});      
+
+        // ImageStreamIO_destroyIm(&m_imageStream);
+        
+        // if (createStream() < 0) {
+        //   log<software_error>({__FILE__, __LINE__});
+        //   return -1;
+        // }
+
+        std::ostringstream oss;
+        oss << "No inputType keyword found for shmim '" << shmimMonitor::m_shmimName << ". Defaulting to pre-set input type: " << m_inputType << std::endl;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});           
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::createStream() { 
+      m_dataType = 9; // _DATATYPE_FLOAT
+      uint32_t imsize[3] = {height, width, 0};
+
+      // Not found, create it
+      ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 1, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);
+
+      // Set name of first keyword is 'inputType'
+      strncpy(m_imageStream.kw[0].name, kw_name.c_str(), sizeof(m_imageStream.kw[0].name));
+      // Ensure null termination
+      m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
+      // Set type
+      m_imageStream.kw[0].type = 'S';
+      // Set keyword value
+      strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+      // Ensure null termination
+      m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+
+      std::ostringstream oss;
+      oss << "Created: " << m_shmimName << std::endl;
+      log<text_log>(oss.str());
+
+      return 0;
     }
 
     ////////////////////
@@ -1187,19 +1252,19 @@ namespace MagAOX
       if (ipRecv.find("type"))
       {
         std::string type = ipRecv["type"].get<std::string>();
-        if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+        if (!(type == DACS || type == VOLTAGES || type == TTP))
         {
           std::ostringstream oss;
-          oss << "input.type '" << m_inputType << "' not dacs, voltages or ttp";
+          oss << "input.type '" << type << "' not dacs, voltages or ttp";
           log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
           return -1;
         }
 
+        m_inputType = type;
+        updateIfChanged(m_indiP_input, "type", m_inputType);
+
         if (state() == stateCodes::READY)
         {
-          m_inputType = type;
-          updateIfChanged(m_indiP_input, "type", m_inputType);
-
           // Reset target values
           updateIfChanged(m_indiP_val1, "target", -99999);
           updateIfChanged(m_indiP_val2, "target", -99999);
