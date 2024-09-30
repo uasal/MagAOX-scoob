@@ -207,8 +207,8 @@ public:
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = false;
-   //m_powerOnWait = 10;
+   m_powerMgtEnabled = true;
+   m_powerOnWait = 10;
    //m_startupTemp = -45;  
    
    //m_defaultReadoutSpeed  = "emccd_17MHz";
@@ -313,6 +313,9 @@ int nsvCtrl::appStartup()
    
    state(stateCodes::NOTCONNECTED);
 
+   m_powerState = 1;  //figure out power stuff
+   m_powerTargetState = 1;
+
    return 0;
 
 }
@@ -343,6 +346,8 @@ int nsvCtrl::appLogic()
       if(m_powerState == 0) return 0;
       
       int ret = cameraSelect();
+      m_powerState = 1;
+      m_poweredOn = true;
 
       if( ret != 0) 
       {
@@ -352,11 +357,17 @@ int nsvCtrl::appLogic()
 
    if( state() == stateCodes::CONNECTED )
    {
-      sleep(30);
+      printf("StateCode connected\n");
+
       writeConfig();
       m_shutterStatus = "READY";
 
       state(stateCodes::READY);
+      if(m_poweredOn)
+      {
+         m_poweredOn = false;
+         if(powerState() != 1 || powerStateTarget() != 1) return 0;
+      }
    }
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
@@ -425,9 +436,11 @@ int nsvCtrl::onPowerOff()
 {
    if(m_init)
    {
-      //ShutDown();
       m_init = false;
    }
+
+   // either always set this or guarantee m_init is only set to true after streaming starts
+   stopStreaming();
       
    m_powerOnCounter = 0;
 
@@ -473,7 +486,8 @@ int nsvCtrl::appShutdown()
 {
    if(m_init)
    {
-      //ShutDown();
+      stopStreaming();
+      // clean up buffers?
       m_init = false;
    }
       
@@ -538,6 +552,7 @@ int nsvCtrl::cameraSelect()
 
 
    state(stateCodes::CONNECTED);
+   log<text_log>(std::string("Connected to ") + camera_string);
 
    m_cropModeSet = false; // move this somewhere it makes sense
 
@@ -634,7 +649,7 @@ int nsvCtrl::writeConfig()
    
    if(fout.fail())
    {
-      log<software_error>({__FILE__, __LINE__, " error opening config file" + configFile + " for writing"});
+      log<software_error>({__FILE__, __LINE__, " error opening config file " + configFile + " for writing"});
       return -1;
    }
 
@@ -878,6 +893,8 @@ int nsvCtrl::configureAcquisition()
       
    }
    
+   // nsv not implementing changing ROI for now. Only 6144x4210 and 6144x512
+
    m_currentROI.bin_x = m_nextROI.bin_x;
    m_currentROI.bin_y = m_nextROI.bin_y;
    m_currentROI.x = x0 - 1.0 +  0.5*(m_nextROI.w - 1);
@@ -885,12 +902,12 @@ int nsvCtrl::configureAcquisition()
    m_currentROI.w = m_nextROI.w;
    m_currentROI.h = m_nextROI.h;
    
-   updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
-   updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
-   updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
-   updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
+   //updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
+   //updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
+   //updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
+   //updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
+   //updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
+   //updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
 
    //We also update target to the settable values
    m_nextROI.x = m_currentROI.x;
@@ -900,12 +917,12 @@ int nsvCtrl::configureAcquisition()
    m_nextROI.bin_x = m_currentROI.bin_x;
    m_nextROI.bin_y = m_currentROI.bin_y;
 
-   updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
-   updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
-   updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
-   updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
+   //updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
+   //updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
+   //updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
+   //updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
+   //updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
+   //updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
 
 
    ///\todo This should check whether we have a match between EDT and the camera right?
@@ -946,6 +963,7 @@ int nsvCtrl::acquireAndCheckValid()
    uint dmaTimeStamp[2];
    int bufferIndex;
    queueBuffer(0);
+   waitForFrame();
    bufferIndex = dequeueBuffer();
    
    dmaTimeStamp[0] = 0;  // TODO timing info for cam

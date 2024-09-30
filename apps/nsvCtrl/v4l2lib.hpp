@@ -203,7 +203,7 @@ int queueBuffer(int buf_index){
     		throw std::runtime_error("Failed to queue buffer");
             return -1;
 	    }
-        printf("Queueuing %d\n", buf.index);
+        //printf("Queueuing %d\n", buf.index);
         return 0;
 }
 
@@ -219,7 +219,7 @@ int dequeueBuffer(){
         return -1;
 	}
     currentBufIndex = bufdq.index;  //returns the index of the image dequeued (FIFO)
-    printf("Dequeueing %d\n", currentBufIndex);
+    //printf("Dequeueing %d\n", currentBufIndex);
     return currentBufIndex;
 }
 
