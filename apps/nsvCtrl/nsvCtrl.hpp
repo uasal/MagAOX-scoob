@@ -79,7 +79,7 @@ protected:
 
    bool m_poweredOn {false};
 
-   std::string camera_string = "/dev/video0"; // hard code to one camera for now. add cam select 
+   std::string camera_string = "/dev/video2"; // hard code to one camera for now. add cam select 
 
 public:
 
@@ -119,7 +119,7 @@ public:
 
    int getFPS();
    
-   float getEMGain();
+   int getEMGain();
    
    int setEMGain();
 
@@ -129,7 +129,7 @@ public:
 
    int setFPS();
 
-   int getExpTime();  // set is part of stdCamera
+   int getExpTime();
 
    //int getBitDepth(); //12, 14, 16
    
@@ -172,7 +172,6 @@ public:
    ///@}
    
    
-   
    /** \name framegrabber Interface 
      * 
      * @{
@@ -184,7 +183,6 @@ public:
    int acquireAndCheckValid();
    int loadImageIntoStream(void * dest);
    int reconfig();
-
 
    //INDI:
 protected:
@@ -323,13 +321,12 @@ int nsvCtrl::appStartup()
 inline
 int nsvCtrl::appLogic()
 {
-   //run stdCamera's appLogic
+
    if(dev::stdCamera<nsvCtrl>::appLogic() < 0)
    {
       return log<software_error, -1>({__FILE__, __LINE__});
    }
    
-   //run frameGrabber's appLogic to see if the f.g. thread has exited.
    if(dev::frameGrabber<nsvCtrl>::appLogic() < 0)
    {
       return log<software_error, -1>({__FILE__, __LINE__});
@@ -397,6 +394,14 @@ int nsvCtrl::appLogic()
       }
 
       if(getEMGain() < 0)
+      {
+         if(m_powerState == 0) return 0;
+
+         state(stateCodes::ERROR);
+         return 0;
+      }
+
+      if(getExpTime() < 0)
       {
          if(m_powerState == 0) return 0;
 
@@ -484,9 +489,11 @@ int nsvCtrl::whilePowerOff()
 inline
 int nsvCtrl::appShutdown()
 {
+
+   stopStreaming();
    if(m_init)
    {
-      stopStreaming();
+      //stopStreaming();
       // clean up buffers?
       m_init = false;
    }
@@ -504,14 +511,13 @@ int nsvCtrl::cameraSelect()
 {
    unsigned int error;
    
-   char path[] = "/dev/video0";
+   char path[] = "/dev/video2";
    if(openCamera(path) == -1){
       log<text_log>("No nsv camera found on path", logPrio::LOG_WARNING);
       state(stateCodes::NODEVICE);
       return -1;
    }
-
-   // set all the initial camera parameters in here -- mode, ROI, vshift, exposure, framerate, blacklevel, gain  
+   
    if(initCamera(6144,4210) == -1){
       log<text_log>("Failed to initialize camera", logPrio::LOG_WARNING);
       state(stateCodes::NODEVICE);
@@ -522,7 +528,6 @@ int nsvCtrl::cameraSelect()
    std::cout << "Camera params - Width: " << params.width
                   << ", Height: " << params.height
                   << ", Pixel Format: " << params.pixelFormat << std::endl;
-
 
 
    if(requestBuffers(1)  == -1 ||
@@ -573,11 +578,8 @@ int nsvCtrl::getTemp()
 }
 
 inline
-float nsvCtrl::getEMGain()
+int nsvCtrl::getEMGain()
 {
-   unsigned int error;
-   int gain;
-
    const std::string command = "v4l2-ctl --get-ctrl gain -d " + camera_string; 
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
@@ -586,9 +588,7 @@ float nsvCtrl::getEMGain()
       return -1;
    }
 
-   gain = std::stoi(result);
-   //if(gain == 0) gain = 1;
-   m_emGain = gain;
+   m_emGain = std::stoi(result);
    return 0;
 }
 
@@ -824,9 +824,6 @@ int nsvCtrl::setExpTime()
    
    const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + camera_string; 
    int result = std::system(command.c_str());
-  
-   // really should do a v4l2-ctl --get-ctrl=exposure (getExpTime) to confirm camera took the new fr
-   //getExpTime();
 
    if( result != 0)
    {
