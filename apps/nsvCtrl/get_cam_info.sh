@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the device and output JSON file
-DEVICE="/dev/video0"
+DEVICE="/dev/video2"
 JSON_FILE="camera_info.json"
 
 # Run v4l2-ctl command and capture output

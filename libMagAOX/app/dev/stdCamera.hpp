@@ -367,6 +367,8 @@ protected:
 
    float m_blacklevel {1}; ///< The camera's current blacklevel (if available).
    float m_blacklevelSet {1}; ///< The camera's blacklevel, as set by the user.
+   float m_minBlacklevel {0}; ///< The minimum exposure time, used for INDI attributes
+   float m_maxBlacklevel {std::numeric_limits<float>::max()}; ///< The maximum exposure time, used for INDI attributes
 
    pcf::IndiProperty m_indiP_readoutSpeed;
    pcf::IndiProperty m_indiP_vShiftSpeed;
