@@ -17,7 +17,6 @@
 #include <vector>
 #include <stdexcept>
 #include <fstream>
-//#include <opencv2/opencv.hpp> //just to write out images as jpegs for now
 #include <ctime>
 #include <chrono>
 
@@ -41,7 +40,6 @@ int queueBuffer(int buf_index);
 int dequeueBuffer();    //returns the index of the buffer dequeued or -1 for failure
 int startStreaming(); 
 int stopStreaming();
-//void writeFile(int buf_index);
 void waitForFrame();
 
 void getBufferDetails();
@@ -252,20 +250,6 @@ int stopStreaming() {
         return 0;
     }
 }
-
-/*
-void Camera::writeFile(int buf_index){
-
-    cv::Mat bayer(params.height, params.width, CV_16UC1, buffers[buf_index]);
-    // Convert bayer pattern to BGR format
-    cv::Mat bgr;
-    cv::cvtColor(bayer, bgr, cv::COLOR_BayerRG2BGR);
-    std::string filename = "frame" + std::to_string(buf_index) + ".jpg";
-    cv::imwrite(filename, bgr);
-    printf("Saved out image %d\n", buf_index);
-
-}
-*/
 
 void waitForFrame() {
     fd_set fds;

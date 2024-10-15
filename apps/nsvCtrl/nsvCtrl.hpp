@@ -43,6 +43,8 @@ public:
    
    static constexpr bool c_stdCamera_emGain = true; ///< app::dev config to tell stdCamera to expose EM gain controls 
 
+   static constexpr bool c_stdCamera_blacklevel = true; ///< app::dev config to tell stdCamera to expose Blacklevel controls 
+
    static constexpr bool c_stdCamera_exptimeCtrl = true; ///< app::dev config to tell stdCamera to expose exposure time controls
    
    static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera to not expose FPS controls
@@ -122,6 +124,10 @@ public:
    int getEMGain();
    
    int setEMGain();
+
+   int getBlacklevel();
+
+   int setBlacklevel();
 
    int setCropMode();
 
@@ -215,6 +221,9 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    
    m_maxEMGain = 360;
    m_emGainSet = 100;
+   m_blacklevelSet = 10;
+   m_maxBlacklevel = 65535; // pair with bit depth mode?
+   m_minBlacklevel = 0;
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
    m_maxFPS = 10000000;
@@ -401,6 +410,14 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
+      if(getBlacklevel() < 0)
+      {
+         if(m_powerState == 0) return 0;
+
+         state(stateCodes::ERROR);
+         return 0;
+      }
+
       if(getExpTime() < 0)
       {
          if(m_powerState == 0) return 0;
@@ -444,7 +461,6 @@ int nsvCtrl::onPowerOff()
       m_init = false;
    }
 
-   // either always set this or guarantee m_init is only set to true after streaming starts
    stopStreaming();
       
    m_powerOnCounter = 0;
@@ -584,7 +600,7 @@ int nsvCtrl::getEMGain()
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
    {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getGain"});
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getEMGain"});
       return -1;
    }
 
@@ -620,6 +636,54 @@ int nsvCtrl::setEMGain()
    }
 
    log<text_log>("Set Gain to: " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
+   
+   return 0;
+}
+
+
+inline
+int nsvCtrl::getBlacklevel()
+{
+   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + camera_string; 
+   std::string result = cmdRes(command.c_str());
+   if( result == "error") 
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from blacklevel"});
+      return -1;
+   }
+
+   m_blacklevel = std::stoi(result);
+   return 0;
+}
+
+inline
+int nsvCtrl::setBlacklevel()
+{
+   
+   int blacklevel_to_set = m_blacklevelSet;  
+
+   if(blacklevel_to_set < 0)
+   {
+      blacklevel_to_set = 0;
+      log<text_log>("Blacklevel limited to 0", logPrio::LOG_WARNING);
+   }
+   
+   if(blacklevel_to_set > m_maxBlacklevel)
+   {
+      blacklevel_to_set = m_maxBlacklevel;
+      log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+   }
+   
+   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + camera_string; 
+   int result = std::system(command.c_str());
+  
+   if( result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBlacklevel:"});
+      return -1;
+   }
+
+   log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
    
    return 0;
 }
