@@ -202,6 +202,21 @@ int loadCameraConfig( cameraConfigMap & ccmap, ///< [out] the map in which to pl
   *  
   *        - If true the value of \ref m_maxEMGain should be set by the implementation and managed
   *          as needed. Additionally the configuration setting "camera.maxEMGain" is exposed.
+  * 
+  *     - Blacklevel:
+  *        - A static configuration variable must be defined in derivedT as
+  *          \code
+  *              static constexpr bool c_stdCamera_blacklevel = true; //or: false
+  *          \endcode
+  *          which determines whether or not blacklevel controls are exposed.  
+  *  
+  *        - If the camera uses blacklevel, then a function 
+  *          \code
+  *              int setBlacklevel(); // set Blacklevel based on m_blacklevelSet.
+  *          \endcode
+  *          must be defined which sets the camera Blacklevel to \ref m_blacklevelSet.  
+  * 
+  *        - If true the implementation must keep \ref m_blacklevelSet up to date.  
   *     
   *     - Camera Modes:
   * 
@@ -350,10 +365,15 @@ protected:
    float m_emGainSet {1}; ///< The camera's EM gain, as set by the user.
    float m_maxEMGain {1}; ///< The configurable maximum EM gain.  To be enforced in derivedT.
 
+   float m_blacklevel {1}; ///< The camera's current blacklevel (if available).
+   float m_blacklevelSet {1}; ///< The camera's blacklevel, as set by the user.
+
    pcf::IndiProperty m_indiP_readoutSpeed;
    pcf::IndiProperty m_indiP_vShiftSpeed;
 
    pcf::IndiProperty m_indiP_emGain;
+
+   pcf::IndiProperty m_indiP_blacklevel;
 
    ///@}
    
@@ -744,7 +764,26 @@ public:
      * \returns -1 on error.
      */
    int newCallBack_emgain( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
+
+   /// Interface to setBlacklevel when the derivedT has Blacklevel
+   /** Tag-dispatch resolution of c_stdCamera_blacklevel==true will call this function.
+     * Calls derivedT::setBlacklevel. 
+     */
+   int setBlacklevel( const mx::meta::trueFalseT<true> & t);
    
+   /// Interface to setBlacklevel when the derivedT does not have setBlacklevel
+   /** Tag-dispatch resolution of c_stdCamera_blacklevel==false will call this function.
+     * This prevents requiring derivedT to have its own setBlacklevel(). 
+     */
+   int setBlacklevel( const mx::meta::trueFalseT<false> & f);
+   
+   /// Callback to process a NEW Blacklevel request
+   /**
+     * \returns 0 on success.
+     * \returns -1 on error.
+     */
+   int newCallBack_blacklevel( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/);
+
    /// Interface to setExpTime when the derivedT uses exposure time controls
    /** Tag-dispatch resolution of c_stdCamera_exptimeCtrl==true will call this function.
      * Calls derivedT::setExpTime. 
@@ -1259,6 +1298,19 @@ int stdCamera<derivedT>::appStartup()
          return -1;
       }
    }
+
+   if(derivedT::c_stdCamera_blacklevel)
+   {
+      derived().createStandardIndiNumber( m_indiP_blacklevel, "blacklevel", 0, 1000, 1, "%0.3f");
+      if( derived().registerIndiPropertyNew( m_indiP_blacklevel, st_newCallBack_stdCamera) < 0)
+      {
+         #ifndef STDCAMERA_TEST_NOLOG
+         derivedT::template log<software_error>({__FILE__,__LINE__});
+         #endif
+         return -1;
+      }
+   }
+   
    
    if(derivedT::c_stdCamera_exptimeCtrl)
    {
@@ -1776,6 +1828,7 @@ int stdCamera<derivedT>::newCallBack_stdCamera( const pcf::IndiProperty &ipRecv 
    else if(derivedT::c_stdCamera_readoutSpeed && name == "readout_speed") return newCallBack_readoutSpeed(ipRecv);
    else if(derivedT::c_stdCamera_vShiftSpeed &&  name == "vshift_speed") return newCallBack_vShiftSpeed(ipRecv);
    else if(derivedT::c_stdCamera_emGain &&       name == "emgain") return newCallBack_emgain(ipRecv);
+   else if(derivedT::c_stdCamera_blacklevel &&      name == "blacklevel") return newCallBack_blacklevel(ipRecv);
    else if(derivedT::c_stdCamera_exptimeCtrl &&  name == "exptime") return newCallBack_exptime(ipRecv);
    else if(derivedT::c_stdCamera_fpsCtrl &&      name == "fps") return newCallBack_fps(ipRecv);
    else if(derivedT::c_stdCamera_synchro &&      name == "synchro") return newCallBack_synchro(ipRecv);
@@ -2057,6 +2110,49 @@ int stdCamera<derivedT>::newCallBack_emgain( const pcf::IndiProperty &ipRecv)
    
    return 0;
 }
+
+template<class derivedT>
+int stdCamera<derivedT>::setBlacklevel( const mx::meta::trueFalseT<true> & t)
+{
+   static_cast<void>(t);
+   return derived().setBlacklevel();
+}
+
+template<class derivedT>
+int stdCamera<derivedT>::setBlacklevel( const mx::meta::trueFalseT<false> & f)
+{
+   static_cast<void>(f);
+   return 0;
+}
+   
+template<class derivedT>
+int stdCamera<derivedT>::newCallBack_blacklevel( const pcf::IndiProperty &ipRecv)
+{
+   if(derivedT::c_stdCamera_blacklevel)
+   {
+      #ifdef XWCTEST_INDI_CALLBACK_VALIDATION
+          return 0;
+      #endif
+
+      float target;
+
+      std::unique_lock<std::mutex> lock(derived().m_indiMutex);
+
+      if( derived().indiTargetUpdate( m_indiP_blacklevel, target, ipRecv, true) < 0)
+      {
+         derivedT::template log<software_error>({__FILE__,__LINE__});
+         return -1;
+      }
+   
+      m_blacklevelSet = target;
+   
+      mx::meta::trueFalseT<derivedT::c_stdCamera_blacklevel> tf;
+      return setBlacklevel(tf);
+   }
+   
+   return 0;
+}
+
 
 template<class derivedT>
 int stdCamera<derivedT>::setExpTime( const mx::meta::trueFalseT<true> & t)
@@ -2810,6 +2906,12 @@ int stdCamera<derivedT>::updateINDI()
       derived().updateIfChanged(m_indiP_emGain, "current", m_emGain, INDI_IDLE);
       derived().updateIfChanged(m_indiP_emGain, "target", m_emGainSet, INDI_IDLE);
    }
+
+   if(derivedT::c_stdCamera_blacklevel)
+   {
+      derived().updateIfChanged(m_indiP_blacklevel, "current", m_blacklevel, INDI_IDLE);
+      derived().updateIfChanged(m_indiP_blacklevel, "target", m_blacklevelSet, INDI_IDLE);
+   }
    
    if(derivedT::c_stdCamera_exptimeCtrl)
    {
@@ -2958,6 +3060,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
    static float last_fps = 0;
    static float last_adcSpeed = -1;
    static float last_emGain = -1;
+   static float last_blacklevel = -1;
    static float last_ccdTemp = 0;
    static float last_ccdTempSetpt = 0;
    static bool last_tempControlStatus = 0;
@@ -2980,6 +3083,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
                m_expTime != last_expTime ||
                m_fps != last_fps ||
                m_emGain != last_emGain ||
+               m_blacklevel != last_blacklevel ||
                m_adcSpeed != last_adcSpeed ||
                m_ccdTemp != last_ccdTemp ||
                m_ccdTempSetpt != last_ccdTempSetpt ||
@@ -2994,7 +3098,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
    {
       derived().template telem<telem_stdcam>({m_modeName, m_currentROI.x, m_currentROI.y, 
                                                     m_currentROI.w, m_currentROI.h, m_currentROI.bin_x, m_currentROI.bin_y,
-                                                       m_expTime, m_fps, m_emGain, m_adcSpeed, m_ccdTemp, m_ccdTempSetpt, (uint8_t) m_tempControlStatus, 
+                                                       m_expTime, m_fps, m_emGain, m_blacklevel, m_adcSpeed, m_ccdTemp, m_ccdTempSetpt, (uint8_t) m_tempControlStatus, 
                                                              (uint8_t) m_tempControlOnTarget, m_tempControlStatusStr, m_shutterStatus, (int8_t) m_shutterState, 
                                                                    (uint8_t) m_synchro, m_vshiftSpeed, (uint8_t) m_cropMode});
       
@@ -3003,6 +3107,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
       last_expTime = m_expTime;
       last_fps = m_fps;
       last_emGain = m_emGain;
+      last_blacklevel = m_blacklevel;
       last_adcSpeed = m_adcSpeed;
       last_ccdTemp = m_ccdTemp;
       last_ccdTempSetpt = m_ccdTempSetpt;
