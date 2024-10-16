@@ -81,7 +81,9 @@ protected:
 
    bool m_poweredOn {false};
 
-   std::string camera_string = "/dev/video2"; // hard code to one camera for now. add cam select 
+   //std::string camera_string = "/dev/video2"; // hard code to one camera for now. add cam select 
+
+   std::string m_camPath; // "/dev/video2" or similar, path to l4v2 cam 
 
 public:
 
@@ -213,6 +215,9 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
    m_powerMgtEnabled = true;
    m_powerOnWait = 10;
+   //std::string m_powerDevice;             ///< The INDI device name of the power controller
+   //std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
+
    //m_startupTemp = -45;  
    
    //m_defaultReadoutSpeed  = "emccd_17MHz";
@@ -259,6 +264,8 @@ nsvCtrl::~nsvCtrl() noexcept
 inline
 void nsvCtrl::setupConfig()
 {
+   config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
+
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
    dev::telemeter<nsvCtrl>::setupConfig(config);
@@ -267,6 +274,8 @@ void nsvCtrl::setupConfig()
 inline
 void nsvCtrl::loadConfig()
 {
+
+   config(m_camPath, "camera.camPath");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
    
    m_configFile = "/tmp/nsv_";
@@ -527,13 +536,13 @@ int nsvCtrl::cameraSelect()
 {  
    char path[] = "/dev/video2";
    if(openCamera(path) == -1){
-      log<text_log>("No nsv camera found on path", logPrio::LOG_WARNING);
+      log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
    
    if(initCamera(6144,4210) == -1){
-      log<text_log>("Failed to initialize camera", logPrio::LOG_WARNING);
+      log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
@@ -546,32 +555,32 @@ int nsvCtrl::cameraSelect()
 
    if(requestBuffers(1)  == -1 ||
       queryBuffers()     == -1) {
-      log<text_log>("Failed to initialize camera buffers", logPrio::LOG_WARNING);
+      log<text_log>("Failed to initialize camera buffers", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
 
    if(startStreaming() == -1){
-      log<text_log>("Failed to start camera stream", logPrio::LOG_WARNING);
+      log<text_log>("Failed to start camera stream", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
 
    if(queueBuffer(0) == -1){
-      log<text_log>("Failed to start queueing images", logPrio::LOG_WARNING);
+      log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
 
     if(dequeueBuffer() == -1){
-      log<text_log>("Failed to start queueing images", logPrio::LOG_WARNING);
+      log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
 
 
    state(stateCodes::CONNECTED);
-   log<text_log>(std::string("Connected to ") + camera_string);
+   log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
 
    m_cropModeSet = false; // move this somewhere it makes sense
 
@@ -594,7 +603,7 @@ int nsvCtrl::getTemp()
 inline
 int nsvCtrl::getEMGain()
 {
-   const std::string command = "v4l2-ctl --get-ctrl gain -d " + camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl gain -d " + m_camPath; //camera_string; 
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
    {
@@ -624,7 +633,7 @@ int nsvCtrl::setEMGain()
       log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + m_camPath; //camera_string; 
    int result = std::system(command.c_str());
   
    if( result != 0)
@@ -642,7 +651,7 @@ int nsvCtrl::setEMGain()
 inline
 int nsvCtrl::getBlacklevel()
 {
-   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath; //camera_string; 
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
    {
@@ -660,10 +669,10 @@ int nsvCtrl::setBlacklevel()
    
    int blacklevel_to_set = m_blacklevelSet;  
 
-   if(blacklevel_to_set < 0)
+   if(blacklevel_to_set < m_minBlacklevel)
    {
-      blacklevel_to_set = 0;
-      log<text_log>("Blacklevel limited to 0", logPrio::LOG_WARNING);
+      blacklevel_to_set = m_minBlacklevel;
+      log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
    }
    
    if(blacklevel_to_set > m_maxBlacklevel)
@@ -672,7 +681,7 @@ int nsvCtrl::setBlacklevel()
       log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; //camera_string; 
    int result = std::system(command.c_str());
   
    if( result != 0)
@@ -793,7 +802,7 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
 inline
 int nsvCtrl::getFPS()
 {
-   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + m_camPath; //camera_string; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -824,7 +833,7 @@ int nsvCtrl::setFPS()
       log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + m_camPath; //camera_string; 
    int result = std::system(command.c_str());
   
    // really should do a v4l2-ctl --get-ctrl=frame_rate (getFPS call) to confirm camera took the new fr
@@ -845,7 +854,7 @@ int nsvCtrl::setFPS()
 inline 
 int nsvCtrl::getExpTime()
 {
-   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + m_camPath; //camera_string; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -877,7 +886,7 @@ int nsvCtrl::setExpTime()
       log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + m_camPath; //camera_string; 
    int result = std::system(command.c_str());
 
    if( result != 0)
