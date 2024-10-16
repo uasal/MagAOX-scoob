@@ -207,7 +207,7 @@ int queueBuffer(int buf_index){
 
 int dequeueBuffer(){
 
-    struct v4l2_buffer bufdq = {0};
+    struct v4l2_buffer bufdq = {};
 	bufdq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufdq.memory = V4L2_MEMORY_MMAP;
 	bufdq.index = 0;
@@ -255,7 +255,7 @@ void waitForFrame() {
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    struct timeval tv = {0};
+    struct timeval tv = {0,0};
     tv.tv_sec = 2;
     int r = select(fd+1, &fds, NULL, NULL, &tv);
     if(-1 == r){
