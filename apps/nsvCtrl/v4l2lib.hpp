@@ -216,15 +216,13 @@ int dequeueBuffer(){
 		throw std::runtime_error("Failed to dequeue");
         return -1;
 	}
-    currentBufIndex = bufdq.index;  //returns the index of the image dequeued (FIFO)
+    currentBufIndex = bufdq.index;  //returns index of image dequeued (FIFO)
     //printf("Dequeueing %d\n", currentBufIndex);
     return currentBufIndex;
 }
 
-// track queueing and dequeueing images & their indicies. 
-//Return the pointer to the image that was dequeued most recently
-//int getLatestImage(){
-//}
+// TODO: track queueing and dequeueing images & their indicies, implement internal buffering 
+// Return the pointer to the image that was dequeued most recently
 
 int startStreaming() {
     
