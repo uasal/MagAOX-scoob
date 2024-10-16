@@ -56,7 +56,8 @@ struct telem_stdcam : public flatbuffer_log
                 const int8_t & shutterState,         ///<[in]
                 const uint8_t & synchro,             ///<[in]
                 const float & vshift,                ///<[in]
-                const uint8_t & cropMode             ///<[in]
+                const uint8_t & cropMode,            ///<[in]
+                const float & blacklevel             ///<[in]
               )
       {         
          auto _mode = builder.CreateString(mode);
@@ -68,7 +69,7 @@ struct telem_stdcam : public flatbuffer_log
          auto _shutterStatusStr = builder.CreateString(shutterStatusSr);
          auto _shutter = CreateShutter(builder, _shutterStatusStr, shutterState);
                   
-         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, vshift, cropMode);
+         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, vshift, cropMode, blacklevel);
          builder.Finish(fp);
       }
 
@@ -91,7 +92,8 @@ struct telem_stdcam : public flatbuffer_log
                 const std::string & statusStr,       ///<[in]
                 const std::string & shutterStatusSr, ///<[in]
                 const int8_t & shutterState,         ///<[in]
-                const uint8_t & synchro              ///<[in]
+                const uint8_t & synchro,             ///<[in]
+                const float & blacklevel             ///<[in]
               )
       {         
          auto _mode = builder.CreateString(mode);
@@ -103,7 +105,7 @@ struct telem_stdcam : public flatbuffer_log
          auto _shutterStatusStr = builder.CreateString(shutterStatusSr);
          auto _shutter = CreateShutter(builder, _shutterStatusStr, shutterState);
                   
-         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, 0, -1);
+         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, 0, -1, blacklevel);
          builder.Finish(fp);
       }
 
@@ -213,6 +215,9 @@ struct telem_stdcam : public flatbuffer_log
       if(fbs->cropMode()==-1) msg += "---";
       else if(fbs->cropMode()==1) msg += "ON";
       else msg += "OFF";
+
+      msg += " bklv: ";
+      msg += std::to_string(fbs->blacklevel());
 
       return msg;
    
@@ -378,6 +383,12 @@ struct telem_stdcam : public flatbuffer_log
       else return false;
    }
 
+   static float blacklevel( void * msgBuffer )
+   {
+      auto fbs = GetTelem_stdcam_fb(msgBuffer);
+      return fbs->blacklevel();
+   }
+
    /// Get the logMetaDetail for a member by name
    /**
      * \returns the function pointer cast to void*
@@ -406,6 +417,7 @@ struct telem_stdcam : public flatbuffer_log
       else if(member == "synchro") return logMetaDetail({"SYNCHRO", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&synchro)});
       else if(member == "vshift") return logMetaDetail({"VSHIFTSPD", logMeta::valTypes::Float, logMeta::metaTypes::State, reinterpret_cast<void*>(&vshift)});
       else if(member == "cropMode") return logMetaDetail({"CROPMODE", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&cropMode)});
+      else if(member == "blacklevel") return logMetaDetail({"BLACKLEVEL", logMeta::valTypes::Float, logMeta::metaTypes::State, reinterpret_cast<void*>(&blacklevel)});
       else
       {
          std::cerr << "No string member " << member << " in telem_stdcam\n";

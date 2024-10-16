@@ -1830,7 +1830,7 @@ int stdCamera<derivedT>::newCallBack_stdCamera( const pcf::IndiProperty &ipRecv 
    else if(derivedT::c_stdCamera_readoutSpeed && name == "readout_speed") return newCallBack_readoutSpeed(ipRecv);
    else if(derivedT::c_stdCamera_vShiftSpeed &&  name == "vshift_speed") return newCallBack_vShiftSpeed(ipRecv);
    else if(derivedT::c_stdCamera_emGain &&       name == "emgain") return newCallBack_emgain(ipRecv);
-   else if(derivedT::c_stdCamera_blacklevel &&      name == "blacklevel") return newCallBack_blacklevel(ipRecv);
+   else if(derivedT::c_stdCamera_blacklevel &&   name == "blacklevel") return newCallBack_blacklevel(ipRecv);
    else if(derivedT::c_stdCamera_exptimeCtrl &&  name == "exptime") return newCallBack_exptime(ipRecv);
    else if(derivedT::c_stdCamera_fpsCtrl &&      name == "fps") return newCallBack_fps(ipRecv);
    else if(derivedT::c_stdCamera_synchro &&      name == "synchro") return newCallBack_synchro(ipRecv);
@@ -3100,9 +3100,9 @@ int stdCamera<derivedT>::recordCamera( bool force )
    {
       derived().template telem<telem_stdcam>({m_modeName, m_currentROI.x, m_currentROI.y, 
                                                     m_currentROI.w, m_currentROI.h, m_currentROI.bin_x, m_currentROI.bin_y,
-                                                       m_expTime, m_fps, m_emGain, m_blacklevel, m_adcSpeed, m_ccdTemp, m_ccdTempSetpt, (uint8_t) m_tempControlStatus, 
+                                                       m_expTime, m_fps, m_emGain, m_adcSpeed, m_ccdTemp, m_ccdTempSetpt, (uint8_t) m_tempControlStatus, 
                                                              (uint8_t) m_tempControlOnTarget, m_tempControlStatusStr, m_shutterStatus, (int8_t) m_shutterState, 
-                                                                   (uint8_t) m_synchro, m_vshiftSpeed, (uint8_t) m_cropMode});
+                                                                   (uint8_t) m_synchro, m_vshiftSpeed, (uint8_t) m_cropMode, m_blacklevel});
       
       last_mode = m_modeName;
       last_roi = m_currentROI;

@@ -524,9 +524,7 @@ int nsvCtrl::appShutdown()
  
 inline
 int nsvCtrl::cameraSelect()  
-{
-   unsigned int error;
-   
+{  
    char path[] = "/dev/video2";
    if(openCamera(path) == -1){
       log<text_log>("No nsv camera found on path", logPrio::LOG_WARNING);
@@ -693,13 +691,6 @@ int nsvCtrl::setCropMode()
 {
    return 0;
 }
-
-inline
-int nsvCtrl::setShutter( unsigned os )
-{
-   return 0;
-}
-
 
 inline 
 int nsvCtrl::writeConfig()
@@ -923,7 +914,7 @@ int nsvCtrl::configureAcquisition()
    //lock mutex
    std::unique_lock<std::mutex> lock(m_indiMutex);
 
-   unsigned int error;
+   //unsigned int error;
 
    int x0 = (m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
    int y0 = (m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
@@ -1022,10 +1013,11 @@ inline
 int nsvCtrl::acquireAndCheckValid()
 {
    uint dmaTimeStamp[2];
-   int bufferIndex;
-   queueBuffer(0);
+   //int bufferIndex;
+   queueBuffer(0); //only queueing one buffer. Add better buffer handling & get proper indexing
    waitForFrame();
-   bufferIndex = dequeueBuffer();
+   //bufferIndex = dequeueBuffer();
+   dequeueBuffer();
    
    dmaTimeStamp[0] = 0;  // TODO timing info for cam
    dmaTimeStamp[1] = 1;
