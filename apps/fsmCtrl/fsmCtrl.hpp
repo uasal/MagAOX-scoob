@@ -25,7 +25,9 @@ typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the 
 #include "binaryUart.hpp"
 #include "cGraphPacket.hpp"
 #include "linux_pinout_client_socket.hpp"
+#include "linux_pinout_uart.hpp"
 #include "socket.hpp"
+#include "IUart.h"
 
 /** \defgroup fsmCtrl
  * \brief Application to interface with ESC FSM
@@ -61,16 +63,31 @@ namespace MagAOX
       friend class dev::shmimMonitor<fsmCtrl>;
 
     protected:
+      /** \name Constants
+       *@{
+       */
+      const std::string DACS = "dacs";
+      const std::string VOLTAGES = "voltages";
+      const std::string TTP = "ttp";
+      const std::string SHMIM = "shmim";
+      const std::string INDI = "indi";
+      const std::string LOCALHOST = "127.0.0.1";
+      const std::string USB0 = "/dev/ttyUSB0";
+      ///@}
+
       /** \name Configurable Parameters
        *@{
        */
+      // Connection parameters
       std::string type;
       std::string PortName;
-      int nHostPort;
+      int nHostPort = 66873; // 65536 + 1337 ; socket-specific
+      uint32_t BaudRate = 115200; // serial-port-specific
+
+      // Telemeter callback parameters
       int period_s;
 
-      double m_B;
-      double m_L;
+      // Safe operating range parameters
       double m_dac1_min;
       double m_dac1_max;
       double m_dac2_min;
@@ -78,18 +95,21 @@ namespace MagAOX
       double m_dac3_min;
       double m_dac3_max;
 
+      // Conversion parameters
       double D_per_V;
-
-      // Defaults
+      double m_B;
+      double m_L;      
       double m_voltage_max = 100.0; // in volts
       double m_stroke_max = 10.0; // in micrometers
       double m_v = (4.096 / (std::pow(2.0, 24))) * 60;
       double d_piston = 5.0; // in micrometers 
+
+      // Shmim size
       double width = 3; // shm size
       double height = 1; // shm size
-      std::string kw_name = "inputType";
 
       // input parameters
+      std::string kw_name = "inputType";
       std::string m_inputType;
       std::string m_inputToggle;
 
@@ -98,8 +118,8 @@ namespace MagAOX
 
       char Buffer[4096];
       CGraphPacket SocketProtocol;
-      linux_pinout_client_socket LocalPortPinout;
-      BinaryUart UartParser;
+      std::unique_ptr<IUart> LocalPortPinout;
+      std::unique_ptr<BinaryUart> UartParser;
       PZTQuery *telemetryQuery = new TelemetryQuery();
       PZTQuery *adcsQuery = new AdcsQuery();
       PZTQuery *dacsQuery = new DacsQuery();
@@ -113,12 +133,6 @@ namespace MagAOX
       double m_adc1{0};
       double m_adc2{0};
       double m_adc3{0};
-
-      const std::string DACS = "dacs";
-      const std::string VOLTAGES = "voltages";
-      const std::string TTP = "ttp";
-      const std::string SHMIM = "shmim";
-      const std::string INDI = "indi";
 
     protected:
       // INDI properties
@@ -186,6 +200,12 @@ namespace MagAOX
        */
       virtual int appShutdown();
 
+      /// Initialize UartParser
+      /**
+       *
+       */
+      void initUartParser();
+
       /// TODO: Test the connection to the fsm
       int testConnection();
 
@@ -196,6 +216,14 @@ namespace MagAOX
        * \returns -1 on an error
        */
       int socketConnect();
+
+      /// Connect to fsm via Serial Port
+      /**
+       *
+       * \returns 0 if connection successful
+       * \returns -1 on an error
+       */
+      int serialPortConnect();
 
       // /**
       //  * @brief Request fsm telemetry
@@ -362,7 +390,7 @@ namespace MagAOX
       ///@}
     };
 
-    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), UartParser(LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false)
+    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)
     {
       m_powerMgtEnabled = true;
       m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)
@@ -374,10 +402,13 @@ namespace MagAOX
       shmimMonitor::setupConfig(config);
 
       config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Required, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
+      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
 
-      config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Required, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
-      config.add("socket.host_port", "", "socket.host_port", argType::Required, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+      config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Optional, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
+      config.add("socket.host_port", "", "socket.host_port", argType::Optional, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+      
+      config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
+      config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
 
       config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
       config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
@@ -404,12 +435,30 @@ namespace MagAOX
 
     int fsmCtrl::loadConfigImpl(mx::app::appConfigurator &_config)
     {
+      /// CONNECTION PARAMETERS ///
       _config(type, "parameters.connection_type");
       _config(period_s, "parameters.period_s");
 
-      _config(PortName, "socket.client_entrance_ip");
-      _config(nHostPort, "socket.host_port");
+      if (type == "socket")
+      {
+        PortName = LOCALHOST;
+        _config(PortName, "socket.client_entrance_ip");
+        _config(nHostPort, "socket.host_port");
 
+        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
+      }
+      else // defaulting to serial_port
+      {
+        PortName = USB0;
+        _config(PortName, "serial_port.port_address");
+        _config(BaudRate, "serial_port.baud_rate");
+
+        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
+      }
+      // Since LocalPortPinout is now initialized, can also initialize UartParser
+      initUartParser();
+
+      /// CONVERSTION PARAMETERS ///
       _config(m_L, "fsm.L");
       m_B = m_L * cos(30 * (M_PI / 180.0));
       _config(m_B, "fsm.B");
@@ -422,6 +471,7 @@ namespace MagAOX
       m_dac1_min = m_dac2_min = m_dac3_min = 0;
       m_dac1_max = m_dac2_max = m_dac3_max = vi_to_daci(m_voltage_max, m_v);
 
+      /// DAC RANGE PARAMETERS ///
       _config(m_dac1_min, "fsm.dac1_min");
       _config(m_dac1_max, "fsm.dac1_max");
       _config(m_dac2_min, "fsm.dac2_min");
@@ -429,9 +479,11 @@ namespace MagAOX
       _config(m_dac3_min, "fsm.dac3_min");
       _config(m_dac3_max, "fsm.dac3_max");
 
+      /// SHMIM PARAMETERS ///
       _config(width, "shmimMonitor.width");
       _config(height, "shmimMonitor.height");
 
+      /// COMMAND INPUT PARAMETERS ///
       m_inputType = VOLTAGES;
       _config(m_inputType, "input.type");
       if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
@@ -589,7 +641,14 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        rv = socketConnect();
+        if (type == "serial_port")
+        {
+          rv = serialPortConnect();
+        }
+        else if (type == "socket")
+        {
+          rv = socketConnect();
+        }
 
         if (rv == 0)
         {
@@ -644,6 +703,11 @@ namespace MagAOX
     // CONNECTION
     //////////////
 
+    void fsmCtrl::initUartParser()
+    {
+      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false);
+    }
+
     /// TODO: Test the connection to the device
     int fsmCtrl::testConnection()
     {
@@ -652,22 +716,29 @@ namespace MagAOX
 
     int fsmCtrl::socketConnect()
     {
-      // Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
-      setvbuf(stdout, NULL, _IONBF, 0);
-
-      log<text_log>("Welcome to SerialPortBinaryCmdr!");
-      log<text_log>("In order to tunnel to the lab use the following command before running this program:\n ssh -L 1337:localhost:1337 -N -f fsm \n(where fsm is the ssh alias of the remote server)!");
-
-      int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
+      PinoutConfig pinoutConfig = PinoutConfig::CreateSocketConfig(nHostPort, PortName.c_str());
+      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
       if (IUart::IUartOK != err)
       {
         log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
         return -1;
       }
 
-      log<text_log>("Starting to do something");
+      log<text_log>("Connected to socket (" + PortName + ":" + std::to_string(nHostPort) + ")");
+      return 0;
+    }
 
-      UartParser.Debug(false);
+    int fsmCtrl::serialPortConnect()
+    {
+      PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(BaudRate, PortName.c_str());
+      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
+      if (IUart::IUartOK != err)
+      {
+        log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open port (" + PortName + ":" + std::to_string(BaudRate) + "), exiting.\n"});
+        return -1;
+      }
+
+      log<text_log>("Connected to port (" + PortName + ":" + std::to_string(BaudRate) + ")");
       return 0;
     }
 
@@ -769,8 +840,9 @@ namespace MagAOX
     {
       log<text_log>(pztQuery->startLog);
       // Send command packet
-      (&UartParser)->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
-      log<text_log>(pztQuery->endLog);
+      UartParser->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
+      // debug
+      // log<text_log>(pztQuery->endLog);
 
       receive();
     }
@@ -781,17 +853,20 @@ namespace MagAOX
       while (!Bored)
       {
         Bored = true;
-        if (UartParser.Process())
+        if (UartParser->Process())
         {
           Bored = false;
         }
 
-        if (false == LocalPortPinout.connected())
+        if (false == fsmCtrl::LocalPortPinout->isopen())
         {
-          int err = LocalPortPinout.init(nHostPort, PortName.c_str());
-          if (IUart::IUartOK != err)
+          if (type == "serial_port")
           {
-            log<software_error>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort)});
+            serialPortConnect();
+          }
+          else if (type == "socket")
+          {
+            socketConnect();
           }
         }
       }
@@ -826,7 +901,6 @@ namespace MagAOX
       {
         LastTelemetry = telemetryQueryPtr->Telemetry;
         telem<telem_fsm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P3V3A, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.N5V, LastTelemetry.N6V, LastTelemetry.P150V});
-        telemetryQueryPtr->logReply();
       }
 
       return 0;
