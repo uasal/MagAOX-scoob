@@ -38,7 +38,7 @@ namespace MagAOX
 			linux_pinout_client_socket() : IUart(), hSocket(-1) {}
 			virtual ~linux_pinout_client_socket() {}
 
-			virtual int init(const int HostPort, const char *HostName)
+			int init(const PinoutConfig& config)
 			{
 				struct hostent *pHostInfo;	/* holds info about a machine */
 				struct sockaddr_in Address; /* Internet socket address stuct */
@@ -53,14 +53,14 @@ namespace MagAOX
 
 				strcpy(strHostName, "localhost");
 
-				if (NULL != HostName)
+				if (NULL != config.HostName)
 				{
-					strncpy(strHostName, HostName, HOST_NAME_SIZE);
+					strncpy(strHostName, config.HostName, HOST_NAME_SIZE);
 					strHostName[HOST_NAME_SIZE] = '\0';
 				}
-				if (0 != HostPort)
+				if (0 != config.HostPort)
 				{
-					nHostPort = HostPort;
+					nHostPort = config.HostPort;
 				}
 
 				MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Making a socket");
