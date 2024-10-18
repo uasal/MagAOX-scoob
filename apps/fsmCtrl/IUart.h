@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+struct PinoutConfig;
+
 class IUart
 {
 public:
@@ -16,15 +18,7 @@ public:
 	static const bool UseRTSCTS = true;
 	static const bool NoRTSCTS = false;
 
-
-	//All the following pinout functions are very hardware & device dependant, so they are declared in another class to preserve the abstraction
-	//virtual int init() { return(InitOK); } //note: this functiuon usually gets overloaded with different params, so it's no longer virtual anyway - probably not an issue, since it usually gets called from code with the full object, not just the base class.
-	//~ virtual bool dataready() { printf("\nIUart::dataready() stub!\n"); return(false); }
-	//~ virtual char getcqq() { printf("\nIUart::getcqq() stub!\n"); return('\0'); }
-	//~ virtual char putcqq(char c) { printf("\nIUart::putcqq() stub!\n"); return('\0'); }
-	//~ virtual void flushoutput() { printf("\nIUart::flushoutput() stub!\n"); }
-	//~ virtual void purgeinput() { printf("\nIUart::purgeinput() stub!\n"); }
-	//~ virtual bool isopen() { printf("\nIUart::isopen() stub!\n"); return(false); }
+	virtual int init(const PinoutConfig& config) = 0;
 	virtual bool dataready() const = 0;
 	virtual char getcqq() = 0;
 	virtual char putcqq(char c) = 0;
@@ -41,4 +35,41 @@ public:
 			putcqq(s[i]);
 		}
 	}
+};
+
+
+struct PinoutConfig {
+	// linux_pinout_client_socket parameters
+	int HostPort;
+	const char *HostName;
+	// linux_pinout_uart parameters
+	uint32_t Baudrate;
+	const char *device;
+	bool UseRtsCts;
+	bool UseOddParity;
+	int OpenFlags;
+
+private:
+    // Private constructor for socket configuration
+    PinoutConfig(int HostPort, const char *HostName)
+        : HostPort(HostPort), HostName(HostName) {}
+
+    // Private constructor for serial configuration
+    PinoutConfig(uint32_t Baudrate, const char *device, bool UseRtsCts, bool UseOddParity, int OpenFlags)
+        : Baudrate(Baudrate), device(device), UseRtsCts(UseRtsCts), UseOddParity(UseOddParity), OpenFlags(OpenFlags) {}
+
+
+public:
+    // Factory method for socket connection
+    static PinoutConfig CreateSocketConfig(int HostPort, const char *HostName) {
+        return PinoutConfig(HostPort, HostName);
+    }
+
+    // Factory method for serial connection
+    static PinoutConfig CreateSerialConfig(uint32_t Baudrate, const char *device,
+                                           bool UseRtsCts = IUart::NoRTSCTS, bool UseOddParity = IUart::NoParity, 
+                                           int OpenFlags = O_RDWR | O_NOCTTY | O_NONBLOCK | O_SYNC) {
+        return PinoutConfig(Baudrate, device, UseRtsCts, UseOddParity, OpenFlags);
+    }
+
 };
