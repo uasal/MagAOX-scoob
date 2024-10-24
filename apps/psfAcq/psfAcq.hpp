@@ -125,6 +125,8 @@ protected:
     float m_dx {0};
     float m_dy {0};
     
+    int m_old_num_stars {0};
+    int m_num_stars {0};
     int m_acquire_star {}; // Testing for user to select star
     int m_x_center {}; // 'center' of image or hot spot
     int m_y_center {}; 
@@ -261,7 +263,9 @@ protected:
 
    std::vector<pcf::IndiProperty> m_indiP_star; // INDI Property for stars
 
-   pcf::IndiProperty m_indiP_num_stars; //INDI property to store total number of stars
+   // Testing for num stars prop
+   pcf::IndiProperty m_indiP_num_stars;
+   INDI_NEWCALLBACK_DECL(psfAcq, m_indiP_num_stars);
 
    pcf::IndiProperty m_indiP_dx;
    INDI_NEWCALLBACK_DECL(psfAcq, m_indiP_dx);
@@ -393,9 +397,14 @@ int psfAcq::appStartup()
    m_indiP_dy["target"].setValue(m_dy);
 
    // Testing for user to select star 
-   CREATE_REG_INDI_NEW_NUMBERF(m_indiP_acquire_star, "acquire star", 0, 20, 1, "%d", "", "");
+   CREATE_REG_INDI_NEW_NUMBERF(m_indiP_acquire_star, "acquire_star", 0, 20, 1, "%d", "", "");
    m_indiP_acquire_star["current"].setValue(m_acquire_star);
    m_indiP_acquire_star["target"].setValue(m_acquire_star);
+
+   // Testing for num stars prop 
+   CREATE_REG_INDI_NEW_NUMBERF(m_indiP_num_stars, "num_stars", 0, 20, 1, "%d", "", "");
+   m_indiP_num_stars["current"].setValue(m_num_stars);
+   //m_indiP_num_stars["target"].setValue(m_num_stars);
 
    state(stateCodes::OPERATING);
    
@@ -475,6 +484,8 @@ int psfAcq::appLogic()
 
    updateIfChanged(m_indiP_dx, "current", m_dx);
    updateIfChanged(m_indiP_dy, "current", m_dy);
+
+   updateIfChanged(m_indiP_num_stars, "current", m_num_stars);
 
    return 0;
 }
@@ -588,13 +599,13 @@ int psfAcq::processImage( void* curr_src,
       while ((z_score > m_threshold) && (fwhm > m_fwhm_threshold) && (N_loops < m_max_loops)) { //m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
          m_gfit.set_itmax(1000); 
          // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a sub image around the max pixel
-         if (x <= m_zero_area){
+         if (x < m_zero_area){
             x = m_zero_area;
          }
          if (x >= (m_image.rows() - m_zero_area)){
             x = m_image.rows() - m_zero_area;
          }
-         if (y <= m_zero_area){
+         if (y < m_zero_area){
             y = m_zero_area;
          }
          if (y >= (m_image.cols() - m_zero_area)){
@@ -621,25 +632,34 @@ int psfAcq::processImage( void* curr_src,
          int x_value = static_cast<int>(m_x); // convert m_x to an int so we can 0 out a rectangular area around the detected star
          int y_value = static_cast<int>(m_y);
 
-         if (x_value <= m_zero_area){
+         if (x_value < m_zero_area){
             x_value = m_zero_area;
          }
          if (x_value >= (m_image.rows() - m_zero_area)){
             x_value = m_image.rows() - m_zero_area;
          }
-         if (y_value <= m_zero_area){
+         if (y_value < m_zero_area){
             y_value = m_zero_area;
          }
          if (y_value >= (m_image.cols() - m_zero_area)){
             y_value = m_image.cols() - m_zero_area;
-         }    
+         }  
+
+         for (int i = x_value-m_zero_area; i < (x_value + m_zero_area); i++)
+         { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
+            for (int j = y_value-m_zero_area; j < (y_value + m_zero_area); j++)
+            {
+               m_image(i, j) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
+            }
+         }
+/*
          std::cout << __LINE__ << " x_value = " << x_value << "  y_value = " << y_value << std::endl;     
          for (int i = x_value; i <= (x_value + m_zero_area); i++) { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
                for (int j = y_value; j <= (y_value + m_zero_area); j++) {
                   m_image(i-(m_zero_area/2), j-(m_zero_area/2)) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
                }
          }
-
+*/
          max = m_image.maxCoeff(&x, &y);
          N_loops = N_loops + 1;
          z_score = (max - mean) / stddev;
@@ -673,20 +693,20 @@ int psfAcq::processImage( void* curr_src,
     else{
    // In here is where we track the stars using cross correlation between the first frame and subsequent frames
       while ((z_score > m_threshold) && (fwhm > m_fwhm_threshold) && (N_loops < m_max_loops)) { //m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
-         //std::cout << "zscore: " << z_score << " m_threshold: " << m_threshold << " fwhm: " << fwhm << " m_fwhm:" << m_fwhm_threshold << " N_loops: " << N_loops << " m_max_loops: " << m_max_loops << std::endl;
+         std::cout << "Beginning: " << "z_score:" << z_score << " m_threshold:" << m_threshold << " fwhm:" << fwhm << " m_fwhm:" << m_fwhm_threshold << " N_loops:" << N_loops << " m_max_loops:" << m_max_loops << std::endl;
          std::size_t star_count = m_detectedStars.size();
-         std::cout << __LINE__ << "&x = " << &x << "  &y = " << &y << std::endl;
+         //std::cout << __LINE__ << "&x = " << &x << "  &y = " << &y << std::endl;
          if (star_count < N_loops){ //This if statement is used to add additional stars if they are detected later on
-            std::cout << "THIS IS WHEN ERROR MAY OCCUR" << std::endl;
+            //std::cout << "THIS IS WHEN ERROR MAY OCCUR" << std::endl;
             m_gfit.set_itmax(1000); 
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a sub image around the max pixel
-            if (x <= m_zero_area){
+            if (x < m_zero_area){
                x = m_zero_area;
             }
             if (x >= (m_image.rows() - m_zero_area)){
                x = m_image.rows() - m_zero_area;
             }
-            if (y <= m_zero_area){
+            if (y < m_zero_area){
                y = m_zero_area;
             }
             if (y >= (m_image.cols() - m_zero_area)){
@@ -716,24 +736,34 @@ int psfAcq::processImage( void* curr_src,
             int x_value = static_cast<int>(m_x); // convert m_x to an int so we can 0 out a rectangular area around the detected star
             int y_value = static_cast<int>(m_y);
 
-            if (x_value <= m_zero_area){
+            if (x_value < m_zero_area){
                x_value = m_zero_area;
             }
             if (x_value >= (m_image.rows() - m_zero_area)){
                x_value = m_image.rows() - m_zero_area;
             }
-            if (y_value <= m_zero_area){
+            if (y_value < m_zero_area){
                y_value = m_zero_area;
             }
             if (y_value >= (m_image.cols() - m_zero_area)){
                y_value = m_image.cols() - m_zero_area;
             }
+
+            for (int i = x_value-m_zero_area; i < (x_value + m_zero_area); i++)
+            { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
+               for (int j = y_value-m_zero_area; j < (y_value + m_zero_area); j++)
+               {
+                  m_image(i, j) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
+               }
+            }
+ /*
             std::cout << __LINE__ << " x_value = " << x_value << "  y_value = " << y_value << std::endl;     
             for (int i = x_value; i <= (x_value + m_zero_area); i++) { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
                   for (int j = y_value; j <= (y_value + m_zero_area); j++) {
                      m_image(i-(m_zero_area/2), j-(m_zero_area/2)) = 0; // m_zero_area is defaulted to 30 to zero out a pixel array around the star
                   }
             }
+*/
             max = m_image.maxCoeff(&x, &y);
             N_loops = N_loops + 1;
             z_score = (max - mean) / stddev;
@@ -767,13 +797,13 @@ int psfAcq::processImage( void* curr_src,
          //std::cout << "N_loops: " << N_loops << "   m_detectedStars.size():" << m_detectedStars.size() << std::endl;
          m_gfit.set_itmax(1000); 
          // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a sub image around the max pixel
-         if (x <= m_zero_area){
+         if (x < m_zero_area){
             x = m_zero_area;
          }
          if (x >= (m_image.rows() - m_zero_area)){
             x = m_image.rows() - m_zero_area;
          }
-         if (y <= m_zero_area){
+         if (y < m_zero_area){
             y = m_zero_area;
          }
          if (y >= (m_image.cols() - m_zero_area)){
@@ -791,24 +821,33 @@ int psfAcq::processImage( void* curr_src,
          int x_value = static_cast<int>(m_x); // convert m_x to an int so we can 0 out a rectangular area around the detected star
          int y_value = static_cast<int>(m_y);
 
-         if (x_value <= m_zero_area){
+         if (x_value < m_zero_area){
             x_value = m_zero_area;
          }
          if (x_value >= (m_image.rows() - m_zero_area)){
             x_value = m_image.rows() - m_zero_area;
          }
-         if (y_value <= m_zero_area){
+         if (y_value < m_zero_area){
             y_value = m_zero_area;
          }
          if (y_value >= (m_image.cols() - m_zero_area)){
             y_value = m_image.cols() - m_zero_area;
          }
+
+         for (int i = x_value-m_zero_area; i < (x_value + m_zero_area); i++)
+         { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
+            for (int j = y_value-m_zero_area; j < (y_value + m_zero_area); j++)
+            {
+               m_image(i, j) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
+            }
+         }
+/*
          for (int i = x_value; i <= (x_value + m_zero_area); i++) { //zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
             for (int j = y_value; j <= (y_value + m_zero_area); j++) {
                m_image(i-(m_zero_area/2), j-(m_zero_area/2)) = 0; // m_zero_area is defaulted to 8 to zero out a pixel array around the star
             }
          }
-
+*/
          // This simple for loop calculate the distance from the detected star to the cloest star already in the list and updates the values 
          float closest_dist = 10; //distance between new stars should be a small positive number so this updates
          int n = 0;
@@ -831,11 +870,11 @@ int psfAcq::processImage( void* curr_src,
             m_detectedStars[star_number].max = max;
             m_detectedStars[star_number].fwhm = fwhm;
          }
-         std::cout << __LINE__ << "  *(&x) = " << *(&x) << "  *(&y) = " << *(&y) << std::endl;
+         //std::cout << __LINE__ << "  *(&x) = " << *(&x) << "  *(&y) = " << *(&y) << std::endl;
          max = m_image.maxCoeff(&x, &y);
          N_loops = N_loops + 1;
          z_score = (max - mean) / stddev;
-         
+         std::cout << "End: " << "z_score:" << z_score << " m_threshold:" << m_threshold << " fwhm:" << fwhm << " m_fwhm:" << m_fwhm_threshold << " N_loops: " << N_loops << " m_max_loops: " << m_max_loops << std::endl << std::endl;
       }
     }
 
@@ -882,7 +921,7 @@ int psfAcq::processImage( void* curr_src,
     }
 
 
-    std::cout << "Acquire Star number: " << m_acquire_star << std::endl; 
+    //std::cout << "Acquire Star number: " << m_acquire_star << std::endl; 
     //If statement that get the delta x and delta y from the 'center' of image
     static int delta_x;
     static int delta_y;
@@ -893,14 +932,21 @@ int psfAcq::processImage( void* curr_src,
       m_acquire_star = -1;
     }
 
-    
+   m_num_stars = m_detectedStars.size();
+   if (m_old_num_stars != m_num_stars){
+      // update indi
+      m_reconfig=true;
+      m_old_num_stars = m_num_stars;
+   }
+
+/*  
     // Sending INDI total number of stars
     createROIndiNumber( m_indiP_num_stars, "Total Stars", "Star Total", "Star Acq");
     m_indiP_num_stars.add (pcf::IndiElement("totalstars"));
     m_indiP_num_stars["totalstars"].set(m_detectedStars.size());
     registerIndiPropertyReadOnly(m_indiP_num_stars);
     if(m_indiDriver) m_indiDriver->sendSetProperty (m_indiP_num_stars);
-
+*/
 
     if (old_x_size != m_first_x_vals.size()){
         old_x_size = m_first_x_vals.size();
@@ -1103,6 +1149,31 @@ INDI_NEWCALLBACK_DEFN(psfAcq, m_indiP_acquire_star)(const pcf::IndiProperty & ip
    m_acquire_star = target;
    
    log<text_log>("set acquire_star = " + std::to_string(m_acquire_star), logPrio::LOG_NOTICE);
+   return 0;
+}
+
+
+//Testing for num stars prop
+INDI_NEWCALLBACK_DEFN(psfAcq, m_indiP_num_stars)(const pcf::IndiProperty & ipRecv)
+{
+   if(ipRecv.getName() != m_indiP_num_stars.getName())
+   {
+      log<software_error>({__FILE__,__LINE__, "wrong INDI property received."});
+      return -1;
+   }
+   
+   float target;
+   
+   if( indiTargetUpdate( m_indiP_num_stars, target, ipRecv, true) < 0)
+   {
+      log<software_error>({__FILE__,__LINE__});
+      return -1;
+   }
+   
+   m_num_stars = target;
+   
+   log<text_log>("set acquire_star = " + std::to_string(m_num_stars), logPrio::LOG_NOTICE);
+   
    return 0;
 }
 
