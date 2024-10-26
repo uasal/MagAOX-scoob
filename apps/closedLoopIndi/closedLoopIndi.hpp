@@ -71,6 +71,9 @@ protected:
     
     int64_t m_counter = -1; ///< The latest value of the loop counter
     mx::improc::eigenImage<float> m_measurements; ///< The latest value of the measurements
+    float m_delta0 {0};
+    float m_delta1 {0};
+
     mx::improc::eigenImage<float> m_commands; ///< The latest commands
     
     float m_ggain {0}; ///< The global gain
@@ -126,6 +129,8 @@ public:
     
     //INDI 
  
+    pcf::IndiProperty m_indiP_deltas;
+
     pcf::IndiProperty m_indiP_reference0;
     INDI_NEWCALLBACK_DECL(closedLoopIndi, m_indiP_reference0);
 
@@ -301,6 +306,12 @@ int closedLoopIndi::appStartup()
 {
     REG_INDI_SETPROP(m_indiP_inputs, m_inputDevice, m_inputProperty);
  
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_deltas, "deltas", "Deltas", "Deltas");
+    m_indiP_deltas.add(pcf::IndiElement("delta0"));
+    m_indiP_deltas["delta0"] = 0;
+    m_indiP_deltas.add(pcf::IndiElement("delta1"));
+    m_indiP_deltas["delta1"] = 0;
+
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_reference0, "reference0", -1e15, 1e15, 1, "%g", "reference0", "references");
     m_indiP_reference0["current"] = m_references(0,0);
     m_indiP_reference0["target"] = m_references(0,0);
@@ -436,6 +447,9 @@ int closedLoopIndi::updateLoop()
         return 0;
     }
 
+    m_delta0 = m_measurements(0,0) - m_references(0,0);
+    m_delta1 = m_measurements(1,0) - m_references(1,0);
+
     m_commands.matrix() = m_intMat.matrix() * (m_measurements - m_references).matrix();
 
     std::vector<float> commands;
@@ -447,14 +461,18 @@ int closedLoopIndi::updateLoop()
     }
   
     //And send commands.
+    int rv;
     if(m_loopClosed)
     {
-        return sendCommands(commands);
+        rv = sendCommands(commands);
     }
     else 
     {
-        return 0;
+        rv = 0;
     }
+
+    updateIfChanged(m_indiP_deltas, std::vector<std::string>({"delta0", "delta1"}), std::vector<float>({m_delta0, m_delta1}));
+    return rv;
 }
 
 inline
