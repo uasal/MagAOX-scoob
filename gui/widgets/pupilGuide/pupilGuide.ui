@@ -331,7 +331,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_up_right_128.png</normaloff>:/icons/arrow_up_right_128.png</iconset>
+               <normaloff>:/icons/arrow_up_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_up_right_dark_128.png</disabledoff>:/icons/arrow_up_right_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -396,7 +397,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_up_left_128.png</normaloff>:/icons/arrow_up_left_128.png</iconset>
+               <normaloff>:/icons/arrow_up_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_up_left_dark_128.png</disabledoff>:/icons/arrow_up_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -461,7 +463,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_right_128.png</normaloff>:/icons/arrow_right_128.png</iconset>
+               <normaloff>:/icons/arrow_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_right_dark_128.png</disabledoff>:/icons/arrow_right_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -493,7 +496,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_left_128.png</normaloff>:/icons/arrow_down_left_128.png</iconset>
+               <normaloff>:/icons/arrow_down_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_left_dark_128.png</disabledoff>:/icons/arrow_down_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -525,7 +529,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_left_128.png</normaloff>:/icons/arrow_left_128.png</iconset>
+               <normaloff>:/icons/arrow_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_left_dark_128.png</disabledoff>:/icons/arrow_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -557,7 +562,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_128.png</normaloff>:/icons/arrow_down_128.png</iconset>
+               <normaloff>:/icons/arrow_down_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_dark_128.png</disabledoff>:/icons/arrow_down_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -589,7 +595,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_right_128.png</normaloff>:/icons/arrow_down_right_128.png</iconset>
+               <normaloff>:/icons/arrow_down_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_right_dark_128.png</disabledoff>:/icons/arrow_down_right_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -1089,7 +1096,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_right_128.png</normaloff>:/icons/arrow_down_right_128.png</iconset>
+               <normaloff>:/icons/arrow_down_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_right_dark_128.png</disabledoff>:/icons/arrow_down_right_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -1121,7 +1129,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_left_128.png</normaloff>:/icons/arrow_down_left_128.png</iconset>
+               <normaloff>:/icons/arrow_down_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_left_dark_128.png</disabledoff>:/icons/arrow_down_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -1153,7 +1162,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_up_right_128.png</normaloff>:/icons/arrow_up_right_128.png</iconset>
+               <normaloff>:/icons/arrow_up_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_up_right_dark_128.png</disabledoff>:/icons/arrow_up_right_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -1185,7 +1195,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_up_left_128.png</normaloff>:/icons/arrow_up_left_128.png</iconset>
+               <normaloff>:/icons/arrow_up_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_up_left_dark_128.png</disabledoff>:/icons/arrow_up_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -1469,7 +1480,8 @@
                </property>
                <property name="icon">
                 <iconset>
-                 <normaloff>:/icons/arrow_right_128.png</normaloff>:/icons/arrow_right_128.png</iconset>
+                 <normaloff>:/icons/arrow_right_128.png</normaloff>
+                 <disabledoff>:/icons/arrow_right_dark_128.png</disabledoff>:/icons/arrow_right_128.png</iconset>
                </property>
               </widget>
              </item>
@@ -1534,7 +1546,8 @@
                </property>
                <property name="icon">
                 <iconset>
-                 <normaloff>:/icons/arrow_left_128.png</normaloff>:/icons/arrow_left_128.png</iconset>
+                 <normaloff>:/icons/arrow_left_128.png</normaloff>
+                 <disabledoff>:/icons/arrow_left_dark_128.png</disabledoff>:/icons/arrow_left_128.png</iconset>
                </property>
               </widget>
              </item>
@@ -1599,7 +1612,8 @@
                </property>
                <property name="icon">
                 <iconset>
-                 <normaloff>:/icons/arrow_down_128.png</normaloff>:/icons/arrow_down_128.png</iconset>
+                 <normaloff>:/icons/arrow_down_128.png</normaloff>
+                 <disabledoff>:/icons/arrow_down_dark_128.png</disabledoff>:/icons/arrow_down_128.png</iconset>
                </property>
               </widget>
              </item>
@@ -2359,7 +2373,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_left_128.png</normaloff>:/icons/arrow_left_128.png</iconset>
+               <normaloff>:/icons/arrow_left_128.png</normaloff>
+               <disabledoff>:/icons/arrow_left_dark_128.png</disabledoff>:/icons/arrow_left_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -2457,7 +2472,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_down_128.png</normaloff>:/icons/arrow_down_128.png</iconset>
+               <normaloff>:/icons/arrow_down_128.png</normaloff>
+               <disabledoff>:/icons/arrow_down_dark_128.png</disabledoff>:/icons/arrow_down_128.png</iconset>
              </property>
             </widget>
            </item>
@@ -2489,7 +2505,8 @@
              </property>
              <property name="icon">
               <iconset>
-               <normaloff>:/icons/arrow_right_128.png</normaloff>:/icons/arrow_right_128.png</iconset>
+               <normaloff>:/icons/arrow_right_128.png</normaloff>
+               <disabledoff>:/icons/arrow_right_dark_128.png</disabledoff>:/icons/arrow_right_128.png</iconset>
              </property>
             </widget>
            </item>

@@ -164,12 +164,15 @@ class pupilGuide : public xWidget
     // ****** Alignment ******** //
 
     // --- camwfs-align
+    std::string m_camwfs_align_fsmState;
     bool m_camwfsAlignLoopState{ false };
 
     // --- twAlign-camwfs-ctrl
+    std::string m_twAlign_camwfs_ctrl_fsmState;
     bool m_twAlignLoopState {false};
 
     // --- twAlign-camwfs-wfs
+    std::string m_twAlign_camwfs_wfs_fsmState;
     bool m_twAlignSensorState {false};
 
   public:
@@ -197,13 +200,13 @@ class pupilGuide : public xWidget
                             int whichcl = CAMLENS_BOTH ///< Which axis, or both.  CAMLENS_X, CAMLENS_Y, CAMLENS_BOTH
     );
 
-    void camwfs_align_setEnabled( bool enabled );
+    void camwfs_align_setEnabled( bool enabled, bool all );
 
-    void twAlign_camwfs_ctrl_setEnabled( bool enabled );
+    void twAlign_camwfs_ctrl_setEnabled( bool enabled, bool all );
 
-    void twAlign_camwfs_wfs_setEnabled( bool enabled );
+    void twAlign_camwfs_wfs_setEnabled( bool enabled, bool all );
 
-    void alignment_buttons_setEnabled( bool enabled );
+    void alignment_buttons_setEnabled( bool enabled, bool all );
 
   public slots:
     void updateGUI();
@@ -602,12 +605,18 @@ void pupilGuide::subscribe()
     m_parent->addSubscriber( ui.pupTrackLoop_slider );
     m_parent->addSubscriber( ui.pupTrackLoop_gain );
 
+    m_parent->addSubscriberProperty( this, "twAlign-camwfs-ctrl", "fsm" );
+    m_parent->addSubscriberProperty( this, "twAlign-camwfs-ctrl", "loop_state" );
+
     m_parent->addSubscriber( ui.actAlignLoop_deltaX );
     m_parent->addSubscriber( ui.actAlignLoop_deltaY );
 
     m_parent->addSubscriber( ui.actAlignLoop_slider );
 
     m_parent->addSubscriber( ui.actAlignLoop_gain );
+
+    m_parent->addSubscriberProperty( this, "twAlign-camwfs-wfs", "fsm" );
+    m_parent->addSubscriberProperty( this, "twAlign-camwfs-wfs", "loop_state" );
 
     m_parent->addSubscriber( ui.actAlignSensor_slider );
 
@@ -695,10 +704,10 @@ void pupilGuide::onConnect()
     ui.actAlignSensor_pokeAmp->onConnect();
 
 
-    camwfs_align_setEnabled(true);
-    twAlign_camwfs_ctrl_setEnabled(true);
-    twAlign_camwfs_wfs_setEnabled(true);
-    alignment_buttons_setEnabled(true);
+    camwfs_align_setEnabled(true, true);
+    twAlign_camwfs_ctrl_setEnabled(true, true);
+    twAlign_camwfs_wfs_setEnabled(true, true);
+    alignment_buttons_setEnabled(true, true);
 
     setWindowTitle( "Alignment" );
 }
@@ -777,10 +786,13 @@ void pupilGuide::onDisconnect()
     ui.actAlignSensor_nImages->onDisconnect();
     ui.actAlignSensor_pokeAmp->onDisconnect();
 
-    camwfs_align_setEnabled(false);
-    twAlign_camwfs_ctrl_setEnabled(false);
-    twAlign_camwfs_wfs_setEnabled(false);
-    alignment_buttons_setEnabled(false);
+    camwfs_align_setEnabled(false, true);
+    m_camwfs_align_fsmState = "";
+    twAlign_camwfs_ctrl_setEnabled(false, true);
+    m_twAlign_camwfs_ctrl_fsmState = "";
+    twAlign_camwfs_wfs_setEnabled(false, true);
+    m_twAlign_camwfs_wfs_fsmState = "";
+    alignment_buttons_setEnabled(false, true);
 
     setWindowTitle( "Alignment (disconnected)" );
 }
@@ -1097,23 +1109,6 @@ void pupilGuide::handleSetProperty( const pcf::IndiProperty &ipRecv )
             }
         }
     }
-    else if( dev == "camwfs-align" )
-    {
-        if( ipRecv.getName() == "loop_state" )
-        {
-            if( ipRecv.find( "toggle" ) )
-            {
-                if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
-                {
-                    m_camwfsAlignLoopState = true;
-                }
-                else
-                {
-                    m_camwfsAlignLoopState = false;
-                }
-            }
-        }
-    }
     else if( dev == "stagecamlensx" )
     {
         if( ipRecv.getName() == "fsm" )
@@ -1188,7 +1183,78 @@ void pupilGuide::handleSetProperty( const pcf::IndiProperty &ipRecv )
             }
         }
     }
-
+    else if( dev == "camwfs-align" )
+    {
+        if( ipRecv.getName() == "fsm" )
+        {
+            if( ipRecv.find( "state" ) )
+            {
+                m_camwfs_align_fsmState = ipRecv["state"].get<std::string>();
+            }
+        }
+        else if( ipRecv.getName() == "loop_state" )
+        {
+            if( ipRecv.find( "toggle" ) )
+            {
+                if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+                {
+                    m_camwfsAlignLoopState = true;
+                }
+                else
+                {
+                    m_camwfsAlignLoopState = false;
+                }
+            }
+        }
+    }
+    else if( dev == "twAlign-camwfs-ctrl" )
+    {
+        if( ipRecv.getName() == "fsm" )
+        {
+            if( ipRecv.find( "state" ) )
+            {
+                m_twAlign_camwfs_ctrl_fsmState = ipRecv["state"].get<std::string>();
+            }
+        }
+        else if( ipRecv.getName() == "loop_state" )
+        {
+            if( ipRecv.find( "toggle" ) )
+            {
+                if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+                {
+                    m_twAlignLoopState = true;
+                }
+                else
+                {
+                    m_twAlignLoopState = false;
+                }
+            }
+        }
+    }
+    else if( dev == "twAlign-camwfs-wfs" )
+    {
+        if( ipRecv.getName() == "fsm" )
+        {
+            if( ipRecv.find( "state" ) )
+            {
+                m_twAlign_camwfs_wfs_fsmState = ipRecv["state"].get<std::string>();
+            }
+        }
+        else if( ipRecv.getName() == "loop_state" )
+        {
+            if( ipRecv.find( "toggle" ) )
+            {
+                if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+                {
+                    m_twAlignSensorState = true;
+                }
+                else
+                {
+                    m_twAlignSensorState = false;
+                }
+            }
+        }
+    }
     return;
 }
 
@@ -1397,36 +1463,48 @@ void pupilGuide::camlensSetEnabled( bool enabled,
     }
 }
 
-void pupilGuide::camwfs_align_setEnabled( bool enabled )
+void pupilGuide::camwfs_align_setEnabled( bool enabled, bool all )
 {
-    ui.label_pupTrackLoop->setEnabled(enabled);
+    if(all)
+    {
+        ui.label_pupTrackLoop->setEnabled(enabled);
+    }
     ui.pupTrackLoop_deltaX->setEnabled(enabled);
     ui.pupTrackLoop_deltaY->setEnabled(enabled);
     ui.pupTrackLoop_slider->setEnabled(enabled);
     ui.pupTrackLoop_gain->setEnabled(enabled);
 }
 
-void pupilGuide::twAlign_camwfs_ctrl_setEnabled( bool enabled )
+void pupilGuide::twAlign_camwfs_ctrl_setEnabled( bool enabled, bool all )
 {
-    ui.label_actAlignLoop->setEnabled(enabled);
+    if(all)
+    {
+        ui.label_actAlignLoop->setEnabled(enabled);
+    }
     ui.actAlignLoop_deltaX->setEnabled(enabled);
     ui.actAlignLoop_deltaY->setEnabled(enabled);
     ui.actAlignLoop_slider->setEnabled(enabled);
     ui.actAlignLoop_gain->setEnabled(enabled);
 }
 
-void pupilGuide::twAlign_camwfs_wfs_setEnabled( bool enabled )
+void pupilGuide::twAlign_camwfs_wfs_setEnabled( bool enabled, bool all )
 {
-    ui.label_actAlignSensor->setEnabled(enabled);
+    if(all)
+    {
+        ui.label_actAlignSensor->setEnabled(enabled);
+    }
     ui.actAlignSensor_slider->setEnabled(enabled);
     ui.actAlignSensor_nAverage->setEnabled(enabled);
     ui.actAlignSensor_nImages->setEnabled(enabled);
     ui.actAlignSensor_pokeAmp->setEnabled(enabled);
 }
 
-void pupilGuide::alignment_buttons_setEnabled( bool enabled )
+void pupilGuide::alignment_buttons_setEnabled( bool enabled, bool all )
 {
-    ui.label_alignment->setEnabled(enabled);
+    if(all)
+    {
+        ui.label_alignment->setEnabled(enabled);
+    }
     ui.button_startAlignment->setEnabled(enabled);
     ui.button_stopAlignment->setEnabled(enabled);
 
@@ -1861,26 +1939,54 @@ void pupilGuide::updateGUI()
     ui.camlensX_pos->updateGUI();
     ui.camlensY_pos->updateGUI();
 
+
+
+
+
+    ui.fitThreshold->updateGUI();
+    ui.fitAvgTime->updateGUI();
+
+    if(m_camwfs_align_fsmState != "READY" && m_camwfs_align_fsmState != "OPERATING")
+    {
+        camwfs_align_setEnabled(false, false);
+    }
+    else
+    {
+        camwfs_align_setEnabled(true, true);
+    }
+
     ui.pupTrackLoop_deltaX->updateGUI();
     ui.pupTrackLoop_deltaY->updateGUI();
-
     ui.pupTrackLoop_slider->updateGUI();
     ui.pupTrackLoop_gain->updateGUI();
 
+    if(m_twAlign_camwfs_ctrl_fsmState != "READY" && m_twAlign_camwfs_ctrl_fsmState != "OPERATING")
+    {
+        twAlign_camwfs_ctrl_setEnabled(false, false);
+    }
+    else
+    {
+        twAlign_camwfs_ctrl_setEnabled(true, true);
+    }
+
     ui.actAlignLoop_deltaX->updateGUI();
     ui.actAlignLoop_deltaY->updateGUI();
-
     ui.actAlignLoop_slider->updateGUI();
     ui.actAlignLoop_gain->updateGUI();
+
+    if(m_twAlign_camwfs_wfs_fsmState != "READY" && m_twAlign_camwfs_wfs_fsmState != "OPERATING")
+    {
+        twAlign_camwfs_wfs_setEnabled(false, false);
+    }
+    else
+    {
+        twAlign_camwfs_wfs_setEnabled(true, true);
+    }
 
     ui.actAlignSensor_slider->updateGUI();
     ui.actAlignSensor_nAverage->updateGUI();
     ui.actAlignSensor_nImages->updateGUI();
     ui.actAlignSensor_pokeAmp->updateGUI();
-
-    ui.fitThreshold->updateGUI();
-    ui.fitAvgTime->updateGUI();
-
 
 } // updateGUI()
 
