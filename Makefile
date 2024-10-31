@@ -163,7 +163,7 @@ utils_to_build = \
 	xrif2shmim \
 	xrif2fits
 
-scripts_to_install = magaox \
+scripts_to_install = \
 	query_seeing \
 	sync_cacao \
 	xctrl \

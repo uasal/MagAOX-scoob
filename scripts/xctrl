@@ -24,6 +24,9 @@ import threading
 import time
 import shlex
 
+this_env = os.environ.copy()
+this_env.pop('TMUX', None)
+
 stdout_b = os.fdopen(sys.stdout.fileno(), 'wb')
 try:
     RED_SEQ = subprocess.check_output('tput setaf 1', shell=True)
@@ -94,7 +97,7 @@ def _run_as_xsup(command, capture_output=True, check=True):
         args = []
     args.extend(shlex.split(command))
     debug(f'Running as {WHO_AM_I}: {" ".join(args)}')
-    res = subprocess.run(args, capture_output=capture_output, check=check)
+    res = subprocess.run(args, capture_output=capture_output, check=check, env=this_env)
     return res.returncode, res.stdout, res.stderr
 
 
