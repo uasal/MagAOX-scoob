@@ -437,7 +437,10 @@ static void closeINDIconnection(ClInfo* cp, DvrInfo* dp)
     {
         /* Flush any compressed output, if compression is active */
         if (pGzfiwr && *pGzfiwr) { gzflush(*pGzfiwr, Z_FINISH); }
+    }
 
+    if (rfdvalid || wfdvalid)
+    {
         /* If read and write FDs (file descriptors) are valid and the
          * same, then assume it's a bidirectional socket and shut it
          * down
