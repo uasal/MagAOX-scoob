@@ -425,11 +425,13 @@ static void clearMsgq(FQ** pMsgq)
  */
 static void closeINDIconnection(ClInfo* cp, DvrInfo* dp)
 {
+    int pair[2] = { -1, -1};
     int wfd = cp ? cp->s : (dp ? dp->wfd : -1);
     int rfd = cp ? cp->s : (dp ? dp->rfd : -1);
     int wfdvalid = wfd > -1;
     int rfdvalid = rfd > -1;
     int isbidir = rfd == wfd;
+
     gzFile* pGzfird = cp ? &cp->gzfird : (dp ? &dp->gzfird : NULL);
     gzFile* pGzfiwr = cp ? &cp->gzfiwr : (dp ? &dp->gzfiwr : NULL);
 
@@ -479,17 +481,30 @@ static void closeINDIconnection(ClInfo* cp, DvrInfo* dp)
      * If the read FD was already closed by the write logic above, then
      * create an open FD to stand in for it so the gzclose call on the
      * read side will have something to close
+     *
+     * N.B. FD pair[0] may be left open after this, but will be closed
+     *      after the call to gzclose closes rfd
      */
     if (isbidir)
     {
-        int pair[2];
+        /* Open a read/write pipe pair of FDs */
         int pipertn = pipe(pair);
         dup2(pair[0], rfd);
-        close(pair[1]);
+        close(pair[1]);      /* Close the write side of the pipe pair */
     }
 
-    gzclose(*pGzfird);                 /* Close the read gzFile pointer */
+    gzclose(*pGzfird);  /* Close both the read gzFile pointer and rfd */
     *pGzfird = NULL;
+
+    /* FD pair[0] may be left open at this point:  attempt to close it;
+     * ignore any error in the attempt.
+     */
+    if (isbidir && pair[0] > -1)
+    {
+        int save_errno = errno;
+        int rtn = close(pair[0]);
+        errno = save_errno;
+    }
 
 } // static void closeINDIconnection(ClInfo* cp, DvrInfo* dp)
 
