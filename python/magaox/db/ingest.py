@@ -9,10 +9,28 @@ import psycopg
 from psycopg import sql
 from tqdm import tqdm
 
-from .records import Telem, FileOrigin, FileReplica, FileIngestTime
+from .records import Telem, FileOrigin, FileReplica, FileIngestTime, UserLog
 from ..utils import creation_time_from_filename, parse_iso_datetime_as_utc
 
 log = logging.getLogger(__name__)
+
+
+def batch_user_log(cur: psycopg.Cursor, records: list[UserLog]):
+    """This will be where the logs will insert into user_logs table"""
+    cur.execute('BEGIN')
+    try:
+        cur.executemany('''
+        INSERT INTO user_log (ts, device, ec, msg)
+        VALUES (%s, %s, %s, %s::JSONB)
+        ON CONFLICT (ts, device) DO NOTHING;
+        ''', [(rec.ts, rec.device, rec.ec, orjson.dumps(rec.msg).decode('utf8')) for rec in records])
+    except Exception as e:
+        log.error(f"Error inserting user logs into the database: {e}")
+        cur.execute('ROLLBACK')
+    else:
+        cur.execute('COMMIT')
+        log.debug(f"Inserted {len(records)} user_logs into database")
+
 
 def batch_telem(cur: psycopg.Cursor, records: list[Telem]):
     cur.execute("BEGIN")
@@ -70,6 +88,7 @@ def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: list[str]):
         cur.execute("ROLLBACK")  # ensure temp table is deleted
     return new_files
 
+#add non-ingested-userlogs?
 
 def identify_non_ingested_telem(cur: psycopg.Cursor, host: str) -> list[str]:
     '''Use ``file_origins`` table to find ``.bintel`` file paths on the host
