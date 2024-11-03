@@ -177,8 +177,6 @@ scripts_to_install = \
 	shot_in_the_dark \
 	howfs_apply \
 	lowfs_switch \
-	lowfs_apply \
-	lowfs_switch_apply \
 	write_magaox_pidfile \
 	mount_cgroups1_cpuset \
 	killIndiZombies \
