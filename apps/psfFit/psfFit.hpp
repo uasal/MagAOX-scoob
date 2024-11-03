@@ -490,16 +490,36 @@ int psfFit::processImage( void* curr_src,
    
     if(m_dark.rows() == m_image.rows() && m_dark.cols() == m_image.cols())
     {
-        for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+        if(shmimMonitorT::m_dataType == _DATATYPE_UINT16)
         {
-            m_image.data()[nn] = ((uint16_t*)curr_src) [nn] - m_dark.data()[nn];
+            for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+            {
+               m_image.data()[nn] = ((uint16_t*)curr_src) [nn] - m_dark.data()[nn];
+            }
+        }
+        else if(shmimMonitorT::m_dataType == _DATATYPE_FLOAT)
+        {
+            for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+            {
+               m_image.data()[nn] = ((float*)curr_src) [nn] - m_dark.data()[nn];
+            }
         }
     }
     else
     {
-        for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+        if(shmimMonitorT::m_dataType == _DATATYPE_UINT16)
         {
-            m_image.data()[nn] = ((uint16_t*)curr_src) [nn];
+            for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+            {
+               m_image.data()[nn] = ((uint16_t*)curr_src) [nn];
+            }
+        }
+        else if(shmimMonitorT::m_dataType == _DATATYPE_FLOAT)
+        {
+            for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
+            {
+               m_image.data()[nn] = ((float*)curr_src) [nn];
+            }
         }
     }
 
