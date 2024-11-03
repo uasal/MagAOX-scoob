@@ -53,8 +53,10 @@ protected:
     std::vector<std::string> m_ctrlProperties;                      ///< Properties of the ctrl device(s) to which to give the commands. Must specify two.
     std::vector<std::string> m_ctrlCurrents {"current", "current"}; ///< current elements of the properties on which to base the commands. Must specify 0 or 2. Default is 'current'.
     std::vector<std::string> m_ctrlTargets {"target", "target"};    ///< target elements of the properties to which to send the commands. Must specify 0 or 2. Default is 'target'.
-    
+
     mx::improc::eigenImage<float> m_references; ///< The reference values of the disturbances
+
+    bool m_operatingOK {false}; ///< If true then it's ok for the ctrl device to be OPERATING when a command is sent
 
     std::unordered_map<std::string, std::string> m_fsmStates; ///< The FSM states of the control devices.
 
@@ -183,6 +185,8 @@ void closedLoopIndi::setupConfig()
     config.add("ctrl.properties", "", "ctrl.properties", argType::Required, "ctrl", "properties", false, "string", "Properties of the ctrl device(s) to which to give the commands. Must specify two.");
     config.add("ctrl.currents", "", "ctrl.currents", argType::Required, "ctrl", "currents", false, "vector<string>", "current elements of the properties on which to base the commands. Must specify 0 or 2. Default is 'current'");
     config.add("ctrl.targets", "", "ctrl.targets", argType::Required, "ctrl", "targets", false, "vector<string>", "target elements of the properties to which to send the commands. Must specify 0 or 2. Default is 'target'.");
+    config.add("ctrl.operatingOK", "", "ctrl.operatingOK", argType::Required, "ctrl", "operatingOK", false, "bool", "If true then it's ok for the ctrl device to be OPERATING when a command is sent. Default is false.");
+
 
     config.add("loop.intMat00", "", "loop.intMat00", argType::Required, "loop", "intMat00", false, "float", "element (0,0) of the interaction matrix. Default is 1.");
     config.add("loop.intMat01", "", "loop.intMat01", argType::Required, "loop", "intMat01", false, "float", "element (0,1) of the interaction matrix. Default is 0.");
@@ -237,7 +241,8 @@ int closedLoopIndi::loadConfigImpl( mx::app::appConfigurator & _config )
     _config(m_ctrlProperties, "ctrl.properties");
     _config(m_ctrlCurrents, "ctrl.currents");
     _config(m_ctrlTargets, "ctrl.targets");
-    
+    _config(m_operatingOK, "ctrl.operatingOK");
+
     if(m_ctrlDevices.size() == 1)
     {
         m_ctrlDevices.push_back(m_ctrlDevices[0]);
@@ -425,7 +430,7 @@ int closedLoopIndi::updateLoop()
     {
         if(m_fsmStates.count(m_ctrlDevices[n]) > 0)
         {
-            if(m_fsmStates[m_ctrlDevices[n]] == "READY")
+            if(m_fsmStates[m_ctrlDevices[n]] == "READY" || (m_operatingOK && m_fsmStates[m_ctrlDevices[n]] == "OPERATING")  )
             {
                 ready = true;
             }
