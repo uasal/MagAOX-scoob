@@ -22,6 +22,7 @@ namespace MagAOX
 namespace app
 {
 
+
 class nsvCtrl : public MagAOXApp<>, public dev::stdCamera<nsvCtrl>,
                                     public dev::frameGrabber<nsvCtrl>, public dev::telemeter<nsvCtrl>
 {
@@ -53,7 +54,7 @@ public:
    
    static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
 
-   static constexpr bool c_stdCamera_usesModes = false; ///< app:dev config to tell stdCamera not to expose mode controls
+   static constexpr bool c_stdCamera_usesModes = true; ///< app:dev config to tell stdCamera not to expose mode controls
    
    static constexpr bool c_stdCamera_usesROI = false; ///< app:dev config to tell stdCamera to expose ROI controls
 
@@ -116,6 +117,8 @@ public:
    virtual int appShutdown();
 
    int cameraSelect();
+
+   int setReadoutMode();
 
    int getTemp();
 
@@ -208,21 +211,42 @@ public:
    ///@}
 };
 
+/*
+
+   Modes
+
+     v4l2-ctl --device=/dev/video2 --set-ctrl sensor_mode=1
+        v4l2-ctl --device=/dev/video2 --set-fmt-video=width=6144,height=512,pixelformat=RG16
+        v4l2-ctl --device=/dev/video2 --list-formats-ext
+
+
+        Sensor modes correspond with the results in 'list-formats-ext'
+
+     [0]: 'RG16' (16-bit Bayer RGRG/GBGB (Exp.))
+                Size: Discrete 6144x4210
+                        Interval: Discrete 0.100s (10.000 fps)
+                Size: Discrete 6144x512
+                        Interval: Discrete 0.020s (50.000 fps)
+                Size: Discrete 6144x4210
+                        Interval: Discrete 0.100s (10.000 fps)
+                Size: Discrete 6144x512
+                        Interval: Discrete 0.020s (50.000 fps)
+
+*/
 
 
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
    m_powerMgtEnabled = true;
-   m_powerOnWait = 10;
-   //std::string m_powerDevice;             ///< The INDI device name of the power controller
-   //std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
+   m_powerOnWait = 1;
+   std::string m_powerDevice;             ///< The INDI device name of the power controller
+   std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
+
+   int m_powerState;       ///< Current power state, 1=On, 0=Off, -1=Unk.
+   int m_powerTargetState; ///< Current target power state, 1=On, 0=Off, -1=Unk.
 
    //m_startupTemp = -45;  
-   
-   //m_defaultReadoutSpeed  = "emccd_17MHz";
-   //m_readoutSpeedNames = {"ccd_00_08MHz", "ccd_01MHz", "ccd_03MHz", "emccd_01MHz", "emccd_05MHz", "emccd_10MHz", "emccd_17MHz"};
-   //m_readoutSpeedNameLabels = {"CCD 0.08 MHz", "CCD 1 MHz", "CCD 3 MHz", "EMCCD 1 MHz", "EMCCD 5 MHz", "EMCCD 10 MHz", "EMCCD 17 MHz"};
    
    m_maxEMGain = 360;
    m_emGainSet = 100;
@@ -231,27 +255,29 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_minBlacklevel = 0;
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
-   m_maxFPS = 10000000;
-   m_minFPS = 10000000;
 
-   m_default_x = 3072; 
-   m_default_y = 2105; 
-   m_default_w = 6144;  
-   m_default_h = 4210;  
-      
+   // comes from camera modes
+   m_default_x = m_cameraModes[m_modeName].m_centerX;
+   m_default_y = m_cameraModes[m_modeName].m_centerY;
+   m_default_w = m_cameraModes[m_modeName].m_sizeX;
+   m_default_h = m_cameraModes[m_modeName].m_sizeY;
+
+   m_full_x = m_cameraModes[m_modeName].m_centerX;
+   m_full_y = m_cameraModes[m_modeName].m_centerY;
+   m_full_w = m_cameraModes[m_modeName].m_sizeX;
+   m_full_h = m_cameraModes[m_modeName].m_sizeY;
+   
+   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
+   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
+
+  /*
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
-   
-   m_full_x = 3072; //3121.5; 
-   m_full_y = 2105; //2093.5; 
-   m_full_w = 6144; //6244; 
-   m_full_h = 4210; //4188; 
-   
-   
+   */
    return;
 }
 
@@ -277,13 +303,39 @@ void nsvCtrl::loadConfig()
 
    config(m_camPath, "camera.camPath");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
-   
+
    m_configFile = "/tmp/nsv_";
    m_configFile += configName();
    m_configFile += ".cfg";
-   m_cameraModes["onlymode"] = dev::cameraConfig({m_configFile, "", 255, 255, 512, 512, 1, 1, 1, 1, 1000});
-   m_startupMode = "onlymode";
+
+   //m_cameraModes["fullframe"] = dev::cameraConfig({"/opt/MagAOX/config/nsv_fullframe.conf", "", 3072, 2105, 6144, 4210, 1, 1, 1, 1, 10});
+   //m_cameraModes["sliced"] = dev::cameraConfig({"/opt/MagAOX/config/nsv_sliced.conf", "", 3072, 255, 6144, 512, 1, 1, 1, 1, 50});
    
+   m_modeName = m_startupMode;
+   m_nextMode = m_modeName;
+
+   m_default_x = m_cameraModes[m_modeName].m_centerX;
+   m_default_y = m_cameraModes[m_modeName].m_centerY;
+   m_default_w = m_cameraModes[m_modeName].m_sizeX;
+   m_default_h = m_cameraModes[m_modeName].m_sizeY;
+
+   m_full_x = m_cameraModes[m_modeName].m_centerX;
+   m_full_y = m_cameraModes[m_modeName].m_centerY;
+   m_full_w = m_cameraModes[m_modeName].m_sizeX;
+   m_full_h = m_cameraModes[m_modeName].m_sizeY;
+   
+   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
+   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
+
+/*
+   m_nextROI.x = m_default_x;
+   m_nextROI.y = m_default_y;
+   m_nextROI.w = m_default_w;
+   m_nextROI.h = m_default_h;
+   m_nextROI.bin_x = 1;
+   m_nextROI.bin_y = 1;
+*/
+
    if(writeConfig() < 0)
    {
       log<software_critical>({__FILE__,__LINE__});
@@ -441,7 +493,7 @@ int nsvCtrl::appLogic()
          state(stateCodes::ERROR);
          return 0;
       }
-      
+
       if(stdCamera<nsvCtrl>::updateINDI() < 0)
       {
          log<software_error>({__FILE__, __LINE__});
@@ -495,12 +547,11 @@ int nsvCtrl::onPowerOff()
    return 0;
 }
 
-
 inline
 int nsvCtrl::whilePowerOff()
 {
-   m_shutterStatus = "POWEROFF";
-   m_shutterState = 0;
+   //m_shutterStatus = "POWEROFF";
+   //m_shutterState = 0;
    
    if(stdCamera<nsvCtrl>::whilePowerOff() < 0)
    {
@@ -509,7 +560,6 @@ int nsvCtrl::whilePowerOff()
    
    return 0;
 }
-
 
 inline
 int nsvCtrl::appShutdown()
@@ -534,14 +584,20 @@ int nsvCtrl::appShutdown()
 inline
 int nsvCtrl::cameraSelect()  
 {  
-   char path[] = "/dev/video2";
+   const char *path = m_camPath.c_str();
    if(openCamera(path) == -1){
       log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+
+   if(setReadoutMode() == -1){
+      log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
+      state(stateCodes::NODEVICE);
+      return -1;
+   }
    
-   if(initCamera(6144,4210) == -1){
+   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY) == -1){
       log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
@@ -583,6 +639,67 @@ int nsvCtrl::cameraSelect()
    log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
 
    m_cropModeSet = false; // move this somewhere it makes sense
+
+   return 0;
+}
+
+/*
+   m_defaultMode = {"0"};
+   m_readoutModes = {"0", "1", "2", "3"};
+   m_readoutModeLabels = {"6144x4210", "6144x512", "6144x4210", "6144x512"};
+*/
+inline
+int nsvCtrl::setReadoutMode()
+{
+   int result = 0;
+
+   if(m_nextMode == "sliced")
+   {
+      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
+      result = std::system(command.c_str());
+      std::cout << "Set to sliced " << std::endl;
+   }
+   if(m_nextMode == "fullframe")
+   {
+      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
+      result = std::system(command.c_str());
+      std::cout << "Set to fullframe" << std::endl;
+   }
+
+   if(result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"});         return -1;
+   }
+
+   log<text_log>("Set readout mode to " +  m_nextMode);
+
+
+   // comes from camera modes
+   m_default_x = m_cameraModes[m_nextMode].m_centerX;
+   m_default_y = m_cameraModes[m_nextMode].m_centerY;
+   m_default_w = m_cameraModes[m_nextMode].m_sizeX;
+   m_default_h = m_cameraModes[m_nextMode].m_sizeY;
+
+   m_full_x = m_cameraModes[m_nextMode].m_centerX;
+   m_full_y = m_cameraModes[m_nextMode].m_centerY;
+   m_full_w = m_cameraModes[m_nextMode].m_sizeX;
+   m_full_h = m_cameraModes[m_nextMode].m_sizeY;
+   
+   m_maxFPS = m_cameraModes[m_nextMode].m_maxFPS;
+   m_minFPS = m_cameraModes[m_nextMode].m_maxFPS;
+
+/*
+   m_nextROI.x = m_default_x;
+   m_nextROI.y = m_default_y;
+   m_nextROI.w = m_default_w;
+   m_nextROI.h = m_default_h;
+   m_nextROI.bin_x = 1;
+   m_nextROI.bin_y = 1;
+*/
+
+  // m_readoutSpeedName = m_readoutSpeedNameSet;
+
+   //m_reconfig = true;
 
    return 0;
 }
@@ -717,8 +834,11 @@ int nsvCtrl::writeConfig()
       return -1;
    }
 
-   int w = m_nextROI.w / m_nextROI.bin_x;
-   int h = m_nextROI.h / m_nextROI.bin_y;
+   int w = m_default_w;
+   int h = m_default_h;
+
+   //int w = m_nextROI.w / m_nextROI.bin_x;
+   //int h = m_nextROI.h / m_nextROI.bin_y;
    
    fout << "camera_class:                  \"nsvCam\"\n";
    //fout << "camera_model:                  \"iXon Ultra 897\"\n";
@@ -748,6 +868,7 @@ int nsvCtrl::powerOnDefaults()
    m_tempControlStatusStr =  "OFF"; 
    m_tempControlOnTarget = false;
       
+   /*
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
    m_currentROI.w = m_default_w;
@@ -761,7 +882,8 @@ int nsvCtrl::powerOnDefaults()
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = m_default_bin_x;
    m_nextROI.bin_y = m_default_bin_y;
-   
+   */
+
    return 0;
 }
 
@@ -863,7 +985,7 @@ int nsvCtrl::getExpTime()
       return -1;
    }
 
-   m_expTime = std::stoi(result);
+   m_expTime = std::stoi(result) / 1000000.0;  // convert microseconds to seconds
 
    return 0;
 }
@@ -872,7 +994,7 @@ inline
 int nsvCtrl::setExpTime()
 {
    
-   int exp_to_set = m_expTimeSet;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
+   int exp_to_set = m_expTimeSet * 1000000;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
 
    if(exp_to_set < m_minExpTime)
    {
@@ -900,7 +1022,6 @@ int nsvCtrl::setExpTime()
    return 0;
 }
 
-
 inline 
 int nsvCtrl::checkNextROI()
 {
@@ -925,8 +1046,8 @@ int nsvCtrl::configureAcquisition()
 
    //unsigned int error;
 
-   int x0 = (m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
-   int y0 = (m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
+   //int x0 = m_default_x;//(m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
+   //int y0 = m_default_y;//(m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
 
    m_cropMode = m_cropModeSet;
 
@@ -953,42 +1074,45 @@ int nsvCtrl::configureAcquisition()
       
       
    }
-   
-   // nsv not implementing changing ROI for now. Only 6144x4210 and 6144x512
-
+/*
    m_currentROI.bin_x = m_nextROI.bin_x;
    m_currentROI.bin_y = m_nextROI.bin_y;
    m_currentROI.x = x0 - 1.0 +  0.5*(m_nextROI.w - 1);
    m_currentROI.y = y0 - 1.0 +  0.5*(m_nextROI.h - 1);
    m_currentROI.w = m_nextROI.w;
    m_currentROI.h = m_nextROI.h;
-   
-   //updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
-   //updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
-   //updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
-   //updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
-   //updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
-   //updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
+   */
+  
+  /* 
+   updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
+   updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
+   updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
+   updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
+*/
 
    //We also update target to the settable values
+  /*
    m_nextROI.x = m_currentROI.x;
    m_nextROI.y = m_currentROI.y;
    m_nextROI.w = m_currentROI.w;
    m_nextROI.h = m_currentROI.h;
    m_nextROI.bin_x = m_currentROI.bin_x;
    m_nextROI.bin_y = m_currentROI.bin_y;
-
-   //updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
-   //updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
-   //updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
-   //updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
-   //updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
-   //updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
-
+*/
+/*
+   updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
+   updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
+   updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
+   updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
+   updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
+*/
 
    ///\todo This should check whether we have a match between EDT and the camera right?
-   m_width = m_currentROI.w/m_currentROI.bin_x;
-   m_height = m_currentROI.h/m_currentROI.bin_y;
+   m_width = m_default_w;//m_currentROI.w/m_currentROI.bin_x;
+   m_height = m_default_h;// m_currentROI.h/m_currentROI.bin_y;
    m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output?
 
    recordCamera(true);
@@ -1051,16 +1175,22 @@ int nsvCtrl::reconfig()
    //lock mutex
    //std::unique_lock<std::mutex> lock(m_indiMutex);
    recordCamera(true);
-   stopStreaming();
    state(stateCodes::CONFIGURING);
 
    // add some reconfig stuff here
-   startStreaming();
+   // check for new mode
+   if(m_nextMode != m_modeName)
+   {
+      stopStreaming();
+      cameraSelect();  //could call setReadoutMode directly
+      //startStreaming();
+   }
+
    writeConfig();
    
    state(stateCodes::READY);
 
-   m_nextMode = m_modeName;
+   m_modeName = m_nextMode;
    return 0;
 }
 
