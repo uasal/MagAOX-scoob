@@ -199,6 +199,9 @@ public:
 protected:
    
 public:
+   //INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_emProtReset);
+
+   INDI_SETCALLBACK_DECL(nsvCtrl, m_indiP_mode);
    
    /** \name Telemeter Interface
      * 
@@ -238,6 +241,9 @@ public:
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
+
+   std::cout << "nsvCtrl() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    m_powerMgtEnabled = true;
    m_powerOnWait = 1;
    std::string m_powerDevice;             ///< The INDI device name of the power controller
@@ -290,19 +296,32 @@ nsvCtrl::~nsvCtrl() noexcept
 inline
 void nsvCtrl::setupConfig()
 {
+   std::cout << "setupConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
+
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
    dev::telemeter<nsvCtrl>::setupConfig(config);
+   std::cout << "setupConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
 }
 
 inline
 void nsvCtrl::loadConfig()
 {
 
+   std::cout << "loadConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
+   // why is length for m_cameraModes 1 here? haven't loaded in the config yet...
+   std::cout << "m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    config(m_camPath, "camera.camPath");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
+
+   // length is 3 now after loadConfig. why 3 not 2?
+   std::cout << "loadConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
 
    m_configFile = "/tmp/nsv_";
    m_configFile += configName();
@@ -364,6 +383,8 @@ void nsvCtrl::loadConfig()
 inline
 int nsvCtrl::appStartup()
 {
+   std::cout << "appStartup() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
       return log<software_critical,-1>({__FILE__,__LINE__});
@@ -378,7 +399,8 @@ int nsvCtrl::appStartup()
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+   std::cout << "appStartup() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    state(stateCodes::NOTCONNECTED);
 
    m_powerState = 1;  //figure out power stuff
@@ -584,6 +606,9 @@ int nsvCtrl::appShutdown()
 inline
 int nsvCtrl::cameraSelect()  
 {  
+
+   std::cout << "cameraSelect() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    const char *path = m_camPath.c_str();
    if(openCamera(path) == -1){
       log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
@@ -643,50 +668,63 @@ int nsvCtrl::cameraSelect()
    return 0;
 }
 
-/*
-   m_defaultMode = {"0"};
-   m_readoutModes = {"0", "1", "2", "3"};
-   m_readoutModeLabels = {"6144x4210", "6144x512", "6144x4210", "6144x512"};
-*/
 inline
 int nsvCtrl::setReadoutMode()
 {
+
+   std::cout << "setReadoutMode() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
+   std::cout << "Setting readout mode to " + m_modeName << std::endl;
+
    int result = 0;
 
-   if(m_nextMode == "sliced")
+   if(m_modeName == "sliced")
    {
       const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
       result = std::system(command.c_str());
-      std::cout << "Set to sliced " << std::endl;
    }
-   if(m_nextMode == "fullframe")
+   if(m_modeName == "fullframe")
    {
       const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
       result = std::system(command.c_str());
-      std::cout << "Set to fullframe" << std::endl;
    }
 
    if(result != 0)
    {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"});         return -1;
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"}); 
+      return -1;
    }
 
-   log<text_log>("Set readout mode to " +  m_nextMode);
+   log<text_log>("Set readout mode to " +  m_modeName);
+   printf("set readout mode to %s\n", m_modeName.c_str());
 
+   /*
+   const std::string cmd = "v4l2-ctl --device=" + m_camPath + 
+                           " --set-fmt-video=width=" + std::to_string(m_cameraModes[m_nextMode].m_sizeX) +
+                           ",height=" + std::to_string(m_cameraModes[m_nextMode].m_sizeY) +
+                           ",pixelformat=RG16";
+
+   result = std::system(cmd.c_str());
+   if(result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl set-fmt error from setReadoutMode"});         
+      return -1;
+   } 
+   */    
 
    // comes from camera modes
-   m_default_x = m_cameraModes[m_nextMode].m_centerX;
-   m_default_y = m_cameraModes[m_nextMode].m_centerY;
-   m_default_w = m_cameraModes[m_nextMode].m_sizeX;
-   m_default_h = m_cameraModes[m_nextMode].m_sizeY;
+   m_default_x = m_cameraModes[m_modeName].m_centerX;
+   m_default_y = m_cameraModes[m_modeName].m_centerY;
+   m_default_w = m_cameraModes[m_modeName].m_sizeX;
+   m_default_h = m_cameraModes[m_modeName].m_sizeY;
 
-   m_full_x = m_cameraModes[m_nextMode].m_centerX;
-   m_full_y = m_cameraModes[m_nextMode].m_centerY;
-   m_full_w = m_cameraModes[m_nextMode].m_sizeX;
-   m_full_h = m_cameraModes[m_nextMode].m_sizeY;
+   m_full_x = m_cameraModes[m_modeName].m_centerX;
+   m_full_y = m_cameraModes[m_modeName].m_centerY;
+   m_full_w = m_cameraModes[m_modeName].m_sizeX;
+   m_full_h = m_cameraModes[m_modeName].m_sizeY;
    
-   m_maxFPS = m_cameraModes[m_nextMode].m_maxFPS;
-   m_minFPS = m_cameraModes[m_nextMode].m_maxFPS;
+   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
+   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
 /*
    m_nextROI.x = m_default_x;
@@ -703,6 +741,28 @@ int nsvCtrl::setReadoutMode()
 
    return 0;
 }
+
+INDI_SETCALLBACK_DEFN(nsvCtrl, m_indiP_mode)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(ipRecv, m_indiP_mode)
+
+    if(!ipRecv.find("current")) 
+    {   
+        return -1;
+    }
+
+    m_modeName = ipRecv["current"].get<std::string>();
+
+    if(m_nextMode != m_modeName)
+    {
+        
+        m_nextMode = m_modeName;
+        m_reconfig = true;
+    }
+
+    return 0;
+}
+
 
 inline
 int nsvCtrl::getTemp()
@@ -821,6 +881,8 @@ int nsvCtrl::setCropMode()
 inline 
 int nsvCtrl::writeConfig()
 {
+   std::cout << "writeConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
    std::string configFile = "/tmp/nsvCam_";
    configFile += configName();
    configFile += ".cfg";
@@ -1017,7 +1079,7 @@ int nsvCtrl::setExpTime()
       return -1;
    }
 
-   log<text_log>("Set Exp to: " + std::to_string(exp_to_set), logPrio::LOG_WARNING);
+   log<text_log>("Set Exp to: " + std::to_string(exp_to_set / 1000000), logPrio::LOG_WARNING);
    
    return 0;
 }
@@ -1172,25 +1234,48 @@ int nsvCtrl::loadImageIntoStream(void * dest)
 inline
 int nsvCtrl::reconfig()
 {
+
    //lock mutex
    //std::unique_lock<std::mutex> lock(m_indiMutex);
    recordCamera(true);
    state(stateCodes::CONFIGURING);
+   printf("Reconfiguring camera . . .\n");
 
    // add some reconfig stuff here
    // check for new mode
    if(m_nextMode != m_modeName)
    {
+      if(m_init)
+      {
+         m_init = false;
+      }
+
       stopStreaming();
-      cameraSelect();  //could call setReadoutMode directly
-      //startStreaming();
+      requestBuffers(0);
+      //dequeueBuffer(); // clear out buffer. need to nuke buffers completely?
+      //closeCamera();
+      //sleep(10);
+      m_modeName = m_nextMode;
+      cameraSelect(); 
+
+      /*
+      setReadoutMode();
+
+      const char *path = m_camPath.c_str();
+      if(openCamera(path) == -1){
+         log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
+         state(stateCodes::NODEVICE);
+         return -1;
+      }
+
+      reconfigCamera(m_cameraModes[m_nextMode].m_sizeX,  m_cameraModes[m_nextMode].m_sizeY);
+      */
+      //startStreaming()
    }
 
-   writeConfig();
-   
-   state(stateCodes::READY);
+   m_init = true;
+   state(stateCodes::CONNECTED);
 
-   m_modeName = m_nextMode;
    return 0;
 }
 

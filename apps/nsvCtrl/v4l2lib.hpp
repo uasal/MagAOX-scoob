@@ -31,7 +31,11 @@ struct CameraParams {
 
 CameraParams getCameraParams();
 
+int openCamera(const char* device);
+int closeCamera();
+
 int initCamera(int width, int height);
+int reconfigCamera(int width, int height);
 int requestBuffers(int requested_buf_count);
 int queryBuffers();
 int queryBuffer(int buf_index);
@@ -98,6 +102,15 @@ int openCamera(const char* device) {
     return 0;
 }
 
+int closeCamera() {
+    //struct v4l2_requestbuffers req;
+    //ioctl(fd, VIDIOC_STREAMOFF, &reqbuf.type);  // Stop streaming
+    //ioctl(fd, VIDIOC_REQBUFS, &reqbuf);         // Free buffers
+    // free buffers
+    close(fd);
+    return 0;
+}
+
 CameraParams getCameraParams() {
     return params;
 }
@@ -121,6 +134,14 @@ int initCamera(int width, int height) {
     params.width = fmt.fmt.pix.width;
     params.height = fmt.fmt.pix.height;
     params.pixelFormat = "RG16"; 
+    return 0;
+}
+
+int reconfigCamera(int width, int height) {
+    //initCamera(width, height);
+    requestBuffers(1);
+    queryBuffers();
+    startStreaming();
     return 0;
 }
 
@@ -245,6 +266,7 @@ int stopStreaming() {
     }
     else { 
         stream_on = false;
+        printf("Stopped camera stream\n");
         return 0;
     }
 }
