@@ -710,7 +710,6 @@ int zaberLowLevel::onPowerOff()
       log<text_log>("Error disconnecting from zaber system.", logPrio::LOG_ERROR);
    }
    
-   
    m_port = 0;
    
    std::lock_guard<std::mutex> lock(m_indiMutex);
@@ -725,7 +724,7 @@ int zaberLowLevel::onPowerOff()
       
       updateIfChanged(m_indiP_curr_state, m_stages[i].name(), std::string("POWEROFF"));
       
-         
+      updateIfChanged(m_indiP_warn, m_stages[i].name(), pcf::IndiElement::Off);
    }
    return 0;
 }

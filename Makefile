@@ -51,7 +51,8 @@ apps_rtc = \
 	dmSpeckle \
 	w2tcsOffloader \
 	pwfsSlopeCalc \
-        kcubeCtrl
+        kcubeCtrl \
+	dmPokeXCorr
 
 apps_icc = \
 	dmPokeCenter \
