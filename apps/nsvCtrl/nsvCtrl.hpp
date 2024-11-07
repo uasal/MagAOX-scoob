@@ -15,7 +15,16 @@
 #include <cstdlib>
 #include <fcntl.h>
 
+#include <chrono>
+#include <ctime>
+
 #include <unistd.h>
+
+std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
+auto duration = now.time_since_epoch();
+
+typedef std::chrono::duration<int, std::ratio_multiply<std::chrono::hours::period, std::ratio<8>
+>::type> Days; /* UTC: +8:00 */
 
 namespace MagAOX
 {
@@ -50,7 +59,7 @@ public:
    
    static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera to not expose FPS controls
 
-   static constexpr bool c_stdCamera_fps = false; ///< app::dev config to tell stdCamera not to expose FPS status
+   static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
    
    static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
 
@@ -85,6 +94,11 @@ protected:
    //std::string camera_string = "/dev/video2"; // hard code to one camera for now. add cam select 
 
    std::string m_camPath; // "/dev/video2" or similar, path to l4v2 cam 
+
+   int m_next_frame_index; // 0 to bufsize, some sort of buffer handling
+   int m_last_frame_index; // 0 to bufsize
+
+   int m_vCrop; // camera vcropoffset
 
 public:
 
@@ -130,13 +144,17 @@ public:
    
    int setEMGain();
 
+   int setVCrop(int offset);
+
+   int getVCrop();
+
    int getBlacklevel();
 
    int setBlacklevel();
 
    int setCropMode();
 
-   int setShutter( unsigned os);
+   int setShutter(unsigned os);
 
    int setFPS();
 
@@ -197,11 +215,15 @@ public:
 
    //INDI:
 protected:
+
+   pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    
 public:
    //INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_emProtReset);
 
-   INDI_SETCALLBACK_DECL(nsvCtrl, m_indiP_mode);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
+
+   //INDI_SETCALLBACK_DECL(nsvCtrl, m_indiP_mode);
    
    /** \name Telemeter Interface
      * 
@@ -243,6 +265,9 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
 
    std::cout << "nsvCtrl() m_cameraModes length: " << m_cameraModes.size() << std::endl;
+
+   m_next_frame_index = 0;
+   m_last_frame_index = 0;
 
    m_powerMgtEnabled = true;
    m_powerOnWait = 1;
@@ -383,6 +408,14 @@ void nsvCtrl::loadConfig()
 inline
 int nsvCtrl::appStartup()
 {
+   // register new indi properties
+   getVCrop();
+   createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
+   m_indiP_vCrop["current"] = m_vCrop;
+   m_indiP_vCrop["target"] = m_vCrop;
+   registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+
+
    std::cout << "appStartup() m_cameraModes length: " << m_cameraModes.size() << std::endl;
 
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
@@ -476,35 +509,16 @@ int nsvCtrl::appLogic()
          return 0;
       }
       */
+   
+      //if(m_powerState == 0) return 0;
 
-     if(getFPS() < 0)
-      {
-         if(m_powerState == 0) return 0;
 
-         state(stateCodes::ERROR);
-         return 0;
-      }
-
-      if(getEMGain() < 0)
-      {
-         if(m_powerState == 0) return 0;
-
-         state(stateCodes::ERROR);
-         return 0;
-      }
-
-      if(getBlacklevel() < 0)
-      {
-         if(m_powerState == 0) return 0;
-
-         state(stateCodes::ERROR);
-         return 0;
-      }
-
-      if(getExpTime() < 0)
-      {
-         if(m_powerState == 0) return 0;
-
+     if(getFPS() < 0 || 
+        getEMGain() < 0 ||
+        getBlacklevel() < 0 ||
+        getExpTime() < 0 ||
+        getVCrop() < 0)
+      {   
          state(stateCodes::ERROR);
          return 0;
       }
@@ -628,6 +642,11 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   getVCrop(); // initCamera could change vcrop and exp if changing modes
+   updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
+   getExpTime();
+   updateIfChanged(m_indiP_exptime, "current", m_expTime);
+
    CameraParams params = getCameraParams();
    std::cout << "Camera params - Width: " << params.width
                   << ", Height: " << params.height
@@ -653,12 +672,13 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   /* assume if we can queue we can dequeue. Set up an initial image in the buf
     if(dequeueBuffer() == -1){
       log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
-
+   */
 
    state(stateCodes::CONNECTED);
    log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
@@ -742,6 +762,7 @@ int nsvCtrl::setReadoutMode()
    return 0;
 }
 
+/*
 INDI_SETCALLBACK_DEFN(nsvCtrl, m_indiP_mode)(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS(ipRecv, m_indiP_mode)
@@ -762,7 +783,7 @@ INDI_SETCALLBACK_DEFN(nsvCtrl, m_indiP_mode)(const pcf::IndiProperty &ipRecv)
 
     return 0;
 }
-
+*/
 
 inline
 int nsvCtrl::getTemp()
@@ -821,6 +842,52 @@ int nsvCtrl::setEMGain()
 
    log<text_log>("Set Gain to: " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    
+   return 0;
+}
+
+inline
+int nsvCtrl::setVCrop(int offset)
+{
+   int vCrop_to_set = offset;  
+
+   if(vCrop_to_set < 25)
+   {
+      vCrop_to_set = 25;
+      log<text_log>("vCrop limited to 25", logPrio::LOG_WARNING);
+   }
+   
+   if(vCrop_to_set > 3699) //TODO make this m_maxvCrop?
+   {
+      vCrop_to_set = 3699;
+      log<text_log>("vCrop limited to 3699", logPrio::LOG_WARNING);
+   }
+   
+   const std::string command = "v4l2-ctl --set-ctrl vcropoffset=" + std::to_string(vCrop_to_set) + " -d " + m_camPath; //camera_string; 
+   int result = std::system(command.c_str());
+  
+   if( result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setvCrop:"});
+      return -1;
+   }
+
+   log<text_log>("Set vcropoffset to: " + std::to_string(vCrop_to_set), logPrio::LOG_WARNING);
+   
+   return 0;
+}
+
+inline
+int nsvCtrl::getVCrop()
+{
+   const std::string command = "v4l2-ctl --get-ctrl vcropoffset -d " + m_camPath; 
+   std::string result = cmdRes(command.c_str());
+   if( result == "error") 
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getvCrop"});
+      return -1;
+   }
+
+   m_vCrop = std::stoi(result);
    return 0;
 }
 
@@ -1079,7 +1146,7 @@ int nsvCtrl::setExpTime()
       return -1;
    }
 
-   log<text_log>("Set Exp to: " + std::to_string(exp_to_set / 1000000), logPrio::LOG_WARNING);
+   log<text_log>("Set Exp to: " + std::to_string(exp_to_set / 1000000.0), logPrio::LOG_WARNING);
    
    return 0;
 }
@@ -1209,13 +1276,16 @@ int nsvCtrl::acquireAndCheckValid()
 {
    uint dmaTimeStamp[2];
    //int bufferIndex;
-   queueBuffer(0); //only queueing one buffer. Add better buffer handling & get proper indexing
-   waitForFrame();
-   //bufferIndex = dequeueBuffer();
    dequeueBuffer();
+   queueBuffer(0); //only queueing one buffer. Add better buffer handling & get proper indexing
+   //waitForFrame();
+   //bufferIndex = dequeueBuffer();
    
-   dmaTimeStamp[0] = 0;  // TODO timing info for cam
-   dmaTimeStamp[1] = 1;
+   time_t seconds = time(0); 
+   auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
+
+   dmaTimeStamp[0] = seconds;  // TODO timing info for cam
+   dmaTimeStamp[1] = nanoseconds.count();
 
    m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
    m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
@@ -1290,6 +1360,48 @@ int nsvCtrl::recordTelem( const telem_stdcam * )
 {
    return recordCamera(true);
 }
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_vCrop.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+   {
+      vc = ipRecv["current"].get<int>();
+   }
+
+   if (ipRecv.find("target"))
+   {
+      vc = ipRecv["target"].get<int>();
+   }
+
+   // check for min/max values? set those on cam startup when querying params
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_vCrop = vc;
+   int rv = setVCrop(vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting vcropoffset!"});
+      return -1;
+   }
+
+   // check that we got the expected vCrop
+   getVCrop();
+
+   updateIfChanged(m_indiP_vCrop, "target", vc);
+   updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
+
+   return 0;
+}
+
 
 }//namespace app
 } //namespace MagAOX

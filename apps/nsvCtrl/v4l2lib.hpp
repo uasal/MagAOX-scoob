@@ -35,7 +35,6 @@ int openCamera(const char* device);
 int closeCamera();
 
 int initCamera(int width, int height);
-int reconfigCamera(int width, int height);
 int requestBuffers(int requested_buf_count);
 int queryBuffers();
 int queryBuffer(int buf_index);
@@ -103,10 +102,6 @@ int openCamera(const char* device) {
 }
 
 int closeCamera() {
-    //struct v4l2_requestbuffers req;
-    //ioctl(fd, VIDIOC_STREAMOFF, &reqbuf.type);  // Stop streaming
-    //ioctl(fd, VIDIOC_REQBUFS, &reqbuf);         // Free buffers
-    // free buffers
     close(fd);
     return 0;
 }
@@ -134,14 +129,6 @@ int initCamera(int width, int height) {
     params.width = fmt.fmt.pix.width;
     params.height = fmt.fmt.pix.height;
     params.pixelFormat = "RG16"; 
-    return 0;
-}
-
-int reconfigCamera(int width, int height) {
-    //initCamera(width, height);
-    requestBuffers(1);
-    queryBuffers();
-    startStreaming();
     return 0;
 }
 
@@ -231,7 +218,7 @@ int dequeueBuffer(){
     struct v4l2_buffer bufdq = {};
 	bufdq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufdq.memory = V4L2_MEMORY_MMAP;
-	bufdq.index = 0;
+	bufdq.index = 0;    // hard-coded to 0 for now. TODO add buffer handling
 
 	if (ioctl(fd, VIDIOC_DQBUF, &bufdq) < 0) {
 		throw std::runtime_error("Failed to dequeue");
@@ -276,7 +263,7 @@ void waitForFrame() {
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
     struct timeval tv = {0,0};
-    tv.tv_sec = 2;
+    tv.tv_sec = 0.05;
     int r = select(fd+1, &fds, NULL, NULL, &tv);
     if(-1 == r){
         perror("Waiting for Frame");
