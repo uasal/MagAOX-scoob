@@ -264,8 +264,6 @@ inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
 
-   std::cout << "nsvCtrl() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
    m_next_frame_index = 0;
    m_last_frame_index = 0;
 
@@ -287,28 +285,6 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
 
-   // comes from camera modes
-   m_default_x = m_cameraModes[m_modeName].m_centerX;
-   m_default_y = m_cameraModes[m_modeName].m_centerY;
-   m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   m_default_h = m_cameraModes[m_modeName].m_sizeY;
-
-   m_full_x = m_cameraModes[m_modeName].m_centerX;
-   m_full_y = m_cameraModes[m_modeName].m_centerY;
-   m_full_w = m_cameraModes[m_modeName].m_sizeX;
-   m_full_h = m_cameraModes[m_modeName].m_sizeY;
-   
-   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
-   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
-
-  /*
-   m_nextROI.x = m_default_x;
-   m_nextROI.y = m_default_y;
-   m_nextROI.w = m_default_w;
-   m_nextROI.h = m_default_h;
-   m_nextROI.bin_x = 1;
-   m_nextROI.bin_y = 1;
-   */
    return;
 }
 
@@ -321,40 +297,26 @@ nsvCtrl::~nsvCtrl() noexcept
 inline
 void nsvCtrl::setupConfig()
 {
-   std::cout << "setupConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
-
+ 
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
    dev::telemeter<nsvCtrl>::setupConfig(config);
-   std::cout << "setupConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
+   
 }
 
 inline
 void nsvCtrl::loadConfig()
 {
 
-   std::cout << "loadConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
-   // why is length for m_cameraModes 1 here? haven't loaded in the config yet...
-   std::cout << "m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
    config(m_camPath, "camera.camPath");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
-
-   // length is 3 now after loadConfig. why 3 not 2?
-   std::cout << "loadConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
 
    m_configFile = "/tmp/nsv_";
    m_configFile += configName();
    m_configFile += ".cfg";
 
-   //m_cameraModes["fullframe"] = dev::cameraConfig({"/opt/MagAOX/config/nsv_fullframe.conf", "", 3072, 2105, 6144, 4210, 1, 1, 1, 1, 10});
-   //m_cameraModes["sliced"] = dev::cameraConfig({"/opt/MagAOX/config/nsv_sliced.conf", "", 3072, 255, 6144, 512, 1, 1, 1, 1, 50});
-   
    m_modeName = m_startupMode;
    m_nextMode = m_modeName;
 
@@ -371,7 +333,7 @@ void nsvCtrl::loadConfig()
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
-/*
+/* TODO implement ROI controls within mode
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
@@ -415,9 +377,6 @@ int nsvCtrl::appStartup()
    m_indiP_vCrop["target"] = m_vCrop;
    registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
 
-
-   std::cout << "appStartup() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
       return log<software_critical,-1>({__FILE__,__LINE__});
@@ -432,7 +391,6 @@ int nsvCtrl::appStartup()
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   std::cout << "appStartup() m_cameraModes length: " << m_cameraModes.size() << std::endl;
 
    state(stateCodes::NOTCONNECTED);
 
@@ -503,8 +461,6 @@ int nsvCtrl::appLogic()
       /*
       if(getTemp() < 0)
       {
-         if(m_powerState == 0) return 0;
-
          state(stateCodes::ERROR);
          return 0;
       }
@@ -620,9 +576,6 @@ int nsvCtrl::appShutdown()
 inline
 int nsvCtrl::cameraSelect()  
 {  
-
-   std::cout << "cameraSelect() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
    const char *path = m_camPath.c_str();
    if(openCamera(path) == -1){
       log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
@@ -648,10 +601,9 @@ int nsvCtrl::cameraSelect()
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
 
    CameraParams params = getCameraParams();
-   std::cout << "Camera params - Width: " << params.width
+   std::cout << "Camera initialized to - Width: " << params.width
                   << ", Height: " << params.height
                   << ", Pixel Format: " << params.pixelFormat << std::endl;
-
 
    if(requestBuffers(1)  == -1 ||
       queryBuffers()     == -1) {
@@ -691,9 +643,6 @@ int nsvCtrl::cameraSelect()
 inline
 int nsvCtrl::setReadoutMode()
 {
-
-   std::cout << "setReadoutMode() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
    std::cout << "Setting readout mode to " + m_modeName << std::endl;
 
    int result = 0;
@@ -717,20 +666,6 @@ int nsvCtrl::setReadoutMode()
 
    log<text_log>("Set readout mode to " +  m_modeName);
    printf("set readout mode to %s\n", m_modeName.c_str());
-
-   /*
-   const std::string cmd = "v4l2-ctl --device=" + m_camPath + 
-                           " --set-fmt-video=width=" + std::to_string(m_cameraModes[m_nextMode].m_sizeX) +
-                           ",height=" + std::to_string(m_cameraModes[m_nextMode].m_sizeY) +
-                           ",pixelformat=RG16";
-
-   result = std::system(cmd.c_str());
-   if(result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl set-fmt error from setReadoutMode"});         
-      return -1;
-   } 
-   */    
 
    // comes from camera modes
    m_default_x = m_cameraModes[m_modeName].m_centerX;
@@ -761,29 +696,6 @@ int nsvCtrl::setReadoutMode()
 
    return 0;
 }
-
-/*
-INDI_SETCALLBACK_DEFN(nsvCtrl, m_indiP_mode)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(ipRecv, m_indiP_mode)
-
-    if(!ipRecv.find("current")) 
-    {   
-        return -1;
-    }
-
-    m_modeName = ipRecv["current"].get<std::string>();
-
-    if(m_nextMode != m_modeName)
-    {
-        
-        m_nextMode = m_modeName;
-        m_reconfig = true;
-    }
-
-    return 0;
-}
-*/
 
 inline
 int nsvCtrl::getTemp()
@@ -948,8 +860,7 @@ int nsvCtrl::setCropMode()
 inline 
 int nsvCtrl::writeConfig()
 {
-   std::cout << "writeConfig() m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
+   
    std::string configFile = "/tmp/nsvCam_";
    configFile += configName();
    configFile += ".cfg";
@@ -1266,7 +1177,7 @@ int nsvCtrl::startAcquisition()
    state(stateCodes::OPERATING);
    recordCamera();
    
-   sleep(1); //make sure camera is rully running before we try to synch with it.
+   //sleep(1); //make sure camera is rully running before we try to synch with it.
 
    return 0;
 }
@@ -1311,7 +1222,6 @@ int nsvCtrl::reconfig()
    state(stateCodes::CONFIGURING);
    printf("Reconfiguring camera . . .\n");
 
-   // add some reconfig stuff here
    // check for new mode
    if(m_nextMode != m_modeName)
    {
@@ -1322,25 +1232,8 @@ int nsvCtrl::reconfig()
 
       stopStreaming();
       requestBuffers(0);
-      //dequeueBuffer(); // clear out buffer. need to nuke buffers completely?
-      //closeCamera();
-      //sleep(10);
-      m_modeName = m_nextMode;
-      cameraSelect(); 
-
-      /*
-      setReadoutMode();
-
-      const char *path = m_camPath.c_str();
-      if(openCamera(path) == -1){
-         log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
-         state(stateCodes::NODEVICE);
-         return -1;
-      }
-
-      reconfigCamera(m_cameraModes[m_nextMode].m_sizeX,  m_cameraModes[m_nextMode].m_sizeY);
-      */
-      //startStreaming()
+      m_modeName = m_nextMode;  // need to set mode before camera reinit
+      cameraSelect();   // handles all the camera initialization & stream init
    }
 
    m_init = true;
