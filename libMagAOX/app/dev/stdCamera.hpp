@@ -1369,31 +1369,11 @@ int stdCamera<derivedT>::appStartup()
 
    if(derivedT::c_stdCamera_usesModes)
    {
-      std::cout << "m_cameraModes length: " << m_cameraModes.size() << std::endl;
-
       std::vector<std::string> modeNames;
       for(auto it = m_cameraModes.begin(); it!=m_cameraModes.end(); ++it)
       {
          modeNames.push_back(it->first);
       }
-
-      printf("loading m_cameraModes into modeNames vector\n");
-
-      /*
-      for (auto& md : modeNames) {
-        if (md.empty()) {
-            md = "Default";  // Replace empty string with "Default"
-        }
-      }
-      */
-      
-
-      //remove any unnamed modes
-      
-      modeNames.erase(std::remove_if(modeNames.begin(), modeNames.end(),
-                                   [](const std::string& mode) { return mode.empty(); }),
-                     modeNames.end());
-      
 
       if(derived().createStandardIndiSelectionSw( m_indiP_mode, "mode", modeNames) < 0)
       {
