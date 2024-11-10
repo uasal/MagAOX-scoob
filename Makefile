@@ -180,7 +180,8 @@ scripts_to_install = \
 	write_magaox_pidfile \
 	mount_cgroups1_cpuset \
 	killIndiZombies \
-	xlog
+	xlog \
+	hoblockleaks
 
 all: indi_all libs_all flatlogs apps_all guis_all utils_all
 
