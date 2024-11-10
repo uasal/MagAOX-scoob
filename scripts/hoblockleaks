@@ -1,18 +1,13 @@
 #!/bin/bash
 
-echo "setting block leaks to 0.98 above block 6"
+minb=$1
+maxb=20
+mc=$2
 
-setINDI -n "hogainctrl.block06_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block07_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block08_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block09_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block10_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block11_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block12_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block13_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block14_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block15_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block17_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block18_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block19_multcoeff.target=0.98"
-setINDI -n "hogainctrl.block20_multcoeff.target=0.98"
+mbstr=$(printf "%02d" $minb)
+echo "setting block leaks to" $mc "above block" $mbstr
+
+for ((i=minb;i<=maxb;i++)); do
+    mbstr=$(printf "%02d" $i)
+    setINDI -n "hogainctrl.block$mbstr""_multcoeff.target=$mc"
+done
