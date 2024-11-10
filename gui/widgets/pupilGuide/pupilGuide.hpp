@@ -477,6 +477,7 @@ pupilGuide::pupilGuide( QWidget *Parent, Qt::WindowFlags f ) : xWidget( Parent, 
 
     setXwFont( ui.labelPupilFitting ); //,1.2);
 
+    setXwFont( ui.label_pupilPositions );
     setXwFont( ui.labelx );
     setXwFont( ui.labely );
     setXwFont( ui.labelD );
