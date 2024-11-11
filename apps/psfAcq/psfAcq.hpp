@@ -49,6 +49,7 @@ struct Star
     float x, y; // Star coordinates
     float max;  // Star brightness
     float fwhm; // Star FWHM
+    float seeing; // Star's seeing
     pcf::IndiProperty prop;
 };
 
@@ -106,13 +107,16 @@ class psfAcq : public MagAOXApp<true>,
     uint16_t m_fitCircBuffMaxLength{ 3600 }; ///< Maximum length of the latency measurement circular buffers
     float m_fitCircBuffMaxTime{ 5 };         ///< Maximum time of the latency meaurement circular buffers
 
-    float m_fwhmGuess{ 4 };
+    float m_fwhmGuess{ 15 };
     ///@}
 
     mx::improc::eigenImage<float> m_image;
     mx::improc::eigenImage<float> m_sm;
 
     mx::improc::eigenImage<float> m_dark;
+
+    double m_acqQuitTime {0};
+    double m_acqPauseTime{2};
 
     bool m_updated{ false };
     float m_x{ 0 };
@@ -130,6 +134,7 @@ class psfAcq : public MagAOXApp<true>,
     float m_dx{ 0 };
     float m_dy{ 0 };
 
+    double m_plate_scale = .0795336;
     int m_old_num_stars{ 0 };
     int m_num_stars{ 0 };
     int m_acquire_star{}; // Testing for user to select star
@@ -545,7 +550,6 @@ inline int psfAcq::appLogic()
 */
 
     updateIfChanged( m_indiP_num_stars, "current", m_num_stars );
-    //std::cout << "m_detected=" << m_detectedStars.size() <<  " " << std::endl;
     for( size_t n = 0; n < m_detectedStars.size() ; ++n )
     {
 
@@ -553,6 +557,7 @@ inline int psfAcq::appLogic()
        updateIfChanged( m_detectedStars[n].prop, "y", m_detectedStars[n].y );
        updateIfChanged( m_detectedStars[n].prop, "peak", m_detectedStars[n].max );
        updateIfChanged( m_detectedStars[n].prop, "fwhm", m_detectedStars[n].fwhm );
+       updateIfChanged( m_detectedStars[n].prop, "seeing", m_detectedStars[n].seeing );
 
     }
     return 0;
@@ -608,6 +613,7 @@ float calculateDistance( float x1, float y1, float x2, float y2 )
 
 inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
 {
+    if(mx::sys::get_curr_time() - m_acqQuitTime < m_acqPauseTime ) return 0; // Pausing while telescope moves to star
     static_cast<void>( dummy );
 
     std::unique_lock<std::mutex> lock( m_imageMutex );
@@ -632,6 +638,8 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     // int max_loops=5;
     int x = 0;
     int y = 0;
+    float seeing = 0;
+    static int n = 0;
     int N_loops = 0;
     // 1. find brightest star
     max = m_image.maxCoeff( &x, &y );
@@ -645,16 +653,15 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         std::cerr << "skip frame\n";
         return 0;
     }*/
-
+    
     eigenImage<float> llcorn = m_image.block( 0, 0, 32, 32 ); // calc std dev of 32x32 block in lower left corner
     float mean = llcorn.mean();                               // Calculate the mean
     float variance = ( llcorn.array() - mean ).square().sum() / ( llcorn.size() ); // calculate variance
     float stddev = std::sqrt( variance );                                          // Calculate the standard deviation
     float z_score = ( max - mean ) / stddev;                                       // how many std dev away from mean
     float fwhm = m_fwhmGuess; // getting intial fwhm before entering while loop
-    //std::cout << "Beginning: " << "mean=" << mean << "  max=" << max << "  variance=" << variance << "  stddev=" << stddev << "  z-score=" << z_score << "  fwhm=" << fwhm << std::endl;
     std::size_t numStars = m_detectedStars.size();
-    //std::cout << __LINE__ << std::endl;
+
     if( numStars == 0 )
     { // TESTING This runs when the vector of stars is empty (usually the first time)
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
@@ -692,16 +699,35 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             m_first_x_vals.push_back( m_x ); // adding first detected x value to vector
             m_first_y_vals.push_back( m_y ); // adding first detected y value to vector
             fwhm = m_gfit.fwhm() ;
+            seeing = fwhm * m_plate_scale;
             max = m_gfit.G();
             int x_value = static_cast<int>(
                 m_x ); // convert m_x to an int so we can 0 out a rectangular area around the detected star
             int y_value = static_cast<int>( m_y );
-            Star newStar;
-            newStar.x = m_x; // Adding attributes to the new star
-            newStar.y = m_y;
-            newStar.max = max;
-            newStar.fwhm = fwhm;
-            m_detectedStars.push_back( newStar );
+            if (fwhm > m_fwhm_threshold){
+                Star newStar;
+                newStar.x = m_x; // Adding attributes to the new star
+                newStar.y = m_y;
+                newStar.max = max;
+                newStar.fwhm = fwhm;
+                newStar.seeing = seeing;
+
+                std::string starPrefix = "star_" + std::to_string( m_detectedStars.size() );
+                createROIndiNumber(newStar.prop, starPrefix, "Star " + std::to_string( m_detectedStars.size() ) + " Properties", "Star Acq" );
+                newStar.prop.add( pcf::IndiElement( "x" ) );
+                newStar.prop["x"].set( m_x );
+                newStar.prop.add( pcf::IndiElement( "y" ) );
+                newStar.prop["y"].set( m_y );
+                newStar.prop.add( pcf::IndiElement( "peak" ) );
+                newStar.prop["peak"].set( max );
+                newStar.prop.add( pcf::IndiElement( "fwhm" ) );
+                newStar.prop["fwhm"].set( fwhm );
+                newStar.prop.add( pcf::IndiElement( "seeing" ) );
+                newStar.prop["seeing"].set( seeing );
+                registerIndiPropertyReadOnly( newStar.prop );
+                std::unique_lock<std::mutex> lock( m_indiMutex );
+                m_detectedStars.push_back( newStar );
+            }
             if( x_value < m_zero_area )
             {
                 x_value = m_zero_area;
@@ -728,15 +754,14 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             max = m_image.maxCoeff( &x, &y );
             N_loops = N_loops + 1;
             z_score = ( max - mean ) / stddev;
-            //std::cout << "N_loops=" << N_loops << "  z-score=" << z_score << "  max=" << max << std::endl;
         }
-        size_t starCount = m_detectedStars.size();
-        std::unique_lock<std::mutex> lock( m_indiMutex );
-        m_detectedStars.resize( starCount );
+        //size_t starCount = m_detectedStars.size();
+        //std::unique_lock<std::mutex> lock( m_indiMutex );
+        //m_detectedStars.resize( starCount );
         // Create and register new properties for X and Y positions
+/*
         for( size_t n = 0; n < starCount; ++n )
         {
-            //std::cout << "First starcount=" << starCount << std::endl;
             std::string starPrefix = "star_" + std::to_string( n );
 
             createROIndiNumber(
@@ -749,21 +774,20 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             m_detectedStars[n].prop["peak"].set( m_detectedStars[n].max );
             m_detectedStars[n].prop.add( pcf::IndiElement( "fwhm" ) );
             m_detectedStars[n].prop["fwhm"].set( m_detectedStars[n].fwhm );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "seeing" ) );
+            m_detectedStars[n].prop["seeing"].set( m_detectedStars[n].seeing );
             registerIndiPropertyReadOnly( m_detectedStars[n].prop );
-            if( m_indiDriver )
-                m_indiDriver->sendSetProperty( m_detectedStars[n].prop );
-        }
+            //if( m_indiDriver )
+              //  m_indiDriver->sendSetProperty( m_detectedStars[n].prop );
+    
+        }*/
     }
 
     else
     {
-        //std::cout << __LINE__ << std::endl;
-        //std::cout << "zscore: " << z_score << "  fwhm: " << fwhm << "  Nloops: " << N_loops << std::endl;
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
-
-            //std::cout << __LINE__ << std::endl;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
             // sub image around the max pixel
@@ -791,8 +815,9 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             // 2. fit it's position
             m_gfit.setArray( subImage.data(), subImage.rows(), subImage.cols() );
             m_gfit.setGuess( 0, max, m_zero_area, m_zero_area, mx::math::func::fwhm2sigma( m_fwhmGuess ) );
-            fwhm = m_gfit.fwhm() ;
             m_gfit.fit();
+            fwhm = m_gfit.fwhm() ;
+            seeing = fwhm * m_plate_scale; 
             max = m_gfit.G();
             m_x = ( x - m_zero_area ) + m_gfit.x0();
             m_y = ( y - m_zero_area ) + m_gfit.y0();
@@ -830,50 +855,72 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             int threshold_distance = 20; // distance between new stars should be a small positive number so this updates
             int n = 0;
             int tracker = 0; // tracks if the current star detected updated an already known star
-            for( Star &star : m_detectedStars )
-            {
-                float dist = calculateDistance( star.x, star.y, x_value, y_value );
-                // 4. if it is found, update that star's data in the vector
-                if( dist < threshold_distance )
+            if (fwhm > m_fwhm_threshold){
+                for( Star &star : m_detectedStars )
                 {
-                    star.x = m_x;
-                    star.y = m_y;
-                    star.max = max;
-                    star.fwhm = fwhm;
-                    tracker = 1;
-                    break;
+                    float dist = calculateDistance( star.x, star.y, x_value, y_value );
+                    // 4. if it is found, update that star's data in the vector
+                    if( dist < threshold_distance )
+                    {
+                        star.x = m_x;
+                        star.y = m_y;
+                        star.max = max;
+                        star.fwhm = fwhm;
+                        star.seeing = seeing; 
+                        tracker = 1;
+                        break;
+                    }
+                    n++;
                 }
-                n++;
-            }
 
-            if (tracker == 0) { // 5. if it is not found, add a star and corresponding INDI Property using push_back
-                Star newStar;
-                newStar.x = m_x; // Adding attributes to the new star
-                newStar.y = m_y;
-                newStar.max = max;
-                newStar.fwhm = fwhm;
-                m_detectedStars.push_back( newStar );
-                std::unique_lock<std::mutex> lock( m_indiMutex );
+                if (tracker == 0) { // 5. if it is not found, add a star and corresponding INDI Property using push_back
+                    Star newStar;
+                    newStar.x = m_x; // Adding attributes to the new star
+                    newStar.y = m_y;
+                    newStar.max = max;
+                    newStar.fwhm = fwhm;
+                    newStar.seeing = seeing;
 
-                int index = m_detectedStars.size() - 1;
-                std::string starPrefix = "star_" + std::to_string( index );
-                createROIndiNumber(m_detectedStars[index].prop, starPrefix, "Star " + std::to_string( index ) + " Properties", "Star Acq" );
-                m_detectedStars[index].prop.add( pcf::IndiElement( "x" ) );
-                m_detectedStars[index].prop["x"].set( m_detectedStars[index].x );
-                m_detectedStars[index].prop.add( pcf::IndiElement( "y" ) );
-                m_detectedStars[index].prop["y"].set( m_detectedStars[index].y );
-                m_detectedStars[index].prop.add( pcf::IndiElement( "peak" ) );
-                m_detectedStars[index].prop["peak"].set( m_detectedStars[index].max );
-                m_detectedStars[index].prop.add( pcf::IndiElement( "fwhm" ) );
-                m_detectedStars[index].prop["fwhm"].set( m_detectedStars[index].fwhm );
-                registerIndiPropertyReadOnly( m_detectedStars[index].prop );
-                if( m_indiDriver )
-                   m_indiDriver->sendSetProperty( m_detectedStars[index].prop );
+                    std::string starPrefix = "star_" + std::to_string( m_detectedStars.size() );
+                    createROIndiNumber(newStar.prop, starPrefix, "Star " + std::to_string( m_detectedStars.size() ) + " Properties", "Star Acq" );
+                    newStar.prop.add( pcf::IndiElement( "x" ) );
+                    newStar.prop["x"].set( m_x );
+                    newStar.prop.add( pcf::IndiElement( "y" ) );
+                    newStar.prop["y"].set( m_y );
+                    newStar.prop.add( pcf::IndiElement( "peak" ) );
+                    newStar.prop["peak"].set( max );
+                    newStar.prop.add( pcf::IndiElement( "fwhm" ) );
+                    newStar.prop["fwhm"].set( fwhm );
+                    newStar.prop.add( pcf::IndiElement( "seeing" ) );
+                    newStar.prop["seeing"].set( seeing );
+                    registerIndiPropertyReadOnly( newStar.prop );
+
+                    std::unique_lock<std::mutex> lock( m_indiMutex );
+                    m_detectedStars.push_back( newStar );
+/*
+                    int index = m_detectedStars.size() - 1;
+                    std::string starPrefix = "star_" + std::to_string( index );
+                    createROIndiNumber(m_detectedStars[index].prop, starPrefix, "Star " + std::to_string( index ) + " Properties", "Star Acq" );
+                    m_detectedStars[index].prop.add( pcf::IndiElement( "x" ) );
+                    m_detectedStars[index].prop["x"].set( m_detectedStars[index].x );
+                    m_detectedStars[index].prop.add( pcf::IndiElement( "y" ) );
+                    m_detectedStars[index].prop["y"].set( m_detectedStars[index].y );
+                    m_detectedStars[index].prop.add( pcf::IndiElement( "peak" ) );
+                    m_detectedStars[index].prop["peak"].set( m_detectedStars[index].max );
+                    m_detectedStars[index].prop.add( pcf::IndiElement( "fwhm" ) );
+                    m_detectedStars[index].prop["fwhm"].set( m_detectedStars[index].fwhm );
+                    m_detectedStars[index].prop.add( pcf::IndiElement( "seeing" ) );
+                    m_detectedStars[index].prop["seeing"].set( m_detectedStars[index].seeing );
+                    registerIndiPropertyReadOnly( m_detectedStars[index].prop );
+                    */
+                    //if( m_indiDriver )
+                    //m_indiDriver->sendSetProperty( m_detectedStars[index].prop );
+                }
             }
 
             max = m_image.maxCoeff( &x, &y );
             N_loops = N_loops + 1;
-            z_score = ( max - mean ) / stddev;
+            z_score = ( max - mean ) / stddev;\
         }
     }
 
@@ -881,19 +928,20 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     // If statement that get the delta x and delta y from the 'center' of image
     static int delta_x;
     static int delta_y;
-    double plate_scale = .0795336; // plate scale factor: deltatheta/deltapixel, calculated in python, arcsec/pixel
+    //double plate_scale = .0795336; // plate scale factor: deltatheta/deltapixel, calculated in python, arcsec/pixel
     //deltatheta -> Angular seperation between two stars in arcsec (from published data)
     //deltapixel -> Pixel seperation between same two stars on our detector
-    if( m_acquire_star >= 0 )
+
+    if( m_acquire_star >= 0 && n < 3 )
     {
+        m_acqQuitTime = mx::sys::get_curr_time();
         delta_x = m_detectedStars[m_acquire_star].x - m_x_center;
         delta_y = m_detectedStars[m_acquire_star].y - m_y_center;
         std::cout << "delta_x = " << delta_x << "    delta_y = " << delta_y << std::endl;
-        m_acquire_star = -1;
         
         // negative signs because we want to move scope opposite of how far it is from 'center'
-        double x_arcsec = -1*delta_y * plate_scale; //positive x_arcsec moves up, negetive moves down
-        double y_arcsec = -1*delta_x * plate_scale; //positive y_arcsec moves right, negetive moves left
+        double x_arcsec = -1*delta_y * m_plate_scale; //positive x_arcsec moves up, negetive moves down
+        double y_arcsec = -1*delta_x * m_plate_scale; //positive y_arcsec moves right, negetive moves left
         std::cout << "x_arcsec=" << x_arcsec << "  y_arcsec=" << y_arcsec << std::endl; 
 
         // for moving telescope 
@@ -908,7 +956,150 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         ip["x"] = y_arcsec; //how far to move in x direction in arcsec?
 
         sendNewProperty( ip );
-        // for moving telescope 
+        resetAcq();
+        
+//TESTINGGGG
+
+        float max;
+        int x = 0;
+        int y = 0;
+        int N_loops = 0;
+
+        // 1. find brightest star
+        max = m_image.maxCoeff( &x, &y );
+        eigenImage<float> llcorn = m_image.block( 0, 0, 32, 32 ); // calc std dev of 32x32 block in lower left corner
+        float mean = llcorn.mean();                               // Calculate the mean
+        float variance = ( llcorn.array() - mean ).square().sum() / ( llcorn.size() ); // calculate variance
+        float stddev = std::sqrt( variance );                                          // Calculate the standard deviation
+        float z_score = ( max - mean ) / stddev;                                       // how many std dev away from mean
+        float fwhm = m_fwhmGuess; // getting intial fwhm before entering while loop
+
+        while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
+        { // m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
+            m_gfit.set_itmax( 1000 );
+            // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
+            // sub image around the max pixel
+            if( x < m_zero_area )
+            {
+                x = m_zero_area;
+            }
+            if( x >= ( m_image.rows() - m_zero_area ) )
+            {
+                x = m_image.rows() - m_zero_area;
+            }
+            if( y < m_zero_area )
+            {
+                y = m_zero_area;
+            }
+            if( y >= ( m_image.cols() - m_zero_area ) )
+            {
+                y = m_image.cols() - m_zero_area;
+            }
+            eigenImage<float> subImage = m_image.block(
+                x - m_zero_area,
+                y - m_zero_area,
+                m_zero_area * 2,
+                m_zero_area * 2 ); // set m_image to subImage to speed up gaussian, x,y is position of max pixel
+            m_gfit.setArray( subImage.data(), subImage.rows(), subImage.cols() );
+            // m_gfit.setArray(m_image.data(), m_image.rows(), m_image.cols());
+            m_gfit.setGuess( 0, max, m_zero_area, m_zero_area, mx::math::func::fwhm2sigma( m_fwhmGuess ) );
+            m_gfit.fit();
+            m_x = ( x - m_zero_area ) + m_gfit.x0();
+            m_y = ( y - m_zero_area ) + m_gfit.y0();
+            m_first_x_vals.push_back( m_x ); // adding first detected x value to vector
+            m_first_y_vals.push_back( m_y ); // adding first detected y value to vector
+            fwhm = m_gfit.fwhm() ;
+            seeing = fwhm * m_plate_scale;
+            max = m_gfit.G();
+            int x_value = static_cast<int>(
+                m_x ); // convert m_x to an int so we can 0 out a rectangular area around the detected star
+            int y_value = static_cast<int>( m_y );
+            if (fwhm > m_fwhm_threshold){
+                Star newStar;
+                newStar.x = m_x; // Adding attributes to the new star
+                newStar.y = m_y;
+                newStar.max = max;
+                newStar.fwhm = fwhm;
+                newStar.seeing = seeing;
+
+                std::string starPrefix = "star_" + std::to_string( m_detectedStars.size() );
+                createROIndiNumber(newStar.prop, starPrefix, "Star " + std::to_string( m_detectedStars.size() ) + " Properties", "Star Acq" );
+                newStar.prop.add( pcf::IndiElement( "x" ) );
+                newStar.prop["x"].set( m_x );
+                newStar.prop.add( pcf::IndiElement( "y" ) );
+                newStar.prop["y"].set( m_y );
+                newStar.prop.add( pcf::IndiElement( "peak" ) );
+                newStar.prop["peak"].set( max );
+                newStar.prop.add( pcf::IndiElement( "fwhm" ) );
+                newStar.prop["fwhm"].set( fwhm );
+                newStar.prop.add( pcf::IndiElement( "seeing" ) );
+                newStar.prop["seeing"].set( seeing );
+                registerIndiPropertyReadOnly( newStar.prop );
+
+                std::unique_lock<std::mutex> lock( m_indiMutex );
+                m_detectedStars.push_back( newStar );
+            }
+            if( x_value < m_zero_area )
+            {
+                x_value = m_zero_area;
+            }
+            if( x_value >= ( m_image.rows() - m_zero_area ) )
+            {
+                x_value = m_image.rows() - m_zero_area;
+            }
+            if( y_value < m_zero_area )
+            {
+                y_value = m_zero_area;
+            }
+            if( y_value >= ( m_image.cols() - m_zero_area ) )
+            {
+                y_value = m_image.cols() - m_zero_area;
+            }
+            for( int i = x_value - m_zero_area; i < ( x_value + m_zero_area ); i++ )
+            { // zeroing out area around the star centered at m_x and m_y(8x8 pixel area)
+                for( int j = y_value - m_zero_area; j < ( y_value + m_zero_area ); j++ )
+                {
+                    m_image( i, j ) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
+                }
+            }
+            max = m_image.maxCoeff( &x, &y );
+            N_loops = N_loops + 1;
+            z_score = ( max - mean ) / stddev;
+        }
+        //size_t starCount = m_detectedStars.size();
+        //std::unique_lock<std::mutex> lock( m_indiMutex );
+        //m_detectedStars.resize( starCount );
+        // Create and register new properties for X and Y positions
+/*
+        for( size_t n = 0; n < starCount; ++n )
+        {
+            std::string starPrefix = "star_" + std::to_string( n );
+
+            createROIndiNumber(
+                m_detectedStars[n].prop, starPrefix, "Star " + std::to_string( n ) + " Properties", "Star Acq" );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "x" ) );
+            m_detectedStars[n].prop["x"].set( m_detectedStars[n].x );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "y" ) );
+            m_detectedStars[n].prop["y"].set( m_detectedStars[n].y );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "peak" ) );
+            m_detectedStars[n].prop["peak"].set( m_detectedStars[n].max );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "fwhm" ) );
+            m_detectedStars[n].prop["fwhm"].set( m_detectedStars[n].fwhm );
+            m_detectedStars[n].prop.add( pcf::IndiElement( "seeing" ) );
+            m_detectedStars[n].prop["seeing"].set( m_detectedStars[n].seeing );
+            registerIndiPropertyReadOnly( m_detectedStars[n].prop );
+            
+            //if( m_indiDriver )
+              //  m_indiDriver->sendSetProperty( m_detectedStars[n].prop );
+        }*/
+
+//TESTINGGGG
+            // for moving telescope 
+        n++;
+        if(n > 2){
+            m_acquire_star = -1;
+            n=0;
+        }
     }
 
     m_updated = true;
