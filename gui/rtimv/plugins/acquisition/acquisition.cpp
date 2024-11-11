@@ -16,7 +16,6 @@ int acquisition::attachOverlay( rtimvOverlayAccess &roa, mx::app::appConfigurato
     m_roa = roa;
     m_qgs = roa.m_graphicsView->scene();
 
-    std::cerr << "acq\n";
     config.configUnused( m_deviceName, mx::app::iniFile::makeKey( "acquisition", "fitter" ) );
 
     if( m_deviceName == "" )
@@ -180,7 +179,7 @@ int acquisition::updateOverlay()
         {
             if( m_starCircles[s] != nullptr )
             {
-                m_starCircles[s]->deleteLater();
+                m_starCircles[s]->remove();
             }
         }
 
