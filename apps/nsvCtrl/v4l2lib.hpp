@@ -206,26 +206,24 @@ int queueBuffer(int buf_index){
         buf.index = buf_index;
 
         if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
-    		throw std::runtime_error("Failed to queue buffer");
+		    throw std::runtime_error("failed to queue buffer");
             return -1;
 	    }
-        //printf("Queueuing %d\n", buf.index);
         return 0;
 }
 
-int dequeueBuffer(){
+int dequeueBuffer(int buf_index){
 
     struct v4l2_buffer bufdq = {};
 	bufdq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufdq.memory = V4L2_MEMORY_MMAP;
-	bufdq.index = 0;    // hard-coded to 0 for now. TODO add buffer handling
+	bufdq.index = buf_index;    // hard-coded to 0 for now. TODO add buffer handling
 
 	if (ioctl(fd, VIDIOC_DQBUF, &bufdq) < 0) {
-		throw std::runtime_error("Failed to dequeue");
+		throw std::runtime_error("Failed to dequeue buffer");
         return -1;
 	}
     currentBufIndex = bufdq.index;  //returns index of image dequeued (FIFO)
-    //printf("Dequeueing %d\n", currentBufIndex);
     return currentBufIndex;
 }
 
