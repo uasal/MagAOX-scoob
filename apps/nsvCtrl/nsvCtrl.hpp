@@ -95,8 +95,9 @@ protected:
 
    std::string m_camPath; // "/dev/video2" or similar, path to l4v2 cam 
 
-   int m_next_frame_index; // 0 to bufsize, some sort of buffer handling
-   int m_last_frame_index; // 0 to bufsize
+   int m_latest_frame; // 0 to bufsize, some sort of buffer handling
+   int m_current_frame; // 0 to bufsize
+   int m_oldest_frame; 
 
    int m_vCrop; // camera vcropoffset
 
@@ -264,8 +265,9 @@ inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
 
-   m_next_frame_index = 0;
-   m_last_frame_index = 0;
+   m_latest_frame = 0;
+   m_current_frame = 0;
+   m_oldest_frame = 0;
 
    m_powerMgtEnabled = true;
    m_powerOnWait = 1;
@@ -595,7 +597,7 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   getVCrop(); // initCamera could change vcrop and exp if changing modes
+   getVCrop(); // initCamera changes vcrop if changing modes
    updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
    getExpTime();
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
@@ -605,7 +607,7 @@ int nsvCtrl::cameraSelect()
                   << ", Height: " << params.height
                   << ", Pixel Format: " << params.pixelFormat << std::endl;
 
-   if(requestBuffers(1)  == -1 ||
+   if(requestBuffers(2)  == -1 ||
       queryBuffers()     == -1) {
       log<text_log>("Failed to initialize camera buffers", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
@@ -618,11 +620,15 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   if(queueBuffer(0) == -1){
+   if(queueBuffers() == -1){
       log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+
+   m_latest_frame = 1; // hard code for now. last frame in the queue
+   m_current_frame = 0; 
+   m_oldest_frame = 0;
 
    /* assume if we can queue we can dequeue. Set up an initial image in the buf
     if(dequeueBuffer() == -1){
@@ -634,6 +640,8 @@ int nsvCtrl::cameraSelect()
 
    state(stateCodes::CONNECTED);
    log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
+
+   m_init = true;
 
    m_cropModeSet = false; // move this somewhere it makes sense
 
@@ -1185,21 +1193,29 @@ int nsvCtrl::startAcquisition()
 inline
 int nsvCtrl::acquireAndCheckValid()
 {
-   uint dmaTimeStamp[2];
-   //int bufferIndex;
-   dequeueBuffer();
-   queueBuffer(0); //only queueing one buffer. Add better buffer handling & get proper indexing
-   //waitForFrame();
-   //bufferIndex = dequeueBuffer();
-   
-   time_t seconds = time(0); 
-   auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
+   if(m_init)
+   {
+      uint dmaTimeStamp[2];
 
-   dmaTimeStamp[0] = seconds;  // TODO timing info for cam
-   dmaTimeStamp[1] = nanoseconds.count();
+      m_current_frame = dequeueBuffer(m_oldest_frame);  // camera forces you to read the oldest frame in the buffer first
+      queueBuffer(m_current_frame); 
+      //waitForFrame();
+      //bufferIndex = dequeueBuffer();
 
-   m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
-   m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+      m_oldest_frame ++;
+      if(m_oldest_frame > 1){
+         m_oldest_frame = 0; 
+      }
+
+      time_t seconds = time(0); 
+      auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
+
+      dmaTimeStamp[0] = seconds;  // TODO timing info for cam
+      dmaTimeStamp[1] = nanoseconds.count();
+
+      m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
+      m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+   }
 
    return 0;
 }
@@ -1207,7 +1223,7 @@ int nsvCtrl::acquireAndCheckValid()
 inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
-   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[0], m_width, m_height, m_typeSize) == nullptr) return -1;
+   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[m_current_frame], m_width, m_height, m_typeSize) == nullptr) return -1;
 
    return 0;
  }
