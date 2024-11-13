@@ -65,7 +65,7 @@ public:
 
    static constexpr bool c_stdCamera_usesModes = true; ///< app:dev config to tell stdCamera not to expose mode controls
    
-   static constexpr bool c_stdCamera_usesROI = false; ///< app:dev config to tell stdCamera to expose ROI controls
+   static constexpr bool c_stdCamera_usesROI = true; ///< app:dev config to tell stdCamera to expose ROI controls
 
    static constexpr bool c_stdCamera_cropMode = false; ///< app:dev config to tell stdCamera to expose Crop Mode controls
    
@@ -95,11 +95,12 @@ protected:
 
    std::string m_camPath; // "/dev/video2" or similar, path to l4v2 cam 
 
-   int m_latest_frame; // 0 to bufsize, some sort of buffer handling
    int m_current_frame; // 0 to bufsize
    int m_oldest_frame; 
 
    int m_vCrop; // camera vcropoffset
+
+   std::vector<void*> ROIbuffers;
 
 public:
 
@@ -160,6 +161,8 @@ public:
    int setFPS();
 
    int getExpTime();
+
+   int writeROISubframe();
 
    //int getBitDepth(); //12, 14, 16
    
@@ -264,8 +267,6 @@ public:
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-
-   m_latest_frame = 0;
    m_current_frame = 0;
    m_oldest_frame = 0;
 
@@ -335,14 +336,19 @@ void nsvCtrl::loadConfig()
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
-/* TODO implement ROI controls within mode
+/* TODO implement ROI controls within mode */ // load from config?
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
-*/
+
+   m_currentROI.x = m_default_x;
+   m_currentROI.y = m_default_y;
+   m_currentROI.w = m_default_w;
+   m_currentROI.h = m_default_h;
+      
 
    if(writeConfig() < 0)
    {
@@ -511,13 +517,15 @@ int nsvCtrl::appLogic()
 inline
 int nsvCtrl::onPowerOff()
 {
+   stopStreaming();
+   requestBuffers(0);
+   closeCamera();
+   
    if(m_init)
    {
       m_init = false;
    }
 
-   stopStreaming();
-      
    m_powerOnCounter = 0;
 
    std::lock_guard<std::mutex> lock(m_indiMutex);
@@ -536,7 +544,7 @@ int nsvCtrl::onPowerOff()
    }
    
    //Setting m_poweredOn
-   m_poweredOn = true;
+   m_poweredOn = false;
 
    return 0;
 }
@@ -558,12 +566,12 @@ int nsvCtrl::whilePowerOff()
 inline
 int nsvCtrl::appShutdown()
 {
-
    stopStreaming();
+   requestBuffers(0);
+   closeCamera();
+   
    if(m_init)
    {
-      //stopStreaming();
-      // clean up buffers?
       m_init = false;
    }
       
@@ -607,11 +615,21 @@ int nsvCtrl::cameraSelect()
                   << ", Height: " << params.height
                   << ", Pixel Format: " << params.pixelFormat << std::endl;
 
-   if(requestBuffers(2)  == -1 ||
+   printf("circ buf length from framegrabber: %d\n", m_circBuffLength);
+
+   if(requestBuffers(m_circBuffLength)  == -1 || 
       queryBuffers()     == -1) {
       log<text_log>("Failed to initialize camera buffers", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
+   }
+
+   ROIbuffers.resize(m_circBuffLength);
+
+   for(int i = 0; i < (int)m_circBuffLength; i++)
+   {
+      uint16_t* roiBuffer = new uint16_t[m_currentROI.w * m_currentROI.h];  //handle this somewhere else?
+      ROIbuffers.push_back(roiBuffer);
    }
 
    if(startStreaming() == -1){
@@ -626,7 +644,6 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   m_latest_frame = 1; // hard code for now. last frame in the queue
    m_current_frame = 0; 
    m_oldest_frame = 0;
 
@@ -689,14 +706,12 @@ int nsvCtrl::setReadoutMode()
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
-/*
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
-*/
 
   // m_readoutSpeedName = m_readoutSpeedNameSet;
 
@@ -916,7 +931,7 @@ int nsvCtrl::powerOnDefaults()
    m_tempControlStatusStr =  "OFF"; 
    m_tempControlOnTarget = false;
       
-   /*
+   
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
    m_currentROI.w = m_default_w;
@@ -930,7 +945,9 @@ int nsvCtrl::powerOnDefaults()
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = m_default_bin_x;
    m_nextROI.bin_y = m_default_bin_y;
-   */
+   
+
+  // since 'power off' nukes the camera buffers & stream, restart here?
 
    return 0;
 }
@@ -1079,6 +1096,10 @@ int nsvCtrl::checkNextROI()
 inline 
 int nsvCtrl::setNextROI()
 { 
+   m_reconfig = true; // need this just for configureAcquisition? 
+
+   updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
+
    return 0;
 }
 
@@ -1094,8 +1115,8 @@ int nsvCtrl::configureAcquisition()
 
    //unsigned int error;
 
-   //int x0 = m_default_x;//(m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
-   //int y0 = m_default_y;//(m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
+   int x0 = (m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
+   int y0 = (m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
 
    m_cropMode = m_cropModeSet;
 
@@ -1122,45 +1143,44 @@ int nsvCtrl::configureAcquisition()
       
       
    }
-/*
+
    m_currentROI.bin_x = m_nextROI.bin_x;
    m_currentROI.bin_y = m_nextROI.bin_y;
    m_currentROI.x = x0 - 1.0 +  0.5*(m_nextROI.w - 1);
    m_currentROI.y = y0 - 1.0 +  0.5*(m_nextROI.h - 1);
    m_currentROI.w = m_nextROI.w;
    m_currentROI.h = m_nextROI.h;
-   */
-  
-  /* 
+
+   printf("m_currentROI.x: %f\n", m_currentROI.x);
+   printf("m_currentROI.y: %f\n", m_currentROI.y);
+   printf("m_currentROI.w: %d\n", m_currentROI.w);
+   printf("m_currentROI.h: %d\n", m_currentROI.h);
+   
    updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
    updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
    updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
    updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
-*/
-
-   //We also update target to the settable values
-  /*
+  
    m_nextROI.x = m_currentROI.x;
    m_nextROI.y = m_currentROI.y;
    m_nextROI.w = m_currentROI.w;
    m_nextROI.h = m_currentROI.h;
    m_nextROI.bin_x = m_currentROI.bin_x;
    m_nextROI.bin_y = m_currentROI.bin_y;
-*/
-/*
+
    updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
    updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
    updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
    updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
-*/
+
 
    ///\todo This should check whether we have a match between EDT and the camera right?
-   m_width = m_default_w;//m_currentROI.w/m_currentROI.bin_x;
-   m_height = m_default_h;// m_currentROI.h/m_currentROI.bin_y;
+   m_width = m_currentROI.w/m_currentROI.bin_x; //m_default_w
+   m_height = m_currentROI.h/m_currentROI.bin_y; //m_default_h
    m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output?
 
    recordCamera(true);
@@ -1198,12 +1218,13 @@ int nsvCtrl::acquireAndCheckValid()
       uint dmaTimeStamp[2];
 
       m_current_frame = dequeueBuffer(m_oldest_frame);  // camera forces you to read the oldest frame in the buffer first
-      queueBuffer(m_current_frame); 
-      //waitForFrame();
-      //bufferIndex = dequeueBuffer();
+      queueBuffer(m_current_frame); // queuing a frame goes into buffers[m_current_frame]
 
-      m_oldest_frame ++;
-      if(m_oldest_frame > 1){
+      // call nsv to write small frame roi from full frame buffers[m_current_frame]
+      //writeROISubframe();
+
+      m_oldest_frame++;
+      if(m_oldest_frame > bufferCount - 1){
          m_oldest_frame = 0; 
       }
 
@@ -1215,6 +1236,7 @@ int nsvCtrl::acquireAndCheckValid()
 
       m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
       m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+
    }
 
    return 0;
@@ -1224,9 +1246,31 @@ inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
    if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[m_current_frame], m_width, m_height, m_typeSize) == nullptr) return -1;
+   //if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return -1;
+   return 0;
+}
+
+inline
+int nsvCtrl::writeROISubframe()
+{
+  // buffers[frame_index];
+
+   uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
+   uint16_t* bufPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
+
+   int startX = m_currentROI.x - m_currentROI.w / 2 + 0.5;
+   int startY = m_currentROI.y - m_currentROI.h / 2 + 0.5;
+
+   int ROIIndex = 0;
+   for(int i = 0; i < m_currentROI.w; i++){
+      for(int j = 0; j < m_currentROI.h; j++){
+         bufPtr[ROIIndex] = imagePtr[(startY + i) * m_currentROI.w + (startX + j)];
+         ROIIndex++;
+      }
+   }
 
    return 0;
- }
+}
 
 inline
 int nsvCtrl::reconfig()
@@ -1250,9 +1294,9 @@ int nsvCtrl::reconfig()
       requestBuffers(0);
       m_modeName = m_nextMode;  // need to set mode before camera reinit
       cameraSelect();   // handles all the camera initialization & stream init
+      m_init = true;
    }
 
-   m_init = true;
    state(stateCodes::CONNECTED);
 
    return 0;
