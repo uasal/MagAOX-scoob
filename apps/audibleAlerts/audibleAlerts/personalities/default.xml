@@ -18,6 +18,9 @@
     <button name="NotJared">
       <file name="not_jared.wav" />
     </button>
+      <button name="Battles">
+      <file name="toughest_battles.wav" />
+    </button>
     <button name="Standards">
       <file name="we_have_standards.wav" />
     </button>
@@ -40,6 +43,14 @@
     </transition>
     <transition value="Off">
       <speak>Data saving stopped.</speak>
+    </transition>
+  </react-to>
+  <react-to indi-id="camflowfs.shutter.toggle">
+    <transition value="On">
+      <speak>yo fuss shutter shut</speak>
+    </transition>
+    <transition value="Off">
+      <speak>yo fuss shutter open</speak>
     </transition>
   </react-to>
   <react-to indi-id="holoop.loop_state.toggle">
