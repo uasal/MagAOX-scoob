@@ -7,14 +7,11 @@
 #ifndef psfAcq_hpp
 #define psfAcq_hpp
 
-#include <stdexcept>
-
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
 #include <mx/math/fit/fitGaussian.hpp>
 #include <mx/improc/imageFilters.hpp>
-
 
 /** \defgroup psfAcq
  * \brief The MagAO-X PSF fitter.
@@ -93,13 +90,18 @@ public:
  */
 class psfAcq : public MagAOXApp<true>,
                public dev::shmimMonitor<psfAcq>,
-               public dev::shmimMonitor<psfAcq, darkShmimT>
+               public dev::shmimMonitor<psfAcq, darkShmimT>,
+               public dev::frameGrabber<psfAcq>,
+               public dev::telemeter<psfAcq>
 {
     // Give the test harness access.
     friend class psfAcq_test;
 
     friend class dev::shmimMonitor<psfAcq>;
     friend class dev::shmimMonitor<psfAcq, darkShmimT>;
+    friend class dev::frameGrabber<psfAcq>;
+
+    friend class dev::telemeter<psfAcq>;
 
   public:
     // The base shmimMonitor type
@@ -107,12 +109,21 @@ class psfAcq : public MagAOXApp<true>,
 
     typedef dev::shmimMonitor<psfAcq, darkShmimT> darkShmimMonitorT;
 
+    // The base frameGrabber type
+    typedef dev::frameGrabber<psfAcq> frameGrabberT;
+
+    // The base telemeter type
+    typedef dev::telemeter<psfAcq> telemeterT;
+
     /// Floating point type in which to do all calculations.
     typedef float realT;
 
     /** \name app::dev Configurations
      *@{
      */
+
+    static constexpr bool c_frameGrabber_flippable =
+        false; ///< app:dev config to tell framegrabber these images can not be flipped
 
     ///@}
 
@@ -164,6 +175,17 @@ class psfAcq : public MagAOXApp<true>,
     float m_fps{ 0 };
 
     void resetAcq(); // class member for resetAcq function
+
+    mx::sigproc::circularBufferIndex<float, cbIndexT> m_xcb;
+    mx::sigproc::circularBufferIndex<float, cbIndexT> m_ycb;
+
+    std::vector<float> m_xcbD;
+    std::vector<float> m_ycbD;
+
+    float m_mnx{ 0 };
+    float m_rmsx{ 0 };
+    float m_mny{ 0 };
+    float m_rmsy{ 0 };
 
     // Working memory for poke fitting
     mx::math::fit::fitGaussian2Dsym<float> m_gfit;
@@ -217,7 +239,59 @@ class psfAcq : public MagAOXApp<true>,
   protected:
     std::mutex m_imageMutex;
 
+    sem_t m_smSemaphore{ 0 }; ///< Semaphore used to synchronize the fg \thread and the sm thread.
 
+  public:
+    /** \name dev::frameGrabber interface
+     *
+     * @{
+     */
+
+    /// Implementation of the framegrabber configureAcquisition interface
+    /**
+     * \returns 0 on success
+     * \returns -1 on error
+     */
+    int configureAcquisition();
+
+    /// Implementation of the framegrabber fps interface
+    /**
+     * \todo this needs to infer the stream fps and return it
+     */
+    float fps()
+    {
+        return m_fps;
+    }
+
+    /// Implementation of the framegrabber startAcquisition interface
+    /**
+     * \returns 0 on success
+     * \returns -1 on error
+     */
+    int startAcquisition();
+
+    /// Implementation of the framegrabber acquireAndCheckValid interface
+    /**
+     * \returns 0 on success
+     * \returns -1 on error
+     */
+    int acquireAndCheckValid();
+
+    /// Implementation of the framegrabber loadImageIntoStream interface
+    /**
+     * \returns 0 on success
+     * \returns -1 on error
+     */
+    int loadImageIntoStream( void *dest /**< [in] */ );
+
+    /// Implementation of the framegrabber reconfig interface
+    /**
+     * \returns 0 on success
+     * \returns -1 on error
+     */
+    int reconfig();
+
+    ///@}
 
   protected:
     /** \name INDI
@@ -228,6 +302,7 @@ class psfAcq : public MagAOXApp<true>,
 
     // Testing for num stars prop
     pcf::IndiProperty m_indiP_num_stars;
+    INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_num_stars );
 
     pcf::IndiProperty m_indiP_fpsSource;
     INDI_SETCALLBACK_DECL( psfAcq, m_indiP_fpsSource );
@@ -236,7 +311,7 @@ class psfAcq : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_acquire_star;
     INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_acquire_star );
 
-    // toggling
+    // toggling 
     pcf::IndiProperty m_indiP_restartAcq;
     INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_restartAcq );
 
@@ -271,6 +346,8 @@ inline void psfAcq::setupConfig()
 {
     shmimMonitorT::setupConfig( config );
     darkShmimMonitorT::setupConfig( config );
+    frameGrabberT::setupConfig( config );
+    telemeterT::setupConfig( config );
 
     config.add(
         "fitter.fpsSource",
@@ -343,6 +420,9 @@ inline int psfAcq::loadConfigImpl( mx::app::appConfigurator &_config )
     shmimMonitorT::loadConfig( _config );
     darkShmimMonitorT::loadConfig( _config );
 
+    frameGrabberT::loadConfig( _config );
+    telemeterT::loadConfig( _config );
+
     _config( m_fpsSource, "fitter.fpsSource" );
     _config( m_max_loops, "fitter.max_loops" ); // Max number of stars to detect in processImage
     _config( m_zero_area, "fitter.zero_area" ); // pixel area to zero out in processImage when a star is detected
@@ -373,6 +453,22 @@ inline int psfAcq::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
+    if( sem_init( &m_smSemaphore, 0, 0 ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Initializing S.M. semaphore" } );
+        return -1;
+    }
+
+    if( frameGrabberT::appStartup() < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+
+    if( telemeterT::appStartup() < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+
     if( m_fpsSource != "" )
     {
         REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsSource, std::string( "fps" ) );
@@ -380,7 +476,7 @@ inline int psfAcq::appStartup()
 
     // creating toggling
     createStandardIndiRequestSw( m_indiP_restartAcq, "restart_acq", "Restart Acquisition", "psfAcq");
-    registerIndiPropertyNew( m_indiP_restartAcq, INDI_NEWCALLBACK(m_indiP_restartAcq) );
+    registerIndiPropertyNew( m_indiP_restartAcq, INDI_NEWCALLBACK(m_indiP_restartAcq) );  
 
     // Testing for user to select star
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_acquire_star, "acquire_star", 0, 20, 1, "%d", "", "" );
@@ -388,14 +484,10 @@ inline int psfAcq::appStartup()
     m_indiP_acquire_star["target"].setValue( m_acquire_star );
 
     // Testing for num stars prop
-    //CREATE_REG_INDI_NEW_NUMBERF( m_indiP_num_stars, "num_stars", 0, 20, 1, "%d", "", "" );
     createROIndiNumber(m_indiP_num_stars, "num_stars");
     m_indiP_num_stars.add(pcf::IndiElement("current"));
     m_indiP_num_stars["current"].setValue( m_num_stars );
-
     registerIndiPropertyReadOnly( m_indiP_num_stars );
-
-    //m_indiP_num_stars["target"].setValue(m_num_stars);
 
     state( stateCodes::OPERATING );
 
@@ -404,9 +496,6 @@ inline int psfAcq::appStartup()
 
 inline int psfAcq::appLogic()
 {
-    std::cerr << __LINE__ << "\n";
-    sleep(10);
-
     if( shmimMonitorT::appLogic() < 0 )
     {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
@@ -417,34 +506,75 @@ inline int psfAcq::appLogic()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
-    std::cerr << __LINE__ << "\n";
+    if( frameGrabberT::appLogic() < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
 
+    if( telemeterT::appLogic() < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+
+    if( state() == stateCodes::OPERATING && m_xcb.size() > 0 )
+    {
+        if( m_xcb.size() >= m_xcb.maxEntries() )
+        {
+            cbIndexT refEntry = m_xcb.earliest();
+
+            m_xcbD.resize( m_xcb.maxEntries() - 1 );
+            m_ycbD.resize( m_xcb.maxEntries() - 1 );
+
+            for( size_t n = 0; n <= m_atimesD.size(); ++n )
+            {
+                m_xcbD[n] = m_xcb.at( refEntry, n );
+                m_ycbD[n] = m_ycb.at( refEntry, n );
+            }
+
+            m_mnx = mx::math::vectorMean( m_xcbD );
+            m_rmsx = sqrt( mx::math::vectorVariance( m_xcbD, m_mnx ) );
+
+            m_mny = mx::math::vectorMean( m_ycbD );
+            m_rmsy = sqrt( mx::math::vectorVariance( m_ycbD, m_mny ) );
+        }
+        else
+        {
+            m_mnx = 0;
+            m_rmsx = 0;
+            m_mny = 0;
+            m_rmsy = 0;
+        }
+    }
+    else
+    {
+        m_mnx = 0;
+        m_rmsx = 0;
+        m_mny = 0;
+        m_rmsy = 0;
+    }
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
     shmimMonitorT::updateINDI();
     darkShmimMonitorT::updateINDI();
 
-    updateIfChanged( m_indiP_num_stars, "current", m_num_stars );
-    std::cout << __LINE__ << std::endl;
-
-    for( size_t n = 0; n < m_detectedStars.size() ; ++n )
+    //Logic for Toggling
+    if( frameGrabberT::updateINDI() < 0 )
     {
-        std::cout << "Star " << n << "=" << m_detectedStars[n].x << " " << m_detectedStars[n].prop().getName() << std::endl;
+        log<software_error>( { __FILE__, __LINE__ } );
     }
 
-    std::cout << __LINE__ << std::endl;
+    updateIfChanged( m_indiP_num_stars, "current", m_num_stars );
 
     for( size_t n = 0; n < m_detectedStars.size() ; ++n )
     {
+
        updateIfChanged( m_detectedStars[n].prop(), "x", m_detectedStars[n].x );
        updateIfChanged( m_detectedStars[n].prop(), "y", m_detectedStars[n].y );
        updateIfChanged( m_detectedStars[n].prop(), "peak", m_detectedStars[n].max );
        updateIfChanged( m_detectedStars[n].prop(), "fwhm", m_detectedStars[n].fwhm );
        updateIfChanged( m_detectedStars[n].prop(), "seeing", m_detectedStars[n].seeing );
+
     }
-
-    std::cout << __LINE__ << std::endl;
-
     return 0;
 }
 
@@ -452,6 +582,8 @@ inline int psfAcq::appShutdown()
 {
     shmimMonitorT::appShutdown();
     darkShmimMonitorT::appShutdown();
+    frameGrabberT::appShutdown();
+    telemeterT::appShutdown();
 
     return 0;
 }
@@ -467,6 +599,23 @@ inline int psfAcq::allocate( const dev::shmimT &dummy )
 
     m_sm.resize( m_image.rows(), m_image.cols() );
 
+    if( m_fitCircBuffMaxLength == 0 || m_fitCircBuffMaxTime == 0 || m_fps <= 0 )
+    {
+        m_xcb.maxEntries( 0 );
+        m_ycb.maxEntries( 0 );
+    }
+    else
+    {
+        // Set up the fit circ. buffs
+        cbIndexT cbSz = m_fitCircBuffMaxTime * m_fps;
+        if( cbSz > m_fitCircBuffMaxLength )
+            cbSz = m_fitCircBuffMaxLength;
+        if( cbSz < 3 )
+            cbSz = 3; // Make variance meaningful
+        m_xcb.maxEntries( cbSz );
+        m_ycb.maxEntries( cbSz );
+    }
+
     m_updated = false;
     return 0;
 }
@@ -481,8 +630,6 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
 {
     if(mx::sys::get_curr_time() - m_acqQuitTime < m_acqPauseTime ) return 0; // Pausing while telescope moves to star
     static_cast<void>( dummy );
-
-    std::cerr << __LINE__ << "\n";
 
     std::unique_lock<std::mutex> lock( m_imageMutex );
 
@@ -502,9 +649,6 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     }
 
     lock.unlock();
-
-    std::cerr << __LINE__ << "\n";
-
     float max;
     float seeing = 0;
     // int max_loops=5;
@@ -533,12 +677,11 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     //std::cout << "Beginning: " << "mean=" << mean << "  max=" << max << "  variance=" << variance << "  stddev=" << stddev << "  z-score=" << z_score << "  fwhm=" << fwhm << std::endl;
     std::size_t numStars = m_detectedStars.size();
 
-    std::cerr << __LINE__ << "\n";
-
     if( numStars == 0 )
     { // TESTING This runs when the vector of stars is empty (usually the first time)
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         { // m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
+            N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
             // sub image around the max pixel
@@ -577,8 +720,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             int x_value = static_cast<int>(
                 m_x ); // convert m_x to an int so we can 0 out a rectangular area around the detected star
             int y_value = static_cast<int>( m_y );
-            if (fwhm > m_fwhm_threshold)
-            {
+            if (fwhm > m_fwhm_threshold){
                 Star newStar;
                 newStar.x = m_x; // Adding attributes to the new star
                 newStar.y = m_y;
@@ -588,29 +730,19 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                 std::unique_lock<std::mutex> lock( m_indiMutex );
                 newStar.allocate();
                 m_detectedStars.push_back( newStar );
-
                 int index = m_detectedStars.size() - 1;
                 std::string starPrefix = "star_" + std::to_string( index );
-                createROIndiNumber(m_detectedStars.back().prop(), starPrefix);//, "Star " + std::to_string( m_detectedStars.size() ) + " Properties", "Star Acq" );
-
-                std::cerr << m_detectedStars.back().prop().createUniqueKey() << "\n";
-
+                createROIndiNumber(m_detectedStars.back().prop(), starPrefix);  //, "Star " + std::to_string( m_detectedStars.size() ) + " Properties", "Star Acq" );
                 m_detectedStars.back().prop().add( pcf::IndiElement( "x" ) );
                 m_detectedStars.back().prop()["x"].set( m_detectedStars.back().x );
-
                 m_detectedStars.back().prop().add( pcf::IndiElement( "y" ) );
                 m_detectedStars.back().prop()["y"].set( m_detectedStars.back().y );
-
                 m_detectedStars.back().prop().add( pcf::IndiElement( "peak" ) );
                 m_detectedStars.back().prop()["peak"].set( m_detectedStars.back().max );
-
                 m_detectedStars.back().prop().add( pcf::IndiElement( "fwhm" ) );
                 m_detectedStars.back().prop()["fwhm"].set( m_detectedStars.back().fwhm );
-
                 m_detectedStars.back().prop().add( pcf::IndiElement( "seeing" ) );
                 m_detectedStars.back().prop()["seeing"].set( m_detectedStars.back().seeing );
-
-                //std::unique_lock<std::mutex> lock( m_indiMutex );
                 registerIndiPropertyReadOnly( m_detectedStars.back().prop() );
                 //if( m_indiDriver )
                   //  m_indiDriver->sendSetProperty( m_detectedStars.back().prop );
@@ -640,17 +772,16 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                 }
             }
             max = m_image.maxCoeff( &x, &y );
-            N_loops = N_loops + 1;
             z_score = ( max - mean ) / stddev;
         }
     }
-    /*else
+
+    else
     {
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
             N_loops = N_loops + 1;
-
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
             // sub image around the max pixel
@@ -741,38 +872,34 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                     newStar.fwhm = fwhm;
                     newStar.seeing = seeing;
                     std::unique_lock<std::mutex> lock( m_indiMutex );
+                    newStar.allocate();
                     m_detectedStars.push_back( newStar );
                     int index = m_detectedStars.size() - 1;
-                    std::cout << "Index=" << index << std::endl;
                     std::string starPrefix = "star_" + std::to_string( index );
-                    createROIndiNumber(m_detectedStars.back().prop, starPrefix, "Star " + std::to_string( index ) + " Properties", "Star Acq" );
-                    m_detectedStars.back().prop.add( pcf::IndiElement( "x" ) );
-                    m_detectedStars.back().prop["x"].set( m_detectedStars.back().x );
-                    m_detectedStars.back().prop.add( pcf::IndiElement( "y" ) );
-                    m_detectedStars.back().prop["y"].set( m_detectedStars.back().y );
-                    m_detectedStars.back().prop.add( pcf::IndiElement( "peak" ) );
-                    m_detectedStars.back().prop["peak"].set( m_detectedStars.back().max );
-                    m_detectedStars.back().prop.add( pcf::IndiElement( "fwhm" ) );
-                    m_detectedStars.back().prop["fwhm"].set( m_detectedStars.back().fwhm );
-                    m_detectedStars.back().prop.add( pcf::IndiElement( "seeing" ) );
-                    m_detectedStars.back().prop["seeing"].set( m_detectedStars.back().seeing );
-
-                    registerIndiPropertyReadOnly( m_detectedStars.back().prop );
+                    createROIndiNumber(m_detectedStars.back().prop(), starPrefix, "Star " + std::to_string( index ) + " Properties", "Star Acq" );
+                    m_detectedStars.back().prop().add( pcf::IndiElement( "x" ) );
+                    m_detectedStars.back().prop()["x"].set( m_detectedStars.back().x );
+                    m_detectedStars.back().prop().add( pcf::IndiElement( "y" ) );
+                    m_detectedStars.back().prop()["y"].set( m_detectedStars.back().y );
+                    m_detectedStars.back().prop().add( pcf::IndiElement( "peak" ) );
+                    m_detectedStars.back().prop()["peak"].set( m_detectedStars.back().max );
+                    m_detectedStars.back().prop().add( pcf::IndiElement( "fwhm" ) );
+                    m_detectedStars.back().prop()["fwhm"].set( m_detectedStars.back().fwhm );
+                    m_detectedStars.back().prop().add( pcf::IndiElement( "seeing" ) );
+                    m_detectedStars.back().prop()["seeing"].set( m_detectedStars.back().seeing );
+                    registerIndiPropertyReadOnly( m_detectedStars.back().prop() );
                     //if( m_indiDriver )
                       //  m_indiDriver->sendSetProperty( m_detectedStars.back().prop );
                 }
             }
 
             max = m_image.maxCoeff( &x, &y );
-
             z_score = ( max - mean ) / stddev;
         }
-    }*/
-
-    std::cerr << __LINE__ << "\n";
+    }
 
     m_num_stars = m_detectedStars.size();
-/*    // If statement that get the delta x and delta y from the 'center' of image
+    // If statement that get the delta x and delta y from the 'center' of image
     static int delta_x;
     static int delta_y;
     double plate_scale = .0795336; // plate scale factor: deltatheta/deltapixel, calculated in python, arcsec/pixel
@@ -784,18 +911,18 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         delta_x = m_detectedStars[m_acquire_star].x - m_x_center;
         delta_y = m_detectedStars[m_acquire_star].y - m_y_center;
         std::cout << "delta_x = " << delta_x << "    delta_y = " << delta_y << std::endl;
-
+        
         // negative signs because we want to move scope opposite of how far it is from 'center'
         double x_arcsec = -1*delta_y * plate_scale; //positive x_arcsec moves up, negetive moves down
         double y_arcsec = -1*delta_x * plate_scale; //positive y_arcsec moves right, negetive moves left
-        std::cout << "x_arcsec=" << x_arcsec << "  y_arcsec=" << y_arcsec << std::endl;
+        std::cout << "x_arcsec=" << x_arcsec << "  y_arcsec=" << y_arcsec << std::endl; 
 
-        // for moving telescope
+        // for moving telescope 
         pcf::IndiProperty ip( pcf::IndiProperty::Number );
 
         ip.setDevice( "tcsi" );
         ip.setName( "pyrNudge" );
-        //send telescope x and y offsets in acrsec
+        //send telescope x and y offsets in acrsec 
         ip.add( pcf::IndiElement( "y" ) );
         ip["y"] = x_arcsec; //how far to move in y direction in arcsec?
         ip.add( pcf::IndiElement( "x" ) );
@@ -803,13 +930,26 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
 
         sendNewProperty( ip );
         resetAcq();
+        m_acquire_star = -1;
     }
 
-    std::cerr << __LINE__ << "\n";
-
     m_updated = true;
-*/
-    std::cerr << __LINE__ << "\n";
+
+
+    // signal framegrabber
+    // Now tell the f.g. to get going
+    if( sem_post( &m_smSemaphore ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Error posting to semaphore" } );
+        return -1;
+    }
+
+    // Update the latency circ. buffs
+    if( m_xcb.maxEntries() > 0 )
+    {
+        m_xcb.nextEntry( m_x );
+        m_ycb.nextEntry( m_y );
+    }
 
     return 0;
 }
@@ -849,6 +989,73 @@ inline int psfAcq::processImage( void *curr_src, const darkShmimT &dummy )
     return 0;
 }
 
+inline int psfAcq::configureAcquisition()
+{
+
+    frameGrabberT::m_width = 2;
+    frameGrabberT::m_height = m_first_x_vals.size() + 2;
+    frameGrabberT::m_dataType = _DATATYPE_FLOAT;
+
+    return 0;
+}
+
+inline int psfAcq::startAcquisition()
+{
+    return 0;
+}
+
+inline int psfAcq::acquireAndCheckValid()
+{
+    timespec ts;
+
+    if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "clock_gettime" } );
+        return -1;
+    }
+
+    ts.tv_sec += 1;
+
+    if( sem_timedwait( &m_smSemaphore, &ts ) == 0 )
+    {
+        if( m_updated )
+        {
+            clock_gettime( CLOCK_REALTIME, &m_currImageTimestamp );
+            return 0;
+        }
+        else
+        {
+            return 1;
+        }
+    }
+    else
+    {
+        return 1;
+    }
+}
+
+inline int psfAcq::loadImageIntoStream( void *dest )
+{
+    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> destMap(
+        reinterpret_cast<float *>( dest ),
+        m_first_x_vals.size(),
+        1 + m_first_y_vals.size() ); // 1+ keeps it from crashing when only one star is detected
+    for( size_t i = 1; i <= m_first_x_vals.size(); i++ )
+    {
+        // Using destMap to store the x, y values with the respective offsets
+        destMap( 2 * i - 2 ) = m_first_x_vals[i - 1] - m_dx; // Store x-coordinate
+        destMap( 2 * i - 1 ) = m_first_y_vals[i - 1] - m_dy; // Store y-coordinate
+    }
+
+    m_updated = false;
+
+    return 0;
+}
+
+inline int psfAcq::reconfig()
+{
+    return 0;
+}
 
 //delete m_detectedStars Properties
 void psfAcq::resetAcq(){
@@ -861,28 +1068,28 @@ void psfAcq::resetAcq(){
         }
     }
     std::cout << "size=" << m_detectedStars.size() << std::endl;
-    m_detectedStars.clear();
+    m_detectedStars.clear(); 
 }
 
-//for toggling
+//for toggling 
 INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_restartAcq )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_restartAcq, ipRecv);
     if(!ipRecv.find("request")) return 0;
     std::unique_lock<std::mutex> lock(m_indiMutex);
-
+      
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
     {
         std::cout << "size=" << m_detectedStars.size() << std::endl;
         resetAcq();
         std::cout << "size=" << m_detectedStars.size() << std::endl;
         return 0;
-    }
+    }   
     else if( ipRecv["request"].getSwitchState() == pcf::IndiElement::Off)
     {
         return 0;
     }
-
+      
     log<software_error>({__FILE__,__LINE__, "switch state fall through."});
     return -1;
 }
@@ -937,6 +1144,15 @@ INDI_SETCALLBACK_DEFN( psfAcq, m_indiP_fpsSource )( const pcf::IndiProperty &ipR
     return 0;
 }
 
+inline int psfAcq::checkRecordTimes()
+{
+    return telemeterT::checkRecordTimes( telem_fgtimings() );
+}
+
+inline int psfAcq::recordTelem( const telem_fgtimings * )
+{
+    return recordFGTimings( true );
+}
 
 } // namespace app
 } // namespace MagAOX
