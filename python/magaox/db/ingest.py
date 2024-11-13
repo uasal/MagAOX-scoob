@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import pathlib
 
 from psycopg.types.json import Jsonb
 import orjson
@@ -120,13 +121,13 @@ WHERE
         fns.append(row['origin_path'])
     return fns
 
-def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[str]):
+def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path]):
     """Update the file inventory with any untracked local files (if any)"""
     cur.execute("BEGIN")
     for prefix in data_dirs:
         for dirpath, dirnames, filenames in os.walk(prefix):
             log.info(f"Checking for new files in {dirpath}")
-            new_files = identify_new_files(cur, host, [os.path.join(dirpath, fn) for fn in filenames])
+            new_files = identify_new_files(cur, host, [dirpath / fn for fn in filenames])
             if len(new_files) == 0:
                 continue
             else:

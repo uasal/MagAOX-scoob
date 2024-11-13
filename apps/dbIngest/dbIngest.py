@@ -5,6 +5,7 @@ import sys
 import logging
 import xconf
 from magaox.indi.device import XDevice
+from magaox.constants import DEFAULT_PREFIX
 from magaox.db.config import BaseDeviceConfig
 from magaox.db import Telem, FileOrigin, UserLog
 from magaox.db import ingest
@@ -193,7 +194,11 @@ class dbIngest(XDevice):
         self.fs_queue = queue.Queue()
         event_handler = NewXFilesHandler(self.config.hostname, self.fs_queue, self.log.name + '.fs_observer')
         self.fs_observer = Observer()
-        for dirpath in self.config.data_dirs:
+        for dirname in self.config.data_dirs:
+            dirpath = self.config.common_path_prefix / dirname
+            if not dirpath.exists():
+                self.log.debug(f"No {dirpath} to watch")
+                continue
             self.fs_observer.schedule(event_handler, dirpath, recursive=True)
             self.log.info(f"Watching {dirpath} for changes")
         self.fs_observer.start()
