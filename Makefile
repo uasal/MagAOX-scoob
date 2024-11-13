@@ -318,7 +318,7 @@ tests_clean:
 
 .PHONY: python_install
 python_install:
-	sudo -H $(PYTHON) -m pip install -e ./python/
+	sudo -H $(PYTHON) -m pip install ./python/
 
 .PHONY: doc
 doc:
