@@ -20,6 +20,8 @@ __all__ = [
 # `datetime`, so this pattern works only after chopping off the last
 # three characters
 XFILENAME_TIME_FORMAT = "%Y%m%d%H%M%S%f"
+# For output we can just fill in zeros for the nanoseconds
+XFILENAME_TIME_FORMAT_OUT = "%Y%m%d%H%M%S%f000"
 # Python devices use a different time stamp format
 PUREPYINDI_DEVICE_FILENAME_TIME_FORMAT = "%Y-%m-%dT%H%M%S"
 
