@@ -182,7 +182,8 @@ int queryBuffer(int buf_index){
     }
 
     buffers[buf.index] = buffer;
-    bufferSize = buf.length; //assume all the same
+    bufferSize = buf.length; 
+
     return 0;
 }
 
@@ -217,7 +218,7 @@ int dequeueBuffer(int buf_index){
     struct v4l2_buffer bufdq = {};
 	bufdq.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	bufdq.memory = V4L2_MEMORY_MMAP;
-	bufdq.index = buf_index;    // hard-coded to 0 for now. TODO add buffer handling
+	bufdq.index = buf_index; 
 
 	if (ioctl(fd, VIDIOC_DQBUF, &bufdq) < 0) {
 		throw std::runtime_error("Failed to dequeue buffer");
@@ -239,6 +240,7 @@ int startStreaming() {
     }
     else {
         stream_on = true;
+        printf("Started camera stream\n");
         return 0;
     }
 }
