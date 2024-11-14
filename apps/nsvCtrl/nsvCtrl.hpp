@@ -164,6 +164,8 @@ public:
 
    int writeROISubframe();
 
+   int resizeROIbufs();
+
    //int getBitDepth(); //12, 14, 16
    
    //int setBitDepth(int bitDepth);
@@ -337,18 +339,21 @@ void nsvCtrl::loadConfig()
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
 /* TODO implement ROI controls within mode */ // load from config?
+/*
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
+*/
 
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
    m_currentROI.w = m_default_w;
    m_currentROI.h = m_default_h;
-      
+   m_currentROI.bin_x = 1;
+   m_currentROI.bin_y = 1;      
 
    if(writeConfig() < 0)
    {
@@ -615,8 +620,6 @@ int nsvCtrl::cameraSelect()
                   << ", Height: " << params.height
                   << ", Pixel Format: " << params.pixelFormat << std::endl;
 
-   printf("circ buf length from framegrabber: %d\n", m_circBuffLength);
-
    if(requestBuffers(m_circBuffLength)  == -1 || 
       queryBuffers()     == -1) {
       log<text_log>("Failed to initialize camera buffers", logPrio::LOG_CRITICAL);
@@ -624,13 +627,7 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   ROIbuffers.resize(m_circBuffLength);
-
-   for(int i = 0; i < (int)m_circBuffLength; i++)
-   {
-      uint16_t* roiBuffer = new uint16_t[m_currentROI.w * m_currentROI.h];  //handle this somewhere else?
-      ROIbuffers.push_back(roiBuffer);
-   }
+   resizeROIbufs();
 
    if(startStreaming() == -1){
       log<text_log>("Failed to start camera stream", logPrio::LOG_CRITICAL);
@@ -668,8 +665,6 @@ int nsvCtrl::cameraSelect()
 inline
 int nsvCtrl::setReadoutMode()
 {
-   std::cout << "Setting readout mode to " + m_modeName << std::endl;
-
    int result = 0;
 
    if(m_modeName == "sliced")
@@ -690,7 +685,8 @@ int nsvCtrl::setReadoutMode()
    }
 
    log<text_log>("Set readout mode to " +  m_modeName);
-   printf("set readout mode to %s\n", m_modeName.c_str());
+   std::cout << "Set readout mode to " + m_modeName << std::endl;
+
 
    // comes from camera modes
    m_default_x = m_cameraModes[m_modeName].m_centerX;
@@ -706,12 +702,21 @@ int nsvCtrl::setReadoutMode()
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
+   // after setting ReadoutMode set ROI parameters. Need to reset ROIbuffers size 
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
+
+   // on mode change, reset ROI for now. Could preseve settings but will have to check coordinates
+   m_currentROI.x = m_default_x;
+   m_currentROI.y = m_default_y;
+   m_currentROI.w = m_default_w;
+   m_currentROI.h = m_default_h;
+   m_currentROI.bin_x = 1;
+   m_currentROI.bin_y = 1;
 
   // m_readoutSpeedName = m_readoutSpeedNameSet;
 
@@ -1150,11 +1155,6 @@ int nsvCtrl::configureAcquisition()
    m_currentROI.y = y0 - 1.0 +  0.5*(m_nextROI.h - 1);
    m_currentROI.w = m_nextROI.w;
    m_currentROI.h = m_nextROI.h;
-
-   printf("m_currentROI.x: %f\n", m_currentROI.x);
-   printf("m_currentROI.y: %f\n", m_currentROI.y);
-   printf("m_currentROI.w: %d\n", m_currentROI.w);
-   printf("m_currentROI.h: %d\n", m_currentROI.h);
    
    updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
    updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
@@ -1221,7 +1221,7 @@ int nsvCtrl::acquireAndCheckValid()
       queueBuffer(m_current_frame); // queuing a frame goes into buffers[m_current_frame]
 
       // call nsv to write small frame roi from full frame buffers[m_current_frame]
-      //writeROISubframe();
+      writeROISubframe();
 
       m_oldest_frame++;
       if(m_oldest_frame > bufferCount - 1){
@@ -1253,20 +1253,51 @@ int nsvCtrl::loadImageIntoStream(void * dest)
 inline
 int nsvCtrl::writeROISubframe()
 {
-  // buffers[frame_index];
-
+   
    uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
-   uint16_t* bufPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
+   uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
 
    int startX = m_currentROI.x - m_currentROI.w / 2 + 0.5;
    int startY = m_currentROI.y - m_currentROI.h / 2 + 0.5;
 
    int ROIIndex = 0;
-   for(int i = 0; i < m_currentROI.w; i++){
-      for(int j = 0; j < m_currentROI.h; j++){
-         bufPtr[ROIIndex] = imagePtr[(startY + i) * m_currentROI.w + (startX + j)];
+   for(int i = 0; i < m_currentROI.h; i++){
+      for(int j = 0; j < m_currentROI.w; j++){
+         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_currentROI.w + (startX + j))];
          ROIIndex++;
       }
+   }
+
+   // cleanup roiPtr or imagePtr?
+
+   return 0;
+}
+
+inline
+int nsvCtrl::resizeROIbufs()
+{  
+   for (void* ptr : ROIbuffers) {
+        delete[] static_cast<uint16_t*>(ptr);  
+    }
+   ROIbuffers.clear();
+   ROIbuffers.resize(m_circBuffLength);
+
+   int bufSize = m_currentROI.w * m_currentROI.h;
+
+   for(int i = 0; i < (int)m_circBuffLength; i++){
+
+      void* buffer = malloc(bufSize * sizeof(uint16_t));  // assuming 16-bit. verify w/ bufferSize in queryBuffer
+      if (buffer == nullptr) {
+         std::cerr << "Memory allocation failed!" << std::endl;
+        return -1;
+      }
+
+      ROIbuffers[i] = buffer;
+   }
+
+   uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[0]);
+   for (int j = 0; j < (int)bufferSize; j++) {
+        roiPtr[j] = static_cast<uint16_t>(0); // is this really necessary
    }
 
    return 0;
