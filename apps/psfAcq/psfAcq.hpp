@@ -157,6 +157,7 @@ class psfAcq : public MagAOXApp<true>,
     float m_threshold = { 7.0 }; // how many sigma away from the mean you want to classify a detection, default to
                                  // 7sigma
     float m_fwhm_threshold = { 4.0 }; // minumum fwhm to consider something a star
+    float m_max_fwhm = { 40.0 }; // max fwhm to consider a star 
 
     std::vector<float> m_first_x_vals = {};
     std::vector<float> m_first_y_vals = {};
@@ -720,13 +721,14 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             int x_value = static_cast<int>(
                 m_x ); // convert m_x to an int so we can 0 out a rectangular area around the detected star
             int y_value = static_cast<int>( m_y );
-            if (fwhm > m_fwhm_threshold){
+            if (fwhm > m_fwhm_threshold && fwhm < m_max_fwhm ){
                 Star newStar;
                 newStar.x = m_x; // Adding attributes to the new star
                 newStar.y = m_y;
                 newStar.max = max;
                 newStar.fwhm = fwhm;
                 newStar.seeing = seeing;
+                std::cout << "fwhm= " << fwhm << std::endl;
                 std::unique_lock<std::mutex> lock( m_indiMutex );
                 newStar.allocate();
                 m_detectedStars.push_back( newStar );
@@ -779,8 +781,10 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     else
     {
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
+        //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
+            //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
             N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
@@ -848,7 +852,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
             // and updates the values
             int threshold_distance = 20; // distance between new stars should be a small positive number so this updates
             int tracker = 0; // tracks if the current star detected updated an already known star
-            if (fwhm > m_fwhm_threshold){
+            if (fwhm > m_fwhm_threshold && fwhm < m_max_fwhm ){
                 for( Star &star : m_detectedStars )
                 {
                     float dist = calculateDistance( star.x, star.y, x_value, y_value );
@@ -871,6 +875,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                     newStar.max = max;
                     newStar.fwhm = fwhm;
                     newStar.seeing = seeing;
+                    std::cout << "fwhm= " << fwhm << std::endl;
                     std::unique_lock<std::mutex> lock( m_indiMutex );
                     newStar.allocate();
                     m_detectedStars.push_back( newStar );
@@ -905,7 +910,12 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     double plate_scale = .0795336; // plate scale factor: deltatheta/deltapixel, calculated in python, arcsec/pixel
     //deltatheta -> Angular seperation between two stars in arcsec (from published data)
     //deltapixel -> Pixel seperation between same two stars on our detector
-    if( m_acquire_star >= 0 )
+    if ( m_acquire_star != -1 &&  (m_acquire_star > m_detectedStars.size() - 1 || m_acquire_star < 0 )){
+        std::cout << "Please enter a star number between 0 and " << m_detectedStars.size() - 1 << "." << std::endl;
+        m_acquire_star = -1;
+    }
+
+    if( m_acquire_star >= 0 && m_acquire_star < m_detectedStars.size())
     {
         m_acqQuitTime = mx::sys::get_curr_time();
         delta_x = m_detectedStars[m_acquire_star].x - m_x_center;
