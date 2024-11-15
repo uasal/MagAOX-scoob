@@ -1257,13 +1257,25 @@ int nsvCtrl::writeROISubframe()
    uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
    uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
 
-   int startX = m_currentROI.x - m_currentROI.w / 2 + 0.5;
-   int startY = m_currentROI.y - m_currentROI.h / 2 + 0.5;
+   // shouldn't have to threshold these here. Should have some indi blocker for invalid x and y...
+   if(m_currentROI.x - (m_currentROI.w / 2) < 0){
+      m_currentROI.x = (m_currentROI.w / 2);
+   } else if (m_currentROI.x + (m_currentROI.w / 2) > m_full_w - 1){
+      m_currentROI.x = (m_full_w - (m_currentROI.w / 2)) - 1;
+   }
+   if(m_currentROI.y - (m_currentROI.h / 2) < 0){
+      m_currentROI.y = (m_currentROI.h / 2);
+   } else if (m_currentROI.y + (m_currentROI.h / 2) > m_full_h - 1){
+      m_currentROI.y = (m_full_h - (m_currentROI.h / 2)) - 1;
+   }
+
+   int startX = m_currentROI.x - (m_currentROI.w / 2) + 0.5;
+   int startY = m_currentROI.y - (m_currentROI.h / 2) + 0.5;
 
    int ROIIndex = 0;
    for(int i = 0; i < m_currentROI.h; i++){
       for(int j = 0; j < m_currentROI.w; j++){
-         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_currentROI.w + (startX + j))];
+         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_full_w + (startX + j))];
          ROIIndex++;
       }
    }
