@@ -681,6 +681,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     { // TESTING This runs when the vector of stars is empty (usually the first time)
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         { // m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
+        try { 
             N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
@@ -771,6 +772,11 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                     m_image( i, j ) = 0; // m_zero_area is defaulted to 20 to zero out a pixel array around the star
                 }
             }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Exception during Gaussian fitting: " << e.what() << std::endl;
+            break; // Handle the exception, possibly skipping this frame
+        }
             max = m_image.maxCoeff( &x, &y );
             z_score = ( max - mean ) / stddev;
         }
@@ -781,6 +787,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
+        try { 
             N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
@@ -892,7 +899,11 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                       //  m_indiDriver->sendSetProperty( m_detectedStars.back().prop );
                 }
             }
-
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Exception during Gaussian fitting: " << e.what() << std::endl;
+            break; // Handle the exception, possibly skipping this frame
+        }
             max = m_image.maxCoeff( &x, &y );
             z_score = ( max - mean ) / stddev;
         }
