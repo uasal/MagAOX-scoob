@@ -94,6 +94,7 @@ class AudibleAlerts(XDevice):
             return
         value = new_message[element_name]
         self.log.debug(f"Judging reaction for {element_name} change to {repr(value)} using {transition}")
+        self.log.debug(f"before check {self.latch_transitions=}")
         last_value = self.latch_transitions.get(transition)
         self.log.debug(f"{new_message}\n{transition.compare(value)=}, last value was {last_value}, {value != last_value=} {(not transition.compare(last_value))=}")
         if transition.compare(value) and (
@@ -104,10 +105,12 @@ class AudibleAlerts(XDevice):
             (not transition.compare(last_value))
         ):
             self.latch_transitions[transition] = value
+            self.log.debug(f"after update {self.latch_transitions=}")
+            self.log.debug(f"latched {transition=} with {value=}")
             last_transition_ts = self.per_transition_cooldown_ts.get(transition, 0)
             sec_since_trigger = time.time() - last_transition_ts
             debounce_expired = sec_since_trigger > transition.debounce_sec
-            self.log.debug(f"Debounced {sec_since_trigger=}")
+            self.log.debug(f"Checking for debounce: {sec_since_trigger=} {debounce_expired=}")
             if debounce_expired:
                 utterance = choice(utterance_choices)
                 self.log.debug(f"Submitting speech request: {utterance}")
@@ -115,8 +118,10 @@ class AudibleAlerts(XDevice):
             else:
                 self.log.debug(f"Would have spoken, but it's only been {sec_since_trigger=}")
         elif transition.compare(last_value) and not transition.compare(value):
-            # un-latch, so next time we change to a value that compares True we trigger again:
+            self.log.debug(f"un-latch {transition}, so next time we change to a value that compares True we trigger again. ({last_value=} {value=})")
+            self.log.debug(f"before {self.latch_transitions=}")
             del self.latch_transitions[transition]
+            self.log.debug(f"after {self.latch_transitions=}")
         else:
             self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
 
@@ -169,7 +174,7 @@ class AudibleAlerts(XDevice):
 
     def load_personality(self, personality_name):
         personality_file = os.path.join(HERE, "personalities", f"{personality_name}.xml")
-        for cb, device_name, property_name in self._cb_handles:
+        for cb, device_name, property_name, _ in self._cb_handles:
             try:
                 self.client.unregister_callback(cb, device_name=device_name, property_name=property_name)
             except ValueError:
@@ -202,7 +207,7 @@ class AudibleAlerts(XDevice):
                     device_name=device_name,
                     property_name=property_name
                 )
-                self._cb_handles.add((cb, device_name, property_name))
+                self._cb_handles.add((cb, device_name, property_name, t))
                 self.log.debug(f"Registered reaction handler on {device_name=} {property_name=} {element_name=} using transition {t}")
                 for idx, utterance in enumerate(reaction.transitions[t]):
                     self.log.debug(f"{reaction.indi_id}: {t}: {utterance}")

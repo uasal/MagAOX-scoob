@@ -75,12 +75,9 @@ def log_level_to_label(levelno):
 
 class MagAOXLogFormatter(logging.Formatter):
     def __init__(self, fmt='%(asctime)s %(levelname)s %(message)s (%(name)s:%(funcName)s:%(lineno)d)'):
-        super().__init__(
-            fmt=fmt,
-            datefmt='%Y-%m-%dT%H:%M:%S.%f000',
-        )
-    # def formatTime(self, record, datefmt):
-    #     return datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc).strftime()
+        super().__init__(fmt=fmt)
+    def formatTime(self, record, datefmt):
+        return datetime.datetime.fromtimestamp(record.created, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f') + '000'
 
 class NDJSONLogFormatter(MagAOXLogFormatter):
     def __init__(self):

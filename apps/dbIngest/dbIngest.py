@@ -204,9 +204,10 @@ class dbIngest(XDevice):
         self.fs_observer.start()
 
     def rescan_files(self):
+        search_paths = [self.config.common_path_prefix / name for name in self.config.data_dirs]
         with self.conn.cursor() as cur:
-            ingest.update_file_inventory(cur, self.config.hostname, self.config.data_dirs)
-        self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname}")
+            ingest.update_file_inventory(cur, self.config.hostname, search_paths)
+        self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
     def ingest_line(self, line):
         # avoid infinite loop of modifying log file and getting notified of the modification

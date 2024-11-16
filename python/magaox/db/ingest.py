@@ -52,7 +52,7 @@ DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLU
 ''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in records])
     cur.execute("COMMIT")
 
-def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: list[str]):
+def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: list[pathlib.Path]):
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
     if len(paths) == 0:
         return []
@@ -64,7 +64,7 @@ def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: list[str]):
     INSERT INTO on_disk_files (path)
     VALUES (%s)
     '''
-        cur.executemany(query, [(x,) for x in paths])
+        cur.executemany(query, [(x.as_posix(),) for x in paths])
         # execute_values(cur, query, )
         log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
 
@@ -126,6 +126,7 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
     cur.execute("BEGIN")
     for prefix in data_dirs:
         for dirpath, dirnames, filenames in os.walk(prefix):
+            dirpath = pathlib.Path(dirpath)
             log.info(f"Checking for new files in {dirpath}")
             new_files = identify_new_files(cur, host, [dirpath / fn for fn in filenames])
             if len(new_files) == 0:
