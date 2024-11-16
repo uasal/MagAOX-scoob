@@ -675,7 +675,6 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     float stddev = std::sqrt( variance );                                          // Calculate the standard deviation
     float z_score = ( max - mean ) / stddev;                                       // how many std dev away from mean
     float fwhm = m_fwhm_threshold + 1; // getting intial fwhm before entering while loop
-    //std::cout << "Beginning: " << "mean=" << mean << "  max=" << max << "  variance=" << variance << "  stddev=" << stddev << "  z-score=" << z_score << "  fwhm=" << fwhm << std::endl;
     std::size_t numStars = m_detectedStars.size();
 
     if( numStars == 0 )
@@ -728,7 +727,6 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                 newStar.max = max;
                 newStar.fwhm = fwhm;
                 newStar.seeing = seeing;
-                std::cout << "fwhm= " << fwhm << std::endl;
                 std::unique_lock<std::mutex> lock( m_indiMutex );
                 newStar.allocate();
                 m_detectedStars.push_back( newStar );
@@ -781,10 +779,8 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     else
     {
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
-        //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
-            //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
             N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
@@ -875,7 +871,6 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                     newStar.max = max;
                     newStar.fwhm = fwhm;
                     newStar.seeing = seeing;
-                    std::cout << "fwhm= " << fwhm << std::endl;
                     std::unique_lock<std::mutex> lock( m_indiMutex );
                     newStar.allocate();
                     m_detectedStars.push_back( newStar );
