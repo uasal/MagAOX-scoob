@@ -37,13 +37,24 @@
     <button name="ThemeSong">
       <file name="clown.wav" />
     </button>
+    <button name="BeepBeep">
+      <file name="honkhonk.wav" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
       <speak><voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice></speak>
     </transition>
   </react-to>
-  <react-to indi-id="observers.obs_on.toggle">
+  <react-to indi-id="flipacq.presetName.in">
+    <transition value="On">
+      <speak>All right Parker, you're up</speak>
+    </transition>
+    <transition value="Off">
+      <speak>Hold on to your butts</speak>
+    </transition>
+ </react-to>
+ <react-to indi-id="observers.obs_on.toggle">
     <transition value="On">
       <speak>Saving data for {observers.current_observer.pfoa}.</speak>
     </transition>
@@ -113,7 +124,7 @@
     </transition>
   </react-to>
   <react-to indi-id="tcsi.seeing.dimm_fwhm">
-    <transition op="gt" value="1.5">
+    <transition op="gt" value="1.25">
       <speak>You know, this is the worst seeing I can remember!</speak>
       <speak>We have standards</speak>
       <speak>The seeing is never normally this bad. Maybe we should give up.</speak>
@@ -122,7 +133,7 @@
       <speak>Are you still operating in these conditions?</speak>
       <file name="toughest_battles.wav" />
     </transition>
-    <transition op="between" low="0.0" high="0.3">
+    <transition op="between" low="0.0" high="0.4">
       <speak>I'm chuffed to bits</speak>
       <speak>Seeing is believing</speak>
       <speak>That might be the lowest number I've seen on the dim</speak>
