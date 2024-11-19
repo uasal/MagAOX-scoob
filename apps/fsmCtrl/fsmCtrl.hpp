@@ -11,6 +11,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <cmath>  // For pow(), cos() and M_PI
 
 #include <iostream>
 using namespace std;
@@ -24,7 +25,9 @@ typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the 
 #include "binaryUart.hpp"
 #include "cGraphPacket.hpp"
 #include "linux_pinout_client_socket.hpp"
+#include "linux_pinout_uart.hpp"
 #include "socket.hpp"
+#include "IUart.h"
 
 /** \defgroup fsmCtrl
  * \brief Application to interface with ESC FSM
@@ -60,16 +63,31 @@ namespace MagAOX
       friend class dev::shmimMonitor<fsmCtrl>;
 
     protected:
+      /** \name Constants
+       *@{
+       */
+      const std::string DACS = "dacs";
+      const std::string VOLTAGES = "voltages";
+      const std::string TTP = "ttp";
+      const std::string SHMIM = "shmim";
+      const std::string INDI = "indi";
+      const std::string LOCALHOST = "127.0.0.1";
+      const std::string USB0 = "/dev/ttyUSB0";
+      ///@}
+
       /** \name Configurable Parameters
        *@{
        */
+      // Connection parameters
       std::string type;
       std::string PortName;
-      int nHostPort;
+      int nHostPort = 66873; // 65536 + 1337 ; socket-specific
+      uint32_t BaudRate = 115200; // serial-port-specific
+
+      // Telemeter callback parameters
       int period_s;
-      double m_a;
-      double m_b;
-      double m_v;
+
+      // Safe operating range parameters
       double m_dac1_min;
       double m_dac1_max;
       double m_dac2_min;
@@ -77,7 +95,21 @@ namespace MagAOX
       double m_dac3_min;
       double m_dac3_max;
 
+      // Conversion parameters
+      double D_per_V;
+      double m_B;
+      double m_L;      
+      double m_voltage_max = 100.0; // in volts
+      double m_stroke_max = 10.0; // in micrometers
+      double m_v = (4.096 / (std::pow(2.0, 24))) * 60;
+      double d_piston = 5.0; // in micrometers 
+
+      // Shmim size
+      double width = 3; // shm size
+      double height = 1; // shm size
+
       // input parameters
+      std::string kw_name = "inputType";
       std::string m_inputType;
       std::string m_inputToggle;
 
@@ -86,11 +118,12 @@ namespace MagAOX
 
       char Buffer[4096];
       CGraphPacket SocketProtocol;
-      linux_pinout_client_socket LocalPortPinout;
-      BinaryUart UartParser;
+      std::unique_ptr<IUart> LocalPortPinout;
+      std::unique_ptr<BinaryUart> UartParser;
       PZTQuery *telemetryQuery = new TelemetryQuery();
       PZTQuery *adcsQuery = new AdcsQuery();
       PZTQuery *dacsQuery = new DacsQuery();
+      std::vector<PZTQuery*> queries = { telemetryQuery, adcsQuery, dacsQuery };
       uint32_t targetSetpoints[3];
 
       double m_dac1{0};
@@ -100,12 +133,6 @@ namespace MagAOX
       double m_adc1{0};
       double m_adc2{0};
       double m_adc3{0};
-
-      const std::string DACS = "dacs";
-      const std::string VOLTAGES = "voltages";
-      const std::string ANGLES = "angles";
-      const std::string SHMIM = "shmim";
-      const std::string INDI = "indi";
 
     protected:
       // INDI properties
@@ -173,6 +200,12 @@ namespace MagAOX
        */
       virtual int appShutdown();
 
+      /// Initialize UartParser
+      /**
+       *
+       */
+      void initUartParser();
+
       /// TODO: Test the connection to the fsm
       int testConnection();
 
@@ -184,15 +217,23 @@ namespace MagAOX
        */
       int socketConnect();
 
+      /// Connect to fsm via Serial Port
       /**
-       * @brief Request fsm telemetry
        *
-       * Wrapper that calls query() with instance of TelemetryQuery.
-       * Response is stored in instance's Telemetry member.
-       * It returns fsm telemetry that is logged every 10s by the telemeter.
-       * Output in /opt/telem/fsmCtrl_xxxxx.bintel
+       * \returns 0 if connection successful
+       * \returns -1 on an error
        */
-      void queryTelemetry();
+      int serialPortConnect();
+
+      // /**
+      //  * @brief Request fsm telemetry
+      //  *
+      //  * Wrapper that calls query() with instance of TelemetryQuery.
+      //  * Response is stored in instance's Telemetry member.
+      //  * It returns fsm telemetry that is logged every 10s by the telemeter.
+      //  * Output in /opt/telem/fsmCtrl_xxxxx.bintel
+      //  */
+      // void queryTelemetry();
 
       /**
        * @brief Request fsm's ADC values
@@ -201,7 +242,7 @@ namespace MagAOX
        * Response is stored in instance's AdcVals member.
        * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
        */
-      void queryAdcs();
+      void receiveAdcs();
 
       /**
        * @brief Request fsm's DAC values
@@ -210,7 +251,7 @@ namespace MagAOX
        * Response is stored in instance's DacSetpoints member.
        * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
        */
-      void queryDacs();
+      void receiveDacs();
 
       /**
        * @brief Set fsm's DACs values to those in the argument.
@@ -227,13 +268,22 @@ namespace MagAOX
       /**
        * @brief Query interface for the fsm
        *
-       * Function that sends a command packet to the fsm and waits for a response.
-       * If a response it received it processes the response as appropriate for the
-       * command sent.
+       * Function that sends a command packet to the fsm.
        *
        * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
        */
       void query(PZTQuery *);
+
+      /**
+       * @brief Function that listens for responses from the fsm
+       *
+       * Function that checks for a response from the fsm and processes it.
+       * If a response is received it processes the response as appropriate for the
+       * command sent.
+       *
+       * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
+       */
+      void receive();
 
       /**
        * @brief Utility function that sets 'current' INDI values, if updated
@@ -281,6 +331,7 @@ namespace MagAOX
        */
 
       /**
+       * @brief Required by smimMonitor Interface
        * Called after shmimMonitor connects to the fsm stream.
        *
        * \returns 0 on success
@@ -289,6 +340,7 @@ namespace MagAOX
       int allocate(const dev::shmimT &sp);
 
       /**
+       * @brief Required by smimMonitor Interface
        * Called by shmimMonitor when a new fsm command is available.
        *
        * \returns 0 on success
@@ -301,7 +353,7 @@ namespace MagAOX
        * @brief Send to fsm new DAC values from shmim
        *
        * Called as part of processImage.
-       * Checks shmim has an inputType keyword and that its value is 'dacs', 'voltages' or 'angles'.
+       * Checks shmim has an inputType keyword and that its value is 'dacs', 'voltages' or 'ttp'.
        * Updates INDI input.type property, if different.
        * Updates corresponding INDI 'target' values with shmim values.
        * Converts shmim values from specified inputType to DACs.
@@ -311,10 +363,34 @@ namespace MagAOX
        * \returns -1 if incorrect size or data type in stream.
        */
       int commandFSM(void *curr_src);
+
+      /**
+       * @brief Checks if shmim exists
+       *
+       * \returns true if shmim exists
+       * \returns false otherwise
+       */
+      bool streamExists();
+
+      /**
+       * @brief Checks if shmim has expected size & keyword. If it doesn't deletes it.
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int validateStream();
+
+      /**
+       * @brief Create shmim if it doesn't exist
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int createStream();
       ///@}
     };
 
-    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), UartParser(LocalPortPinout, SocketProtocol, PacketCallbacks, false)
+    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)
     {
       m_powerMgtEnabled = true;
       m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)
@@ -326,20 +402,25 @@ namespace MagAOX
       shmimMonitor::setupConfig(config);
 
       config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Required, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
+      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
 
-      config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Required, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
-      config.add("socket.host_port", "", "socket.host_port", argType::Required, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+      config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Optional, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
+      config.add("socket.host_port", "", "socket.host_port", argType::Optional, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+      
+      config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
+      config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
 
-      config.add("fsm.a", "", "fsm.a", argType::Required, "fsm", "a", false, "double", "Conversion factor for converting from alpha/beta/z to actuator linear displacements.");
-      config.add("fsm.b", "", "fsm.b", argType::Required, "fsm", "b", false, "double", "Conversion factor for converting from alpha/beta/z to actuator linear displacements.");
-      config.add("fsm.v", "", "fsm.b", argType::Required, "fsm", "v", false, "double", "Conversion factor for converting from voltages to dacs.");
-      config.add("fsm.dac1_min", "", "fsm.dac1_min", argType::Required, "fsm", "dac1_min", false, "double", "Min safe value for dac1.");
-      config.add("fsm.dac1_max", "", "fsm.dac1_max", argType::Required, "fsm", "dac1_max", false, "double", "Max safe value for dac1.");
-      config.add("fsm.dac2_min", "", "fsm.dac2_min", argType::Required, "fsm", "dac2_min", false, "double", "Min safe value for dac2.");
-      config.add("fsm.dac2_max", "", "fsm.dac2_max", argType::Required, "fsm", "dac2_max", false, "double", "Max safe value for dac2.");
-      config.add("fsm.dac3_min", "", "fsm.dac3_min", argType::Required, "fsm", "dac3_min", false, "double", "Min safe value for dac3.");
-      config.add("fsm.dac3_max", "", "fsm.dac3_max", argType::Required, "fsm", "dac3_max", false, "double", "Max safe value for dac3.");
+      config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
+      config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
+      config.add("fsm.v", "", "fsm.v", argType::Required, "fsm", "v", false, "double", "Conversion factor for converting from voltages to dacs.");
+      config.add("fsm.dac1_min", "", "fsm.dac1_min", argType::Optional, "fsm", "dac1_min", false, "double", "Min safe value for dac1. Defaults to 0.");
+      config.add("fsm.dac1_max", "", "fsm.dac1_max", argType::Optional, "fsm", "dac1_max", false, "double", "Max safe value for dac1. Defaults to voltage max conversion.");
+      config.add("fsm.dac2_min", "", "fsm.dac2_min", argType::Optional, "fsm", "dac2_min", false, "double", "Min safe value for dac2. Defaults to 0.");
+      config.add("fsm.dac2_max", "", "fsm.dac2_max", argType::Optional, "fsm", "dac2_max", false, "double", "Max safe value for dac2. Defaults to voltage max conversion.");
+      config.add("fsm.dac3_min", "", "fsm.dac3_min", argType::Optional, "fsm", "dac3_min", false, "double", "Min safe value for dac3. Defaults to 0.");
+      config.add("fsm.dac3_max", "", "fsm.dac3_max", argType::Optional, "fsm", "dac3_max", false, "double", "Max safe value for dac3. Defaults to voltage max conversion.");
+      config.add("fsm.voltage_max", "", "fsm.voltage_max", argType::Optional, "fsm", "voltage_max", false, "double", "Max voltage safe value in volts. Defaults to 100.");
+      config.add("fsm.stroke_max", "", "fsm.stroke_max", argType::Optional, "fsm", "stroke_max", false, "double", "Max stroke value in micrometers. Defaults to 10.");
 
       // shmim parameters
       config.add("shmimMonitor.shmimName", "", "shmimMonitor.shmimName", argType::Required, "shmimMonitor", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /tmp/<shmimName>.im.shm. Default is fsm");
@@ -347,22 +428,50 @@ namespace MagAOX
       config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the FSM in actuators.");
       config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the FSM in actuators.");
 
-      config.add("input.type", "", "input.type", argType::Required, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'angles'.");
-      config.add("input.toggle", "", "input.toggle", argType::Required, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'.");
+      config.add("input.type", "", "input.type", argType::Optional, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'ttp'. Defaults to voltages.");
+      config.add("input.toggle", "", "input.toggle", argType::Optional, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'. Defaults to shmim.");
       telemeterT::setupConfig(config);
     }
 
     int fsmCtrl::loadConfigImpl(mx::app::appConfigurator &_config)
     {
+      /// CONNECTION PARAMETERS ///
       _config(type, "parameters.connection_type");
       _config(period_s, "parameters.period_s");
 
-      _config(PortName, "socket.client_entrance_ip");
-      _config(nHostPort, "socket.host_port");
+      if (type == "socket")
+      {
+        PortName = LOCALHOST;
+        _config(PortName, "socket.client_entrance_ip");
+        _config(nHostPort, "socket.host_port");
 
-      _config(m_a, "fsm.a");
-      _config(m_b, "fsm.b");
+        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
+      }
+      else // defaulting to serial_port
+      {
+        PortName = USB0;
+        _config(PortName, "serial_port.port_address");
+        _config(BaudRate, "serial_port.baud_rate");
+
+        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
+      }
+      // Since LocalPortPinout is now initialized, can also initialize UartParser
+      initUartParser();
+
+      /// CONVERSTION PARAMETERS ///
+      _config(m_L, "fsm.L");
+      m_B = m_L * cos(30 * (M_PI / 180.0));
+      _config(m_B, "fsm.B");
+
       _config(m_v, "fsm.v");
+      _config(m_voltage_max, "fsm.voltage_max");
+      _config(m_stroke_max, "fsm.stroke_max");
+
+      D_per_V = m_stroke_max / m_voltage_max;
+      m_dac1_min = m_dac2_min = m_dac3_min = 0;
+      m_dac1_max = m_dac2_max = m_dac3_max = vi_to_daci(m_voltage_max, m_v);
+
+      /// DAC RANGE PARAMETERS ///
       _config(m_dac1_min, "fsm.dac1_min");
       _config(m_dac1_max, "fsm.dac1_max");
       _config(m_dac2_min, "fsm.dac2_min");
@@ -370,13 +479,30 @@ namespace MagAOX
       _config(m_dac3_min, "fsm.dac3_min");
       _config(m_dac3_max, "fsm.dac3_max");
 
-      _config(shmimMonitor::m_width, "shmimMonitor.width");
-      _config(shmimMonitor::m_height, "shmimMonitor.height");
+      /// SHMIM PARAMETERS ///
+      _config(width, "shmimMonitor.width");
+      _config(height, "shmimMonitor.height");
 
+      /// COMMAND INPUT PARAMETERS ///
       m_inputType = VOLTAGES;
       _config(m_inputType, "input.type");
+      if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+
       m_inputToggle = SHMIM;
       _config(m_inputToggle, "input.toggle");
+      if (!(m_inputToggle == SHMIM || m_inputToggle == INDI))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets m_inputToggle to a value other than 'shmim', or 'indi': " << m_inputToggle;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }      
 
       shmimMonitor::loadConfig(_config);
       return 0;
@@ -457,12 +583,16 @@ namespace MagAOX
 
       // conversion_factors
       REG_INDI_NEWPROP(m_indiP_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
-      m_indiP_conversion_factors.add(pcf::IndiElement("a"));
-      m_indiP_conversion_factors["a"] = m_a;
-      m_indiP_conversion_factors.add(pcf::IndiElement("b"));
-      m_indiP_conversion_factors["b"] = m_b;
+      m_indiP_conversion_factors.add(pcf::IndiElement("B"));
+      m_indiP_conversion_factors["B"] = m_B;
+      m_indiP_conversion_factors.add(pcf::IndiElement("L"));
+      m_indiP_conversion_factors["L"] = m_L;
       m_indiP_conversion_factors.add(pcf::IndiElement("v"));
       m_indiP_conversion_factors["v"] = m_v;
+      m_indiP_conversion_factors.add(pcf::IndiElement("voltage_max"));
+      m_indiP_conversion_factors["voltage_max"] = m_voltage_max;
+      m_indiP_conversion_factors.add(pcf::IndiElement("stroke_max"));
+      m_indiP_conversion_factors["stroke_max"] = m_stroke_max;
 
       // input
       REG_INDI_NEWPROP(m_indiP_input, "input", pcf::IndiProperty::Text);
@@ -475,6 +605,13 @@ namespace MagAOX
       REG_INDI_NEWPROP(m_indiP_query, "telemetry", pcf::IndiProperty::Text);
       m_indiP_query.add(pcf::IndiElement("query"));
       m_indiP_query["query"] = "none";
+
+      if(!streamExists()) {
+        if (createStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+      }
 
       return 0;
     }
@@ -504,7 +641,14 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        rv = socketConnect();
+        if (type == "serial_port")
+        {
+          rv = serialPortConnect();
+        }
+        else if (type == "socket")
+        {
+          rv = socketConnect();
+        }
 
         if (rv == 0)
         {
@@ -515,13 +659,13 @@ namespace MagAOX
       if (state() == stateCodes::CONNECTED)
       {
         // // Get current adc values
-        // queryAdcs();
+        query(adcsQuery);
 
         // // Get current dac values
-        // queryDacs();
+        query(dacsQuery);
 
         // Get telemetry
-        queryTelemetry();
+        // queryTelemetry();
 
         if (m_inputToggle == SHMIM)
         {
@@ -532,7 +676,7 @@ namespace MagAOX
           state(stateCodes::READY);
         }
 
-        sleep(10);
+        receive();
       }
 
       if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
@@ -559,6 +703,11 @@ namespace MagAOX
     // CONNECTION
     //////////////
 
+    void fsmCtrl::initUartParser()
+    {
+      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false);
+    }
+
     /// TODO: Test the connection to the device
     int fsmCtrl::testConnection()
     {
@@ -567,22 +716,29 @@ namespace MagAOX
 
     int fsmCtrl::socketConnect()
     {
-      // Tell C lib (stdio.h) not to buffer output, so we can ditch all the fflush(stdout) calls...
-      setvbuf(stdout, NULL, _IONBF, 0);
-
-      log<text_log>("Welcome to SerialPortBinaryCmdr!");
-      log<text_log>("In order to tunnel to the lab use the following command before running this program:\n ssh -L 1337:localhost:1337 -N -f fsm \n(where fsm is the ssh alias of the remote server)!");
-
-      int err = fsmCtrl::LocalPortPinout.init(nHostPort, PortName.c_str());
+      PinoutConfig pinoutConfig = PinoutConfig::CreateSocketConfig(nHostPort, PortName.c_str());
+      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
       if (IUart::IUartOK != err)
       {
         log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
         return -1;
       }
 
-      log<text_log>("Starting to do something");
+      log<text_log>("Connected to socket (" + PortName + ":" + std::to_string(nHostPort) + ")");
+      return 0;
+    }
 
-      UartParser.Debug(false);
+    int fsmCtrl::serialPortConnect()
+    {
+      PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(BaudRate, PortName.c_str());
+      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
+      if (IUart::IUartOK != err)
+      {
+        log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open port (" + PortName + ":" + std::to_string(BaudRate) + "), exiting.\n"});
+        return -1;
+      }
+
+      log<text_log>("Connected to port (" + PortName + ":" + std::to_string(BaudRate) + ")");
       return 0;
     }
 
@@ -590,22 +746,16 @@ namespace MagAOX
     // FSM QUERIES
     //////////////
 
-    // Function to request fsm Telemetry
-    void fsmCtrl::queryTelemetry()
-    {
-      log<text_log>(telemetryQuery->startLog);
-      query(telemetryQuery);
-      log<text_log>(telemetryQuery->endLog);
-      recordFsm(false);
-    }
+    // // Function to request fsm Telemetry
+    // void fsmCtrl::queryTelemetry()
+    // {
+    //   query(telemetryQuery);
+    //   // recordFsm(false);
+    // }
 
     // Function to request fsm ADCs
-    void fsmCtrl::queryAdcs()
+    void fsmCtrl::receiveAdcs()
     {
-      log<text_log>(adcsQuery->startLog);
-      query(adcsQuery);
-      log<text_log>(adcsQuery->endLog);
-
       AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
 
       double samples1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
@@ -623,17 +773,11 @@ namespace MagAOX
       updateIfChanged(m_indiP_adc1, "current", m_adc1);
       updateIfChanged(m_indiP_adc2, "current", m_adc2);
       updateIfChanged(m_indiP_adc3, "current", m_adc3);
-
-      adcsQuery->logReply();
     }
 
     // Function to request fsm DACs
-    void fsmCtrl::queryDacs()
+    void fsmCtrl::receiveDacs()
     {
-      log<text_log>(dacsQuery->startLog);
-      query(dacsQuery);
-      log<text_log>(dacsQuery->endLog);
-
       DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
 
       m_dac1 = static_cast<float>(castDacsQuery->DacSetpoints[0]);
@@ -641,8 +785,6 @@ namespace MagAOX
       m_dac3 = static_cast<float>(castDacsQuery->DacSetpoints[2]);
 
       updateINDICurrentParams();
-
-      dacsQuery->logReply();
     }
 
     // Function to set fsm DACs
@@ -678,10 +820,8 @@ namespace MagAOX
 
       DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
 
-      log<text_log>(dacsQuery->startLog);
       castDacsQuery->setPayload(Setpoints, 3 * sizeof(uint32_t));
       query(castDacsQuery);
-      log<text_log>(castDacsQuery->endLog);
 
       castDacsQuery->logReply();
       castDacsQuery->resetPayload();
@@ -691,35 +831,50 @@ namespace MagAOX
       m_dac3 = castDacsQuery->DacSetpoints[2];
       updateINDICurrentParams();
 
-      queryDacs();
-      queryAdcs();
+      query(dacsQuery);
+      query(adcsQuery);
       return 0;
     }
 
     void fsmCtrl::query(PZTQuery *pztQuery)
     {
+      log<text_log>(pztQuery->startLog);
       // Send command packet
-      (&UartParser)->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
+      UartParser->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
+      // debug
+      // log<text_log>(pztQuery->endLog);
 
+      receive();
+    }
+
+    void fsmCtrl::receive() {
       // The packet is read byte by byte, so keep going while there are bytes left
       bool Bored = false;
       while (!Bored)
       {
         Bored = true;
-        if (UartParser.Process(pztQuery))
+        if (UartParser->Process())
         {
           Bored = false;
         }
 
-        if (false == LocalPortPinout.connected())
+        if (false == fsmCtrl::LocalPortPinout->isopen())
         {
-          int err = LocalPortPinout.init(nHostPort, PortName.c_str());
-          if (IUart::IUartOK != err)
+          if (type == "serial_port")
           {
-            log<software_error>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort)});
+            serialPortConnect();
+          }
+          else if (type == "socket")
+          {
+            socketConnect();
           }
         }
       }
+
+      // Once packet had been received, make sure updates are propagated.
+      // Since we don't know the packet type, update all.
+      receiveAdcs();
+      receiveDacs();
     }
 
     /////////////////////////
@@ -733,6 +888,7 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
+      query(telemetryQuery);
       return recordFsm(true);
     }
 
@@ -745,7 +901,6 @@ namespace MagAOX
       {
         LastTelemetry = telemetryQueryPtr->Telemetry;
         telem<telem_fsm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P3V3A, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.N5V, LastTelemetry.N6V, LastTelemetry.P150V});
-        telemetryQueryPtr->logReply();
       }
 
       return 0;
@@ -759,22 +914,13 @@ namespace MagAOX
     {
       static_cast<void>(sp); // be unused
 
-      int err = 0;
-
-      //  if(m_width != m_fsmWidth)
-      //  {
-      //     log<software_critical>({__FILE__,__LINE__, "shmim width does not match configured FSM width"});
-      //     ++err;
-      //  }
-
-      //  if(m_height != m_fsmHeight)
-      //  {
-      //     log<software_critical>({__FILE__,__LINE__, "shmim height does not match configured FSM height"});
-      //     ++err;
-      //  }
-
-      if (err)
-        return -1;
+      // validateStream will delete & recreate stream if it doesn't match size & kw requirements
+      if (streamExists()) {
+        if (validateStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+      }   
 
       return 0;
     }
@@ -797,45 +943,18 @@ namespace MagAOX
 
     int fsmCtrl::commandFSM(void *curr_src)
     {
-      std::string inputType = "";
-
-      // Check that shmim has inputType keyword
-      int kwn = 0;
-      while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
-      {
-        std::string name(m_imageStream.kw[kwn].name);
-        if (name == "inputType")
-        {
-          inputType = m_imageStream.kw[kwn].value.valstr;
-          if (!(inputType == DACS || inputType == VOLTAGES || inputType == ANGLES))
-          {
-            std::ostringstream oss;
-            oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'angles': " << inputType;
-            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-            return -1;
-          }
-
-          m_inputType = inputType;
-          updateIfChanged(m_indiP_input, "type", m_inputType);
-        }
-        kwn++;
-      }
-
-      if (inputType == "")
-      {
-        std::ostringstream oss;
-        oss << "Shmim '" << shmimMonitor::m_shmimName << "' does not have an inputType keyword with a value of 'dacs', 'voltages', or 'angles'.";
-        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-        return -1;
-      }
-
       uint32_t dacs[3] = {0, 0, 0};
 
       //  if(state() != stateCodes::OPERATING) return 0;
       float val1, val2, val3;
       val1 = ((float *)curr_src)[0];
       val2 = ((float *)curr_src)[1];
-      val3 = ((float *)curr_src)[2];
+      
+      if (m_inputType == TTP) {
+        val3 = d_piston;
+      } else {
+        val3 = ((float *)curr_src)[2];
+      }
 
       updateIfChanged(m_indiP_val1, "target", val1);
       updateIfChanged(m_indiP_val2, "target", val2);
@@ -849,16 +968,15 @@ namespace MagAOX
       }
       else if (m_inputType == VOLTAGES)
       {
-        dacs[0] = v1_to_dac1(val1, m_v);
-        dacs[1] = v2_to_dac2(val2, m_v);
-        dacs[2] = v3_to_dac3(val3, m_v);
+        dacs[0] = vi_to_daci(val1, m_v);
+        dacs[1] = vi_to_daci(val2, m_v);
+        dacs[2] = vi_to_daci(val3, m_v);
       }
-      else if (m_inputType == ANGLES)
+      else if (m_inputType == TTP)
       {
-
-        dacs[0] = angles_to_dac1(val1, val3, m_a);
-        dacs[1] = angles_to_dac2(val1, val2, val3, m_a, m_b);
-        dacs[2] = angles_to_dac3(val1, val2, val3, m_a, m_b);
+        dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
+        dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+        dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
       }
 
       std::ostringstream oss;
@@ -868,6 +986,113 @@ namespace MagAOX
       std::unique_lock<std::mutex> lock(m_indiMutex);
 
       return setDacs(dacs);
+    }
+
+    bool fsmCtrl::streamExists() { 
+      // Check if ImageStream exists.
+      // From shmimMonitor::smThreadExec.
+      int SM_fd;
+      char SM_fname[200];
+      ImageStreamIO_filename(SM_fname, sizeof(SM_fname), m_shmimName.c_str());
+      SM_fd = open(SM_fname, O_RDWR);
+      if (SM_fd == -1)
+      {
+          close(SM_fd);
+          return false;
+      } else {
+        return true;
+      }
+    }
+
+    int fsmCtrl::validateStream() { 
+      std::string inputType = "";
+
+      // If it has the wrong shape, destroy it
+      if(m_imageStream.md->size[0] != height || m_imageStream.md->size[1] != width)
+      {
+        std::ostringstream oss;
+        oss << "Shmim '" << shmimMonitor::m_shmimName << "' has the wrong shape: height = " << m_height << ", width = " << m_width << ". Destroying it." << std::endl;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+
+        ImageStreamIO_destroyIm(&m_imageStream);
+        if (createStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+        return 0;        
+      }
+
+      // Check if shmim has inputType keyword
+      int kwn = 0;
+      bool kw_found = false;
+      while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
+      {
+        // std::string name(m_imageStream.kw[kwn].name);
+        // if (name == kw_name)
+        if (std::string(m_imageStream.kw[kwn].name) == kw_name)
+        {
+          kw_found = true;
+          inputType = std::string(m_imageStream.kw[kwn].value.valstr);
+          if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
+          {
+            std::ostringstream oss;
+            oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
+            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+            return -1;
+          }
+
+          // If keyword exists, it takes precedence
+          m_inputType = inputType;
+          updateIfChanged(m_indiP_input, "type", m_inputType);
+        }
+        kwn++;
+      }
+
+      if(!kw_found) 
+      {
+        // // If imageStream doesn't have an inputType keyword, destroy it        
+        // std::ostringstream oss;
+        // oss << "Shmim '" << shmimMonitor::m_shmimName << "' doesn't have an inputType keyword specifying its data type. Destroying it." << std::endl;
+        // log<software_warning>({__FILE__, __LINE__, errno, oss.str()});      
+
+        // ImageStreamIO_destroyIm(&m_imageStream);
+        
+        // if (createStream() < 0) {
+        //   log<software_error>({__FILE__, __LINE__});
+        //   return -1;
+        // }
+
+        std::ostringstream oss;
+        oss << "No inputType keyword found for shmim '" << shmimMonitor::m_shmimName << ". Defaulting to pre-set input type: " << m_inputType << std::endl;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});           
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::createStream() { 
+      m_dataType = 9; // _DATATYPE_FLOAT
+      uint32_t imsize[3] = {height, width, 0};
+
+      // Not found, create it
+      ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 1, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);
+
+      // Set name of first keyword is 'inputType'
+      strncpy(m_imageStream.kw[0].name, kw_name.c_str(), sizeof(m_imageStream.kw[0].name));
+      // Ensure null termination
+      m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
+      // Set type
+      m_imageStream.kw[0].type = 'S';
+      // Set keyword value
+      strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+      // Ensure null termination
+      m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+
+      std::ostringstream oss;
+      oss << "Created: " << m_shmimName << std::endl;
+      log<text_log>(oss.str());
+
+      return 0;
     }
 
     ////////////////////
@@ -915,13 +1140,11 @@ namespace MagAOX
         }
         else if (m_inputType == VOLTAGES)
         {
-          dacs[0] = v1_to_dac1(target, m_v);
+          dacs[0] = vi_to_daci(target, m_v);
         }
-        else if (m_inputType == ANGLES)
+        else if (m_inputType == TTP)
         {
-          // Get current z to calculate dac1 from the target
-          double z = get_z(m_dac1, m_dac2, m_dac3);
-          dacs[0] = angles_to_dac1(target, z, m_a);
+          dacs[0] = ttp_to_dac1(target, d_piston, m_B, D_per_V, m_v);
         }
 
         dacs[1] = m_dac2;
@@ -976,14 +1199,13 @@ namespace MagAOX
         }
         else if (m_inputType == VOLTAGES)
         {
-          dacs[1] = v2_to_dac2(target, m_v);
+          dacs[1] = vi_to_daci(target, m_v);
         }
-        else if (m_inputType == ANGLES)
+        else if (m_inputType == TTP)
         {
           // Get current alpha and z to calculate dac2 from the target
-          double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-          double z = get_z(m_dac1, m_dac2, m_dac3);
-          dacs[1] = angles_to_dac2(alpha, target, z, m_a, m_b);
+          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+          dacs[1] = ttp_to_dac2(tip, target, d_piston, m_B, m_L, D_per_V, m_v);
         }
 
         dacs[2] = m_dac3;
@@ -1038,14 +1260,14 @@ namespace MagAOX
         }
         else if (m_inputType == VOLTAGES)
         {
-          dacs[2] = v3_to_dac3(target, m_v);
+          dacs[2] = vi_to_daci(target, m_v);
         }
-        else if (m_inputType == ANGLES)
+        else if (m_inputType == TTP)
         {
-          // Get current alpha and beta to calculate dac3 from the target
-          double alpha = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-          double beta = get_beta(m_dac2, m_dac3, m_b);
-          dacs[2] = angles_to_dac3(alpha, beta, target, m_a, m_b);
+          // Get current tip and beta to calculate dac3 from the target
+          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+          double tilt = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+          dacs[2] = ttp_to_dac3(tip, tilt, target, m_B, m_L, D_per_V, m_v);
         }
 
         std::ostringstream oss;
@@ -1061,16 +1283,16 @@ namespace MagAOX
     (const pcf::IndiProperty &ipRecv)
     {
       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_conversion_factors, ipRecv);
-      if (ipRecv.find("a"))
+      if (ipRecv.find("B"))
       {
-        m_a = ipRecv["a"].get<float>();
-        updateIfChanged(m_indiP_conversion_factors, "a", m_a);
+        m_B = ipRecv["B"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "B", m_B);
       }
 
-      if (ipRecv.find("b"))
+      if (ipRecv.find("L"))
       {
-        m_b = ipRecv["b"].get<float>();
-        updateIfChanged(m_indiP_conversion_factors, "b", m_b);
+        m_L = ipRecv["L"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "L", m_L);
       }
 
       if (ipRecv.find("v"))
@@ -1079,12 +1301,24 @@ namespace MagAOX
         updateIfChanged(m_indiP_conversion_factors, "v", m_v);
       }
 
+      if (ipRecv.find("voltage_max"))
+      {
+        m_v = ipRecv["voltage_max"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "voltage_max", m_voltage_max);
+      }
+
+      if (ipRecv.find("stroke_max"))
+      {
+        m_v = ipRecv["stroke_max"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "stroke_max", m_stroke_max);
+      }
+
       std::ostringstream oss;
-      oss << "INDI conversion_factors callback: " << m_a << " | " << m_b << " | " << m_v;
+      oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;
       log<text_log>(oss.str());
     }
 
-    // callback from setting m_indiP_input (dacs, voltages, angles)
+    // callback from setting m_indiP_input (dacs, voltages, ttp)
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_input)
     (const pcf::IndiProperty &ipRecv)
     {
@@ -1092,19 +1326,19 @@ namespace MagAOX
       if (ipRecv.find("type"))
       {
         std::string type = ipRecv["type"].get<std::string>();
-        if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == ANGLES))
+        if (!(type == DACS || type == VOLTAGES || type == TTP))
         {
           std::ostringstream oss;
-          oss << "input.type '" << m_inputType << "' not dacs, voltages or angles";
+          oss << "input.type '" << type << "' not dacs, voltages or ttp";
           log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
           return -1;
         }
 
+        m_inputType = type;
+        updateIfChanged(m_indiP_input, "type", m_inputType);
+
         if (state() == stateCodes::READY)
         {
-          m_inputType = type;
-          updateIfChanged(m_indiP_input, "type", m_inputType);
-
           // Reset target values
           updateIfChanged(m_indiP_val1, "target", -99999);
           updateIfChanged(m_indiP_val2, "target", -99999);
@@ -1246,17 +1480,17 @@ namespace MagAOX
 
       if (ipRecv.find("query"))
       {
-        std::string query = ipRecv["query"].get<std::string>();
-        if (query == "adc")
+        std::string query_obj = ipRecv["query"].get<std::string>();
+        if (query_obj == "adc")
         {
           log<text_log>("INDI query ADCs.");
-          queryAdcs();
+          query(adcsQuery);
           updateIfChanged(m_indiP_query, "query", "adc");
         }
-        else if (query == "dac")
+        else if (query_obj == "dac")
         {
           log<text_log>("INDI query ADCs.");
-          queryDacs();
+          query(dacsQuery);
           updateIfChanged(m_indiP_query, "query", "dac");
         }
         else
@@ -1283,15 +1517,15 @@ namespace MagAOX
       }
       else if (m_inputType == VOLTAGES)
       {
-        val1 = get_v1(m_dac1, m_v);
-        val2 = get_v2(m_dac2, m_v);
-        val3 = get_v3(m_dac3, m_v);
+        val1 = daci_to_vi(m_dac1, m_v);
+        val2 = daci_to_vi(m_dac2, m_v);
+        val3 = daci_to_vi(m_dac3, m_v);
       }
-      else if (m_inputType == ANGLES)
+      else if (m_inputType == TTP)
       {
-        val1 = get_alpha(m_dac1, m_dac2, m_dac3, m_a);
-        val2 = get_beta(m_dac2, m_dac3, m_b);
-        val3 = get_z(m_dac1, m_dac2, m_dac3);
+        val1 = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+        val2 = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+        val3 = d_piston;
       }
 
       updateIfChanged(m_indiP_val1, "current", val1);

@@ -184,7 +184,7 @@ namespace MagAOX
 
             void processReply(char const *Params, const size_t ParamsLen) override
             {
-                if ((NULL != Params) && (ParamsLen >= (3 * sizeof(double))))
+                if ((NULL != Params) && (ParamsLen >= (sizeof(CGraphFSMTelemetryPayload))) )
                 {
                     ParamsPtr = reinterpret_cast<const CGraphFSMTelemetryPayload *>(Params);
                     Telemetry = *ParamsPtr;
@@ -205,19 +205,21 @@ namespace MagAOX
             void logReply() override
             {
                 std::ostringstream oss;
-                oss << "BinaryFSMTelemetry Command: Values with corrected units follow:\n";
-                oss << "P1V2: " << std::fixed << std::setprecision(6) << Telemetry.P1V2 << " V\n";
-                oss << "P2V2: " << std::fixed << std::setprecision(6) << Telemetry.P2V2 << " V\n";
-                oss << "P28V: " << std::fixed << std::setprecision(6) << Telemetry.P28V << " V\n";
-                oss << "P2V5: " << std::fixed << std::setprecision(6) << Telemetry.P2V5 << " V\n";
-                oss << "P3V3A: " << std::fixed << std::setprecision(6) << Telemetry.P3V3A << " V\n";
-                oss << "P6V: " << std::fixed << std::setprecision(6) << Telemetry.P6V << " V\n";
-                oss << "P5V: " << std::fixed << std::setprecision(6) << Telemetry.P5V << " V\n";
-                oss << "P3V3D: " << std::fixed << std::setprecision(6) << Telemetry.P3V3D << " V\n";
-                oss << "P4V3: " << std::fixed << std::setprecision(6) << Telemetry.P4V3 << " V\n";
-                oss << "N5V: " << std::fixed << std::setprecision(6) << Telemetry.N5V << " V\n";
-                oss << "N6V: " << std::fixed << std::setprecision(6) << Telemetry.N6V << " V\n";
-                oss << "P150V: " << std::fixed << std::setprecision(6) << Telemetry.P150V << " V";
+                oss << "BinaryFSMTelemetry Command: Telemetry received";
+                // debug
+                // oss << "BinaryFSMTelemetry Command: Values with corrected units follow:\n";
+                // oss << "P1V2: " << std::fixed << std::setprecision(6) << Telemetry.P1V2 << " V\n";
+                // oss << "P2V2: " << std::fixed << std::setprecision(6) << Telemetry.P2V2 << " V\n";
+                // oss << "P28V: " << std::fixed << std::setprecision(6) << Telemetry.P28V << " V\n";
+                // oss << "P2V5: " << std::fixed << std::setprecision(6) << Telemetry.P2V5 << " V\n";
+                // oss << "P3V3A: " << std::fixed << std::setprecision(6) << Telemetry.P3V3A << " V\n";
+                // oss << "P6V: " << std::fixed << std::setprecision(6) << Telemetry.P6V << " V\n";
+                // oss << "P5V: " << std::fixed << std::setprecision(6) << Telemetry.P5V << " V\n";
+                // oss << "P3V3D: " << std::fixed << std::setprecision(6) << Telemetry.P3V3D << " V\n";
+                // oss << "P4V3: " << std::fixed << std::setprecision(6) << Telemetry.P4V3 << " V\n";
+                // oss << "N5V: " << std::fixed << std::setprecision(6) << Telemetry.N5V << " V\n";
+                // oss << "N6V: " << std::fixed << std::setprecision(6) << Telemetry.N6V << " V\n";
+                // oss << "P150V: " << std::fixed << std::setprecision(6) << Telemetry.P150V << " V";
                 MagAOXAppT::log<text_log>(oss.str());
             }
         };
@@ -315,10 +317,10 @@ namespace MagAOX
                         DacSetpoints[1] = DacSetpoints[1] & 0x00FFFFFF; // Mask out the first two bytes
                         DacSetpoints[2] = DacSetpoints[2] & 0x00FFFFFF; // Mask out the first two bytes
 
-                        // Double
-                        DacSetpoints[0] *= 2;
-                        DacSetpoints[1] *= 2;
-                        DacSetpoints[2] *= 2;
+                        // // Double
+                        // DacSetpoints[0] *= 2;
+                        // DacSetpoints[1] *= 2;
+                        // DacSetpoints[2] *= 2;
                     }
                 }
                 else
