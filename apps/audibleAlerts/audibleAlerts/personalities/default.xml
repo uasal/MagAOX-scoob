@@ -45,6 +45,9 @@
     <button name="BeepBeep">
       <file name="honkhonk.wav" />
     </button>
+	<button name="Diggy">
+      <file name="diggy_short.wav" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
