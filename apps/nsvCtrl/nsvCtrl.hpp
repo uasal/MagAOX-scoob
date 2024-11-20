@@ -903,7 +903,7 @@ int nsvCtrl::setTempControl()
 inline
 int nsvCtrl::getFPS()
 {
-   const std::string command = "v4l2-ctl --forget-ctrl frame_rate -d " + m_camPath; 
+   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + m_camPath; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
