@@ -677,9 +677,11 @@ def process_span(
 
     log.info(f"Completed span {span}")
 
-def _copy_task(src : str, dest : str, dry_run : bool) -> str:
+def _copy_task(src : pathlib.Path, dest : pathlib.Path, dry_run : bool) -> str:
     if not dry_run:
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(src, dest)
+        log.debug(f"copied {src} -> {dest}")
     else:
         log.debug(f"dry run: cp {src} {dest}")
     return dest
@@ -787,8 +789,9 @@ def create_bundle_from_span(
             raise RuntimeError(f"Cannot bundle {real_path=} for {origin_host}:{file_row['origin_path']} because file does not exist")
 
         dest = output_dir / path_sans_prefix
+        log.debug(f"copying to {dest=}")
         copy_tasks.append(threadpool.submit(_copy_task, real_path, dest, dry_run))
-    dest_paths = [dst for dst in futures.as_completed(copy_tasks)]
+    dest_paths = [dst.result() for dst in futures.as_completed(copy_tasks)]
     log.debug("dest_paths = %s", dest_paths)
     return dest_paths
 

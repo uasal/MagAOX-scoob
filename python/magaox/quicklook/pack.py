@@ -15,9 +15,10 @@ from numcodecs import Blosc, Delta
 import zarr
 import numpy as np
 from magaox import db
+import xconf
 
 from ..constants import FOLDER_TIMESTAMP_FORMAT
-from ..quicklook.core import datestamp_strings_from_ts
+from .core import datestamp_strings_from_ts
 
 
 logging.basicConfig(level=logging.INFO)

@@ -1,51 +1,27 @@
-import time
-import os
-import typing
 from concurrent import futures
-import logging
-import datetime
-from datetime import timezone
+import os
 import pathlib
-import argparse
-from ...constants import HISTORY_FILENAME, ALL_CAMERAS, LOOKYLOO_DATA_ROOTS, QUICKLOOK_PATH, DEFAULT_CUBE, DEFAULT_SEPARATE, CHECK_INTERVAL_SEC, LOG_PATH
-from ...utils import parse_iso_datetime, format_timestamp_for_filename, utcnow, get_search_start_end_timestamps
+import logging
+from ...utils import format_timestamp_for_filename
 from ..core import (
-    TimestampedFile,
-    PathRewriteConfig,
-    ObservationSpan,
-    load_file_history,
-    do_quicklook_for_camera,
     get_new_observation_spans,
-    process_span,
-    decide_to_process,
     create_bundle_from_span,
 )
-
-import upath
-
 
 import xconf
 from ._base import BaseQuicklookCommand
 
-from ... import constants
 
 log = logging.getLogger(__name__)
 
-def generate_path_rewrites():
-    return [
-        PathRewriteConfig(hostname='exao2', from_path='/opt/MagAOX', to_path='/srv/rtc/data'),
-        PathRewriteConfig(hostname='exao3', from_path='/opt/MagAOX', to_path='/srv/icc/data'),
-    ]
-
 @xconf.config
 class Bundle(BaseQuicklookCommand):
-    output_dir : upath.UPath = xconf.field(default=upath.UPath('.'), help="Path or URI to destination")
+    destination : pathlib.Path = xconf.field(default=pathlib.Path('.'), help="Path or URI to destination")
     parallel_jobs : int = xconf.field(default=10, help="How many export jobs to start in parallel")
-    path_rewrites : list[PathRewriteConfig] = xconf.field(default_factory=generate_path_rewrites, help="Rewrite the paths in the inventory (e.g. to use an NFS mount to read from another host)")
 
     def main(self):
-        if not self.output_dir.is_dir():
-            self.output_dir.mkdir(parents=True, exist_ok=True)
+        if not self.destination.is_dir():
+            self.destination.mkdir(parents=True, exist_ok=True)
         # timestamp_str = format_timestamp_for_filename(utcnow())
         # # Specifying a filename results in no console output, so add it back
         # if self.dry_run:
@@ -56,7 +32,7 @@ class Bundle(BaseQuicklookCommand):
         #     console.setFormatter(formatter)
         #     log.debug(f"Logging to {log_file_path}")
 
-        start_dt, end_dt = get_search_start_end_timestamps(self.semester, self.utc_start, self.utc_end)
+        start_dt, end_dt = self.get_time_range()
         new_observation_spans, _ = get_new_observation_spans(start_dt, end_dt, email=self.email, title=self.title)
 
         with futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as threadpool:
@@ -64,7 +40,8 @@ class Bundle(BaseQuicklookCommand):
                 if span.end is None:
                     log.debug(f"Skipping {span} because it is an open interval")
                     continue
-                dest_dir = self.output_dir / f'bundle_{format_timestamp_for_filename(span.begin)}_to_{format_timestamp_for_filename(span.end)}'
+                dest_dir = self.destination / f'{format_timestamp_for_filename(span.begin)}_{span.title}'
+                os.makedirs(dest_dir)
                 log.info(f"Observation interval to process: {span}")
                 dest_paths = create_bundle_from_span(
                     span,

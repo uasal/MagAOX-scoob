@@ -81,11 +81,13 @@ def get_current_semester():
     this_semester = str(this_year) + ("B" if now.month > 6 else "A")
     return this_semester
 
-def get_search_start_end_timestamps(
+def semester_to_datetime_range(
     semester : str,
-    utc_start : typing.Optional[datetime.datetime] = None,
-    utc_end : typing.Optional[datetime.datetime] = None,
 ):
+    '''Return datetimes spanning the given semester. The 'A' semester
+    begins at midnight January 1 and ends midnight June 15. The 'B'
+    semester is the rest of the year.
+    '''
     letter = semester[-1].upper()
     try:
         if len(semester) != 5 or semester[-1].upper() not in ['A', 'B']:
@@ -104,16 +106,6 @@ def get_search_start_end_timestamps(
         day = 15 if letter == 'A' else 1,
     ).replace(tzinfo=timezone.utc)
     end_dt = semester_end_dt
-
-
-    if utc_start is not None:
-        start_dt = utc_start
-
-    if utc_end is not None:
-        end_dt = utc_end
-
-    if end_dt < start_dt:
-        raise ValueError("End time is before start time")
     return start_dt, end_dt
 
 
