@@ -134,6 +134,7 @@ class psfAcq : public MagAOXApp<true>,
     double m_acqQuitTime {0};
     double m_acqPauseTime{2};
 
+    int m_current_acq_star {-1};
     bool m_updated{ false };
     float m_x{ 0 };
     float m_y{ 0 };
@@ -377,20 +378,26 @@ inline int psfAcq::appStartup()
         REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsSource, std::string( "fps" ) );
     }
 
-    // creating toggling
+    // creating toggling to restart the acquisition
     createStandardIndiRequestSw( m_indiP_restartAcq, "restart_acq", "Restart Acquisition", "psfAcq");
     registerIndiPropertyNew( m_indiP_restartAcq, INDI_NEWCALLBACK(m_indiP_restartAcq) );  
+
+    // INDI prop for seeing
+    createROIndiNumber(m_indiP_seeing, "seeing");
+    m_indiP_seeing.add(pcf::IndiElement("current"));
+    m_indiP_seeing["current"].setValue( m_seeing ); //m_seeing gets assigned the seeing values of the star that is acquired
+    registerIndiPropertyReadOnly( m_indiP_seeing );
 
     // create toggling for calculating seeing
     createStandardIndiRequestSw( m_indiP_calcSeeing, "calc_seeing", "Calculate Seeing", "psfAcq");
     registerIndiPropertyNew( m_indiP_calcSeeing, INDI_NEWCALLBACK(m_indiP_calcSeeing) );  
 
-    // Testing for user to select star
+    // INDI prop for user to select star
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_acquire_star, "acquire_star", 0, 20, 1, "%d", "", "" );
     m_indiP_acquire_star["current"].setValue( m_acquire_star );
     m_indiP_acquire_star["target"].setValue( m_acquire_star );
 
-    // Testing for num stars prop
+    // number of stars INDI prop
     createROIndiNumber(m_indiP_num_stars, "num_stars");
     m_indiP_num_stars.add(pcf::IndiElement("current"));
     m_indiP_num_stars["current"].setValue( m_num_stars );
@@ -419,6 +426,7 @@ inline int psfAcq::appLogic()
     darkShmimMonitorT::updateINDI();
 
     updateIfChanged( m_indiP_num_stars, "current", m_num_stars );
+    updateIfChanged( m_indiP_seeing, "current", m_seeing );
 
     for( size_t n = 0; n < m_detectedStars.size() ; ++n )
     {
@@ -427,8 +435,6 @@ inline int psfAcq::appLogic()
        updateIfChanged( m_detectedStars[n].prop(), "y", m_detectedStars[n].y );
        updateIfChanged( m_detectedStars[n].prop(), "peak", m_detectedStars[n].max );
        updateIfChanged( m_detectedStars[n].prop(), "fwhm", m_detectedStars[n].fwhm );
-       //updateIfChanged( m_detectedStars[n].prop(), "seeing", m_detectedStars[n].seeing );
-
     }
     return 0;
 }
@@ -510,10 +516,9 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     float stddev = std::sqrt( variance );                                          // Calculate the standard deviation
     float z_score = ( max - mean ) / stddev;                                       // how many std dev away from mean
     float fwhm = m_fwhm_threshold + 1; // getting intial fwhm before entering while loop
-    //std::cout << "Beginning: " << "mean=" << mean << "  max=" << max << "  variance=" << variance << "  stddev=" << stddev << "  z-score=" << z_score << "  fwhm=" << fwhm << std::endl;
     std::size_t numStars = m_detectedStars.size();
     if( numStars == 0 )
-    { // TESTING This runs when the vector of stars is empty (usually the first time)
+    { // This runs when the vector of stars is empty (usually the first time)
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         { // m_max_loops, m_fwhm_threshold, and m_threshold are configurable variables
             N_loops = N_loops + 1;
@@ -576,11 +581,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                 m_detectedStars.back().prop()["peak"].set( m_detectedStars.back().max );
                 m_detectedStars.back().prop().add( pcf::IndiElement( "fwhm" ) );
                 m_detectedStars.back().prop()["fwhm"].set( m_detectedStars.back().fwhm );
-                //m_detectedStars.back().prop().add( pcf::IndiElement( "seeing" ) );
-                //m_detectedStars.back().prop()["seeing"].set( m_detectedStars.back().seeing );
                 registerIndiPropertyReadOnly( m_detectedStars.back().prop() );
-                //if( m_indiDriver )
-                  //  m_indiDriver->sendSetProperty( m_detectedStars.back().prop );
             }
             if( x_value < m_zero_area )
             {
@@ -613,10 +614,8 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     else
     {
         // In here is where we track the stars using cross correlation between the first frame and subsequent frames
-        //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
         while( ( z_score > m_threshold ) && ( fwhm > m_fwhm_threshold ) && ( N_loops < m_max_loops ) )
         {
-            //std::cout << "fwhm=" << fwhm << "  m_max_fwhm=" << m_max_fwhm << std::endl;
             N_loops = N_loops + 1;
             m_gfit.set_itmax( 1000 );
             // m_zero_area is used to zero out the pixel array once a star is detected but can also be used to set up a
@@ -719,11 +718,7 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
                     m_detectedStars.back().prop()["peak"].set( m_detectedStars.back().max );
                     m_detectedStars.back().prop().add( pcf::IndiElement( "fwhm" ) );
                     m_detectedStars.back().prop()["fwhm"].set( m_detectedStars.back().fwhm );
-                    //m_detectedStars.back().prop().add( pcf::IndiElement( "seeing" ) );
-                    //m_detectedStars.back().prop()["seeing"].set( m_detectedStars.back().seeing );
                     registerIndiPropertyReadOnly( m_detectedStars.back().prop() );
-                    //if( m_indiDriver )
-                      //  m_indiDriver->sendSetProperty( m_detectedStars.back().prop );
                 }
             }
             max = m_image.maxCoeff( &x, &y );
@@ -746,10 +741,10 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     if( m_acquire_star >= 0 && m_acquire_star < m_detectedStars.size())
     {
         m_acqQuitTime = mx::sys::get_curr_time();
+        m_current_acq_star = m_acquire_star;
         delta_x = m_detectedStars[m_acquire_star].x - m_x_center;
         delta_y = m_detectedStars[m_acquire_star].y - m_y_center;
         std::cout << "seeing=" << m_detectedStars[m_acquire_star].seeing << std::endl; 
-        //m_seeing = m_detectedStars[m_acquire_star].seeing; 
         std::cout << "delta_x = " << delta_x << "    delta_y = " << delta_y << std::endl;
         
         // negative signs because we want to move scope opposite of how far it is from 'center'
@@ -826,14 +821,6 @@ void psfAcq::resetAcq(){
     m_detectedStars.clear(); 
 }
 
-//report seeing of acquired star
-void psfAcq::reportSeeing(){
-    createROIndiNumber(m_indiP_seeing, "seeing");
-    m_indiP_seeing.add(pcf::IndiElement("current"));
-    m_indiP_seeing["current"].setValue( m_seeing ); //m_seeing gets assigned the seeing values of the star that is acquired
-    registerIndiPropertyReadOnly( m_indiP_seeing );
-}
-
 //for toggling Restart Acquisition
 INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_restartAcq )(const pcf::IndiProperty &ipRecv)
 {
@@ -857,7 +844,6 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_restartAcq )(const pcf::IndiProperty &ipR
     return -1;
 }
 
-
 //for toggling Calculating Seeing 
 INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_calcSeeing )(const pcf::IndiProperty &ipRecv)
 {
@@ -867,7 +853,7 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_calcSeeing )(const pcf::IndiProperty &ipR
       
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
     {
-        reportSeeing();
+        m_seeing = m_detectedStars[m_current_acq_star].seeing;
         return 0;
     }   
     else if( ipRecv["request"].getSwitchState() == pcf::IndiElement::Off)
@@ -878,7 +864,6 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_calcSeeing )(const pcf::IndiProperty &ipR
     log<software_error>({__FILE__,__LINE__, "switch state fall through."});
     return -1;
 }
-
 
 // Testing for user to select star number
 INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_acquire_star )( const pcf::IndiProperty &ipRecv )
