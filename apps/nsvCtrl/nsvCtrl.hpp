@@ -24,7 +24,7 @@ std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clo
 auto duration = now.time_since_epoch();
 
 typedef std::chrono::duration<int, std::ratio_multiply<std::chrono::hours::period, std::ratio<8>
->::type> Days; /* UTC: +8:00 */
+>::type> Days; 
 
 namespace MagAOX
 {
@@ -91,14 +91,12 @@ protected:
 
    bool m_poweredOn {false};
 
-   //std::string camera_string = "/dev/video2"; // hard code to one camera for now. add cam select 
+   std::string m_camPath; ///< /dev/video2 or similar, path to l4v2 cam, read from config
 
-   std::string m_camPath; // "/dev/video2" or similar, path to l4v2 cam 
+   int m_current_frame; ///< frame index, from 0 to bufsize for current frame to read out
+   int m_oldest_frame; ///< the oldest camera frame in the buffer (must be dequeued first)
 
-   int m_current_frame; // 0 to bufsize
-   int m_oldest_frame; 
-
-   int m_vCrop; // camera vcropoffset
+   int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
    std::vector<void*> ROIbuffers;
 
@@ -116,18 +114,13 @@ public:
    virtual void loadConfig();
 
    /// Startup functions
-   /** Sets up the INDI vars.
-     *
-     */
+   /** Sets up the INDI vars. */
    virtual int appStartup();
 
-   /// Implementation of the FSM for the Siglent SDG
    virtual int appLogic();
 
-   /// Implementation of the on-power-off FSM logic
    virtual int onPowerOff();
 
-   /// Implementation of the while-powered-off FSM
    virtual int whilePowerOff();
 
    virtual int appShutdown();
@@ -184,9 +177,10 @@ public:
      */ 
    int powerOnDefaults();
 
-   /// Required by stdCamera, but this does not do anything for this camera [stdCamera interface]
+   /// Sets exposure
    /**
-     * \returns 0 always
+     * \returns 0 if successful 
+     * \returns -1 otherwise
      */ 
    int setExpTime();
    
@@ -225,11 +219,8 @@ protected:
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    
 public:
-   //INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_emProtReset);
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
-
-   //INDI_SETCALLBACK_DECL(nsvCtrl, m_indiP_mode);
    
    /** \name Telemeter Interface
      * 
@@ -241,30 +232,6 @@ public:
       
    ///@}
 };
-
-/*
-
-   Modes
-
-     v4l2-ctl --device=/dev/video2 --set-ctrl sensor_mode=1
-        v4l2-ctl --device=/dev/video2 --set-fmt-video=width=6144,height=512,pixelformat=RG16
-        v4l2-ctl --device=/dev/video2 --list-formats-ext
-
-
-        Sensor modes correspond with the results in 'list-formats-ext'
-
-     [0]: 'RG16' (16-bit Bayer RGRG/GBGB (Exp.))
-                Size: Discrete 6144x4210
-                        Interval: Discrete 0.100s (10.000 fps)
-                Size: Discrete 6144x512
-                        Interval: Discrete 0.020s (50.000 fps)
-                Size: Discrete 6144x4210
-                        Interval: Discrete 0.100s (10.000 fps)
-                Size: Discrete 6144x512
-                        Interval: Discrete 0.020s (50.000 fps)
-
-*/
-
 
 inline
 nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
@@ -285,7 +252,7 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_maxEMGain = 360;
    m_emGainSet = 100;
    m_blacklevelSet = 10;
-   m_maxBlacklevel = 65535; // pair with bit depth mode?
+   m_maxBlacklevel = 65535; // assuming 16-bit. Pair with bitdepth when implemented
    m_minBlacklevel = 0;
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
@@ -337,16 +304,6 @@ void nsvCtrl::loadConfig()
    
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
-
-/* TODO implement ROI controls within mode */ // load from config?
-/*
-   m_nextROI.x = m_default_x;
-   m_nextROI.y = m_default_y;
-   m_nextROI.w = m_default_w;
-   m_nextROI.h = m_default_h;
-   m_nextROI.bin_x = 1;
-   m_nextROI.bin_y = 1;
-*/
 
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
@@ -513,8 +470,6 @@ int nsvCtrl::appLogic()
       }
    }
 
-   //Fall through check?
-
    return 0;
 
 }
@@ -548,7 +503,6 @@ int nsvCtrl::onPowerOff()
       log<software_error>({__FILE__, __LINE__});
    }
    
-   //Setting m_poweredOn
    m_poweredOn = false;
 
    return 0;
@@ -557,8 +511,8 @@ int nsvCtrl::onPowerOff()
 inline
 int nsvCtrl::whilePowerOff()
 {
-   //m_shutterStatus = "POWEROFF";
-   //m_shutterState = 0;
+   m_shutterStatus = "POWEROFF";
+   m_shutterState = 0;
    
    if(stdCamera<nsvCtrl>::whilePowerOff() < 0)
    {
@@ -610,7 +564,8 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   getVCrop(); // initCamera changes vcrop if changing modes
+   // reload parameters affected by sensor mode
+   getVCrop();
    updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
    getExpTime();
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
@@ -635,7 +590,7 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   if(queueBuffers() == -1){
+   if(queueBuffers() == -1){ // load up initial images
       log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
@@ -644,20 +599,10 @@ int nsvCtrl::cameraSelect()
    m_current_frame = 0; 
    m_oldest_frame = 0;
 
-   /* assume if we can queue we can dequeue. Set up an initial image in the buf
-    if(dequeueBuffer() == -1){
-      log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
-      state(stateCodes::NODEVICE);
-      return -1;
-   }
-   */
-
    state(stateCodes::CONNECTED);
    log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
 
    m_init = true;
-
-   m_cropModeSet = false; // move this somewhere it makes sense
 
    return 0;
 }
@@ -688,7 +633,7 @@ int nsvCtrl::setReadoutMode()
    std::cout << "Set readout mode to " + m_modeName << std::endl;
 
 
-   // comes from camera modes
+   // new camera mode defaults
    m_default_x = m_cameraModes[m_modeName].m_centerX;
    m_default_y = m_cameraModes[m_modeName].m_centerY;
    m_default_w = m_cameraModes[m_modeName].m_sizeX;
@@ -702,7 +647,7 @@ int nsvCtrl::setReadoutMode()
    m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
-   // after setting ReadoutMode set ROI parameters. Need to reset ROIbuffers size 
+   // after setting ReadoutMode reset ROI parameters
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
@@ -710,7 +655,6 @@ int nsvCtrl::setReadoutMode()
    m_nextROI.bin_x = 1;
    m_nextROI.bin_y = 1;
 
-   // on mode change, reset ROI for now. Could preseve settings but will have to check coordinates
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
    m_currentROI.w = m_default_w;
@@ -719,7 +663,6 @@ int nsvCtrl::setReadoutMode()
    m_currentROI.bin_y = 1;
 
   // m_readoutSpeedName = m_readoutSpeedNameSet;
-
    //m_reconfig = true;
 
    return 0;
@@ -730,9 +673,6 @@ int nsvCtrl::getTemp()
 {
    float temp = -999;
 
-   // get temperature parameter from nsv
-   // in this dir? /sys/devices/virtual/thermal/thermal_zone?
-
    m_ccdTemp = temp;
 
    return 0;
@@ -741,7 +681,7 @@ int nsvCtrl::getTemp()
 inline
 int nsvCtrl::getEMGain()
 {
-   const std::string command = "v4l2-ctl --get-ctrl gain -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl gain -d " + m_camPath;
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
    {
@@ -771,7 +711,7 @@ int nsvCtrl::setEMGain()
       log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
   
    if( result != 0)
@@ -802,7 +742,7 @@ int nsvCtrl::setVCrop(int offset)
       log<text_log>("vCrop limited to 3699", logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl vcropoffset=" + std::to_string(vCrop_to_set) + " -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl vcropoffset=" + std::to_string(vCrop_to_set) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
   
    if( result != 0)
@@ -835,7 +775,7 @@ int nsvCtrl::getVCrop()
 inline
 int nsvCtrl::getBlacklevel()
 {
-   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath;
    std::string result = cmdRes(command.c_str());
    if( result == "error") 
    {
@@ -865,7 +805,7 @@ int nsvCtrl::setBlacklevel()
       log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
   
    if( result != 0)
@@ -902,21 +842,21 @@ int nsvCtrl::writeConfig()
       return -1;
    }
 
-   int w = m_default_w;
-   int h = m_default_h;
-
-   //int w = m_nextROI.w / m_nextROI.bin_x;
-   //int h = m_nextROI.h / m_nextROI.bin_y;
+   int w = m_currentROI.w;
+   int h = m_currentROI.h;
    
    fout << "camera_class:                  \"nsvCam\"\n";
-   //fout << "camera_model:                  \"iXon Ultra 897\"\n";
-   //fout << "camera_info:                   \"512x512 (1-tap, freerun)\"\n";
    fout << "width:                         " << w << "\n";
    fout << "height:                        " << h << "\n";
    fout << "depth:                         16\n";
-   fout << "extdepth:                      16\n";
-   fout << "CL_DATA_PATH_NORM:             0f       # single tap\n";
-   fout << "CL_CFG_NORM:                   02\n";
+   fout << "mode:                          " << m_modeName << "\n";
+   fout << "blacklevel:                    " << m_blacklevel << "\n";
+   fout << "gain:                          " << m_emGain << "\n";
+   fout << "v crop:                        " << m_vCrop << "\n";
+   fout << "ROI.w:                         " << m_currentROI.w << "\n";
+   fout << "ROI.h:                         " << m_currentROI.h << "\n";
+   fout << "ROI.x:                         " << m_currentROI.x << "\n";
+   fout << "ROI.y:                         " << m_currentROI.y  << "\n";
    
    fout.close();
    
@@ -930,12 +870,10 @@ int nsvCtrl::writeConfig()
 inline
 int nsvCtrl::powerOnDefaults()
 {
-   //Camera boots up with this true in most cases.
    m_tempControlStatus = false;
    m_tempControlStatusSet = false;
    m_tempControlStatusStr =  "OFF"; 
    m_tempControlOnTarget = false;
-      
    
    m_currentROI.x = m_default_x;
    m_currentROI.y = m_default_y;
@@ -951,8 +889,7 @@ int nsvCtrl::powerOnDefaults()
    m_nextROI.bin_x = m_default_bin_x;
    m_nextROI.bin_y = m_default_bin_y;
    
-
-  // since 'power off' nukes the camera buffers & stream, restart here?
+  // since 'power off' nukes the camera buffers & stream, set reconfig here?
 
    return 0;
 }
@@ -960,41 +897,13 @@ int nsvCtrl::powerOnDefaults()
 inline
 int nsvCtrl::setTempControl()
 {
-   return 0;   // these cameras don't implement this
+   return 0;   // todo
 }
-
-std::string nsvCtrl::cmdRes(const char* cmd) {
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) throw std::runtime_error("popen() failed!");
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-
-    // Check for errors messages such as:
-      //    Cannot open device /dev/video5, exiting.
-      //    unknown control 'some_invalid_param_name'
-    std::string str(cmd);
-    if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
-        log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + str + ": " + result});
-        return "error"; 
-    }
-
-    // Return substring after the space, ex: "frame_rate: 1000" becomes "1000"
-    size_t space_pos = result.find(' ');
-    if (space_pos != std::string::npos) {
-        return result.substr(space_pos + 1); 
-    }
-
-    return "error"; 
-}
-
 
 inline
 int nsvCtrl::getFPS()
 {
-   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --forget-ctrl frame_rate -d " + m_camPath; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -1025,11 +934,10 @@ int nsvCtrl::setFPS()
       log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
   
-   // really should do a v4l2-ctl --get-ctrl=frame_rate (getFPS call) to confirm camera took the new fr
-   //getFPS();
+   //getFPS(); pull framerate to see what it set
 
    if( result != 0)
    {
@@ -1046,7 +954,7 @@ int nsvCtrl::setFPS()
 inline 
 int nsvCtrl::getExpTime()
 {
-   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + m_camPath; 
    std::string result = cmdRes(command.c_str());
 
    if( result == "error") 
@@ -1055,7 +963,7 @@ int nsvCtrl::getExpTime()
       return -1;
    }
 
-   m_expTime = std::stoi(result) / 1000000.0;  // convert microseconds to seconds
+   m_expTime = std::stoi(result) / 1000000.0;  // convert us to s
 
    return 0;
 }
@@ -1064,7 +972,7 @@ inline
 int nsvCtrl::setExpTime()
 {
    
-   int exp_to_set = m_expTimeSet * 1000000;  //instead of passing in a parameter, we're going off of a member variable that gets set somewhere else
+   int exp_to_set = m_expTimeSet * 1000000;  // convert s to us, use indi var
 
    if(exp_to_set < m_minExpTime)
    {
@@ -1078,7 +986,7 @@ int nsvCtrl::setExpTime()
       log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
    }
    
-   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + m_camPath; //camera_string; 
+   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
 
    if( result != 0)
@@ -1101,7 +1009,7 @@ int nsvCtrl::checkNextROI()
 inline 
 int nsvCtrl::setNextROI()
 { 
-   m_reconfig = true; // need this just for configureAcquisition? 
+   m_reconfig = true; 
 
    updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
 
@@ -1118,36 +1026,8 @@ int nsvCtrl::configureAcquisition()
    //lock mutex
    std::unique_lock<std::mutex> lock(m_indiMutex);
 
-   //unsigned int error;
-
    int x0 = (m_nextROI.x - 0.5*(m_nextROI.w - 1)) + 1;
    int y0 = (m_nextROI.y - 0.5*(m_nextROI.h - 1)) + 1;
-
-   m_cropMode = m_cropModeSet;
-
-   if(m_cropModeSet)
-   { 
-      //error = SetIsolatedCropModeEx(1, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
-      // set some ROI or binning parameters
-
-   }
-   else
-   {          
-      //Setup Image dimensions
-      /* SetImage(int hbin, int vbin, int hstart, int hend, int vstart, int vend)
-       * hbin: number of pixels to bin horizontally
-       * vbin: number of pixels to bin vertically
-       * hstart: Starting Column (inclusive)
-       * hend: End column (inclusive)
-       * vstart: Start row (inclusive)
-       * vend: End row (inclusive)
-       */
-      //error = SetImage(m_nextROI.bin_x, m_nextROI.bin_y, x0, x0 + m_nextROI.w - 1, y0, y0 + m_nextROI.h - 1);
-
-      // SetImageROI(int xbin, int ybin, int xstart, int xend, int ystart, int yend)
-      
-      
-   }
 
    m_currentROI.bin_x = m_nextROI.bin_x;
    m_currentROI.bin_y = m_nextROI.bin_y;
@@ -1178,10 +1058,9 @@ int nsvCtrl::configureAcquisition()
    updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);
 
 
-   ///\todo This should check whether we have a match between EDT and the camera right?
    m_width = m_currentROI.w/m_currentROI.bin_x; //m_default_w
    m_height = m_currentROI.h/m_currentROI.bin_y; //m_default_h
-   m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output?
+   m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output. assume 16-bit 
 
    recordCamera(true);
 
@@ -1217,11 +1096,14 @@ int nsvCtrl::acquireAndCheckValid()
    {
       uint dmaTimeStamp[2];
 
-      m_current_frame = dequeueBuffer(m_oldest_frame);  // camera forces you to read the oldest frame in the buffer first
-      queueBuffer(m_current_frame); // queuing a frame goes into buffers[m_current_frame]
+      m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
+      if(m_current_frame == -1){
+         state(stateCodes::ERROR);
+         return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"});
+      }
+      queueBuffer(m_current_frame); // queue into index just read from
 
-      // call nsv to write small frame roi from full frame buffers[m_current_frame]
-      writeROISubframe();
+      writeROISubframe(); 
 
       m_oldest_frame++;
       if(m_oldest_frame > bufferCount - 1){
@@ -1231,7 +1113,7 @@ int nsvCtrl::acquireAndCheckValid()
       time_t seconds = time(0); 
       auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
 
-      dmaTimeStamp[0] = seconds;  // TODO timing info for cam
+      dmaTimeStamp[0] = seconds;  // timing info for cam
       dmaTimeStamp[1] = nanoseconds.count();
 
       m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
@@ -1257,7 +1139,7 @@ int nsvCtrl::writeROISubframe()
    uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
    uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
 
-   // shouldn't have to threshold these here. Should have some indi blocker for invalid x and y...
+   // shouldn't have to threshold these here. Should have some indi blocker for invalid x and y...?
    if(m_currentROI.x - (m_currentROI.w / 2) < 0){
       m_currentROI.x = (m_currentROI.w / 2);
    } else if (m_currentROI.x + (m_currentROI.w / 2) > m_full_w - 1){
@@ -1307,11 +1189,6 @@ int nsvCtrl::resizeROIbufs()
       ROIbuffers[i] = buffer;
    }
 
-   uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[0]);
-   for (int j = 0; j < (int)bufferSize; j++) {
-        roiPtr[j] = static_cast<uint16_t>(0); // is this really necessary
-   }
-
    return 0;
 }
 
@@ -1320,7 +1197,7 @@ int nsvCtrl::reconfig()
 {
 
    //lock mutex
-   //std::unique_lock<std::mutex> lock(m_indiMutex);
+   std::unique_lock<std::mutex> lock(m_indiMutex);
    recordCamera(true);
    state(stateCodes::CONFIGURING);
    printf("Reconfiguring camera . . .\n");
@@ -1335,8 +1212,8 @@ int nsvCtrl::reconfig()
 
       stopStreaming();
       requestBuffers(0);
-      m_modeName = m_nextMode;  // need to set mode before camera reinit
-      cameraSelect();   // handles all the camera initialization & stream init
+      m_modeName = m_nextMode;  // set mode before camera reinit
+      cameraSelect();   // camera initialization & stream init
       m_init = true;
    }
 
@@ -1389,7 +1266,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
       return -1;
    }
 
-   // check that we got the expected vCrop
    getVCrop();
 
    updateIfChanged(m_indiP_vCrop, "target", vc);
@@ -1398,6 +1274,33 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
    return 0;
 }
 
+// piping through shell commands. Todo convert to ioctl v4l2 calls per parameter
+std::string nsvCtrl::cmdRes(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+
+    // Check for errors, for example:
+      //    Cannot open device /dev/video5, exiting.
+      //    unknown control 'some_invalid_param_name'
+    std::string str(cmd);
+    if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
+        log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + str + ": " + result});
+        return "error"; 
+    }
+
+    // Return substring after the space, ex: "frame_rate: 1000" becomes "1000"
+    size_t space_pos = result.find(' ');
+    if (space_pos != std::string::npos) {
+        return result.substr(space_pos + 1); 
+    }
+
+    return "error"; 
+}
 
 }//namespace app
 } //namespace MagAOX

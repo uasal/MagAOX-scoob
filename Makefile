@@ -43,6 +43,7 @@ apps_rtc = \
 	alpaoCtrl \
 	ocam2KCtrl \
 	andorCtrl \
+	nsvCtrl \
 	siglentSDG \
 	ttmModulator \
 	pi335Ctrl \
