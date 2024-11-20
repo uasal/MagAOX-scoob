@@ -26,7 +26,7 @@ struct CameraParams {
     unsigned int height;
     float exposure;
     float frameRate;
-    std::string pixelFormat;    // bit depth?
+    std::string pixelFormat;    // bit depth
 };
 
 CameraParams getCameraParams();
@@ -40,7 +40,9 @@ int queryBuffers();
 int queryBuffer(int buf_index);
 int queueBuffers();
 int queueBuffer(int buf_index);
-int dequeueBuffer();    //returns the index of the buffer dequeued or -1 for failure
+
+// returns the index of the buffer dequeued or -1 for failure
+int dequeueBuffer();   
 int startStreaming(); 
 int stopStreaming();
 void waitForFrame();
@@ -62,35 +64,6 @@ int bufferCount; // length of queue
 int bufferSize;  // how many bytes per buffer index
 int camIndex;
 
-
-
-    // settable params
-    /*
-    int setGain(float gain);
-    int setBlacklevel(float blacklevel);
-    int setFrameRate(int framerate);
-    int setExposure(float exposure);
-    int setROI(int xbin, int ybin, int xstart, int xend, int ystart, int yend);
-    int setMode(int modeNum); //0,1,2?
-    
-    int restartCamStream(); // have to restart cam stream during any change of parameters. 
-                            // will be different buffer size when ROI changes, so have to re-create bufs & update bufferSize
-
-    int getLatestFrame();  
-
-    */
-/*
-Camera::Camera(int cam) {
-    camIndex = cam;
-}
-
-Camera::~Camera() {
-    for (void* buffer : buffers) {
-        munmap(buffer, bufferSize);
-    }
-    close(fd);
-}
-*/
 
 int openCamera(const char* device) {
     fd = open(device, O_RDWR);
@@ -228,9 +201,6 @@ int dequeueBuffer(int buf_index){
     return currentBufIndex;
 }
 
-// TODO: track queueing and dequeueing images & their indicies, implement internal buffering 
-// Return the pointer to the image that was dequeued most recently
-
 int startStreaming() {
     
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -275,71 +245,6 @@ void getBufferDetails() {
     printf("Number of buffers: %d\n", bufferCount);
     printf("Size of buffer: %d\n", bufferSize);
 }
-/*
-int main() {
-    try {
-        Camera camera(0);
-        camera.openCamera("dev/video0"); 
-
-        camera.initCamera(6144, 4210);
-
-        CameraParams params = camera.getCameraParams();
-        std::cout << "Camera params - Width: " << params.width
-                  << ", Height: " << params.height
-                  << ", Pixel Format: " << params.pixelFormat << std::endl;
-
-
-        camera.requestBuffers(2);
-        camera.queryBuffers();
-        camera.getBufferDetails();
-        camera.startStreaming();
-
-        //camera.queueBuffers(); // do this before streaming?
-        camera.queueBuffer(0); //start at 0 index. all other buffers are empty
-
-        auto start = std::chrono::steady_clock::now();
-        auto end = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-        for(int j=0; j<3; j++)
-        {
-            for(int i=0; i<2; i++)
-            {
-                int bufIndex;
-                camera.waitForFrame();
-                start = std::chrono::steady_clock::now();
-                bufIndex = camera.dequeueBuffer();
-
-                end = std::chrono::steady_clock::now();
-                elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-                std::cout << "  Dequeueing: " << elapsed.count() << " microseconds." << std::endl;
-                //camera.writeFile(bufIndex);
-
-                if(bufIndex == 1){
-                    camera.queueBuffer(0); //wrap around
-                }
-                else{
-                    camera.queueBuffer(bufIndex + 1); // queue next frame 
-                }
-            }
-
-            //start = std::chrono::steady_clock::now();
-            //camera.queueBuffers();
-            //end = std::chrono::steady_clock::now();
-            //elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-            //std::cout << "  Qequeueing: " << elapsed.count() << " microseconds." << std::endl;
-        }
-
-        camera.stopStreaming();
-        std::cout << "Streaming stopped." << std::endl;
-
-    } catch (const std::runtime_error& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-    }
-
-    return 0;
-}
-*/
 
 #endif
 
