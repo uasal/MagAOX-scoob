@@ -181,7 +181,8 @@ scripts_to_install = \
 	mount_cgroups1_cpuset \
 	killIndiZombies \
 	xlog \
-	hoblockleaks
+	hoblockleaks \
+	inventory_files
 
 all: indi_all libs_all flatlogs apps_all guis_all utils_all
 
