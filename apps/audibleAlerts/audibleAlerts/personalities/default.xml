@@ -13,18 +13,22 @@
     <speak>Veggie nugget</speak>
     <speak>I write sophisticated algorithms, not tragedies</speak>
     <speak>So, by the way, how does a pyramid wavefront sensor actually work?</speak>
-    <speak>Did you remeber to take a dump?</speak>      
     <speak>We, at toilet duck, recommend toilet duck.</speak>
-    <speak><voice name="larynx:karen_savage-glow_tts">Entregue todas sus empanadas al jefe.</voice></speak>
-    <speak>We, at Mag <say-as interpret-as="spell-out">AOX</say-as>, recommend Mag <say-as interpret-as="spell-out">AOX</say-as>.</speak>
+    <speak>
+      <voice name="larynx:karen_savage-glow_tts">Entregue todas sus empanadas al jefe.</voice>
+    </speak>
+    <speak>We, at Mag <say-as interpret-as="spell-out">AOX</say-as>, recommend Mag <say-as
+        interpret-as="spell-out">AOX</say-as>.</speak>
     <file name="not_jared.wav" />
-    <speak><voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice></speak>
+    <speak>
+      <voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice>
+    </speak>
   </random-utterances>
   <soundboard>
     <button name="NotJared">
       <file name="not_jared.wav" />
     </button>
-      <button name="Battles">
+    <button name="Battles">
       <file name="toughest_battles.wav" />
     </button>
     <button name="Standards">
@@ -45,13 +49,15 @@
     <button name="BeepBeep">
       <file name="honkhonk.wav" />
     </button>
-	<button name="Diggy">
+    <button name="Diggy">
       <file name="diggy_short.wav" />
     </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
-      <speak><voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice></speak>
+      <speak>
+        <voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice>
+      </speak>
     </transition>
   </react-to>
   <react-to indi-id="flipacq.presetName.in">
@@ -61,8 +67,8 @@
     <transition value="Off">
       <speak>Hold on to your butts</speak>
     </transition>
- </react-to>
- <react-to indi-id="observers.obs_on.toggle">
+  </react-to>
+  <react-to indi-id="observers.obs_on.toggle">
     <transition value="On">
       <speak>Saving data for {observers.current_observer.pfoa}.</speak>
     </transition>
@@ -101,7 +107,7 @@
       <speak>It is so over.</speak>
       <speak>I do not feel so good.</speak>
       <speak>Nothing is working. Good.</speak>
-      <speak>That is a block too far, I am afraid.</speak>  
+      <speak>That is a block too far, I am afraid.</speak>
       <speak>This is embarrassing</speak>
     </transition>
   </react-to>
@@ -113,7 +119,8 @@
   </react-to>
   <react-to indi-id="tcsi.environment.humidity">
     <transition op="between" low="80" high="100">
-      <speak>Humidity warning: <say-as interpret-as="number">{tcsi.environment.humidity}</say-as> percent</speak>
+      <speak>Humidity warning: <say-as interpret-as="number">{tcsi.environment.humidity}</say-as>
+        percent</speak>
     </transition>
     <transition op="between" low="70" high="80">
       <speak>Humidity at <say-as interpret-as="number">{tcsi.environment.humidity}</say-as> percent</speak>
@@ -142,8 +149,9 @@
   <react-to indi-id="tcsi.seeing.dimm_fwhm">
     <transition op="gt" value="1.25">
       <speak>You know, this is the worst seeing I can remember!</speak>
+      <speak>Engage <say-as interpret-as="spell-out">LBT</say-as> conditions mode</speak>
       <speak>We have standards</speak>
-      <speak>I’m strongly in favor of low expectations.</speak>
+      <speak>I'm strongly in favor of low expectations.</speak>
       <speak>The seeing is never normally this bad. Maybe we should give up.</speak>
       <speak>You guys know this is hopeless, right?</speak>
       <speak>Well, the seeing is shit. Smoke um if you got um</speak>
@@ -157,16 +165,13 @@
       <speak>That might be the lowest number I've seen on the dim</speak>
     </transition>
   </react-to>
-    <react-to indi-id="tcsi.offlF_dump.request">
-      <speak>What a juciy dump!</speak>
-  </react-to>
-    <react-to indi-id="tcsi.labMode.toggle">
-        <transition value="On">
-          <speak>At least on the internal source I can not break anything!</speak>
-        </transition>
-        <transition value="Off">
-          <speak>I do not think we are in Tucson anymore.</speak>
-        </transition>
+  <react-to indi-id="tcsi.labMode.toggle">
+    <transition value="On">
+      <speak>At least on the internal source I can not break anything!</speak>
+    </transition>
+    <transition value="Off">
+      <speak>I do not think we are in Tucson anymore.</speak>
+    </transition>
   </react-to>
   <react-to indi-id="loloop.loop_state.toggle">
     <transition value="On">
@@ -181,10 +186,18 @@
   </react-to>
   <react-to indi-id="camvisx.current_exposure.remaining_pct">
     <transition value="90" op="gt">
-      <speak><voice name="larynx:nathalie-glow_tts">Gaan met die banaan.</voice></speak>
-      <speak><voice name="larynx:nathalie-glow_tts">De dood of de gladiolen.</voice></speak>
-      <speak><voice name="larynx:nathalie-glow_tts">De kogel is door de kerk.</voice></speak>
-      <speak><voice name="larynx:nathalie-glow_tts">Als de kat van huis is, dansen de muizen op tafel.</voice></speak>
+      <speak>
+        <voice name="larynx:nathalie-glow_tts">Gaan met die banaan.</voice>
+      </speak>
+      <speak>
+        <voice name="larynx:nathalie-glow_tts">De dood of de gladiolen.</voice>
+      </speak>
+      <speak>
+        <voice name="larynx:nathalie-glow_tts">De kogel is door de kerk.</voice>
+      </speak>
+      <speak>
+        <voice name="larynx:nathalie-glow_tts">Als de kat van huis is, dansen de muizen op tafel.</voice>
+      </speak>
     </transition>
   </react-to>
   <react-to indi-id="camvisx.current_exposure.remaining_pct">
@@ -197,7 +210,7 @@
   <react-to indi-id="tweeterSpeck.modulating.toggle">
     <transition value="On">
       <speak>sparkles mick yew in to the control room, paging sparkles mick yew in</speak>
-      <speak>twinkle twinkle</speak>      
+      <speak>twinkle twinkle</speak>
       <speak>bling bling</speak>
       <speak>You needed more speckles?</speak>
     </transition>
