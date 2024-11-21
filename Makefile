@@ -182,7 +182,8 @@ scripts_to_install = \
 	killIndiZombies \
 	xlog \
 	hoblockleaks \
-	inventory_files
+	inventory_files \
+	list_xfiles_by_semester
 
 all: indi_all libs_all flatlogs apps_all guis_all utils_all
 
