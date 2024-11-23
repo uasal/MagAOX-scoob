@@ -884,10 +884,10 @@ int sysMonitor::findDiskTemperature( std::vector<std::string>& hdd_names,
                                    )
 {
    std::vector<std::string> commandList{ "hddtemp" };
-   for (size_t n = 0;n < m_diskNameList.size();++n)
-   {
-      commandList.push_back(m_diskNameList[n]);
-   }
+   // for (size_t n = 0;n < m_diskNameList.size();++n)
+   // {
+   //    commandList.push_back(m_diskNameList[n]);
+   // }
 
    std::vector<std::string> commandOutput, commandError;
 
