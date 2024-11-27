@@ -135,6 +135,7 @@ class psfAcq : public MagAOXApp<true>,
     double m_acqPauseTime{2};
 
     int m_current_acq_star {-1};
+    int m_temp_acq_star {-1};
     bool m_updated{ false };
     float m_x{ 0 };
     float m_y{ 0 };
@@ -163,7 +164,6 @@ class psfAcq : public MagAOXApp<true>,
     float m_fps{ 0 };
 
     void resetAcq(); // class member for resetAcq function
-    void reportSeeing(); // class member for reportSeeing function
 
     // Working memory for poke fitting
     mx::math::fit::fitGaussian2Dsym<float> m_gfit;
@@ -222,8 +222,8 @@ class psfAcq : public MagAOXApp<true>,
      * @{
      */
 
-    // Testing for num stars prop
     pcf::IndiProperty m_indiP_num_stars;
+
     pcf::IndiProperty m_indiP_seeing;
 
     pcf::IndiProperty m_indiP_fpsSource;
@@ -237,8 +237,8 @@ class psfAcq : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_restartAcq;
     INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_restartAcq );
 
-    pcf::IndiProperty m_indiP_calcSeeing;
-    INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_calcSeeing );
+    pcf::IndiProperty m_indiP_recordSeeing;
+    INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_recordSeeing );
 
     ///@}
 
@@ -388,9 +388,14 @@ inline int psfAcq::appStartup()
     m_indiP_seeing["current"].setValue( m_seeing ); //m_seeing gets assigned the seeing values of the star that is acquired
     registerIndiPropertyReadOnly( m_indiP_seeing );
 
-    // create toggling for calculating seeing
-    createStandardIndiRequestSw( m_indiP_calcSeeing, "calc_seeing", "Calculate Seeing", "psfAcq");
-    registerIndiPropertyNew( m_indiP_calcSeeing, INDI_NEWCALLBACK(m_indiP_calcSeeing) );  
+    // create toggling for recording seeing
+    createStandardIndiToggleSw( m_indiP_recordSeeing, "record_seeing", "Record Seeing");
+    m_indiP_recordSeeing["toggle"].set(pcf::IndiElement::Off);
+    if( registerIndiPropertyNew( m_indiP_recordSeeing, INDI_NEWCALLBACK(m_indiP_recordSeeing)) < 0)
+    {
+       log<software_error>({__FILE__,__LINE__});
+       return -1;
+    } 
 
     // INDI prop for user to select star
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_acquire_star, "acquire_star", 0, 20, 1, "%d", "", "" );
@@ -741,10 +746,9 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     if( m_acquire_star >= 0 && m_acquire_star < m_detectedStars.size())
     {
         m_acqQuitTime = mx::sys::get_curr_time();
-        m_current_acq_star = m_acquire_star;
+        m_temp_acq_star = m_acquire_star;
         delta_x = m_detectedStars[m_acquire_star].x - m_x_center;
         delta_y = m_detectedStars[m_acquire_star].y - m_y_center;
-        std::cout << "seeing=" << m_detectedStars[m_acquire_star].seeing << std::endl; 
         std::cout << "delta_x = " << delta_x << "    delta_y = " << delta_y << std::endl;
         
         // negative signs because we want to move scope opposite of how far it is from 'center'
@@ -766,6 +770,10 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         sendNewProperty( ip );
         resetAcq();
         m_acquire_star = -1;
+    }
+
+    if ( m_current_acq_star >= 0 && m_current_acq_star <= m_num_stars ){
+        m_seeing = m_detectedStars[m_current_acq_star].seeing;
     }
 
     m_updated = true; 
@@ -844,23 +852,28 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_restartAcq )(const pcf::IndiProperty &ipR
     return -1;
 }
 
-//for toggling Calculating Seeing 
-INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_calcSeeing )(const pcf::IndiProperty &ipRecv)
+//for toggling Recording Seeing 
+INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_recordSeeing )(const pcf::IndiProperty &ipRecv)
 {
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_calcSeeing, ipRecv);
-    if(!ipRecv.find("request")) return 0;
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_recordSeeing, ipRecv);
+    if(!ipRecv.find("toggle")) return 0;
     std::unique_lock<std::mutex> lock(m_indiMutex);
       
-    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
     {
-        m_seeing = m_detectedStars[m_current_acq_star].seeing;
+        m_current_acq_star = m_temp_acq_star;
+        updateSwitchIfChanged(m_indiP_recordSeeing, "toggle", pcf::IndiElement::On, INDI_BUSY);
+        //m_seeing = m_detectedStars[m_current_acq_star].seeing;
         return 0;
     }   
-    else if( ipRecv["request"].getSwitchState() == pcf::IndiElement::Off)
+    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off)
     {
+        m_current_acq_star = -1;
+        updateSwitchIfChanged(m_indiP_recordSeeing, "toggle", pcf::IndiElement::Off, INDI_IDLE);
         return 0;
     }
-      
+
+
     log<software_error>({__FILE__,__LINE__, "switch state fall through."});
     return -1;
 }
