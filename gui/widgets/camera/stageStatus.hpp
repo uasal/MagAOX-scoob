@@ -7,43 +7,43 @@
 
 #include "../xWidgets/statusDisplay.hpp"
 
-namespace xqt 
+namespace xqt
 {
-   
+
 class stageStatus : public statusDisplay
 {
    Q_OBJECT
-   
+
 protected:
-   
+
     std::string m_presetName;
     float m_position;
 
 public:
    stageStatus( std::string & stageName,
-                QWidget * Parent = 0, 
+                QWidget * Parent = 0,
                 Qt::WindowFlags f = Qt::WindowFlags()
               );
-   
+
    ~stageStatus();
-   
+
    virtual QString formatValue();
 
    virtual void subscribe();
-                
+
    void handleSetProperty( const pcf::IndiProperty & ipRecv /**< [in] the property which has changed*/);
-   
+
    //void updateGUI();
 
 };
-   
+
 stageStatus::stageStatus( std::string & stageName,
-                      QWidget * Parent, 
+                      QWidget * Parent,
                       Qt::WindowFlags f) : statusDisplay(stageName, "", "", stageName, "", Parent, f)
 {
    m_ctrlWidget = (xWidget *) (new stage(stageName, this, Qt::Dialog));
 }
-   
+
 stageStatus::~stageStatus()
 {
 }
@@ -65,7 +65,7 @@ QString stageStatus::formatValue()
 void stageStatus::subscribe()
 {
     if(!m_parent) return;
-   
+
     m_parent->addSubscriberProperty(this, m_device, "presetName");
     m_parent->addSubscriberProperty(this, m_device, "filterName");
     m_parent->addSubscriberProperty(this, m_device, "position");
@@ -75,9 +75,9 @@ void stageStatus::subscribe()
 
     return;
 }
-  
+
 void stageStatus::handleSetProperty( const pcf::IndiProperty & ipRecv)
-{  
+{
     if(ipRecv.getDevice() != m_device) return;
 
     if(ipRecv.getName() == "presetName" || ipRecv.getName() == "filterName")
@@ -93,7 +93,7 @@ void stageStatus::handleSetProperty( const pcf::IndiProperty & ipRecv)
                     m_presetName = it->first;
                     m_valChanged = true;
                 }
-                
+
                 break;
             }
         }
@@ -115,7 +115,7 @@ void stageStatus::handleSetProperty( const pcf::IndiProperty & ipRecv)
 }
 
 } //namespace xqt
-   
+
 #include "moc_stageStatus.cpp"
 
 #endif
