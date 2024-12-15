@@ -1060,7 +1060,9 @@ int nsvCtrl::configureAcquisition()
 
    m_width = m_currentROI.w/m_currentROI.bin_x; //m_default_w
    m_height = m_currentROI.h/m_currentROI.bin_y; //m_default_h
-   m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output. assume 16-bit 
+   //m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output. assume 16-bit 
+   m_dataType = IMAGESTRUCT_UINT16;
+   m_typeSize = imageStructDataType<IMAGESTRUCT_UINT16>::size;
 
    recordCamera(true);
 

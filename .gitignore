@@ -101,6 +101,9 @@ apps/mzmqServer/mzmqServer
 apps/mzmqClient/mzmqClient
 apps/modalPSDs/modalPSDs
 
+#n
+apps/nsvCtrl/nsvCtrl
+
 #o
 apps/observerCtrl/observerCtrl
 apps/ocam2KCtrl/ocam2KCtrl
