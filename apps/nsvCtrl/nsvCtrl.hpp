@@ -271,6 +271,7 @@ void nsvCtrl::setupConfig()
 {
  
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
+   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -283,6 +284,7 @@ void nsvCtrl::loadConfig()
 {
 
    config(m_camPath, "camera.camPath");
+   config(m_vCrop, "camera.vcropoffset");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
