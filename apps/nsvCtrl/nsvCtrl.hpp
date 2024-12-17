@@ -294,10 +294,10 @@ void nsvCtrl::loadConfig()
    m_modeName = m_startupMode;
    m_nextMode = m_modeName;
 
-   m_default_x = m_cameraModes[m_modeName].m_centerX;
-   m_default_y = m_cameraModes[m_modeName].m_centerY;
-   m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   m_default_h = m_cameraModes[m_modeName].m_sizeY;
+   //m_default_x = m_cameraModes[m_modeName].m_centerX;
+   //m_default_y = m_cameraModes[m_modeName].m_centerY;
+   //m_default_w = m_cameraModes[m_modeName].m_sizeX;
+   //m_default_h = m_cameraModes[m_modeName].m_sizeY;
 
    m_full_x = m_cameraModes[m_modeName].m_centerX;
    m_full_y = m_cameraModes[m_modeName].m_centerY;
@@ -635,11 +635,19 @@ int nsvCtrl::setReadoutMode()
    std::cout << "Set readout mode to " + m_modeName << std::endl;
 
 
-   // new camera mode defaults
-   m_default_x = m_cameraModes[m_modeName].m_centerX;
-   m_default_y = m_cameraModes[m_modeName].m_centerY;
-   m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   m_default_h = m_cameraModes[m_modeName].m_sizeY;
+   // new camera mode defaults. Should e able to specify an x,y and width, height for each mode rather than global to each
+   /*
+   m_default_x = m_cameraModes[m_modeName].m_default_x;
+   m_default_y = m_cameraModes[m_modeName].m_default_y;
+   m_default_w = m_cameraModes[m_modeName].m_default_w;
+   m_default_h = m_cameraModes[m_modeName].m_default_w;
+   */
+   /*
+      m_default_x = m_cameraModes[m_modeName].m_centerX;
+      m_default_y = m_cameraModes[m_modeName].m_centerY;
+      m_default_w = m_cameraModes[m_modeName].m_sizeX;
+      m_default_h = m_cameraModes[m_modeName].m_sizeY;
+  */ 
 
    m_full_x = m_cameraModes[m_modeName].m_centerX;
    m_full_y = m_cameraModes[m_modeName].m_centerY;
