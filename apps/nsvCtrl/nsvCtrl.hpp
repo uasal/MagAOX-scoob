@@ -451,6 +451,19 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
+      if(int ps = getPowerStatus() != 0){
+         
+         // 0x0000001 for power failure
+         if(ps == 1){
+            log<text_log>("Camera in 'No Power' state", logPrio::LOG_ERROR);   
+         } else{
+            log<text_log>("Camera Bad Status", logPrio::LOG_ERROR);   
+         }
+
+         state(stateCodes::NODEVICE);
+         return 0;
+      }
+
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
          log<software_error>({__FILE__, __LINE__});

@@ -41,6 +41,9 @@ int queryBuffer(int buf_index);
 int queueBuffers();
 int queueBuffer(int buf_index);
 
+int getPowerStatus();
+int getCamInput();
+
 // returns the index of the buffer dequeued or -1 for failure
 int dequeueBuffer();   
 int startStreaming(); 
@@ -55,6 +58,8 @@ bool stream_on;
 bool power_on;
 int fps;
 float exposure;
+
+uint cam_input;
 
 int fd;
 std::vector<void*> buffers;
@@ -71,12 +76,54 @@ int openCamera(const char* device) {
         throw std::runtime_error("Unable to open camera device");
         return -1;
     }
+    getCamInput();
     return 0;
 }
 
 int closeCamera() {
     close(fd);
     return 0;
+}
+
+int getCamInput() {
+    struct v4l2_input input;
+    //unsigned int input_count = 0;
+    
+    /*
+    // Enumerate all inputs and print their names and indices
+    while (ioctl(fd, VIDIOC_ENUMINPUT, &input) == 0) {
+        printf("Input %d: %s\n", input.index, input.name);
+        input_count++;
+        input.index++;
+    }
+    */
+
+    // Get the current input index   v4l2-ctl --list-inputs
+    if (ioctl(fd, VIDIOC_G_INPUT, &input) == -1) {
+        close(fd);
+    }
+
+    cam_input = input.index;
+    printf("Current active input: %d\n", input.index);
+    return 0;
+}
+
+int getPowerStatus() {
+    struct v4l2_input input;
+
+    //update struct to current camera
+    input.index = cam_input;
+
+    if (ioctl(fd, VIDIOC_ENUMINPUT, &input) == 0) {
+        printf("Input %d: %s, %d, %d\n", input.index, input.name, input.type, input.status);
+    }
+
+    if(input.index != cam_input)
+    {
+        printf("Wrong camera index\n");
+    }
+
+    return input.status; // status 0 is camera ok, all others are failures
 }
 
 CameraParams getCameraParams() {
