@@ -73,7 +73,7 @@ int camIndex;
 int openCamera(const char* device) {
     fd = open(device, O_RDWR);
     if (fd < 0) {
-        throw std::runtime_error("Unable to open camera device");
+        //throw std::runtime_error("Unable to open camera device");
         return -1;
     }
     getCamInput();
@@ -142,7 +142,7 @@ int initCamera(int width, int height) {
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB16;
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
-        throw std::runtime_error("Failed to set pixel format");
+        //throw std::runtime_error("Failed to set pixel format");
         return -1;
     }
 
@@ -160,7 +160,7 @@ int requestBuffers(int requested_buf_count) {
     req.memory = V4L2_MEMORY_MMAP;
 
     if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
-        throw std::runtime_error("Failed to request buffers");
+        //throw std::runtime_error("Failed to request buffers");
         return -1;
     }
 
@@ -191,13 +191,13 @@ int queryBuffer(int buf_index){
     buf.index = buf_index;
 
     if (ioctl(fd, VIDIOC_QUERYBUF, &buf) < 0) {
-        throw std::runtime_error("Failed to query buffer");
+        //throw std::runtime_error("Failed to query buffer");
         return -1;
     }
 
     void* buffer = mmap(nullptr, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
     if (buffer == MAP_FAILED) {
-        throw std::runtime_error("Failed to map buffer");
+        //throw std::runtime_error("Failed to map buffer");
         return -1;
     }
 
@@ -227,7 +227,7 @@ int queueBuffer(int buf_index){
         buf.index = buf_index;
 
         if (ioctl(fd, VIDIOC_QBUF, &buf) < 0) {
-		    throw std::runtime_error("failed to queue buffer");
+		    //throw std::runtime_error("failed to queue buffer");
             return -1;
 	    }
         return 0;
@@ -241,7 +241,7 @@ int dequeueBuffer(int buf_index){
 	bufdq.index = buf_index; 
 
 	if (ioctl(fd, VIDIOC_DQBUF, &bufdq) < 0) {
-		throw std::runtime_error("Failed to dequeue buffer");
+		//throw std::runtime_error("Failed to dequeue buffer");
         return -1;
 	}
     currentBufIndex = bufdq.index;  //returns index of image dequeued (FIFO)

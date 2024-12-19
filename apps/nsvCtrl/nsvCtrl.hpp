@@ -366,7 +366,7 @@ int nsvCtrl::appStartup()
 
    state(stateCodes::NOTCONNECTED);
 
-   m_powerState = 1;  //figure out power stuff
+   //m_powerState = 1;  
    m_powerTargetState = 1;
 
    return 0;
@@ -398,8 +398,6 @@ int nsvCtrl::appLogic()
       if(m_powerState == 0) return 0;
       
       int ret = cameraSelect();
-      m_powerState = 1;
-      m_poweredOn = true;
 
       if( ret != 0) 
       {
@@ -453,15 +451,18 @@ int nsvCtrl::appLogic()
 
       if(int ps = getPowerStatus() != 0){
          
-         // 0x0000001 for power failure
+         /*
          if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   
+            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   //refer to V4L2_IN_ST_NO_POWER in videodev2.h
+         } else if(ps == 2){
+            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
          } else{
             log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
          }
 
          state(stateCodes::NODEVICE);
          return 0;
+         */
       }
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
@@ -519,6 +520,7 @@ int nsvCtrl::onPowerOff()
    }
    
    m_poweredOn = false;
+   m_powerState = 0;
 
    return 0;
 }
@@ -567,14 +569,24 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-    if(int ps = getPowerStatus() != 0){
+   if(int ps = getPowerStatus() != 0){
+      m_powerState = 0;
+      m_poweredOn = false;
+      /*
          if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   
+            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
+         } else if(ps == 2){
+            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
          } else{
-            log<text_log>("Camera in a failure state", logPrio::LOG_CRITICAL);   
+            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
          }
+
          state(stateCodes::NODEVICE);
-         return -1;
+         return 0;
+         */
+   } else {
+      m_powerState = 1;
+      m_poweredOn = true;
    }
 
    if(setReadoutMode() == -1){
