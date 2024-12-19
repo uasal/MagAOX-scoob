@@ -455,9 +455,9 @@ int nsvCtrl::appLogic()
          
          // 0x0000001 for power failure
          if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_ERROR);   
+            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   
          } else{
-            log<text_log>("Camera Bad Status", logPrio::LOG_ERROR);   
+            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
          }
 
          state(stateCodes::NODEVICE);
@@ -1235,7 +1235,11 @@ int nsvCtrl::reconfig()
          m_init = false;
       }
 
-      stopStreaming();
+      if(stopStreaming() < 0){
+         log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);
+         state(stateCodes::NODEVICE);
+         return -1;
+      }
       requestBuffers(0);
       m_modeName = m_nextMode;  // set mode before camera reinit
       cameraSelect();   // camera initialization & stream init

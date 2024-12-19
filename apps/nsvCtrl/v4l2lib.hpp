@@ -252,7 +252,7 @@ int startStreaming() {
     
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMON, &type) < 0) {
-        throw std::runtime_error("Failed to start streaming");
+        //throw std::runtime_error("Failed to start streaming");
         return -1;
     }
     else {
@@ -265,7 +265,7 @@ int startStreaming() {
 int stopStreaming() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) < 0) {
-        throw std::runtime_error("Failed to stop streaming");
+        //throw std::runtime_error("Failed to stop streaming");
         return -1;
     }
     else { 
