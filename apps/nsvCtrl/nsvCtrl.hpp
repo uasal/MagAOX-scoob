@@ -567,6 +567,16 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+    if(int ps = getPowerStatus() != 0){
+         if(ps == 1){
+            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   
+         } else{
+            log<text_log>("Camera in a failure state", logPrio::LOG_CRITICAL);   
+         }
+         state(stateCodes::NODEVICE);
+         return -1;
+   }
+
    if(setReadoutMode() == -1){
       log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
