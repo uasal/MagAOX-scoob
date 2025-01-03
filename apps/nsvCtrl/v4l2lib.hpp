@@ -24,9 +24,10 @@
 struct CameraParams {
     unsigned int width;
     unsigned int height;
+    unsigned int bitDepth;
     float exposure;
     float frameRate;
-    std::string pixelFormat;    // bit depth
+    std::string pixelFormat;   
 };
 
 CameraParams getCameraParams();
@@ -34,7 +35,7 @@ CameraParams getCameraParams();
 int openCamera(const char* device);
 int closeCamera();
 
-int initCamera(int width, int height);
+int initCamera(int width, int height, int bitDepth);
 int requestBuffers(int requested_buf_count);
 int queryBuffers();
 int queryBuffer(int buf_index);
@@ -130,7 +131,7 @@ CameraParams getCameraParams() {
     return params;
 }
 
-int initCamera(int width, int height) {
+int initCamera(int width, int height, int bitDepth) {
 
     v4l2_format fmt;
     std::memset(&fmt, 0, sizeof(fmt));
@@ -139,7 +140,23 @@ int initCamera(int width, int height) {
     fmt.fmt.pix.width = width;   
     fmt.fmt.pix.height = height;
 
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB16;
+    switch (bitDepth) {
+        case 8:
+            fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB8;  // 8-bit Bayer format
+            std::cout << "Setting pixel format to 8-bit SRGGB." << std::endl;
+            break;
+        case 10:
+            fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB10;  // 10-bit Bayer format
+            std::cout << "Setting pixel format to 10-bit SRGGB." << std::endl;
+            break;
+        case 16:
+            fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB16;  // 16-bit Bayer format
+            std::cout << "Setting pixel format to 16-bit SRGGB." << std::endl;
+            break;
+        default:
+            std::cerr << "Invalid bit depth! Supported bit depths are 8, 10, and 16" << std::endl;
+            return-1;
+    }
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
         //throw std::runtime_error("Failed to set pixel format");
@@ -148,7 +165,8 @@ int initCamera(int width, int height) {
 
     params.width = fmt.fmt.pix.width;
     params.height = fmt.fmt.pix.height;
-    params.pixelFormat = "RG16"; 
+    params.pixelFormat = fmt.fmt.pix.pixelformat; 
+    params.bitDepth = bitDepth;
     return 0;
 }
 

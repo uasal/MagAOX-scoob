@@ -96,6 +96,8 @@ protected:
    int m_current_frame; ///< frame index, from 0 to bufsize for current frame to read out
    int m_oldest_frame; ///< the oldest camera frame in the buffer (must be dequeued first)
 
+   int m_bitDepth; // <camera bit depth>
+
    int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
    std::vector<void*> ROIbuffers;
@@ -143,6 +145,8 @@ public:
 
    int getVCrop();
 
+   int setBitDepth(int bitDepth);
+
    int getBlacklevel();
 
    int setBlacklevel();
@@ -160,8 +164,6 @@ public:
    int resizeROIbufs();
 
    //int getBitDepth(); //12, 14, 16
-   
-   //int setBitDepth(int bitDepth);
 
    int writeConfig();
 
@@ -217,11 +219,13 @@ public:
 protected:
 
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
+   pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
    
 public:
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
-   
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
+
    /** \name Telemeter Interface
      * 
      * @{
@@ -272,6 +276,8 @@ void nsvCtrl::setupConfig()
  
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
+   config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "str", "pixel bit depth");
+
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -285,6 +291,7 @@ void nsvCtrl::loadConfig()
 
    config(m_camPath, "camera.camPath");
    config(m_vCrop, "camera.vcropoffset");
+   config(m_bitDepth, "camera.bitDepth");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -348,6 +355,11 @@ int nsvCtrl::appStartup()
    m_indiP_vCrop["current"] = m_vCrop;
    m_indiP_vCrop["target"] = m_vCrop;
    registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+
+   createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
+   m_indiP_bitDepth["current"] = m_bitDepth;
+   m_indiP_bitDepth["target"] = m_bitDepth;
+   registerIndiPropertyNew(m_indiP_bitDepth, INDI_NEWCALLBACK(m_indiP_bitDepth));
 
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
@@ -595,7 +607,7 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
    
-   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY) == -1){
+   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
       log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
@@ -816,6 +828,29 @@ int nsvCtrl::getVCrop()
    return 0;
 }
 
+inline
+int nsvCtrl::setBitDepth(int bitDepth)
+{
+   if(bitDepth != 8 || bitDepth != 10 || bitDepth != 16)
+   {
+      log<text_log>("invalid input bitDepth. Resettting...", logPrio::LOG_WARNING);
+      return -1;
+   }
+   
+   const std::string command = "v4l2-ctl --set-fmt-video=pixelformat=RG" + std::to_string(bitDepth) + " -d " + m_camPath; 
+   int result = std::system(command.c_str());
+  
+   if( result != 0)
+   {
+      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBitDepth:"});
+      return -1;
+   }
+
+   log<text_log>("Set bitDepth to: " + std::to_string(bitDepth), logPrio::LOG_WARNING);
+   m_bitDepth = bitDepth;
+   
+   return 0;
+}
 
 inline
 int nsvCtrl::getBlacklevel()
@@ -893,7 +928,7 @@ int nsvCtrl::writeConfig()
    fout << "camera_class:                  \"nsvCam\"\n";
    fout << "width:                         " << w << "\n";
    fout << "height:                        " << h << "\n";
-   fout << "depth:                         16\n";
+   fout << "depth:                         " << m_bitDepth << "\n";
    fout << "mode:                          " << m_modeName << "\n";
    fout << "blacklevel:                    " << m_blacklevel << "\n";
    fout << "gain:                          " << m_emGain << "\n";
@@ -1321,6 +1356,42 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
 
    updateIfChanged(m_indiP_vCrop, "target", vc);
    updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_bitDepth)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_bitDepth.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+   {
+      vc = ipRecv["current"].get<int>();
+   }
+
+   if (ipRecv.find("target"))
+   {
+      vc = ipRecv["target"].get<int>();
+   }
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_bitDepth = vc;
+   int rv = setBitDepth(vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting bitDepth!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_bitDepth, "target", vc);
+   updateIfChanged(m_indiP_bitDepth, "current", m_bitDepth);
 
    return 0;
 }
