@@ -135,7 +135,8 @@ public:
             /// Append next (or first) sub-directory token
             fullpath += (fullpath.empty() ? "" : "/") + *it;
 
-            struct stat stbuf{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,{0,0},0};
+            struct stat stbuf;
+	    memset(&stbuf, 0, sizeof(stbuf));
 
             /// Get directory status; true if stat(...) fails
             if (stat(fullpath.c_str(),&stbuf))
