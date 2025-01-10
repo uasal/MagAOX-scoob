@@ -347,7 +347,7 @@ void nsvCtrl::loadConfig()
 }
 
 inline
-int nsvCtrl::appStartup()
+int nsvCtrl::appStartup() // if camera is off, can't get values yet...
 {
    // register new indi properties
    getVCrop();
@@ -376,10 +376,12 @@ int nsvCtrl::appStartup()
       return log<software_error,-1>({__FILE__,__LINE__});
    }
 
-   state(stateCodes::NOTCONNECTED);
+   //state(stateCodes::NOTCONNECTED);
 
-   //m_powerState = 1;  
-   m_powerTargetState = 1;
+   state(stateCodes::POWEROFF); //haven't powered on yet
+
+   m_powerState = 0;  
+   //m_powerTargetState = 1;
 
    return 0;
 
@@ -526,6 +528,7 @@ int nsvCtrl::onPowerOff()
 
    std::lock_guard<std::mutex> lock(m_indiMutex);
 
+   state(stateCodes::POWEROFF);
    m_shutterStatus = "POWEROFF";
    m_shutterState = 0;
 
@@ -541,8 +544,8 @@ int nsvCtrl::onPowerOff()
       log<software_error>({__FILE__, __LINE__});
    }
    
-   m_poweredOn = true;
-   //m_powerState = 0;
+   m_poweredOn = false;
+   m_powerState = 0;
 
    return 0;
 }
@@ -567,7 +570,8 @@ int nsvCtrl::appShutdown()
    stopStreaming();
    requestBuffers(0);
    closeCamera();
-   
+   turn_off_power();
+
    if(m_init)
    {
       m_init = false;
