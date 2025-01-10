@@ -243,7 +243,7 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_current_frame = 0;
    m_oldest_frame = 0;
 
-   m_powerMgtEnabled = false;
+   m_powerMgtEnabled = true;
    m_powerOnWait = 1;
    std::string m_powerDevice;             ///< The INDI device name of the power controller
    std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
@@ -399,9 +399,14 @@ int nsvCtrl::appLogic()
       return log<software_error, -1>({__FILE__, __LINE__});
    }
 
+   if( state() == stateCodes::POWEROFF) return 0;
+
    if( state() == stateCodes::POWERON) 
    {
-      return 0;
+      turn_on_power();
+      sleep(1);
+      log<text_log>("Powering on camera", logPrio::LOG_NOTICE);
+      state(stateCodes::NOTCONNECTED);
    }
 
    if( state() == stateCodes::NOTCONNECTED || state() == stateCodes::NODEVICE || state() == stateCodes::ERROR)
@@ -457,6 +462,8 @@ int nsvCtrl::appLogic()
         getExpTime() < 0 ||
         getVCrop() < 0)
       {   
+         if(m_powerState == 0) return 0;
+
          state(stateCodes::ERROR);
          return 0;
       }
@@ -508,6 +515,7 @@ int nsvCtrl::onPowerOff()
    stopStreaming();
    requestBuffers(0);
    closeCamera();
+   turn_off_power();
    
    if(m_init)
    {
@@ -520,6 +528,8 @@ int nsvCtrl::onPowerOff()
 
    m_shutterStatus = "POWEROFF";
    m_shutterState = 0;
+
+   //state(stateCodes::POWEROFF);
    
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
    {
@@ -531,8 +541,8 @@ int nsvCtrl::onPowerOff()
       log<software_error>({__FILE__, __LINE__});
    }
    
-   m_poweredOn = false;
-   m_powerState = 0;
+   m_poweredOn = true;
+   //m_powerState = 0;
 
    return 0;
 }

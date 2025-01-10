@@ -19,6 +19,7 @@
 #include <fstream>
 #include <ctime>
 #include <chrono>
+#include <cstdlib> 
 
 
 struct CameraParams {
@@ -309,6 +310,41 @@ void waitForFrame() {
 void getBufferDetails() {
     printf("Number of buffers: %d\n", bufferCount);
     printf("Size of buffer: %d\n", bufferSize);
+}
+
+/* power mappings from Neutralino's documentation */
+const uint8_t cmd_on = 0x90;
+const uint8_t cmd_off = 0x80;
+const uint8_t bus[6] = {0x08, 0x08, 0x02, 0x02, 0x01, 0x01};
+const uint16_t addr[6] = {0x02bf, 0x02b0, 0x02bf, 0x02b0, 0x02bf, 0x02b0};
+
+void send_i2c_cmd(int channel, uint8_t action) {
+    uint8_t addr1 = addr[channel] >> 8;  // Higher byte of address
+    uint8_t addr2 = addr[channel] & 0xff;  // Lower byte of address
+    uint8_t cmd = (action == 1) ? cmd_on : cmd_off;
+
+    std::string command = "i2ctransfer -f -y " + std::to_string(bus[channel]) +
+                          " w3@0x48 " + std::to_string(addr1) + " " + std::to_string(addr2) + " " + std::to_string(cmd);
+    int ret = system(command.c_str());
+    if (ret != 0) {
+        printf("Error: Failed to send I2C command.\n");
+    }
+}
+
+void turn_on_power() {
+    //send_i2c_cmd(cam_input, 1); 
+    send_i2c_cmd(0, 1); 
+    send_i2c_cmd(1, 1); 
+    send_i2c_cmd(2, 1); 
+    std::cout << "Power turned on for channel " << 0 << std::endl;
+}
+
+void turn_off_power() {
+    //send_i2c_cmd(cam_input, 0); 
+    send_i2c_cmd(0, 0); 
+    send_i2c_cmd(1, 0); 
+    send_i2c_cmd(2, 0); 
+    std::cout << "Power turned off for channel " << 0 << std::endl;
 }
 
 #endif
