@@ -705,6 +705,11 @@ int nsvCtrl::setReadoutMode()
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
    // after setting ReadoutMode reset ROI parameters
+   
+   /* TODO these defaults will segfault the program if they're out of bounds for one of the modes. 
+      Want to preserve ROI across modes, however still need to check valid x,y w,h when changing modes.
+      What would be preferable is 'global' defaults in addition to mode-based defaults. 
+      To truly preserve ROI, need to account for vcropoffset parameter as well for y... */
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
@@ -718,6 +723,27 @@ int nsvCtrl::setReadoutMode()
    m_currentROI.h = m_default_h;
    m_currentROI.bin_x = 1;
    m_currentROI.bin_y = 1;
+
+   if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
+   {
+      m_currentROI.x = m_nextROI.x = m_full_x;
+      log<text_log>("Invalid default x with current width and height in mode. Setting to center x", logPrio::LOG_WARNING);
+   }
+   if(m_default_y + (m_default_h / 2) > m_full_h || m_default_y - (m_default_y / 2) < 0)
+   {
+      m_currentROI.y = m_nextROI.y = m_full_y;
+      log<text_log>("Invalid default y with current width and height in mode. Setting to center y", logPrio::LOG_WARNING);
+   }
+   if(m_default_w > m_full_w)
+   {
+      m_currentROI.w = m_nextROI.w = m_full_w;
+      log<text_log>("Invalid default w with current mode. Setting to max width", logPrio::LOG_WARNING);
+   }
+   if(m_default_h > m_full_h)
+   {
+      m_currentROI.h = m_nextROI.h = m_full_h;
+      log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
+   }
 
   // m_readoutSpeedName = m_readoutSpeedNameSet;
    //m_reconfig = true;
@@ -1264,8 +1290,8 @@ int nsvCtrl::resizeROIbufs()
 
       void* buffer = malloc(bufSize * sizeof(uint16_t));  // assuming 16-bit. verify w/ bufferSize in queryBuffer
       if (buffer == nullptr) {
-         std::cerr << "Memory allocation failed!" << std::endl;
-        return -1;
+         state(stateCodes::ERROR);
+         return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memroy allocation failed"});
       }
 
       ROIbuffers[i] = buffer;
