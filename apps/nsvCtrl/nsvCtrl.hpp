@@ -98,6 +98,8 @@ protected:
 
    int m_bitDepth; // <camera bit depth>
 
+   bool m_power {false}; 
+
    int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
    std::vector<void*> ROIbuffers;
@@ -220,11 +222,13 @@ protected:
 
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
-   
+   pcf::IndiProperty m_indiP_power;
+
 public:
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power);
 
    /** \name Telemeter Interface
      * 
@@ -277,6 +281,7 @@ void nsvCtrl::setupConfig()
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "str", "pixel bit depth");
+   config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "str", "camera power"); // TODO make toggle
 
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
@@ -292,6 +297,7 @@ void nsvCtrl::loadConfig()
    config(m_camPath, "camera.camPath");
    config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
+   config(m_power, "camera.power");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -360,6 +366,9 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
    m_indiP_bitDepth["current"] = m_bitDepth;
    m_indiP_bitDepth["target"] = m_bitDepth;
    registerIndiPropertyNew(m_indiP_bitDepth, INDI_NEWCALLBACK(m_indiP_bitDepth));
+
+   createStandardIndiToggleSw( m_indiP_power, "power");
+   registerIndiPropertyNew( m_indiP_power, INDI_NEWCALLBACK(m_indiP_power));
 
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
@@ -1433,6 +1442,36 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_bitDepth)(const pcf::IndiProperty &ipRecv
    updateIfChanged(m_indiP_bitDepth, "target", vc);
    updateIfChanged(m_indiP_bitDepth, "current", m_bitDepth);
 
+   return 0;
+}
+
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
+{
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_power, ipRecv);
+   
+   if(!ipRecv.find("toggle")) return 0;
+   
+   if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+   {
+      updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::On, INDI_IDLE);
+      
+      m_power = true;
+      state(stateCodes::POWERON);
+      
+      log<text_log>("powered on from INDI");
+   }
+   else
+   {
+      updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+      
+      m_power = false;
+      state(stateCodes::POWEROFF);
+      onPowerOff();
+      
+      log<text_log>("powered off from INDI");
+   }
+   
    return 0;
 }
 
