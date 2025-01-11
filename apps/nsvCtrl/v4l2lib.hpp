@@ -347,9 +347,9 @@ void turn_off_power() {
     send_i2c_cmd(0, 0); 
     send_i2c_cmd(1, 0); 
     send_i2c_cmd(2, 0); 
+    send_i2c_cmd(3, 0); 
     send_i2c_cmd(4, 0); 
     send_i2c_cmd(5, 0); 
-    send_i2c_cmd(6, 0); 
     std::cout << "Power turned off for channel " << 0 << std::endl;
 }
 
