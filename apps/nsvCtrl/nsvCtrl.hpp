@@ -1223,7 +1223,7 @@ int nsvCtrl::startAcquisition()
 inline
 int nsvCtrl::acquireAndCheckValid()
 {
-   if(m_init && m_poweredOn)
+   if(m_init)
    {
       uint dmaTimeStamp[2];
 
