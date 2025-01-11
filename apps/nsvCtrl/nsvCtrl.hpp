@@ -1457,6 +1457,8 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::On, INDI_IDLE);
       
       m_power = true;
+      m_poweredOn = true;
+      m_powerState = 1;
       state(stateCodes::POWERON);
       
       log<text_log>("powered on from INDI");
@@ -1466,6 +1468,8 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::Off, INDI_IDLE);
       
       m_power = false;
+      m_poweredOn = false;
+      m_powerState = 0;
       state(stateCodes::POWEROFF);
       onPowerOff();
       
