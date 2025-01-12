@@ -285,6 +285,7 @@ int stopStreaming() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) < 0) {
         //throw std::runtime_error("Failed to stop streaming");
+        printf("Error while stopping camera stream\n");
         return -1;
     }
     else { 
@@ -333,23 +334,27 @@ void send_i2c_cmd(int channel, uint8_t action) {
 
 void turn_on_power() {
     //send_i2c_cmd(cam_input, 1); 
+    /*
     send_i2c_cmd(0, 1); 
     send_i2c_cmd(1, 1); 
     send_i2c_cmd(2, 1); 
     send_i2c_cmd(3, 1); 
     send_i2c_cmd(4, 1); 
     send_i2c_cmd(5, 1); 
+    */
     std::cout << "Power turned on for channel " << 0 << std::endl;
 }
 
 void turn_off_power() {
     //send_i2c_cmd(cam_input, 0); 
+    /*
     send_i2c_cmd(0, 0); 
     send_i2c_cmd(1, 0); 
     send_i2c_cmd(2, 0); 
     send_i2c_cmd(3, 0); 
     send_i2c_cmd(4, 0); 
     send_i2c_cmd(5, 0); 
+    */
     std::cout << "Power turned off for channel " << 0 << std::endl;
 }
 

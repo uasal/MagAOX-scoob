@@ -247,13 +247,13 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_current_frame = 0;
    m_oldest_frame = 0;
 
-   m_powerMgtEnabled = true;
-   m_powerOnWait = 1;
+   m_powerMgtEnabled = false;
+   m_powerOnWait = 0;
    std::string m_powerDevice;             ///< The INDI device name of the power controller
    std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
 
-   int m_powerState;       ///< Current power state, 1=On, 0=Off, -1=Unk.
-   int m_powerTargetState; ///< Current target power state, 1=On, 0=Off, -1=Unk.
+   //int m_powerState = -1;       ///< Current power state, 1=On, 0=Off, -1=Unk.
+   //int m_powerTargetState = -1; ///< Current target power state, 1=On, 0=Off, -1=Unk.
 
    //m_startupTemp = -45;  
    
@@ -412,10 +412,11 @@ int nsvCtrl::appLogic()
 
    if( state() == stateCodes::POWEROFF) return 0;
 
-   if( state() == stateCodes::POWERON) 
+   if( state() == stateCodes::POWERON)  // nothing is happening in here... why??
    {
       turn_on_power();
-      sleep(1);
+      sleep(10);
+      printf("turning on camera\n");
       log<text_log>("Powering on camera", logPrio::LOG_NOTICE);
       state(stateCodes::NOTCONNECTED);
    }
@@ -441,11 +442,11 @@ int nsvCtrl::appLogic()
       m_shutterStatus = "READY";
 
       state(stateCodes::READY);
-      if(m_poweredOn)
+     /* if(m_poweredOn)
       {
          m_poweredOn = false;
          if(powerState() != 1 || powerStateTarget() != 1) return 0;
-      }
+      } */
    }
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
@@ -464,7 +465,7 @@ int nsvCtrl::appLogic()
       }
       */
    
-      //if(m_powerState == 0) return 0;
+      if(m_powerState == 0) return 0;
 
 
      if(getFPS() < 0 || 
@@ -523,25 +524,27 @@ int nsvCtrl::appLogic()
 inline
 int nsvCtrl::onPowerOff()
 {
-   stopStreaming();
-   requestBuffers(0);
-   closeCamera();
-   turn_off_power();
-   
-   if(m_init)
-   {
-      m_init = false;
-   }
+   printf("onPowerOff called \n");
 
    m_powerOnCounter = 0;
 
-   std::lock_guard<std::mutex> lock(m_indiMutex);
-
-   state(stateCodes::POWEROFF);
+   m_poweredOn = false;
+   m_powerState = 0;
    m_shutterStatus = "POWEROFF";
    m_shutterState = 0;
 
-   //state(stateCodes::POWEROFF);
+   state(stateCodes::POWEROFF);
+
+   std::lock_guard<std::mutex> lock(m_indiMutex);
+
+   if(m_init)
+   {
+      stopStreaming();
+      requestBuffers(0);
+      closeCamera();
+      turn_off_power();
+      m_init = false;
+   }
    
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
    {
@@ -553,8 +556,7 @@ int nsvCtrl::onPowerOff()
       log<software_error>({__FILE__, __LINE__});
    }
    
-   m_poweredOn = false;
-   m_powerState = 0;
+   //m_init = false;
 
    return 0;
 }
@@ -576,13 +578,13 @@ int nsvCtrl::whilePowerOff()
 inline
 int nsvCtrl::appShutdown()
 {
-   stopStreaming();
-   requestBuffers(0);
-   closeCamera();
-   turn_off_power();
-
+   printf("appShutdown\n");
    if(m_init)
    {
+      stopStreaming();
+      requestBuffers(0);
+      closeCamera();
+      turn_off_power();
       m_init = false;
    }
       
@@ -604,9 +606,12 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   if(!m_powerState) return -1;
+
+   /*
    if(int ps = getPowerStatus() != 0){
       m_powerState = 0;
-      m_poweredOn = false;
+      m_poweredOn = false; */
       /*
          if(ps == 1){
             log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
@@ -619,10 +624,11 @@ int nsvCtrl::cameraSelect()
          state(stateCodes::NODEVICE);
          return 0;
          */
-   } else {
+ /*  } else {
       m_powerState = 1;
       m_poweredOn = true;
    }
+   */
 
    if(setReadoutMode() == -1){
       log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
@@ -999,6 +1005,10 @@ int nsvCtrl::writeConfig()
 inline
 int nsvCtrl::powerOnDefaults()
 {
+   printf("powerOnDefaults\n");
+
+   turn_on_power();
+
    m_tempControlStatus = false;
    m_tempControlStatusSet = false;
    m_tempControlStatusStr =  "OFF"; 
@@ -1017,6 +1027,29 @@ int nsvCtrl::powerOnDefaults()
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = m_default_bin_x;
    m_nextROI.bin_y = m_default_bin_y;
+
+   if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
+   {
+      m_currentROI.x = m_nextROI.x = m_full_x;
+      log<text_log>("Invalid default x with current width and height in mode. Setting to center x", logPrio::LOG_WARNING);
+   }
+   if(m_default_y + (m_default_h / 2) > m_full_h || m_default_y - (m_default_y / 2) < 0)
+   {
+      m_currentROI.y = m_nextROI.y = m_full_y;
+      log<text_log>("Invalid default y with current width and height in mode. Setting to center y", logPrio::LOG_WARNING);
+   }
+   if(m_default_w > m_full_w)
+   {
+      m_currentROI.w = m_nextROI.w = m_full_w;
+      log<text_log>("Invalid default w with current mode. Setting to max width", logPrio::LOG_WARNING);
+   }
+   if(m_default_h > m_full_h)
+   {
+      m_currentROI.h = m_nextROI.h = m_full_h;
+      log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
+   }
+   
+   m_reconfig = true; 
    
   // since 'power off' nukes the camera buffers & stream, set reconfig here?
 
@@ -1138,7 +1171,8 @@ int nsvCtrl::checkNextROI()
 inline 
 int nsvCtrl::setNextROI()
 { 
-   m_reconfig = true; 
+   if(m_poweredOn)
+      m_reconfig = true; 
 
    updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
 
@@ -1229,8 +1263,15 @@ int nsvCtrl::acquireAndCheckValid()
 
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
       if(m_current_frame == -1){
+         /*
+         if(!m_poweredOn || m_powerState != 1){ // changed power status of camera after dequeing but not before receiving result
+            return log<text_log>("Tried to dequeue camera frame while off", logPrio::LOG_WARNING);
+         }
+         */
+         // ABOVE CODE WILL SEGFAULT. IN FACT... ANYTHING OTHER THAN THESE NEXT TWO LINES WILL SEGFAULT. 
+         // I suspect this is because of the frameGrabber "derived().powerState()" which I am not setting because I have my own power impelmentation...
          state(stateCodes::ERROR);
-         return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"});
+         return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"}); 
       }
       queueBuffer(m_current_frame); // queue into index just read from
 
@@ -1349,7 +1390,7 @@ int nsvCtrl::reconfig()
       requestBuffers(0);
       m_modeName = m_nextMode;  // set mode before camera reinit
       cameraSelect();   // camera initialization & stream init
-      m_init = true;
+      //m_init = true;
    }
 
    state(stateCodes::CONNECTED);
@@ -1470,8 +1511,9 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       m_power = false;
       m_poweredOn = false;
       m_powerState = 0;
-      state(stateCodes::POWEROFF);
       onPowerOff();
+      state(stateCodes::POWEROFF);
+      printf("powered off, state changed to POWEROFF\n");
       
       log<text_log>("powered off from INDI");
    }
