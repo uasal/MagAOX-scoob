@@ -539,7 +539,7 @@ int nsvCtrl::onPowerOff()
    requestBuffers(0);
    closeCamera();
    turn_off_power();
-   sleep(2);
+   sleep(3);
 
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
    {
@@ -1495,7 +1495,7 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::On, INDI_IDLE);
       
       turn_on_power();
-      sleep(4);
+      sleep(6);
       m_power = true;
       m_poweredOn = true;
       m_powerState = 1;
