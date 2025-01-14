@@ -414,8 +414,8 @@ int nsvCtrl::appLogic()
 
    if( state() == stateCodes::POWERON)  // nothing is happening in here... why??
    {
-      turn_on_power();
-      sleep(10);
+      //turn_on_power();
+      //sleep(10);
       printf("turning on camera\n");
       log<text_log>("Powering on camera", logPrio::LOG_NOTICE);
       state(stateCodes::NOTCONNECTED);
@@ -527,25 +527,20 @@ int nsvCtrl::onPowerOff()
    printf("onPowerOff called \n");
 
    m_powerOnCounter = 0;
-
    m_poweredOn = false;
    m_powerState = 0;
    m_shutterStatus = "POWEROFF";
    m_shutterState = 0;
 
-   state(stateCodes::POWEROFF);
-
    std::lock_guard<std::mutex> lock(m_indiMutex);
 
-   if(m_init)
-   {
-      stopStreaming();
-      requestBuffers(0);
-      closeCamera();
-      turn_off_power();
-      m_init = false;
-   }
-   
+   state(stateCodes::POWEROFF);
+   stopStreaming();
+   requestBuffers(0);
+   closeCamera();
+   turn_off_power();
+   sleep(2);
+
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
    {
       log<software_error>({__FILE__, __LINE__});
@@ -555,8 +550,12 @@ int nsvCtrl::onPowerOff()
    {
       log<software_error>({__FILE__, __LINE__});
    }
-   
+
    //m_init = false;
+   if(m_init)
+   {
+      m_init = false;
+   }
 
    return 0;
 }
@@ -1007,8 +1006,6 @@ int nsvCtrl::powerOnDefaults()
 {
    printf("powerOnDefaults\n");
 
-   turn_on_power();
-
    m_tempControlStatus = false;
    m_tempControlStatusSet = false;
    m_tempControlStatusStr =  "OFF"; 
@@ -1262,7 +1259,7 @@ int nsvCtrl::acquireAndCheckValid()
       uint dmaTimeStamp[2];
 
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
-      if(m_current_frame == -1){
+      if(m_current_frame == -1){ //fd is gone once powered off, so dequeue will fail
          /*
          if(!m_poweredOn || m_powerState != 1){ // changed power status of camera after dequeing but not before receiving result
             return log<text_log>("Tried to dequeue camera frame while off", logPrio::LOG_WARNING);
@@ -1497,6 +1494,8 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
    {
       updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::On, INDI_IDLE);
       
+      turn_on_power();
+      sleep(4);
       m_power = true;
       m_poweredOn = true;
       m_powerState = 1;

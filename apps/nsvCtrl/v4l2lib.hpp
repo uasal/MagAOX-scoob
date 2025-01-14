@@ -326,6 +326,7 @@ void send_i2c_cmd(int channel, uint8_t action) {
 
     std::string command = "i2ctransfer -f -y " + std::to_string(bus[channel]) +
                           " w3@0x48 " + std::to_string(addr1) + " " + std::to_string(addr2) + " " + std::to_string(cmd);
+    std::cout << command << std::endl;
     int ret = system(command.c_str());
     if (ret != 0) {
         printf("Error: Failed to send I2C command.\n");
@@ -334,27 +335,23 @@ void send_i2c_cmd(int channel, uint8_t action) {
 
 void turn_on_power() {
     //send_i2c_cmd(cam_input, 1); 
-    /*
     send_i2c_cmd(0, 1); 
     send_i2c_cmd(1, 1); 
     send_i2c_cmd(2, 1); 
     send_i2c_cmd(3, 1); 
     send_i2c_cmd(4, 1); 
     send_i2c_cmd(5, 1); 
-    */
     std::cout << "Power turned on for channel " << 0 << std::endl;
 }
 
 void turn_off_power() {
     //send_i2c_cmd(cam_input, 0); 
-    /*
     send_i2c_cmd(0, 0); 
     send_i2c_cmd(1, 0); 
     send_i2c_cmd(2, 0); 
     send_i2c_cmd(3, 0); 
     send_i2c_cmd(4, 0); 
     send_i2c_cmd(5, 0); 
-    */
     std::cout << "Power turned off for channel " << 0 << std::endl;
 }
 
