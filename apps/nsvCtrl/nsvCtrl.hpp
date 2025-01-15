@@ -91,6 +91,15 @@ protected:
 
    bool m_poweredOn {false};
 
+   std::chrono::duration<double> m_powerOnDuration;
+   std::chrono::time_point<std::chrono::high_resolution_clock> m_powerOnTime;
+   std::chrono::time_point<std::chrono::high_resolution_clock> m_powerOffTime;
+   int m_powerCycles;
+
+   std::string m_powerOnTS;
+   std::string m_powerOffTS;
+   std::string m_poweredOnDuration;
+
    std::string m_camPath; ///< /dev/video2 or similar, path to l4v2 cam, read from config
 
    int m_current_frame; ///< frame index, from 0 to bufsize for current frame to read out
@@ -223,6 +232,12 @@ protected:
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
    pcf::IndiProperty m_indiP_power;
+   pcf::IndiProperty m_indiP_power_status;
+   //pcf::IndiProperty m_indiP_power_data; //tried to wrap all power data in one structure, couldn't make strings & doubles work
+   //pcf::IndiProperty m_indiP_on_duration;
+   //pcf::IndiProperty m_indiP_last_power_on;
+   //pcf::IndiProperty m_indiP_last_power_off;
+   //pcf::IndiProperty m_indiP_power_cycles;
 
 public:
 
@@ -370,6 +385,42 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
    createStandardIndiToggleSw( m_indiP_power, "power");
    registerIndiPropertyNew( m_indiP_power, INDI_NEWCALLBACK(m_indiP_power));
 
+   //createROIndiNumber( m_indiP_power_data, "power_info");
+   /*
+   createStandardIndiText( m_indiP_last_power_on, "power_on_last", "", ""); 
+   if(registerIndiPropertyNew( m_indiP_last_power_on, INDI_NEWCALLBACK(m_indiP_last_power_on)) < 0)
+   {
+      return log<software_critical>({__FILE__, __LINE__});
+   }   
+
+   createStandardIndiText( m_indiP_last_power_off, "power_off_last", "", ""); 
+   if(registerIndiPropertyNew( m_indiP_last_power_off, INDI_NEWCALLBACK(m_indiP_last_power_off)) < 0)
+   {
+      return log<software_critical>({__FILE__, __LINE__});
+   }  
+   
+   createStandardIndiNumber( m_indiP_on_duration, "power_duration_on", 0, 999999999, 0.001, "%0.3f");
+   if(registerIndiPropertyNew( m_indiP_on_duration, INDI_NEWCALLBACK(m_indiP_last_power_off)) < 0)
+   {
+      return log<software_critical>({__FILE__, __LINE__});
+   }
+   
+   createStandardIndiNumber<int>(m_indiP_power_cycles, "power_cycles", 0, 1, 1, "%d");
+   */
+
+   createROIndiText(m_indiP_power_status, "power_status", "power_status", "power_status", "power_status", "power_status");
+   indi::addTextElement(m_indiP_power_status, "last_power_on", "Power On TS:");
+   indi::addTextElement(m_indiP_power_status, "last_power_off", "Power Off TS:");
+   indi::addTextElement(m_indiP_power_status, "on_duration", "Total Time On");
+   indi::addTextElement(m_indiP_power_status, "power_cycles", "# Power Cycles");
+   m_indiP_power_status["last_power_on"] = m_powerOnTS;
+   m_indiP_power_status["last_power_off"] = m_powerOffTS;
+   m_indiP_power_status["on_duration"] = m_poweredOnDuration;
+   m_indiP_power_status["power_cycles"] = std::to_string(m_powerCycles);
+   registerIndiPropertyReadOnly(m_indiP_power_status);
+
+   m_powerCycles = 0;
+
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
       return log<software_critical,-1>({__FILE__,__LINE__});
@@ -467,8 +518,16 @@ int nsvCtrl::appLogic()
    
       if(m_powerState == 0) return 0;
 
+      /* Update power data */
+      m_powerOnDuration = std::chrono::high_resolution_clock::now() - m_powerOnTime;
+   
+      m_poweredOnDuration = std::to_string(m_powerOnDuration.count());
+      updateIfChanged(m_indiP_power_status, "on_duration", m_poweredOnDuration);
+      
+      //updateIfChanged(m_indiP_power_data, std::vector<std::string>({"last_power_on", "last_power_off", "on_duration", "power_cycles"}), 
+      //                              std::vector<std::string>({m_powerOnTS, m_powerOffTS, m_poweredOnDuration, std::to_string(m_powerCycles)}));
 
-     if(getFPS() < 0 || 
+      if(getFPS() < 0 || 
         getEMGain() < 0 ||
         getBlacklevel() < 0 ||
         getExpTime() < 0 ||
@@ -1496,9 +1555,26 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       
       turn_on_power();
       sleep(6);
+      m_powerCycles += 1;
       m_power = true;
       m_poweredOn = true;
       m_powerState = 1;
+      m_powerOnTime = std::chrono::high_resolution_clock::now(); 
+      //updateIfChanged(m_indiP_power_data, "powered_on", m_powerOnTime);
+      //updateIfChanged(m_indiP_power_data, "power_cycles", m_powerCycles);
+
+      std::time_t timePointOnT = std::chrono::system_clock::to_time_t(m_powerOnTime);
+      char bufferOn[100];
+      std::strftime(bufferOn, sizeof(bufferOn), "%I:%M %p %m/%d/%y", std::localtime(&timePointOnT));
+      std::string m_powerOnTS(bufferOn);
+
+      //m_powerOnTS = std::to_string(m_powerOnTime);
+      //updateIfChanged(m_indiP_power_data, std::vector<std::string>({"last_power_on", "last_power_off", "on_duration", "power_cycles"}), 
+      //                              std::vector<std::string>({m_powerOnTS, m_powerOffTS, m_poweredOnDuration, std::to_string(m_powerCycles)}));
+
+      updateIfChanged(m_indiP_power_status, "power_cycles", m_powerCycles);
+      updateIfChanged(m_indiP_power_status, "last_power_on", m_powerOnTS);
+
       state(stateCodes::POWERON);
       
       log<text_log>("powered on from INDI");
@@ -1510,7 +1586,21 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       m_power = false;
       m_poweredOn = false;
       m_powerState = 0;
+      m_powerOffTime = std::chrono::high_resolution_clock::now();
       onPowerOff();
+      //updateIfChanged(m_indiP_power_data, "powered_off", m_powerOffTime);
+
+      std::time_t timePointOffT = std::chrono::system_clock::to_time_t(m_powerOffTime);
+      char bufferOff[100];
+      std::strftime(bufferOff, sizeof(bufferOff), "%I:%M %p %m/%d/%y", std::localtime(&timePointOffT));
+      std::string m_powerOffTS(bufferOff);
+
+      //m_powerOffTS = std::to_string(m_powerOffTime);
+     // updateIfChanged(m_indiP_power_status, std::vector<std::string>({"last_power_on", "last_power_off", "on_duration", "power_cycles"}), 
+     //                               std::vector<std::string>({m_powerOnTS, m_powerOffTS, m_poweredOnDuration, std::to_string(m_powerCycles)}));
+
+      updateIfChanged(m_indiP_power_status, "last_power_off", m_powerOffTS);
+
       state(stateCodes::POWEROFF);
       printf("powered off, state changed to POWEROFF\n");
       
