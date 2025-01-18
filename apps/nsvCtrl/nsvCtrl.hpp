@@ -377,10 +377,10 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
    m_indiP_vCrop["target"] = m_vCrop;
    registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
 
-<<<<<<< HEAD
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
    m_indiP_bitDepth["current"] = m_bitDepth;
    m_indiP_bitDepth["target"] = m_bitDepth;
+   registerIndiPropertyNew(m_indiP_bitDepth, INDI_NEWCALLBACK(m_indiP_bitDepth));
 
    createStandardIndiToggleSw( m_indiP_power, "power");
    registerIndiPropertyNew( m_indiP_power, INDI_NEWCALLBACK(m_indiP_power));
@@ -421,10 +421,10 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
 
    m_powerCycles = 0;
 
-=======
->>>>>>> dev_dev_upstream_sync
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
+      return log<software_critical,-1>({__FILE__,__LINE__});
+   }
 
    if(dev::frameGrabber<nsvCtrl>::appStartup() < 0)
    {
@@ -436,19 +436,12 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
       return log<software_error,-1>({__FILE__,__LINE__});
    }
 
-<<<<<<< HEAD
    //state(stateCodes::NOTCONNECTED);
 
    state(stateCodes::POWEROFF); //haven't powered on yet
 
    m_powerState = 0;  
    //m_powerTargetState = 1;
-=======
-   state(stateCodes::NOTCONNECTED);
-
-   m_powerState = 1;  //figure out power stuff
-   m_powerTargetState = 1;
->>>>>>> dev_dev_upstream_sync
 
    return 0;
 
@@ -468,7 +461,6 @@ int nsvCtrl::appLogic()
       return log<software_error, -1>({__FILE__, __LINE__});
    }
 
-<<<<<<< HEAD
    if( state() == stateCodes::POWEROFF) return 0;
 
    if( state() == stateCodes::POWERON)  // nothing is happening in here... why??
@@ -478,11 +470,6 @@ int nsvCtrl::appLogic()
       printf("turning on camera\n");
       log<text_log>("Powering on camera", logPrio::LOG_NOTICE);
       state(stateCodes::NOTCONNECTED);
-=======
-   if( state() == stateCodes::POWERON) 
-   {
-      return 0;
->>>>>>> dev_dev_upstream_sync
    }
 
    if( state() == stateCodes::NOTCONNECTED || state() == stateCodes::NODEVICE || state() == stateCodes::ERROR)
@@ -491,11 +478,6 @@ int nsvCtrl::appLogic()
       if(m_powerState == 0) return 0;
       
       int ret = cameraSelect();
-<<<<<<< HEAD
-=======
-      m_powerState = 1;
-      m_poweredOn = true;
->>>>>>> dev_dev_upstream_sync
 
       if( ret != 0) 
       {
@@ -511,19 +493,11 @@ int nsvCtrl::appLogic()
       m_shutterStatus = "READY";
 
       state(stateCodes::READY);
-<<<<<<< HEAD
      /* if(m_poweredOn)
       {
          m_poweredOn = false;
          if(powerState() != 1 || powerStateTarget() != 1) return 0;
       } */
-=======
-      if(m_poweredOn)
-      {
-         m_poweredOn = false;
-         if(powerState() != 1 || powerStateTarget() != 1) return 0;
-      }
->>>>>>> dev_dev_upstream_sync
    }
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
@@ -542,7 +516,6 @@ int nsvCtrl::appLogic()
       }
       */
    
-<<<<<<< HEAD
       if(m_powerState == 0) return 0;
 
       /* Update power data */
@@ -555,27 +528,17 @@ int nsvCtrl::appLogic()
       //                              std::vector<std::string>({m_powerOnTS, m_powerOffTS, m_poweredOnDuration, std::to_string(m_powerCycles)}));
 
       if(getFPS() < 0 || 
-=======
-      //if(m_powerState == 0) return 0;
-
-
-     if(getFPS() < 0 || 
->>>>>>> dev_dev_upstream_sync
         getEMGain() < 0 ||
         getBlacklevel() < 0 ||
         getExpTime() < 0 ||
         getVCrop() < 0)
       {   
-<<<<<<< HEAD
          if(m_powerState == 0) return 0;
 
-=======
->>>>>>> dev_dev_upstream_sync
          state(stateCodes::ERROR);
          return 0;
       }
 
-<<<<<<< HEAD
       if(int ps = getPowerStatus() != 0){
          
          /*
@@ -592,8 +555,6 @@ int nsvCtrl::appLogic()
          */
       }
 
-=======
->>>>>>> dev_dev_upstream_sync
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
          log<software_error>({__FILE__, __LINE__});
@@ -622,7 +583,6 @@ int nsvCtrl::appLogic()
 inline
 int nsvCtrl::onPowerOff()
 {
-<<<<<<< HEAD
    printf("onPowerOff called \n");
 
    m_powerOnCounter = 0;
@@ -640,24 +600,6 @@ int nsvCtrl::onPowerOff()
    turn_off_power();
    sleep(3);
 
-=======
-   stopStreaming();
-   requestBuffers(0);
-   closeCamera();
-   
-   if(m_init)
-   {
-      m_init = false;
-   }
-
-   m_powerOnCounter = 0;
-
-   std::lock_guard<std::mutex> lock(m_indiMutex);
-
-   m_shutterStatus = "POWEROFF";
-   m_shutterState = 0;
-   
->>>>>>> dev_dev_upstream_sync
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
    {
       log<software_error>({__FILE__, __LINE__});
@@ -667,17 +609,12 @@ int nsvCtrl::onPowerOff()
    {
       log<software_error>({__FILE__, __LINE__});
    }
-<<<<<<< HEAD
 
    //m_init = false;
    if(m_init)
    {
       m_init = false;
    }
-=======
-   
-   m_poweredOn = false;
->>>>>>> dev_dev_upstream_sync
 
    return 0;
 }
@@ -699,7 +636,6 @@ int nsvCtrl::whilePowerOff()
 inline
 int nsvCtrl::appShutdown()
 {
-<<<<<<< HEAD
    printf("appShutdown\n");
    if(m_init)
    {
@@ -707,14 +643,6 @@ int nsvCtrl::appShutdown()
       requestBuffers(0);
       closeCamera();
       turn_off_power();
-=======
-   stopStreaming();
-   requestBuffers(0);
-   closeCamera();
-   
-   if(m_init)
-   {
->>>>>>> dev_dev_upstream_sync
       m_init = false;
    }
       
@@ -736,7 +664,6 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-<<<<<<< HEAD
    if(!m_powerState) return -1;
 
    /*
@@ -761,19 +688,13 @@ int nsvCtrl::cameraSelect()
    }
    */
 
-=======
->>>>>>> dev_dev_upstream_sync
    if(setReadoutMode() == -1){
       log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
    
-<<<<<<< HEAD
    if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
-=======
-   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY) == -1){
->>>>>>> dev_dev_upstream_sync
       log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
@@ -848,7 +769,6 @@ int nsvCtrl::setReadoutMode()
    std::cout << "Set readout mode to " + m_modeName << std::endl;
 
 
-<<<<<<< HEAD
    // new camera mode defaults. Should e able to specify an x,y and width, height for each mode rather than global to each
    /*
    m_default_x = m_cameraModes[m_modeName].m_default_x;
@@ -862,13 +782,6 @@ int nsvCtrl::setReadoutMode()
       m_default_w = m_cameraModes[m_modeName].m_sizeX;
       m_default_h = m_cameraModes[m_modeName].m_sizeY;
   */ 
-=======
-   // new camera mode defaults
-   m_default_x = m_cameraModes[m_modeName].m_centerX;
-   m_default_y = m_cameraModes[m_modeName].m_centerY;
-   m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   m_default_h = m_cameraModes[m_modeName].m_sizeY;
->>>>>>> dev_dev_upstream_sync
 
    m_full_x = m_cameraModes[m_modeName].m_centerX;
    m_full_y = m_cameraModes[m_modeName].m_centerY;
@@ -879,14 +792,11 @@ int nsvCtrl::setReadoutMode()
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
    // after setting ReadoutMode reset ROI parameters
-<<<<<<< HEAD
    
    /* TODO these defaults will segfault the program if they're out of bounds for one of the modes. 
       Want to preserve ROI across modes, however still need to check valid x,y w,h when changing modes.
       What would be preferable is 'global' defaults in addition to mode-based defaults. 
       To truly preserve ROI, need to account for vcropoffset parameter as well for y... */
-=======
->>>>>>> dev_dev_upstream_sync
    m_nextROI.x = m_default_x;
    m_nextROI.y = m_default_y;
    m_nextROI.w = m_default_w;
@@ -901,7 +811,6 @@ int nsvCtrl::setReadoutMode()
    m_currentROI.bin_x = 1;
    m_currentROI.bin_y = 1;
 
-<<<<<<< HEAD
    if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
    {
       m_currentROI.x = m_nextROI.x = m_full_x;
@@ -923,8 +832,6 @@ int nsvCtrl::setReadoutMode()
       log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
    }
 
-=======
->>>>>>> dev_dev_upstream_sync
   // m_readoutSpeedName = m_readoutSpeedNameSet;
    //m_reconfig = true;
 
@@ -1034,7 +941,6 @@ int nsvCtrl::getVCrop()
    return 0;
 }
 
-<<<<<<< HEAD
 inline
 int nsvCtrl::setBitDepth(int bitDepth)
 {
@@ -1058,8 +964,6 @@ int nsvCtrl::setBitDepth(int bitDepth)
    
    return 0;
 }
-=======
->>>>>>> dev_dev_upstream_sync
 
 inline
 int nsvCtrl::getBlacklevel()
@@ -1137,11 +1041,7 @@ int nsvCtrl::writeConfig()
    fout << "camera_class:                  \"nsvCam\"\n";
    fout << "width:                         " << w << "\n";
    fout << "height:                        " << h << "\n";
-<<<<<<< HEAD
    fout << "depth:                         " << m_bitDepth << "\n";
-=======
-   fout << "depth:                         16\n";
->>>>>>> dev_dev_upstream_sync
    fout << "mode:                          " << m_modeName << "\n";
    fout << "blacklevel:                    " << m_blacklevel << "\n";
    fout << "gain:                          " << m_emGain << "\n";
@@ -1163,11 +1063,8 @@ int nsvCtrl::writeConfig()
 inline
 int nsvCtrl::powerOnDefaults()
 {
-<<<<<<< HEAD
    printf("powerOnDefaults\n");
 
-=======
->>>>>>> dev_dev_upstream_sync
    m_tempControlStatus = false;
    m_tempControlStatusSet = false;
    m_tempControlStatusStr =  "OFF"; 
@@ -1186,7 +1083,6 @@ int nsvCtrl::powerOnDefaults()
    m_nextROI.h = m_default_h;
    m_nextROI.bin_x = m_default_bin_x;
    m_nextROI.bin_y = m_default_bin_y;
-<<<<<<< HEAD
 
    if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
    {
@@ -1210,8 +1106,6 @@ int nsvCtrl::powerOnDefaults()
    }
    
    m_reconfig = true; 
-=======
->>>>>>> dev_dev_upstream_sync
    
   // since 'power off' nukes the camera buffers & stream, set reconfig here?
 
@@ -1333,12 +1227,8 @@ int nsvCtrl::checkNextROI()
 inline 
 int nsvCtrl::setNextROI()
 { 
-<<<<<<< HEAD
    if(m_poweredOn)
       m_reconfig = true; 
-=======
-   m_reconfig = true; 
->>>>>>> dev_dev_upstream_sync
 
    updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
 
@@ -1428,7 +1318,6 @@ int nsvCtrl::acquireAndCheckValid()
       uint dmaTimeStamp[2];
 
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
-<<<<<<< HEAD
       if(m_current_frame == -1){ //fd is gone once powered off, so dequeue will fail
          /*
          if(!m_poweredOn || m_powerState != 1){ // changed power status of camera after dequeing but not before receiving result
@@ -1439,11 +1328,6 @@ int nsvCtrl::acquireAndCheckValid()
          // I suspect this is because of the frameGrabber "derived().powerState()" which I am not setting because I have my own power impelmentation...
          state(stateCodes::ERROR);
          return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"}); 
-=======
-      if(m_current_frame == -1){
-         state(stateCodes::ERROR);
-         return log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"});
->>>>>>> dev_dev_upstream_sync
       }
       queueBuffer(m_current_frame); // queue into index just read from
 
@@ -1526,13 +1410,8 @@ int nsvCtrl::resizeROIbufs()
 
       void* buffer = malloc(bufSize * sizeof(uint16_t));  // assuming 16-bit. verify w/ bufferSize in queryBuffer
       if (buffer == nullptr) {
-<<<<<<< HEAD
          state(stateCodes::ERROR);
          return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memroy allocation failed"});
-=======
-         std::cerr << "Memory allocation failed!" << std::endl;
-        return -1;
->>>>>>> dev_dev_upstream_sync
       }
 
       ROIbuffers[i] = buffer;
@@ -1559,7 +1438,6 @@ int nsvCtrl::reconfig()
          m_init = false;
       }
 
-<<<<<<< HEAD
       if(stopStreaming() < 0){
          log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);
          state(stateCodes::NODEVICE);
@@ -1569,13 +1447,6 @@ int nsvCtrl::reconfig()
       m_modeName = m_nextMode;  // set mode before camera reinit
       cameraSelect();   // camera initialization & stream init
       //m_init = true;
-=======
-      stopStreaming();
-      requestBuffers(0);
-      m_modeName = m_nextMode;  // set mode before camera reinit
-      cameraSelect();   // camera initialization & stream init
-      m_init = true;
->>>>>>> dev_dev_upstream_sync
    }
 
    state(stateCodes::CONNECTED);
@@ -1635,7 +1506,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
    return 0;
 }
 
-<<<<<<< HEAD
 INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_bitDepth)(const pcf::IndiProperty &ipRecv)
 {
    if (ipRecv.getName() != m_indiP_bitDepth.getName())
@@ -1740,8 +1610,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
    return 0;
 }
 
-=======
->>>>>>> dev_dev_upstream_sync
 // piping through shell commands. Todo convert to ioctl v4l2 calls per parameter
 std::string nsvCtrl::cmdRes(const char* cmd) {
     std::array<char, 128> buffer;
@@ -1772,8 +1640,4 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
 
 }//namespace app
 } //namespace MagAOX
-<<<<<<< HEAD
 #endif
-=======
-#endif
->>>>>>> dev_dev_upstream_sync
