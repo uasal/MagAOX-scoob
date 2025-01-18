@@ -83,3 +83,4 @@ telem_blockgains         20920    telem_blockgains
 telem_pi335              20930    telem_pi335
 
 telem_fsm                21100    telem_fsm
+telem_sparkleclock       20940    telem_sparkleclock

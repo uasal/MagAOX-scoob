@@ -1,93 +1,90 @@
-from hcipy import *
-import numpy as np
-
-from pyMilk.interfacing.isio_shmlib import SHM as shm
-import purepyindi2 as indi
 import time
+from typing import Union, Optional
+import warnings
+import logging
+
+import numpy as np
+import purepyindi2 as indi
+
+from .shmim import Image, ShapeMismatchException
+
+log = logging.getLogger(__name__)
+
+DEFAULT_TIMEOUT_SEC = 10
 
 class XCam():
-	'''A python interface for existing MagAO-X cameras.
-	# TODO: add a background thread that pulls the remote indi properties once a second.
+	'''A Python interface for MagAO-X cameras
 	'''
-	def __init__(self, shm_name, pixel_size=1, use_hcipy=False):
-		self.shm_name = shm_name
-		
-		self._client = indi.client.IndiClient()
-		self._client.connect()
-		self._client.get_properties(shm_name)
-		time.sleep(0.25)
+	_roi_properties : tuple[str] = ('roi_region_h', 'roi_region_w', 'roi_region_bin_x', 'roi_region_bin_y')
+	_roi_state : dict[str, float]
+	grid : Optional['hcipy.Field']
 
-		self._local_indi_prop = {}
-		
+	def __init__(self, shm_name, pixel_size=1, indi_client=None, use_hcipy=False):
+		self.shm_name = shm_name
+		if indi_client is None:
+			indi_client = indi.client.IndiClient()
+			indi_client.connect()
+		self._client = indi_client
+		self._client.get_properties_and_wait(shm_name)
+
 		self._old_counter = 0
 		self._need_reconnect = False
-		self._use_hcipy = use_hcipy
 		self._pixel_size = pixel_size
+		self._use_hcipy = use_hcipy
 
-		self.connect_camera()	
+		self.connect_camera()
+		self._roi_state = self._get_roi_state()
+		self._client.register_callback(self._handle_indi_changes, device_name=self.shm_name)
+
+	def _get_roi_state(self):
+		if not all(k in self._client[self.shm_name] for k in self._roi_properties):
+			return None
+		return {k: self._client[self.shm_name][k]['current'] for k in self._roi_properties}
+
+	def _handle_indi_changes(self, message):
+		if message.name in self._roi_properties:
+			if self._roi_state is not None and self._roi_state[message.name] != message['current']:
+				log.debug(
+					"ROI property %s was %f, now is %f. Reconnecting to the shmim...",
+					(message.name, self._roi_state[message.name], message['current'])
+				)
+				self._roi_state = self._get_roi_state()
+				self.connect_camera()
 
 	def connect_camera(self):
-		self.shmim = shm(self.shm_name)
+		self.shmim = Image(self.shm_name)
 		
 		# A dark frame might not exists. Check for existence!
 		self._dark_exists = False
 		try:
-			self.dark_shmim = shm(self.shm_name + '_dark')
+			self.dark_shmim = Image(self.shm_name + '_dark')
 			self._dark_exists = True
 		except FileNotFoundError:
-			print("Dark shmim '{:s}' does not exist.".format(self.shm_name + '_dark'))
-
-		self._need_reconnect = False
+			log.warning("Dark shmim '{:s}' does not exist.".format(self.shm_name + '_dark'))
 
 		if self._use_hcipy:
+			from hcipy import make_pupil_grid
 			self.grid = make_pupil_grid(self.shape, self._pixel_size * self.shape)
-
-	def pull_indi_properties(self):
-		'''Pulls the values of all indi properties of the device from the origin.
-		'''
-		self._local_indi_prop = {}
-		for prop in self._client[self.shm_name]:
-			for sub_prop in self._client[self.shm_name][prop]:
-				if prop not in self._local_indi_prop:
-					self._local_indi_prop[prop] = {}
-				self._local_indi_prop[prop][sub_prop] = self._client[self.shm_name][prop][sub_prop]
-
-	def reconnect_on_change(self, properties=['roi_region_h', 'roi_region_w', 'roi_region_bin_x', 'roi_region_bin_y']):
-		'''Compares the local indi properties against the remote values and reconnects the camera if it has changed.
-
-		properties - array like
-			The properties that require the camera to reconnect if changed. The default values are all the parameters that impact shmim size.
-		'''		
-		has_changed = False
-
-		for prop in properties:
-			if self._local_indi_prop[prop]['current'] != self._client['{:s}.{:s}.current'.format(self.shm_name, prop)]:
-				has_changed = True
-				break
-		
-		if has_changed:
-			self.pull_indi_properties()
-			self.connect_camera()
+		else:
+			self.grid = None
 
 	@property
 	def counter(self):
-		return self.shmim_meta_data.cnt0
-
-	@property
-	def shmim_meta_data(self):
-		return self.shmim.IMAGE.md
+		return self.shmim.md.cnt0
 
 	@property
 	def meta_data(self):
-		meta_dict = {}
-		for prop1 in self._local_indi_prop:
-			for prop2, value in self._local_indi_prop[prop1].items():
-				meta_dict['{:s}.{:s}'.format(prop1, prop2)] = value
-		return meta_dict
+		meta = {}
+		this_device = self._client[self.shm_name]
+		for prop in this_device:
+			meta[prop] = {}
+			for elem in this_device[prop]:
+				meta[prop][elem] = this_device[prop][elem]
+		return meta
 
 	@property
 	def shape(self):
-		return np.array([self.shmim_meta_data.size[0], self.shmim_meta_data.size[1]])
+		return (self.shmim.md.size[0], self.shmim.md.size[1])
 
 	@property
 	def exposure_time(self):
@@ -95,13 +92,32 @@ class XCam():
 	
 	@exposure_time.setter
 	def exposure_time(self, new_exposure_time):
-		# Check if within valid ranges?
-		self._client[self.shm_name + '.exptime.target'] = new_exposure_time
+		if 'exptime' not in self._client[self.shm_name]:
+			self.fps = 1/new_exposure_time
+		else:
+			if new_exposure_time < 0:
+				raise ValueError(f"Cannot set exposure time {new_exposure_time} sec")
+			self._client[self.shm_name + '.exptime.target'] = new_exposure_time
+
+	@property
+	def fps(self):
+		if 'fps' not in self._client[self.shm_name]:
+			return 1/self._client[self.shm_name + '.exptime.current']
+		return self._client[self.shm_name + '.exptime.current']
+	
+	@fps.setter
+	def fps(self, new_fps):
+		if 'fps' not in self._client[self.shm_name]:
+			self.exposure_time = 1/new_fps
+		else:
+			if new_fps < 0:
+				raise ValueError(f"Cannot set FPS {new_fps}")
+			self._client[self.shm_name + '.fps.target'] = new_fps
 
 	@property
 	def emgain(self):
 		if 'emgain' in self._client[self.shm_name]:
-			return self._client[self.shm_name + '.exptime.current']
+			return self._client[self.shm_name + '.emgain.current']
 		else:
 			raise MissingValueError("This camera has no emgain.")
 
@@ -128,7 +144,6 @@ class XCam():
 
 	@property
 	def shutter(self):
-		# TODO: check if I have the True and False correct
 		return True if self.properties['shutter']['toggle'] == indi.SwitchState.ON else False
 
 	@shutter.setter
@@ -137,13 +152,18 @@ class XCam():
 
 	def process(self, data):
 		if self._dark_exists:
-			if np.all(self.dark_shmim.IMAGE.md.size==self.shmim.IMAGE.md.size):
-				return data - self.dark_shmim.get_data(check=False).astype(float)
-		return data
+			if np.all(self.dark_shmim.md.size == self.shmim.md.size):
+				arr = data - self.dark_shmim.copy().astype(float)
+		else:
+			arr = data
+		if self._use_hcipy:
+			from hcipy import Field
+			arr = Field(arr.ravel(), self.grid)
+		return arr
 
-	def grab(self):
+	def grab(self, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
 		self._old_counter = self.counter
-		data = self.shmim.get_data(check=True, timeout=5 * self.exposure_time).astype(float)
+		data = self.shmim.get_data(check=True, timeout=timeout).astype(float)
 		
 		if self.counter == self._old_counter:
 			self._need_reconnect = True
@@ -151,39 +171,15 @@ class XCam():
 			self._old_counter = self.counter
 		
 		data = self.process(data)
-
-		if self._use_hcipy:
-			data = Field(data.ravel(), self.grid)
-
 		return data
-			
-	def grab_many(self, num_images):
-		OUT = np.zeros((num_images, *self.shmim.shape), dtype=self.shmim.nptype)
 
-		for i in range(num_images):
-			self._old_counter = self.counter
-
-			OUT[i] = self.process(self.shmim.get_data(check=True, timeout=5 * self.exposure_time).astype(float))
-			
-			if self.counter == self._old_counter:
-				self._need_reconnect = True
-				break
-			else:
-				self._old_counter = self.counter
-		
-		if self._use_hcipy:
-			OUT = Field(OUT.reshape((num_images,-1)), self.grid)
-
-		return OUT
-	
-	def grab_stack(self, num_images):
+	def grab_stack(self, num_images, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
 		stacked_image = 0
 		k = 0
 		for i in range(num_images):
 			self._old_counter = self.counter
-			
-			image = self.shmim.get_data(check=True, timeout=5 * self.exposure_time).astype(float)
-			
+			image = self.shmim.get_data(check=True, timeout=timeout).astype(float)
+
 			if self.counter == self._old_counter:
 				self._need_reconnect = True
 				stacked_image = 0
@@ -197,9 +193,5 @@ class XCam():
 			stacked_image = stacked_image / k
 
 		stacked_image = self.process(stacked_image)
-		
-		if self._use_hcipy:
-			stacked_image = Field(stacked_image.ravel(), self.grid)
-
 		return stacked_image
 		

@@ -120,17 +120,17 @@ mkdir -p $cpusetMount/camsci2_sw
 /bin/echo 1 > $cpusetMount/camsci2_sw/cpuset.cpu_exclusive
 /bin/echo 0 > $cpusetMount/camsci2_sw/cpuset.mems
 
-#camlowfs_fit
-mkdir -p $cpusetMount/camlowfs_fit
-/bin/echo 42 > $cpusetMount/camlowfs_fit/cpuset.cpus
-/bin/echo 1 > $cpusetMount/camlowfs_fit/cpuset.cpu_exclusive
-/bin/echo 0 > $cpusetMount/camlowfs_fit/cpuset.mems
+#camflowfs_fit
+mkdir -p $cpusetMount/camflowfs_fit
+/bin/echo 42 > $cpusetMount/camflowfs_fit/cpuset.cpus
+/bin/echo 1 > $cpusetMount/camflowfs_fit/cpuset.cpu_exclusive
+/bin/echo 0 > $cpusetMount/camflowfs_fit/cpuset.mems
 
-#spare43
-mkdir -p $cpusetMount/spare43
-/bin/echo 43 > $cpusetMount/spare43/cpuset.cpus
-/bin/echo 1 > $cpusetMount/spare43/cpuset.cpu_exclusive
-/bin/echo 0 > $cpusetMount/spare43/cpuset.mems
+#camllowfs_fit
+mkdir -p $cpusetMount/camllowfs_fit
+/bin/echo 43 > $cpusetMount/camllowfs_fit/cpuset.cpus
+/bin/echo 1 > $cpusetMount/camllowfs_fit/cpuset.cpu_exclusive
+/bin/echo 0 > $cpusetMount/camllowfs_fit/cpuset.mems
 
 #spare44
 mkdir -p $cpusetMount/spare44
@@ -186,17 +186,17 @@ mkdir -p $cpusetMount/dm02disp08_sw
 /bin/echo 1 > $cpusetMount/dm02disp08_sw/cpuset.cpu_exclusive
 /bin/echo 0 > $cpusetMount/dm02disp08_sw/cpuset.mems
 
-#spare53
-mkdir -p $cpusetMount/spare53
-/bin/echo 53 > $cpusetMount/spare53/cpuset.cpus
-/bin/echo 1 > $cpusetMount/spare53/cpuset.cpu_exclusive
-/bin/echo 0 > $cpusetMount/spare53/cpuset.mems
+#camflowfs_avg_fit
+mkdir -p $cpusetMount/camflowfs_avg_fit
+/bin/echo 53 > $cpusetMount/camflowfs_avg_fit/cpuset.cpus
+/bin/echo 1 > $cpusetMount/camflowfs_avg_fit/cpuset.cpu_exclusive
+/bin/echo 0 > $cpusetMount/camflowfs_avg_fit/cpuset.mems
 
-#spare54
-mkdir -p $cpusetMount/spare54
-/bin/echo 54 > $cpusetMount/spare54/cpuset.cpus
-/bin/echo 1 > $cpusetMount/spare54/cpuset.cpu_exclusive
-/bin/echo 0 > $cpusetMount/spare54/cpuset.mems
+#camllowfs_avg_fit
+mkdir -p $cpusetMount/camllowfs_avg_fit
+/bin/echo 54 > $cpusetMount/camllowfs_avg_fit/cpuset.cpus
+/bin/echo 1 > $cpusetMount/camllowfs_avg_fit/cpuset.cpu_exclusive
+/bin/echo 0 > $cpusetMount/camllowfs_avg_fit/cpuset.mems
 
 #spare55
 mkdir -p $cpusetMount/spare55

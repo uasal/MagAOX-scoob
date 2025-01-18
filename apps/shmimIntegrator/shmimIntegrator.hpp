@@ -243,7 +243,15 @@ protected:
      */  
    float fps()
    {
-      return 1.0;
+      if(m_fps > 0 && m_nAverage > 0 && (m_running || m_continuous))
+      {
+         return m_fps/m_nAverage;
+      }
+      else
+      { //this will cause a default averaging
+
+         return 1.0;
+      }
    }
    
    /// Implementation of the framegrabber startAcquisition interface
@@ -291,6 +299,8 @@ protected:
 
    pcf::IndiProperty m_indiP_fpsSource;
    INDI_SETCALLBACK_DECL(shmimIntegrator, m_indiP_fpsSource);
+
+   pcf::IndiProperty m_indiP_fps; ///< this integrator's FPS
 
    pcf::IndiProperty m_indiP_stateSource;
    INDI_SETCALLBACK_DECL(shmimIntegrator, m_indiP_stateSource);
@@ -420,6 +430,10 @@ int shmimIntegrator::appStartup()
    {
       REG_INDI_SETPROP(m_indiP_fpsSource, m_fpsSource, std::string("fps"));
    }
+
+   CREATE_REG_INDI_RO_NUMBER(m_indiP_fps, "fps", "", "");
+   m_indiP_fps.add(pcf::IndiElement("current"));
+   m_indiP_fps["current"].set(0);
 
    if(m_fileSaver == true && m_stateSource != "")
    {
@@ -586,6 +600,8 @@ int shmimIntegrator::appLogic()
    updateIfChanged(m_indiP_nUpdate, "current", m_nUpdate, INDI_IDLE);
    updateIfChanged(m_indiP_nUpdate, "target", m_nUpdate, INDI_IDLE);
    
+   updateIfChanged(m_indiP_fps, "current", fps(), INDI_OK);
+
    return 0;
 }
 
