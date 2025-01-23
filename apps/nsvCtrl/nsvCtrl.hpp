@@ -113,6 +113,10 @@ protected:
 
    std::vector<void*> ROIbuffers;
 
+   bool uses_vCrop = false; //boolean to deal with camera firmware incompatibilities for now.
+   bool uses_sensorMode = false;
+   bool uses_blacklevel = false;
+
 public:
 
    nsvCtrl();
@@ -294,7 +298,9 @@ void nsvCtrl::setupConfig()
 {
  
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
-   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
+   if(uses_vCrop){
+      config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
+   }
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "str", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "str", "camera power"); // TODO make toggle
 
@@ -310,7 +316,9 @@ void nsvCtrl::loadConfig()
 {
 
    config(m_camPath, "camera.camPath");
-   config(m_vCrop, "camera.vcropoffset");
+   if(uses_vCrop){
+      config(m_vCrop, "camera.vcropoffset");
+   } 
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
@@ -371,11 +379,13 @@ inline
 int nsvCtrl::appStartup() // if camera is off, can't get values yet...
 {
    // register new indi properties
-   getVCrop();
-   createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
-   m_indiP_vCrop["current"] = m_vCrop;
-   m_indiP_vCrop["target"] = m_vCrop;
-   registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+   if(uses_vCrop){
+      getVCrop();
+      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
+      m_indiP_vCrop["current"] = m_vCrop;
+      m_indiP_vCrop["target"] = m_vCrop;
+      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+   }
 
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
    m_indiP_bitDepth["current"] = m_bitDepth;
@@ -529,9 +539,9 @@ int nsvCtrl::appLogic()
 
       if(getFPS() < 0 || 
         getEMGain() < 0 ||
-        getBlacklevel() < 0 ||
+        uses_blacklevel? getBlacklevel() < 0 : 0 ||
         getExpTime() < 0 ||
-        getVCrop() < 0)
+        uses_vCrop ? getVCrop() < 0 : 0 )
       {   
          if(m_powerState == 0) return 0;
 
@@ -701,8 +711,10 @@ int nsvCtrl::cameraSelect()
    }
 
    // reload parameters affected by sensor mode
-   getVCrop();
-   updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
+   if(uses_vCrop){
+      getVCrop();
+      updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
+   }
    getExpTime();
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
 
@@ -748,25 +760,28 @@ int nsvCtrl::setReadoutMode()
 {
    int result = 0;
 
-   if(m_modeName == "sliced")
-   {
-      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
-      result = std::system(command.c_str());
-   }
-   if(m_modeName == "fullframe")
-   {
-      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
-      result = std::system(command.c_str());
-   }
+   if(uses_sensorMode){
+      if(m_modeName == "sliced")
+      {
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
+         result = std::system(command.c_str());
+      }
+      if(m_modeName == "fullframe")
+      {
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
+         result = std::system(command.c_str());
+      }
 
-   if(result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"}); 
-      return -1;
+      if(result != 0)
+      {
+         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"}); 
+         return -1;
+      }
    }
 
    log<text_log>("Set readout mode to " +  m_modeName);
    std::cout << "Set readout mode to " + m_modeName << std::endl;
+   
 
 
    // new camera mode defaults. Should e able to specify an x,y and width, height for each mode rather than global to each
@@ -968,47 +983,49 @@ int nsvCtrl::setBitDepth(int bitDepth)
 inline
 int nsvCtrl::getBlacklevel()
 {
-   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath;
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from blacklevel"});
-      return -1;
-   }
+   if(uses_blacklevel){
+      const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath;
+      std::string result = cmdRes(command.c_str());
+      if( result == "error") 
+      {
+         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from blacklevel"});
+         return -1;
+      }
 
-   m_blacklevel = std::stoi(result);
+      m_blacklevel = std::stoi(result);
+   }
    return 0;
 }
 
 inline
 int nsvCtrl::setBlacklevel()
 {
-   
-   int blacklevel_to_set = m_blacklevelSet;  
+   if(uses_blacklevel){  
+      int blacklevel_to_set = m_blacklevelSet;  
 
-   if(blacklevel_to_set < m_minBlacklevel)
-   {
-      blacklevel_to_set = m_minBlacklevel;
-      log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   }
+      if(blacklevel_to_set < m_minBlacklevel)
+      {
+         blacklevel_to_set = m_minBlacklevel;
+         log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+      }
+      
+      if(blacklevel_to_set > m_maxBlacklevel)
+      {
+         blacklevel_to_set = m_maxBlacklevel;
+         log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+      }
+      
+      const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; 
+      int result = std::system(command.c_str());
    
-   if(blacklevel_to_set > m_maxBlacklevel)
-   {
-      blacklevel_to_set = m_maxBlacklevel;
-      log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBlacklevel:"});
-      return -1;
-   }
+      if( result != 0)
+      {
+         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBlacklevel:"});
+         return -1;
+      }
 
-   log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   
+      log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+   }
    return 0;
 }
 
@@ -1490,15 +1507,15 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
    m_vCrop = vc;
-   int rv = setVCrop(vc);
+   int rv = uses_vCrop ? setVCrop(vc) : -999;
    
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting vcropoffset!"});
       return -1;
    }
-
-   getVCrop();
+   if(uses_vCrop)
+      getVCrop();
 
    updateIfChanged(m_indiP_vCrop, "target", vc);
    updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
