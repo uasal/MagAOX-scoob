@@ -1071,11 +1071,12 @@ namespace MagAOX
     }
 
     int fsmCtrl::createStream() { 
-      m_dataType = 9; // _DATATYPE_FLOAT
       uint32_t imsize[3] = {height, width, 0};
 
       // Not found, create it
-      ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 1, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);
+      // _DATATYPE_FLOAT = 9
+      // MATH_DATA = 2
+      ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, _DATATYPE_FLOAT, -1, 1, IMAGE_NB_SEMAPHORE, 1, MATH_DATA, 0);
 
       // Set name of first keyword is 'inputType'
       strncpy(m_imageStream.kw[0].name, kw_name.c_str(), sizeof(m_imageStream.kw[0].name));
