@@ -113,9 +113,9 @@ protected:
 
    std::vector<void*> ROIbuffers;
 
-   bool uses_vCrop = false; //boolean to deal with camera firmware incompatibilities for now.
-   bool uses_sensorMode = false;
-   bool uses_blacklevel = false;
+   // booleans for potential config values in camera... could do away with these but would be uglier
+   bool uses_vCrop = false; 
+   bool uses_fpgaPower = false;
 
 public:
 
@@ -298,11 +298,9 @@ void nsvCtrl::setupConfig()
 {
  
    config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
-   if(uses_vCrop){
-      config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
-   }
-   config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "str", "pixel bit depth");
-   config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "str", "camera power"); // TODO make toggle
+   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
+   config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
+   config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
 
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
@@ -316,9 +314,7 @@ void nsvCtrl::loadConfig()
 {
 
    config(m_camPath, "camera.camPath");
-   if(uses_vCrop){
-      config(m_vCrop, "camera.vcropoffset");
-   } 
+   config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
@@ -329,11 +325,6 @@ void nsvCtrl::loadConfig()
 
    m_modeName = m_startupMode;
    m_nextMode = m_modeName;
-
-   //m_default_x = m_cameraModes[m_modeName].m_centerX;
-   //m_default_y = m_cameraModes[m_modeName].m_centerY;
-   //m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   //m_default_h = m_cameraModes[m_modeName].m_sizeY;
 
    m_full_x = m_cameraModes[m_modeName].m_centerX;
    m_full_y = m_cameraModes[m_modeName].m_centerY;
@@ -379,14 +370,6 @@ inline
 int nsvCtrl::appStartup() // if camera is off, can't get values yet...
 {
    // register new indi properties
-   if(uses_vCrop){
-      getVCrop();
-      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
-      m_indiP_vCrop["current"] = m_vCrop;
-      m_indiP_vCrop["target"] = m_vCrop;
-      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
-   }
-
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
    m_indiP_bitDepth["current"] = m_bitDepth;
    m_indiP_bitDepth["target"] = m_bitDepth;
@@ -674,6 +657,20 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   // after connecting to the camera, we have polled all values and need to reconfigure INDI
+   // Could connect to the camera and poll values with the fd prior to streaming, however this could be dangerous? Wait for power on for now
+   
+   // dynamically-added INDI values
+   auto it = camera_controls.find("vcropoffset");
+   if(it != camera_controls.end()){
+      uses_vCrop = true;
+      getVCrop();
+      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", it->second.minimum, it->second.maximum, it->second.step, "%d");
+      m_indiP_vCrop["current"] = m_vCrop;
+      m_indiP_vCrop["target"] = m_vCrop;
+      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+   } 
+
    if(!m_powerState) return -1;
 
    /*
@@ -698,17 +695,23 @@ int nsvCtrl::cameraSelect()
    }
    */
 
+   // need to get valid modes first before setting mode
+
    if(setReadoutMode() == -1){
       log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+
+   // before initializing camera, need to pull settings for new mode
    
-   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
+   /* including this in the setReadoutMode call, verify x's, y's, after setting. After true ROI is implemented might rework this
+   if(setCamImageFormat(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
       log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+   */
 
    // reload parameters affected by sensor mode
    if(uses_vCrop){
@@ -748,20 +751,43 @@ int nsvCtrl::cameraSelect()
    m_oldest_frame = 0;
 
    state(stateCodes::CONNECTED);
-   log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
+   log<text_log>(std::string("Connected to ") + m_camPath);
 
    m_init = true;
 
    return 0;
 }
 
+/*
+   Old firmware for IMX 571 requires setting a sensor_mode parameter to switch between a certain width/height 
+
+   Newer firmware allows --set-fmt-video=width=1280,height=720 type call and will automatically change modes,
+   although there is some vagueness when it comes to width/height priority. CameraMode struct has list of resolutions
+   w/ indexer current_resolution and can call updateCurrentMode() to update current_resolution index. 
+   
+   Assumes resolutions doesn't change. When switching cameras, use getCameraModes() for list of valid resolutions
+
+   if using "Modes" and m_modeName as an indexer, need to match valid modes on camera in a MagAOX config file.  
+   Could generically support setting width/height from INDI and report back what sensor mode the camera set,
+   however this would not be backwards compatible with old firmware.  
+   
+   Want to preserve camera mode/resolution settings for experiments, so better to contain in MagAOX conf file
+   with appropriate 'startupMode' value and categories for each mode. Not ideal/ requires extra work since each
+   camera config has to be rewritten whenever there's a firmware update.
+   
+   There may be a better solution to dynamically create modes and maintain reproducibilty/consistency
+*/
+
+// maybe should accept a width/height input from user and programatically decide what mode to set (obscure from user)
+// and just report the new max framerate when switching ROIs. as well as report new h/w limits within mode
 inline
 int nsvCtrl::setReadoutMode()
 {
    int result = 0;
 
-   if(uses_sensorMode){
-      if(m_modeName == "sliced")
+   auto it = camera_controls.find("sensor_mode");
+   if(it != camera_controls.end()){ 
+      if(m_modeName == "sliced")  // keep sliced and fullframe config to indicate mode for old firmware for now
       {
          const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
          result = std::system(command.c_str());
@@ -779,32 +805,37 @@ int nsvCtrl::setReadoutMode()
       }
    }
 
-   log<text_log>("Set readout mode to " +  m_modeName);
-   std::cout << "Set readout mode to " + m_modeName << std::endl;
+   log<text_log>("Setting readout mode to " +  m_modeName);
+
+   // each mode has defined width & height so call set-fmt to configure. Could make this more flexible.
+   // after set-fmt confirm the output values for width/height match input config, otherwise warn user,
+   //    then update max width and height using output from camera. 
+
+
+   // to diagnose issues with setting format- use "v4l2-ctl --set-fmt-video=width=1280,height=720 --verbose" optional bitDepth
+   //    then check outputs -> VIDIOC_QUERYCAP: ok   VIDIOC_G_FMT: ok   VIDIOC_S_FMT: ok
    
+   // not generically supporting setting width and height. Will need to change when Neutralino adds true ROI support. Still doing pseudo-ROI
+   setCamImageFormat(m_cameraModes[m_modeName].m_sizeX, mcameraMes[m_modeName].m_sizeY, m_bitDepth); 
 
+   // camera_modes is updated with what camera actually set for x,y
+   int width = camera_modes[0].resolutions[camera_modes[0].current_resolution].first;
+   int height = camera_modes[0].resolutions[camera_modes[0].current_resolution].second;
 
-   // new camera mode defaults. Should e able to specify an x,y and width, height for each mode rather than global to each
-   /*
-   m_default_x = m_cameraModes[m_modeName].m_default_x;
-   m_default_y = m_cameraModes[m_modeName].m_default_y;
-   m_default_w = m_cameraModes[m_modeName].m_default_w;
-   m_default_h = m_cameraModes[m_modeName].m_default_w;
-   */
-   /*
-      m_default_x = m_cameraModes[m_modeName].m_centerX;
-      m_default_y = m_cameraModes[m_modeName].m_centerY;
-      m_default_w = m_cameraModes[m_modeName].m_sizeX;
-      m_default_h = m_cameraModes[m_modeName].m_sizeY;
-  */ 
+   m_full_w = width;
+   m_full_h = height;
 
-   m_full_x = m_cameraModes[m_modeName].m_centerX;
-   m_full_y = m_cameraModes[m_modeName].m_centerY;
-   m_full_w = m_cameraModes[m_modeName].m_sizeX;
-   m_full_h = m_cameraModes[m_modeName].m_sizeY;
+   m_maxFPS = 1 / camera_modes[0].intervals[camera_modes[0].current_resolution];  // would get from CameraControl frame_rate, but 571 doesn't report correctly
    
-   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
-   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
+   auto it = camera_controls.find("frame_rate");
+   if(it != camera_controls.end()){
+      m_minFPS = it->second.minimum;  // get from camera rather than config file
+   } else {
+      m_minFPS = 0;
+   }
+
+   m_full_x = round(width / 2); // get from sensor not from config
+   m_full_y = round(height / 2);
 
    // after setting ReadoutMode reset ROI parameters
    
@@ -812,19 +843,13 @@ int nsvCtrl::setReadoutMode()
       Want to preserve ROI across modes, however still need to check valid x,y w,h when changing modes.
       What would be preferable is 'global' defaults in addition to mode-based defaults. 
       To truly preserve ROI, need to account for vcropoffset parameter as well for y... */
-   m_nextROI.x = m_default_x;
-   m_nextROI.y = m_default_y;
-   m_nextROI.w = m_default_w;
-   m_nextROI.h = m_default_h;
-   m_nextROI.bin_x = 1;
-   m_nextROI.bin_y = 1;
 
-   m_currentROI.x = m_default_x;
-   m_currentROI.y = m_default_y;
-   m_currentROI.w = m_default_w;
-   m_currentROI.h = m_default_h;
-   m_currentROI.bin_x = 1;
-   m_currentROI.bin_y = 1;
+   m_currentROI.x = m_nextROI.x = m_default_x;
+   m_currentROI.y = m_nextROI.y = m_default_y;
+   m_currentROI.w = m_nextROI.w = m_default_w;
+   m_currentROI.h = m_nextROI.h = m_default_h;
+   m_currentROI.bin_x = m_nextROI.bin_x = 1;
+   m_currentROI.bin_y = m_nextROI.bin_y = 1;
 
    if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
    {
@@ -847,8 +872,7 @@ int nsvCtrl::setReadoutMode()
       log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
    }
 
-  // m_readoutSpeedName = m_readoutSpeedNameSet;
-   //m_reconfig = true;
+   std::cout << "Set readout mode to " + m_modeName << std::endl;
 
    return 0;
 }
@@ -914,45 +938,43 @@ inline
 int nsvCtrl::setVCrop(int offset)
 {
    int vCrop_to_set = offset;  
+   int min = camera_controls["vcropoffset"].minimum;
+   int max = camera_controls["vcropoffset"].maximum;
 
-   if(vCrop_to_set < 25)
+   if(vCrop_to_set < min)
    {
-      vCrop_to_set = 25;
-      log<text_log>("vCrop limited to 25", logPrio::LOG_WARNING);
+      vCrop_to_set = min;
+      log<text_log>("vCrop limited to " + std::to_string(min), logPrio::LOG_WARNING);
    }
    
-   if(vCrop_to_set > 3699) //TODO make this m_maxvCrop?
+   if(vCrop_to_set > max) 
    {
-      vCrop_to_set = 3699;
-      log<text_log>("vCrop limited to 3699", logPrio::LOG_WARNING);
+      vCrop_to_set = max;
+      log<text_log>("vCrop limited to " + std::to_string(max), logPrio::LOG_WARNING);
    }
-   
-   const std::string command = "v4l2-ctl --set-ctrl vcropoffset=" + std::to_string(vCrop_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
+
+   int res = writeSingleControlVal(vCrop_to_set);
+
+   if( res < 0 )
    {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setvCrop:"});
+      log<software_error>({__FILE__,__LINE__, "error setting vcropoffset:"});
       return -1;
    }
 
-   log<text_log>("Set vcropoffset to: " + std::to_string(vCrop_to_set), logPrio::LOG_WARNING);
+   log<text_log>("Set vcropoffset to: " + std::to_string(res), logPrio::LOG_WARNING);
    
-   return 0;
+   return res;
 }
 
 inline
 int nsvCtrl::getVCrop()
 {
-   const std::string command = "v4l2-ctl --get-ctrl vcropoffset -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
+   m_vCrop = getAndUpdateSingleControlVal("vcropoffset");
+   if( m_vCrop < 0) 
    {
       log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getvCrop"});
       return -1;
    }
-
-   m_vCrop = std::stoi(result);
    return 0;
 }
 
@@ -1448,6 +1470,7 @@ int nsvCtrl::reconfig()
    printf("Reconfiguring camera . . .\n");
 
    // check for new mode
+   // if deprecating modes/ dynamically creating modes, should trigger this some other way
    if(m_nextMode != m_modeName)
    {
       if(m_init)
