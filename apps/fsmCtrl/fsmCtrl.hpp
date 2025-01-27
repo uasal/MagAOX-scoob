@@ -770,9 +770,12 @@ namespace MagAOX
       m_adc2 = (8.192 * ((samples2 - 0) / numAccums2)) / 16777216.0;
       m_adc3 = (8.192 * ((samples3 - 0) / numAccums3)) / 16777216.0;
 
-      updateIfChanged(m_indiP_adc1, "current", m_adc1);
-      updateIfChanged(m_indiP_adc2, "current", m_adc2);
-      updateIfChanged(m_indiP_adc3, "current", m_adc3);
+      if (m_inputToggle == INDI)
+      {
+        updateIfChanged(m_indiP_adc1, "current", m_adc1);
+        updateIfChanged(m_indiP_adc2, "current", m_adc2);
+        updateIfChanged(m_indiP_adc3, "current", m_adc3);
+      }
     }
 
     // Function to request fsm DACs
@@ -784,7 +787,10 @@ namespace MagAOX
       m_dac2 = static_cast<float>(castDacsQuery->DacSetpoints[1]);
       m_dac3 = static_cast<float>(castDacsQuery->DacSetpoints[2]);
 
-      updateINDICurrentParams();
+      if (m_inputToggle == INDI)
+      {
+        updateINDICurrentParams();
+      }
     }
 
     // Function to set fsm DACs
@@ -829,7 +835,11 @@ namespace MagAOX
       m_dac1 = castDacsQuery->DacSetpoints[0];
       m_dac2 = castDacsQuery->DacSetpoints[1];
       m_dac3 = castDacsQuery->DacSetpoints[2];
-      updateINDICurrentParams();
+
+      if (m_inputToggle == INDI)
+      {
+        updateINDICurrentParams();
+      }
 
       query(dacsQuery);
       query(adcsQuery);
@@ -956,9 +966,9 @@ namespace MagAOX
         val3 = ((float *)curr_src)[2];
       }
 
-      updateIfChanged(m_indiP_val1, "target", val1);
-      updateIfChanged(m_indiP_val2, "target", val2);
-      updateIfChanged(m_indiP_val3, "target", val3);
+      // updateIfChanged(m_indiP_val1, "target", val1);
+      // updateIfChanged(m_indiP_val2, "target", val2);
+      // updateIfChanged(m_indiP_val3, "target", val3);
 
       if (m_inputType == DACS)
       {
@@ -1360,6 +1370,13 @@ namespace MagAOX
         {
           state(stateCodes::OPERATING);
           updateIfChanged(m_indiP_input, "toggle", toggle);
+          
+          // Reset target values
+          updateIfChanged(m_indiP_val1, "target", -99999);
+          updateIfChanged(m_indiP_val2, "target", -99999);
+          updateIfChanged(m_indiP_val3, "target", -99999);
+          // Update current values
+          updateINDICurrentParams();          
         }
         if (toggle == INDI)
         {

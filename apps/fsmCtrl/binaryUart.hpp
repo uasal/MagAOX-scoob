@@ -123,9 +123,9 @@ struct BinaryUart
 		InPacket = InPacketInit;		
         memset(RxBuffer, EmptyBufferChar, RxBufferLenBytes);
 
-        std::ostringstream oss;
-        oss << "Binary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").";
-        MagAOXAppT::log<text_log>(oss.str());
+        // std::ostringstream oss;
+        // oss << "Binary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").";
+        // MagAOXAppT::log<text_log>(oss.str());
 
         return(0);
     }
@@ -304,19 +304,19 @@ struct BinaryUart
 		uint8_t TxBuffer[TxBufferLenBytes];
 		size_t PacketLen = Packet.MakePacket(TxBuffer, TxBufferLenBytes, PayloadData, PayloadType, PayloadLen);
 
-        std::ostringstream oss;
-        oss << "Packet length: " << PacketLen;
-        MagAOXAppT::log<text_log>(oss.str());
+        // std::ostringstream oss;
+        // oss << "Packet length: " << PacketLen;
+        // MagAOXAppT::log<text_log>(oss.str());
 
 		for (size_t i = 0; i < PacketLen; i++) { Pinout.putcqq(TxBuffer[i]); }
 
 		// Log packet sent
-		oss.str("");
-        oss << "Binary Uart: Sending packet(" << PayloadType << ", " << PayloadLen << "): ";
-        MagAOXAppT::log<text_log>(oss.str());	
-		oss.str("");
-		for(size_t i = 0; i < PacketLen; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(TxBuffer[i]) << ":"; }
-		MagAOXAppT::log<text_log>(oss.str());		
+		// oss.str("");
+        // oss << "Binary Uart: Sending packet(" << PayloadType << ", " << PayloadLen << "): ";
+        // MagAOXAppT::log<text_log>(oss.str());	
+		// oss.str("");
+		// for(size_t i = 0; i < PacketLen; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(TxBuffer[i]) << ":"; }
+		// MagAOXAppT::log<text_log>(oss.str());		
 
 	}
 };
