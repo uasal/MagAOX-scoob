@@ -1183,11 +1183,21 @@
         <enum>QTabWidget::West</enum>
        </property>
        <property name="currentIndex">
-        <number>0</number>
+        <number>1</number>
+       </property>
+       <property name="iconSize">
+        <size>
+         <width>48</width>
+         <height>48</height>
+        </size>
        </property>
        <widget class="QWidget" name="tabUser">
+        <attribute name="icon">
+         <iconset resource="../../resources/magaox.qrc">
+          <normaloff>:/icons/account_64.png</normaloff>:/icons/account_64.png</iconset>
+        </attribute>
         <attribute name="title">
-         <string>User</string>
+         <string/>
         </attribute>
         <layout class="QGridLayout" name="gridLayout_2">
          <item row="0" column="0">
@@ -1219,8 +1229,12 @@
         <property name="styleSheet">
          <string notr="true"/>
         </property>
+        <attribute name="icon">
+         <iconset resource="../../resources/magaox.qrc">
+          <normaloff>:/icons/ninja_64.png</normaloff>:/icons/ninja_64.png</iconset>
+        </attribute>
         <attribute name="title">
-         <string>Admin</string>
+         <string/>
         </attribute>
         <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0">
          <item row="0" column="0">

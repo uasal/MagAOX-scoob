@@ -904,7 +904,7 @@ QTabWidget::pane
 
 QTabWidget::pane[isAdmin="true"]
 {
-    border: 0.1ex solid #ff0000;
+    border: 0.1ex solid #ffff00;
     padding: 0.5ex;
     margin: 0.1ex;
 }
@@ -1371,7 +1371,7 @@ QSlider::add-page:vertical
 QSlider::sub-page:horizontal[isAdmin="true"],
 QSlider::add-page:vertical[isAdmin="true"]
 {
-    background: #ff0000;
+    background: #ffff00;
     border-radius: 0.3ex;
 }
 
