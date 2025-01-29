@@ -105,8 +105,8 @@ namespace MagAOX
       double d_piston = 5.0; // in micrometers 
 
       // Shmim size
-      double width = 3; // shm size
-      double height = 1; // shm size
+      double width = 1; // shm size
+      double height = 3; // shm size
 
       // input parameters
       std::string kw_name = "inputType";
@@ -1008,10 +1008,10 @@ namespace MagAOX
       std::string inputType = "";
 
       // If it has the wrong shape, destroy it
-      if(m_imageStream.md->size[0] != height || m_imageStream.md->size[1] != width)
+      if(m_imageStream.md->size[0] != width || m_imageStream.md->size[1] != height)
       {
         std::ostringstream oss;
-        oss << "Shmim '" << shmimMonitor::m_shmimName << "' has the wrong shape: height = " << m_height << ", width = " << m_width << ". Destroying it." << std::endl;
+        oss << "Shmim '" << shmimMonitor::m_shmimName << "' has the wrong shape: width = " << m_width << ", height = " << m_height << ". Destroying it." << std::endl;
         log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
 
         ImageStreamIO_destroyIm(&m_imageStream);
@@ -1071,7 +1071,7 @@ namespace MagAOX
     }
 
     int fsmCtrl::createStream() { 
-      uint32_t imsize[3] = {height, width, 0};
+      uint32_t imsize[3] = {width, height, 0};
 
       // Not found, create it
       // _DATATYPE_FLOAT = 9
