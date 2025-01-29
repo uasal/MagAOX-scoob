@@ -70,10 +70,10 @@ struct CameraControl {
 struct CameraMode {
     std::string description;
     std::string pixelFormat;
-    std::vector<std::pair<int, int>> resolutions; // Pair of width, height
-    std::vector<std::vector<double>> intervals;   // Nested vector for intervals per resolution
+    std::vector<std::pair<__u32, __u32>> resolutions; // Pair of width, height
+    std::vector<double> intervals;   // Nested vector for intervals per resolution
     int bitDepth;
-    int current_resolution = -1;                 // Index of the current resolution
+    int current_resolution;                 // Index of the current resolution
 };
 
 // Note, after adding CameraMode to track resolution changes, width/height, 
@@ -100,10 +100,9 @@ int queryBuffer(int buf_index);
 int queueBuffers();
 int queueBuffer(int buf_index);
 
-int getPowerStatus();
 int getCamInput();
 
-int setupCamera();
+void setupCamera();
 
 // returns the index of the buffer dequeued or -1 for failure
 int dequeueBuffer();   
@@ -120,7 +119,7 @@ void getAllCameraControls(); //experimental parsing of camera params
 void updateCameraControls();
 
 int getAndUpdateSingleControlVal(std::string search_str);
-void writeSingleControlVal(std::string search_str, int value);
+int writeSingleControlVal(std::string search_str, int value);
 
 std::string parseFlags();
 std::string pixelFormatToString();
@@ -188,27 +187,9 @@ int getCamInput() {
     return 0;
 }
 
-int setupCamera() {
+void setupCamera() {
     getCameraModes();
     getAllCameraControls();
-}
-
-int getPowerStatus() {
-    struct v4l2_input input;
-
-    //update struct to current camera
-    input.index = cam_input;
-
-    if (ioctl(fd, VIDIOC_ENUMINPUT, &input) == 0) {
-        printf("Input %d: %s, %d, %d\n", input.index, input.name, input.type, input.status);
-    }
-
-    if(input.index != cam_input)
-    {
-        printf("Wrong camera index\n");
-    }
-
-    return input.status; // status 0 is camera ok, all others are failures
 }
 
 int setCamImageFormat(int width, int height, int bitDepth) {
@@ -263,11 +244,6 @@ int setCamImageFormat(int width, int height, int bitDepth) {
     params.height = fmt.fmt.pix.height;
     params.pixelFormat = fmt.fmt.pix.pixelformat; 
     params.bitDepth = bitDepth;
-    
-    // after updating image format, might have changed parameters
-
-    updateCameraControls();
-    updateCurrentMode(); // tracking width/height and pixel format in 2 different data structures. TODO unify these
 
     return 0;
 }
@@ -576,7 +552,7 @@ void updateCurrentMode() {
     }
 
     printf("Curent resolution: %d x %d\n", mode.resolutions[mode.current_resolution].first, mode.resolutions[mode.current_resolution].second);
-    printf("Current interval: %f\n", mode.intervals[mode.current_resolution].first, mode.intervals[mode.current_resolution].second);
+    printf("Current interval: %f\n", mode.intervals[mode.current_resolution]);
 }
 
 // get bayer pattern, bit depth, and viable resolutions w/ corresponding framerates)
@@ -595,8 +571,8 @@ void getCameraModes() {
         return;
     }
 
-    int current_width = current_fmt.fmt.pix.width;
-    int current_height = current_fmt.fmt.pix.height;
+    __u32 current_width = current_fmt.fmt.pix.width;
+    __u32 current_height = current_fmt.fmt.pix.height;
 
     // Enumerate only first mode.  No way for us to tell which mode we are doing or how to switch between them anyway. [0] and [1] are identical
     struct v4l2_fmtdesc fmt_desc;
@@ -632,16 +608,14 @@ void getCameraModes() {
             frmival.width = frmsize.discrete.width;
             frmival.height = frmsize.discrete.height;
 
-            std::vector<double> resolution_intervals;
             while (ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &frmival) == 0) {
                 if (frmival.type == V4L2_FRMIVAL_TYPE_DISCRETE) {
                     double interval = static_cast<double>(frmival.discrete.numerator) /
                                       static_cast<double>(frmival.discrete.denominator);
-                    resolution_intervals.push_back(interval);
+                    mode.intervals.push_back(interval);
                 }
                 frmival.index++;
             }
-            mode.intervals.push_back(resolution_intervals);
         }
         frmsize.index++;
     }
@@ -668,15 +642,11 @@ void getCameraModes() {
             std::cout << " (current)";
         }
         std::cout << "\n";
-
-        // Print intervals for this resolution
-        if (i < mode.intervals.size()) {
-            std::cout << "      Intervals: ";
-            for (const auto& interval : mode.intervals[i]) {
-                std::cout << interval << "s (" << 1.0 / interval << " fps), ";
-            }
-            std::cout << "\n";
+        std::cout << "    " << mode.intervals[i];
+        if (mode.current_resolution == static_cast<int>(i)) {
+            std::cout << " (current)";
         }
+        std::cout << "\n";
     }
 }
 
@@ -715,11 +685,11 @@ void updateCameraControls() {
             if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
                 it->second.current_value = control.value;
             } else {
-                printf("Couldn't get current value of %s\n", sanitizeName(query_ext_ctrl.name));
+                printf("Couldn't get current value of %s\n", sanitizeName(query_ext_ctrl.name).c_str());
             }
         
         } else {
-            printf("Couldn't find %s\n", sanitizeName(query_ext_ctrl.name));
+            printf("Couldn't find %s\n", sanitizeName(query_ext_ctrl.name).c_str());
         }
 
         // Move to the next control
@@ -734,6 +704,12 @@ void updateCameraControls() {
 }
 
 // update current value based on string input
+/*
+    Searches camera parameter list for value, 
+    then retreives the latest value from the camera, updating the data structure
+
+    @Return value of the parameter or -1 for failure
+*/
 int getAndUpdateSingleControlVal(std::string search_str){
     auto it = camera_controls.find(search_str);
     if(it != camera_controls.end()){
@@ -744,17 +720,22 @@ int getAndUpdateSingleControlVal(std::string search_str){
             it->second.current_value = control.value;
             return control.value;
         } else {
-            printf("Couldn't get current value of %s\n", search_str.c_str());
+            printf("Error getting current value of %s\n", search_str.c_str());
             return -1;
         }
     }
+    printf("Couldn't find camera parameter %s\n", search_str.c_str());
+    return -1;
 }
 
 /* VIDIOC_S_CTRL returns 0 or -1 and writes to errno variable
    errno could be EINVAL, ERANGE, EBUSY, EACCESS 
    
    when writing values, sometimes driver will set a different val than input. 
-   For accuracy, recommend doing 'getAndUpdateSingleControlVal after writing */
+   For accuracy, recommend doing 'getAndUpdateSingleControlVal after writing 
+   
+    interestingly enough, v4l2 only deals in ints for input values
+*/
 int writeSingleControlVal(std::string search_str, int value) {
     auto it = camera_controls.find(search_str);
     if (it != camera_controls.end()) {

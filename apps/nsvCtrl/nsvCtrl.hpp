@@ -111,6 +111,17 @@ protected:
 
    int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
+   int m_xStartPos;
+   int m_yStartPos;
+
+   float m_minEMGain; // no min defined in stdCamera. Can assume 0?
+   int m_minVCrop;
+   int m_maxVCrop;
+   int m_maxYStartPos;
+   int m_minYStartPos;
+   int m_maxXStartPos;
+   int m_minXStartPos;
+
    std::vector<void*> ROIbuffers;
 
    // booleans for potential config values in camera... could do away with these but would be uglier
@@ -148,6 +159,8 @@ public:
 
    int getTemp();
 
+   int getPowerStatus();
+
    int setTempControl();
 
    int getFPS();
@@ -159,6 +172,14 @@ public:
    int setVCrop(int offset);
 
    int getVCrop();
+
+   int getXStartPos();
+
+   int setXStartPos(int pos);
+   
+   int getYStartPos();
+   
+   int setYStartPos(int pos);
 
    int setBitDepth(int bitDepth);
 
@@ -271,18 +292,39 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    std::string m_powerDevice;             ///< The INDI device name of the power controller
    std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
 
-   //int m_powerState = -1;       ///< Current power state, 1=On, 0=Off, -1=Unk.
+   m_powerState = -1;       ///< Current power state, 1=On, 0=Off, -1=Unk.
    //int m_powerTargetState = -1; ///< Current target power state, 1=On, 0=Off, -1=Unk.
 
    //m_startupTemp = -45;  
    
+   // overwrite these once camera powered on, set a mode, & loaded camera params
    m_maxEMGain = 360;
-   m_emGainSet = 100;
+   m_minEMGain = 0;
+   m_emGainSet = 100; //default
+
    m_blacklevelSet = 10;
    m_maxBlacklevel = 65535; // assuming 16-bit. Pair with bitdepth when implemented
    m_minBlacklevel = 0;
+   
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
+
+   m_minFPS = 0;
+   m_maxFPS = 99999999999;
+
+   m_minVCrop = 0;
+   m_maxVCrop = 99999999;
+
+   m_maxYStartPos = 9999999;
+   m_maxXStartPos = 99999999;
+   m_xStartPos = 0;
+
+   m_minYStartPos = 0;
+   m_minXStartPos = 0;
+   m_yStartPos = 0;
+
+   // fps, expsoure, black level, gain, 
+   // roi start pos, ver start pos, end pos, etc.
 
    return;
 }
@@ -522,7 +564,7 @@ int nsvCtrl::appLogic()
 
       if(getFPS() < 0 || 
         getEMGain() < 0 ||
-        uses_blacklevel? getBlacklevel() < 0 : 0 ||
+        getBlacklevel() < 0 ||
         getExpTime() < 0 ||
         uses_vCrop ? getVCrop() < 0 : 0 )
       {   
@@ -532,20 +574,10 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      if(int ps = getPowerStatus() != 0){
-         
-         /*
-         if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   //refer to V4L2_IN_ST_NO_POWER in videodev2.h
-         } else if(ps == 2){
-            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
-         } else{
-            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
-         }
-
+      if(getPowerStatus() < 0){
+         log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
          state(stateCodes::NODEVICE);
          return 0;
-         */
       }
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
@@ -659,41 +691,12 @@ int nsvCtrl::cameraSelect()
 
    // after connecting to the camera, we have polled all values and need to reconfigure INDI
    // Could connect to the camera and poll values with the fd prior to streaming, however this could be dangerous? Wait for power on for now
-   
-   // dynamically-added INDI values
-   auto it = camera_controls.find("vcropoffset");
-   if(it != camera_controls.end()){
-      uses_vCrop = true;
-      getVCrop();
-      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", it->second.minimum, it->second.maximum, it->second.step, "%d");
-      m_indiP_vCrop["current"] = m_vCrop;
-      m_indiP_vCrop["target"] = m_vCrop;
-      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+
+   getPowerStatus();
+   if(!m_powerState) {
+      state(stateCodes::NODEVICE);
+      return log<text_log,-1>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);
    } 
-
-   if(!m_powerState) return -1;
-
-   /*
-   if(int ps = getPowerStatus() != 0){
-      m_powerState = 0;
-      m_poweredOn = false; */
-      /*
-         if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
-         } else if(ps == 2){
-            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
-         } else{
-            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
-         }
-
-         state(stateCodes::NODEVICE);
-         return 0;
-         */
- /*  } else {
-      m_powerState = 1;
-      m_poweredOn = true;
-   }
-   */
 
    // need to get valid modes first before setting mode
 
@@ -816,9 +819,11 @@ int nsvCtrl::setReadoutMode()
    //    then check outputs -> VIDIOC_QUERYCAP: ok   VIDIOC_G_FMT: ok   VIDIOC_S_FMT: ok
    
    // not generically supporting setting width and height. Will need to change when Neutralino adds true ROI support. Still doing pseudo-ROI
-   setCamImageFormat(m_cameraModes[m_modeName].m_sizeX, mcameraMes[m_modeName].m_sizeY, m_bitDepth); 
+   setCamImageFormat(m_cameraModes[m_modeName].m_sizeX, m_cameraModes[m_modeName].m_sizeY, m_bitDepth); 
+   updateCameraControls();  // update controls after updating image format
+   updateCurrentMode(); 
 
-   // camera_modes is updated with what camera actually set for x,y
+   // now update local variables.  some redundancy with CameraControl struct
    int width = camera_modes[0].resolutions[camera_modes[0].current_resolution].first;
    int height = camera_modes[0].resolutions[camera_modes[0].current_resolution].second;
 
@@ -826,13 +831,63 @@ int nsvCtrl::setReadoutMode()
    m_full_h = height;
 
    m_maxFPS = 1 / camera_modes[0].intervals[camera_modes[0].current_resolution];  // would get from CameraControl frame_rate, but 571 doesn't report correctly
-   
-   auto it = camera_controls.find("frame_rate");
-   if(it != camera_controls.end()){
-      m_minFPS = it->second.minimum;  // get from camera rather than config file
-   } else {
-      m_minFPS = 0;
+
+   // could directly reference these via camera_controls["frame_rate"].maximum but
+   auto fr = camera_controls.find("frame_rate");
+   if(fr != camera_controls.end()){
+      m_minFPS = fr->second.minimum;  
+      //m_maxFPS = fr->second.maximum;  see above
+   } 
+
+   auto bl = camera_controls.find("blacklevel"); 
+   if(bl != camera_controls.end()){
+      m_minBlacklevel = bl->second.minimum; 
+      m_maxBlacklevel = bl->second.maximum;
    }
+
+   auto blv = camera_controls.find("black_level");
+   if(blv != camera_controls.end()){
+      m_minBlacklevel = blv->second.minimum; 
+      m_maxBlacklevel = blv->second.maximum;
+   }
+
+   auto gn = camera_controls.find("gain");
+   if(gn != camera_controls.end()){
+      m_minEMGain = gn->second.minimum;  
+      m_maxEMGain = gn->second.maximum;
+   }
+
+   auto xp = camera_controls.find("exposure");
+   if(xp != camera_controls.end()){
+      m_minExpTime = xp->second.minimum;  
+      m_maxExpTime = xp->second.maximum;
+   } 
+
+   auto vc = camera_controls.find("vcropoffset");
+   if(vc != camera_controls.end()){
+      uses_vCrop = true;
+      m_minVCrop = vc->second.minimum;  
+      m_maxVCrop = vc->second.maximum;
+      m_vCrop = vc->second.current_value;
+      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", m_minVCrop, m_maxVCrop, vc->second.step, "%d");
+      m_indiP_vCrop["current"] = m_vCrop;
+      m_indiP_vCrop["target"] = m_vCrop;
+      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+   } else {
+      uses_vCrop = false;
+   }
+
+   auto hs = camera_controls.find("roi_hor_start_pos");
+   if(hs != camera_controls.end()){
+      m_minXStartPos = hs->second.minimum;  
+      m_maxXStartPos = hs->second.maximum;
+   } 
+
+   auto vs = camera_controls.find("roi_ver_start_pos");
+   if(vs != camera_controls.end()){
+      m_minYStartPos = vs->second.minimum;  
+      m_maxYStartPos = vs->second.maximum;
+   } 
 
    m_full_x = round(width / 2); // get from sensor not from config
    m_full_y = round(height / 2);
@@ -888,105 +943,143 @@ int nsvCtrl::getTemp()
 }
 
 inline
+int nsvCtrl::getPowerStatus()
+{
+   int res = getAndUpdateSingleControlVal("get_fpga_power_status");  // values range from -1 to 15
+   if(res > 0){
+      m_poweredOn = true;
+      m_powerState = 1;
+   } else if(res == 0){
+      m_poweredOn = false;
+      m_powerState = 0;
+   } else {
+      m_poweredOn = false;
+      m_powerState = -1;
+   }
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get power state"}) : m_powerState;
+}
+
+inline
+int nsvCtrl::getFPS()
+{
+   m_fps = getAndUpdateSingleControlVal("frame_rate");
+   return m_fps < 0 ? log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"}) : m_fps;
+}
+
+inline
+int nsvCtrl::setFPS()
+{
+   if(m_fpsSet > m_maxFPS || m_fpsSet < m_minFPS)
+      log<text_log>(std::to_string(m_fpsSet) + " fps out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("frame_rate", m_fpsSet);
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting framerate: " + std::to_string(m_fpsSet)}) : log<text_log,1>({"set framerate: " + res});
+}
+
+inline 
+int nsvCtrl::getExpTime()
+{
+   m_expTime = getAndUpdateSingleControlVal("exposure") / 1000000.0;
+   return m_expTime < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get exposure time"}) : m_expTime;
+}
+
+inline 
+int nsvCtrl::setExpTime()
+{
+   if(m_expTimeSet > m_maxExpTime || m_expTimeSet < m_minExpTime)
+      log<text_log>(std::to_string(m_expTimeSet) + " exp out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("exposure", int(m_expTimeSet * 1000000)); // convert s to us, use indi var
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_expTimeSet)}) : log<text_log,1>({"set exposure: " + res});
+}
+
+inline
 int nsvCtrl::getEMGain()
 {
-   const std::string command = "v4l2-ctl --get-ctrl gain -d " + m_camPath;
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getEMGain"});
-      return -1;
-   }
-
-   m_emGain = std::stoi(result);
-   return 0;
+   m_emGain = getAndUpdateSingleControlVal("gain");
+   return m_emGain < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain"}) : m_emGain;
 }
 
 inline
 int nsvCtrl::setEMGain()
 {
-   
-   int gain_to_set = m_emGainSet;  
+   if(m_emGainSet > m_maxEMGain || m_emGainSet < m_minEMGain)
+      log<text_log>(std::to_string(m_emGainSet) + " gain out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("exposure", int(m_emGainSet));
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + res});
+}
 
-   if(gain_to_set < 0)
-   {
-      gain_to_set = 0;
-      log<text_log>("Gain limited to 0", logPrio::LOG_WARNING);
-   }
-   
-   if(gain_to_set > m_maxEMGain)
-   {
-      gain_to_set = m_maxEMGain;
-      log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setEMGain:"});
-      return -1;
-   }
-
-   log<text_log>("Set Gain to: " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
-   
-   return 0;
+// IMX 455 uses blacklevel while IMX571 uses black_level
+inline
+int nsvCtrl::getBlacklevel()
+{
+   m_blacklevel = getAndUpdateSingleControlVal("blacklevel");
+   if(m_blacklevel < 0)
+     m_blacklevel = getAndUpdateSingleControlVal("black_level");
+   return m_blacklevel < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain black level"}) : m_blacklevel;
 }
 
 inline
-int nsvCtrl::setVCrop(int offset)
-{
-   int vCrop_to_set = offset;  
-   int min = camera_controls["vcropoffset"].minimum;
-   int max = camera_controls["vcropoffset"].maximum;
-
-   if(vCrop_to_set < min)
-   {
-      vCrop_to_set = min;
-      log<text_log>("vCrop limited to " + std::to_string(min), logPrio::LOG_WARNING);
-   }
-   
-   if(vCrop_to_set > max) 
-   {
-      vCrop_to_set = max;
-      log<text_log>("vCrop limited to " + std::to_string(max), logPrio::LOG_WARNING);
-   }
-
-   int res = writeSingleControlVal(vCrop_to_set);
-
-   if( res < 0 )
-   {
-      log<software_error>({__FILE__,__LINE__, "error setting vcropoffset:"});
-      return -1;
-   }
-
-   log<text_log>("Set vcropoffset to: " + std::to_string(res), logPrio::LOG_WARNING);
-   
-   return res;
+int nsvCtrl::setBlacklevel()
+{ 
+   if(m_blacklevelSet > m_maxBlacklevel || m_blacklevelSet < m_minBlacklevel)
+      log<text_log>(std::to_string(m_blacklevelSet) + " black level out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("blacklevel", int(m_blacklevelSet));
+   if(res < 0)
+      res = writeSingleControlVal("black_level", int(m_blacklevelSet));
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting black level to" + std::to_string(m_blacklevelSet)}) : log<text_log,1>({"set black level: " + res});
 }
 
 inline
 int nsvCtrl::getVCrop()
 {
    m_vCrop = getAndUpdateSingleControlVal("vcropoffset");
-   if( m_vCrop < 0) 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getvCrop"});
-      return -1;
-   }
-   return 0;
+   return m_vCrop < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get vcropoffset"}) : m_vCrop;
+}
+
+inline
+int nsvCtrl::setVCrop(int offset)
+{ 
+   if(offset > m_maxVCrop || offset < m_minVCrop)
+      log<text_log>(std::to_string(offset) + " vropoffset out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("vcropoffset", offset);
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + res});
+}
+
+// ROI controls
+inline
+int nsvCtrl::getXStartPos()
+{
+   m_xStartPos = getAndUpdateSingleControlVal("roi_hor_start_pos");
+   return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi x start pos"}) : m_xStartPos;
+}
+
+inline
+int nsvCtrl::setXStartPos(int pos)
+{ 
+   if(pos > m_maxXStartPos || pos < m_minXStartPos)
+      log<text_log>(std::to_string(pos) + " ROI start x pos out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("roi_hor_start_pos", pos);
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start x to" + std::to_string(pos)}) : log<text_log,1>({"set roi start x to: " + res});
+}
+
+inline
+int nsvCtrl::getYStartPos()
+{
+   m_yStartPos = getAndUpdateSingleControlVal("roi_ver_start_pos");
+   return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi y start pos"}) : m_yStartPos;
+}
+
+inline
+int nsvCtrl::setYStartPos(int pos)
+{ 
+   if(pos > m_maxYStartPos || pos < m_minYStartPos)
+      log<text_log>(std::to_string(pos) + " ROI start y pos out of bounds", logPrio::LOG_WARNING);
+   int res = writeSingleControlVal("roi_ver_start_pos", pos);
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start y to" + std::to_string(pos)}) : log<text_log,1>({"set roi start y to: " + res});
 }
 
 inline
 int nsvCtrl::setBitDepth(int bitDepth)
 {
-   if(bitDepth != 8 || bitDepth != 10 || bitDepth != 16)
-   {
-      log<text_log>("invalid input bitDepth. Resettting...", logPrio::LOG_WARNING);
-      return -1;
-   }
-   
    const std::string command = "v4l2-ctl --set-fmt-video=pixelformat=RG" + std::to_string(bitDepth) + " -d " + m_camPath; 
    int result = std::system(command.c_str());
   
@@ -999,55 +1092,6 @@ int nsvCtrl::setBitDepth(int bitDepth)
    log<text_log>("Set bitDepth to: " + std::to_string(bitDepth), logPrio::LOG_WARNING);
    m_bitDepth = bitDepth;
    
-   return 0;
-}
-
-inline
-int nsvCtrl::getBlacklevel()
-{
-   if(uses_blacklevel){
-      const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath;
-      std::string result = cmdRes(command.c_str());
-      if( result == "error") 
-      {
-         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from blacklevel"});
-         return -1;
-      }
-
-      m_blacklevel = std::stoi(result);
-   }
-   return 0;
-}
-
-inline
-int nsvCtrl::setBlacklevel()
-{
-   if(uses_blacklevel){  
-      int blacklevel_to_set = m_blacklevelSet;  
-
-      if(blacklevel_to_set < m_minBlacklevel)
-      {
-         blacklevel_to_set = m_minBlacklevel;
-         log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-      }
-      
-      if(blacklevel_to_set > m_maxBlacklevel)
-      {
-         blacklevel_to_set = m_maxBlacklevel;
-         log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-      }
-      
-      const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; 
-      int result = std::system(command.c_str());
-   
-      if( result != 0)
-      {
-         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBlacklevel:"});
-         return -1;
-      }
-
-      log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   }
    return 0;
 }
 
@@ -1155,106 +1199,6 @@ inline
 int nsvCtrl::setTempControl()
 {
    return 0;   // todo
-}
-
-inline
-int nsvCtrl::getFPS()
-{
-   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getFPS"});
-      return -1;
-   }
-
-   m_fps = std::stoi(result);
-
-   return 0;
-}
-
-inline
-int nsvCtrl::setFPS()
-{
-   int fr_to_set = m_fpsSet; 
-
-   if(fr_to_set < m_minFPS)
-   {
-      fr_to_set = m_minFPS;
-      log<text_log>("FPS limited to min of: " + std::to_string(m_minFPS), logPrio::LOG_WARNING);
-   }
-   
-   if(fr_to_set > m_maxFPS)
-   {
-      fr_to_set = m_maxFPS;
-      log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   //getFPS(); pull framerate to see what it set
-
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setFPS setting FPS to: " + std::to_string(fr_to_set)});
-      return -1;
-   }
-
-   log<text_log>("Set FPS to: " + std::to_string(fr_to_set), logPrio::LOG_WARNING);
-   
-   return 0;
-}
-
-
-inline 
-int nsvCtrl::getExpTime()
-{
-   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getExpTime"});
-      return -1;
-   }
-
-   m_expTime = std::stoi(result) / 1000000.0;  // convert us to s
-
-   return 0;
-}
-
-inline 
-int nsvCtrl::setExpTime()
-{
-   
-   int exp_to_set = m_expTimeSet * 1000000;  // convert s to us, use indi var
-
-   if(exp_to_set < m_minExpTime)
-   {
-      exp_to_set = m_minExpTime;
-      log<text_log>("Exp limited to min of: " + std::to_string(m_minExpTime), logPrio::LOG_WARNING);
-   }
-   
-   if(exp_to_set > m_maxExpTime)
-   {
-      exp_to_set = m_maxExpTime;
-      log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setExpTime setting Exp to: " + std::to_string(exp_to_set)});
-      return -1;
-   }
-
-   log<text_log>("Set Exp to: " + std::to_string(exp_to_set / 1000000.0), logPrio::LOG_WARNING);
-   
-   return 0;
 }
 
 inline 
@@ -1530,7 +1474,7 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
    m_vCrop = vc;
-   int rv = uses_vCrop ? setVCrop(vc) : -999;
+   int rv = uses_vCrop ? setVCrop(m_vCrop) : -999;
    
    if(rv < 0)
    {
