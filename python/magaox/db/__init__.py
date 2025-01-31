@@ -90,6 +90,7 @@ def query_observations(start_dt=None, end_dt=None, title=None, email=None, conn:
 SELECT * FROM observations
 WHERE
 {where_conditions}
+ORDER BY start_ts ASC
 ''').format(
     where_conditions=where_conditions,
 )
