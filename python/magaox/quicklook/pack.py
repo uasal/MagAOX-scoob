@@ -97,7 +97,7 @@ def infer_common_xrif_cube_size_dtype(paths):
     img_dtype = None
     times_dtype = None
     for p in paths:
-        with open(p, 'rb') as fh:
+        with open(p, "rb") as fh:
             xr = fixr.XrifReader(fh)
             img_dtype = xr.array.dtype
             fr, pl, ht, wd = xr.shape

@@ -26,8 +26,8 @@ def generate_path_rewrites():
 @xconf.config
 class BaseQuicklookCommand(dbconfig.BaseConfig, xconf.Command):
     database : dbconfig.DbConfig = xconf.field(default=dbconfig.DbConfig(), help="PostgreSQL database connection")
-    dry_run : bool = xconf.field(default=False, help="Whether to perform a dry run or actually execute the necessary commands")
     title : typing.Optional[str] = xconf.field(default=None, help="All or part of the observation name to process")
+    exact_title : bool = xconf.field(default=False, help="Whether to match the given title as a substring anywhere in the observation title")
     email : typing.Optional[str] = xconf.field(default=None, help="Email address for the observer to process")
     semester : typing.Optional[str] = xconf.field(default=utils.get_current_semester(), help="Semester to search in, 202XXA/20XXB format")
     utc_start : typing.Optional[datetime.datetime] = xconf.field(default=None, help="ISO UTC datetime stamp of earliest observation start time to process (supersedes semester)")

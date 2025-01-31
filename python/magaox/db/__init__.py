@@ -66,7 +66,7 @@ ORDER BY
     cur.execute(query, variables)
     return cur.fetchall()
 
-def query_observations(start_dt=None, end_dt=None, title=None, email=None, conn: Optional[psycopg.Connection]=None):
+def query_observations(start_dt=None, end_dt=None, title=None, email=None, conn: Optional[psycopg.Connection]=None, exact_title: bool=False):
     if conn is None:
         conn = connect()
     cur = conn.cursor()
@@ -75,9 +75,12 @@ def query_observations(start_dt=None, end_dt=None, title=None, email=None, conn:
     if start_dt is not None or end_dt is not None:
         criteria.append(SQL("(tstzrange(start_ts, end_ts) && tstzrange({}, {}))").format(start_dt, end_dt))
     if title is not None:
-        criteria.append(SQL("obsname ILIKE {}").format(
-            f"%{title}%"
-        ))
+        if not exact_title:
+            criteria.append(SQL("obsname ILIKE {}").format(
+                f"%{title}%"
+            ))
+        else:
+            criteria.append(SQL("obsname = {}").format(title))
     if email is not None:
         criteria.append(SQL("email ILIKE {}").format(
             f"%{email}%"
