@@ -564,7 +564,7 @@ int nsvCtrl::appLogic()
 
       if(getFPS() < 0 || 
         getEMGain() < 0 ||
-        getBlacklevel() < 0 ||
+        getBlacklevel() < 0 || // currently returning 1 hard-coded when value not found in camera... so return val is not useful
         getExpTime() < 0 ||
         uses_vCrop ? getVCrop() < 0 : 0 )
       {   
@@ -724,10 +724,9 @@ int nsvCtrl::cameraSelect()
    getExpTime();
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
 
-   CameraParams params = getCameraParams();
-   std::cout << "Camera initialized to - Width: " << params.width
-                  << ", Height: " << params.height
-                  << ", Pixel Format: " << params.pixelFormat << std::endl;
+   printf("Camera initialized to - Width: %d,", camera_modes[0].resolutions[camera_modes[0].current_resolution].first);
+   printf(" Height: %d,", camera_modes[0].resolutions[camera_modes[0].current_resolution].second);
+   printf(" Bit depth: %d\n", camera_modes[0].bitDepth);
 
    if(requestBuffers(m_circBuffLength)  == -1 || 
       queryBuffers()     == -1) {
@@ -736,7 +735,11 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   printf("here\n");
+
    resizeROIbufs();
+
+   printf("here2\n");
 
    if(startStreaming() == -1){
       log<text_log>("Failed to start camera stream", logPrio::LOG_CRITICAL);
@@ -744,11 +747,17 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+
+   printf("here3\n");
+
    if(queueBuffers() == -1){ // load up initial images
       log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+
+
+   printf("here4\n");
 
    m_current_frame = 0; 
    m_oldest_frame = 0;
@@ -927,7 +936,7 @@ int nsvCtrl::setReadoutMode()
       log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
    }
 
-   std::cout << "Set readout mode to " + m_modeName << std::endl;
+   printf("Set readout mode to: %s\n", m_modeName.c_str());
 
    return 0;
 }
@@ -946,6 +955,18 @@ inline
 int nsvCtrl::getPowerStatus()
 {
    int res = getAndUpdateSingleControlVal("get_fpga_power_status");  // values range from -1 to 15
+   if(res == PARAM_NOT_FOUND){
+      // handle when we can't see power explicitly.  Assume turned on..
+      m_poweredOn = true;
+      m_powerState = 1;
+      return 1;
+   }
+
+   // TODO delete this block once they actually make the fpga report correctly
+   m_poweredOn = true;
+   m_powerState = 1;
+   return 1;
+
    if(res > 0){
       m_poweredOn = true;
       m_powerState = 1;
@@ -963,6 +984,9 @@ inline
 int nsvCtrl::getFPS()
 {
    m_fps = getAndUpdateSingleControlVal("frame_rate");
+   if(m_fps == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_fps < 0 ? log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"}) : m_fps;
 }
 
@@ -972,6 +996,9 @@ int nsvCtrl::setFPS()
    if(m_fpsSet > m_maxFPS || m_fpsSet < m_minFPS)
       log<text_log>(std::to_string(m_fpsSet) + " fps out of bounds", logPrio::LOG_WARNING);
    int res = writeSingleControlVal("frame_rate", m_fpsSet);
+   if(res == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting framerate: " + std::to_string(m_fpsSet)}) : log<text_log,1>({"set framerate: " + res});
 }
 
@@ -979,22 +1006,31 @@ inline
 int nsvCtrl::getExpTime()
 {
    m_expTime = getAndUpdateSingleControlVal("exposure") / 1000000.0;
+   if(m_expTime == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_expTime < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get exposure time"}) : m_expTime;
 }
 
 inline 
 int nsvCtrl::setExpTime()
 {
-   if(m_expTimeSet > m_maxExpTime || m_expTimeSet < m_minExpTime)
+   if((m_expTimeSet * 1000000) > m_maxExpTime || (m_expTimeSet * 1000000) < m_minExpTime)
       log<text_log>(std::to_string(m_expTimeSet) + " exp out of bounds", logPrio::LOG_WARNING);
-   int res = writeSingleControlVal("exposure", int(m_expTimeSet * 1000000)); // convert s to us, use indi var
-   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_expTimeSet)}) : log<text_log,1>({"set exposure: " + res});
+   m_expTime = writeSingleControlVal("exposure", int(m_expTimeSet * 1000000)); // convert s to us, use indi var
+   if(m_expTime == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_expTime < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_expTimeSet)}) : log<text_log,1>({"set exposure: " + std::to_string(m_expTime)});
 }
 
 inline
 int nsvCtrl::getEMGain()
 {
    m_emGain = getAndUpdateSingleControlVal("gain");
+   if(m_emGain == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_emGain < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain"}) : m_emGain;
 }
 
@@ -1003,8 +1039,11 @@ int nsvCtrl::setEMGain()
 {
    if(m_emGainSet > m_maxEMGain || m_emGainSet < m_minEMGain)
       log<text_log>(std::to_string(m_emGainSet) + " gain out of bounds", logPrio::LOG_WARNING);
-   int res = writeSingleControlVal("exposure", int(m_emGainSet));
-   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + res});
+   m_emGain = writeSingleControlVal("gain", int(m_emGainSet));
+   if(m_emGain == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_emGain < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + std::to_string(m_emGain)});
 }
 
 // IMX 455 uses blacklevel while IMX571 uses black_level
@@ -1014,6 +1053,9 @@ int nsvCtrl::getBlacklevel()
    m_blacklevel = getAndUpdateSingleControlVal("blacklevel");
    if(m_blacklevel < 0)
      m_blacklevel = getAndUpdateSingleControlVal("black_level");
+   if(m_blacklevel == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_blacklevel < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain black level"}) : m_blacklevel;
 }
 
@@ -1025,6 +1067,9 @@ int nsvCtrl::setBlacklevel()
    int res = writeSingleControlVal("blacklevel", int(m_blacklevelSet));
    if(res < 0)
       res = writeSingleControlVal("black_level", int(m_blacklevelSet));
+   if(res == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting black level to" + std::to_string(m_blacklevelSet)}) : log<text_log,1>({"set black level: " + res});
 }
 
@@ -1032,7 +1077,10 @@ inline
 int nsvCtrl::getVCrop()
 {
    m_vCrop = getAndUpdateSingleControlVal("vcropoffset");
-   return m_vCrop < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get vcropoffset"}) : m_vCrop;
+   if(m_vCrop == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_vCrop < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get vcropoffset"}) : m_vCrop;
 }
 
 inline
@@ -1041,6 +1089,9 @@ int nsvCtrl::setVCrop(int offset)
    if(offset > m_maxVCrop || offset < m_minVCrop)
       log<text_log>(std::to_string(offset) + " vropoffset out of bounds", logPrio::LOG_WARNING);
    int res = writeSingleControlVal("vcropoffset", offset);
+   if(res == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + res});
 }
 
@@ -1049,6 +1100,9 @@ inline
 int nsvCtrl::getXStartPos()
 {
    m_xStartPos = getAndUpdateSingleControlVal("roi_hor_start_pos");
+   if(m_xStartPos == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi x start pos"}) : m_xStartPos;
 }
 
@@ -1058,6 +1112,9 @@ int nsvCtrl::setXStartPos(int pos)
    if(pos > m_maxXStartPos || pos < m_minXStartPos)
       log<text_log>(std::to_string(pos) + " ROI start x pos out of bounds", logPrio::LOG_WARNING);
    int res = writeSingleControlVal("roi_hor_start_pos", pos);
+   if(res == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start x to" + std::to_string(pos)}) : log<text_log,1>({"set roi start x to: " + res});
 }
 
@@ -1065,6 +1122,9 @@ inline
 int nsvCtrl::getYStartPos()
 {
    m_yStartPos = getAndUpdateSingleControlVal("roi_ver_start_pos");
+   if(m_yStartPos == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi y start pos"}) : m_yStartPos;
 }
 
@@ -1074,6 +1134,9 @@ int nsvCtrl::setYStartPos(int pos)
    if(pos > m_maxYStartPos || pos < m_minYStartPos)
       log<text_log>(std::to_string(pos) + " ROI start y pos out of bounds", logPrio::LOG_WARNING);
    int res = writeSingleControlVal("roi_ver_start_pos", pos);
+   if(res == PARAM_NOT_FOUND){ 
+      return 1;
+   }
    return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start y to" + std::to_string(pos)}) : log<text_log,1>({"set roi start y to: " + res});
 }
 
@@ -1389,12 +1452,14 @@ int nsvCtrl::resizeROIbufs()
 
    int bufSize = m_currentROI.w * m_currentROI.h;
 
+   printf("roi w: %d h: %d, bufsize: %d\n", m_currentROI.w, m_currentROI.h, bufSize);
+
    for(int i = 0; i < (int)m_circBuffLength; i++){
 
       void* buffer = malloc(bufSize * sizeof(uint16_t));  // assuming 16-bit. verify w/ bufferSize in queryBuffer
       if (buffer == nullptr) {
          state(stateCodes::ERROR);
-         return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memroy allocation failed"});
+         return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memory allocation failed"});
       }
 
       ROIbuffers[i] = buffer;

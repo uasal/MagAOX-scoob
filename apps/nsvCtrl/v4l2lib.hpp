@@ -40,6 +40,8 @@ struct CameraControl {
 };
 */
 
+#define PARAM_NOT_FOUND -999
+
 struct CameraControl {
     __u32 id;
     __u32 type;
@@ -231,11 +233,13 @@ int setCamImageFormat(int width, int height, int bitDepth) {
             std::cout << "Setting pixel format to 16-bit SRGGB." << std::endl;
             break;
         default:
+            fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB16;  // 16-bit Bayer format
             std::cerr << "Invalid bit depth! Supported bit depths are 8, 10, and 16" << std::endl;
-            return-1;
+            break;
     }
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) < 0) {
+        std::cout << "Error setting pixel format" << std::endl;
         return -1;
     }
 
@@ -256,7 +260,7 @@ int requestBuffers(int requested_buf_count) {
     req.memory = V4L2_MEMORY_MMAP;
 
     if (ioctl(fd, VIDIOC_REQBUFS, &req) < 0) {
-        //throw std::runtime_error("Failed to request buffers");
+        printf("Requesting buffers from camera failed... cnt req: %d\n", requested_buf_count);
         return -1;
     }
 
@@ -348,7 +352,7 @@ int startStreaming() {
     
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMON, &type) < 0) {
-        //throw std::runtime_error("Failed to start streaming");
+        printf("Failed to start streaming\n");
         return -1;
     }
     else {
@@ -679,10 +683,10 @@ void updateCameraControls() {
             it->second.step = query_ext_ctrl.step;
 
             // Retrieve current value of control (VIDIOC_G_CTRL) with id from query_ext_ctrl.id
-            struct v4l2_control control;
+            struct v4l2_ext_control control;
             memset(&control, 0, sizeof(control));
             control.id = query_ext_ctrl.id;
-            if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
+            if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &control) == 0) {  //VIDIOC_G_EXT_CTRLS VIDIOC_G_CTRL VIDIOC_QUERYCTRL
                 it->second.current_value = control.value;
             } else {
                 printf("Couldn't get current value of %s\n", sanitizeName(query_ext_ctrl.name).c_str());
@@ -713,10 +717,10 @@ void updateCameraControls() {
 int getAndUpdateSingleControlVal(std::string search_str){
     auto it = camera_controls.find(search_str);
     if(it != camera_controls.end()){
-        struct v4l2_control control;
+        struct v4l2_ext_control control;
         memset(&control, 0, sizeof(control));
         control.id = it->second.id;
-        if (ioctl(fd, VIDIOC_G_CTRL, &control) == 0) {
+        if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &control) == 0) {
             it->second.current_value = control.value;
             return control.value;
         } else {
@@ -725,7 +729,7 @@ int getAndUpdateSingleControlVal(std::string search_str){
         }
     }
     printf("Couldn't find camera parameter %s\n", search_str.c_str());
-    return -1;
+    return PARAM_NOT_FOUND; // inform when parameter doesn't exist
 }
 
 /* VIDIOC_S_CTRL returns 0 or -1 and writes to errno variable
@@ -739,22 +743,24 @@ int getAndUpdateSingleControlVal(std::string search_str){
 int writeSingleControlVal(std::string search_str, int value) {
     auto it = camera_controls.find(search_str);
     if (it != camera_controls.end()) {
-        struct v4l2_control control;
+        struct v4l2_ext_control control;
         memset(&control, 0, sizeof(control));
         control.id = it->second.id;
         control.value = value;
         it->second.current_value = value;  //best guess, but won't be correct much of the time
 
-        if (ioctl(fd, VIDIOC_S_CTRL, &control) == 0) {
+        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &control) == 0) {
             printf("Control '%s' updated to value %d\n", search_str.c_str(), control.value);
             return control.value;
         } else {
             printf("Failed to set control value %s\n", search_str.c_str());
         }
-    } else {
-        printf("Control '%s' not found\n", search_str.c_str());
     }
-    return -1;
+        
+    printf("Control '%s' not found\n", search_str.c_str());
+    return PARAM_NOT_FOUND; // inform when parameter doesn't exist
+
+    // below min return, above max return? 
 }
 
 // removes and rebuilds list of all camera controls and values 
