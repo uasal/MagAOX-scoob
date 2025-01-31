@@ -651,6 +651,7 @@ def process_span(
 ):
     log.info(f"Observation interval to process: {span}")
     for device in cameras:
+        # TODO currently all cams are separate because cube mode is not useful
         cube_mode = ALL_CAMERAS.get(device, DEFAULT_SEPARATE) is DEFAULT_CUBE
         if force_cube_or_separate is DEFAULT_CUBE:
             cube_mode = True
