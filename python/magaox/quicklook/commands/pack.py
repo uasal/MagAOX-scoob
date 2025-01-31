@@ -1,3 +1,4 @@
+import enum
 import time
 import os
 import typing
@@ -7,8 +8,24 @@ import datetime
 from datetime import timezone
 import pathlib
 import argparse
-from ...constants import HISTORY_FILENAME, ALL_CAMERAS, LOOKYLOO_DATA_ROOTS, QUICKLOOK_PATH, DEFAULT_CUBE, DEFAULT_SEPARATE, CHECK_INTERVAL_SEC, LOG_PATH
-from ...utils import parse_iso_datetime, format_timestamp_for_filename, utcnow, get_search_start_end_timestamps
+
+import xconf
+import zarr
+
+from ... import constants
+from ...constants import (
+    HISTORY_FILENAME,
+    ALL_CAMERAS,
+    LOOKYLOO_DATA_ROOTS,
+    QUICKLOOK_PATH,
+    DEFAULT_CUBE,
+    DEFAULT_SEPARATE,
+    CHECK_INTERVAL_SEC,
+    LOG_PATH,
+)
+from ... import utils
+from ...utils import parse_iso_datetime, format_timestamp_for_filename, utcnow
+from ..utils import get_search_start_end_timestamps
 from ..core import (
     TimestampedFile,
     ObservationSpan,
@@ -19,22 +36,91 @@ from ..core import (
     decide_to_process,
     create_bundle_from_span,
 )
-
-
-
-import xconf
+from ..pack import pack_one_obs, ChannelConfig, DEFAULT_CHANNELS
 from ._base import BaseQuicklookCommand
 
-from ... import constants
 
 log = logging.getLogger(__name__)
 
+
+class ZarrMode(enum.Enum):
+    WRITE_NO_OVERWRITE = "w-"
+    WRITE_WITH_OVERWRITE = "w"
+    READ_ONLY = "r"
+    READ_WRITE_CREATE = "r+"
+    READ_WRITE = "a"
+
+
 @xconf.config
 class Pack(BaseQuicklookCommand):
-    output_dir : pathlib.Path = xconf.field(default=pathlib.Path('.'), help="Path or URI to destination")
-    parallel_jobs : int = xconf.field(default=10, help="How many export jobs to start in parallel")
+    name: str = xconf.field(default="pack.zarr", help="Name of Zarr archive to create")
+    destination: pathlib.Path = xconf.field(
+        default=pathlib.Path(".").absolute(), help="xPath or URI to destination"
+    )
+    parallel_jobs: int = xconf.field(
+        default=10, help="How many export jobs to start in parallel"
+    )
+    channels: list[ChannelConfig] = xconf.field(
+        default_factory=lambda: [ChannelConfig(name=chan) for chan in DEFAULT_CHANNELS]
+    )
+    zarr_mode: ZarrMode = xconf.field(default=ZarrMode.WRITE_NO_OVERWRITE)
 
     def main(self):
-        if not self.output_dir.is_dir():
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-        log.debug(f"Starting the packer with {self.output_dir}")
+        if not self.destination.is_dir():
+            self.destination.mkdir(parents=True, exist_ok=True)
+        log.debug(f"Starting the packer with {self.destination / self.name}")
+
+        root = zarr.open(self.destination / self.name, mode=self.zarr_mode.value)
+        dbconn = self.database.connect()
+
+        start_dt, end_dt = self.get_time_range()
+        new_observation_spans, _ = get_new_observation_spans(
+            start_dt,
+            end_dt,
+            email=self.email,
+            title=self.title,
+            exact_title=self.exact_title,
+        )
+        if len(new_observation_spans):
+            log.info("Found these observation spans to pack:")
+            for span in new_observation_spans:
+                log.info(f"\t{span}")
+        else:
+            log.error("No matching observation spans to pack")
+            return
+
+        total_files, orig_total_bytes, final_total_bytes = 0, 0, 0
+
+        with futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as threadpool:
+            for span in new_observation_spans:
+                if span.end is None:
+                    log.debug(f"Skipping {span} because it is an open interval")
+                    continue
+                title_key = utils.make_filename_safe(span.title)
+                span_key = utils.format_timestamp_for_filename(span.begin)
+                if title_key in root:
+                    pack_target_group = root[title_key].require_group(span_key)
+                else:
+                    pack_target_group = root.require_group(f"{title_key}/{span_key}")
+
+                log.info(f"Observation interval to process: {span}")
+                paths_packed, orig_bytes, final_bytes = pack_one_obs(
+                    span,
+                    self.channels,
+                    pack_target_group,
+                    dbconn,
+                    self.path_rewrites,
+                    threadpool,
+                )
+                orig_total_bytes += orig_bytes
+                final_total_bytes += final_bytes
+                n_files = len(paths_packed)
+                total_files += n_files
+                if final_bytes > 0:
+                    log.debug(
+                        f"Packed {orig_bytes/1024/1024:1.1f} MiB from {n_files} files into {final_bytes/1024/1024:1.1f} MiB in {pack_target_group} ({orig_bytes / final_bytes:1.2f})"
+                    )
+        if final_total_bytes > 0:
+            log.debug(
+                f"Packed {orig_total_bytes/1024/1024:1.1f} MiB from {total_files} files into {final_total_bytes/1024/1024:1.1f} MiB ({orig_total_bytes / final_total_bytes:1.2f})"
+            )
