@@ -66,6 +66,7 @@ class stdMotionNode : public fsmNode
     /// Flag indicating whether or not the stage is currently tracking (default false).
     bool m_tracking{ false };
 
+
   public:
     /// Only c'tor.  Must be constructed with node name and a parent graph.
     stdMotionNode( const std::string &name,        /** [in] the name of this node*/
@@ -124,6 +125,7 @@ class stdMotionNode : public fsmNode
     void loadConfig(
         mx::app::appConfigurator &config /**< [in] the application configurator loaded with this node's options*/ );
 };
+
 
 inline stdMotionNode::stdMotionNode( const std::string &name, ingr::instGraphXML *parentGraph )
     : fsmNode( name, parentGraph )

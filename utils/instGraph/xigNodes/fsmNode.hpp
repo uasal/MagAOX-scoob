@@ -64,6 +64,7 @@ fsmNodeActionT fsmNodeActionTFromString( const std::string &action )
  * Whether it impacts ioput status depends on the `action` specified.
  *
  */
+
 class fsmNode : public xigNode
 {
 
@@ -155,6 +156,8 @@ public:
      */
     virtual void handleSetProperty( bool &actionTaken, /** < [out] indicates if action taken (true). */
                                     const pcf::IndiProperty &ipRecv /**< [in] the received INDI property to handle*/ );
+  public:
+
 
     virtual void updateGUI();
 };

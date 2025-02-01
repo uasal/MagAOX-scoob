@@ -176,7 +176,9 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
 
         std::cerr << "found node " << sections[i] << ": " << type << "\n";
 
+
         xigNode * xn = nullptr;
+
 
         if(type == "indiProp")
         {
@@ -357,6 +359,7 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
 
             xn = nn;
         }
+
 
         if(xn != nullptr)
         {
