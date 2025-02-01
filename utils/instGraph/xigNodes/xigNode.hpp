@@ -11,6 +11,28 @@
 
 #include "../../INDI/libcommon/IndiProperty.hpp"
 
+<<<<<<< Updated upstream
+=======
+std::string xign_exception( const std::string & src,
+const std::string & expl,
+const std::string & file,
+int line )
+{
+    std::string msg = src + ": " + expl;
+    msg += " at ";
+    msg += file;
+    msg += " " + std::to_string( line );
+
+    return msg;
+}
+
+#define XIGN_EXCEPTION(src, expl) xign_exception(src, expl, __FILE__, __LINE__)
+
+/// Implementation of basic instGraph node interface for MagAO-X
+/** This class is pure virtual, derived classes must implement handleSetProperty.
+  *
+  */
+>>>>>>> Stashed changes
 class xigNode
 {
   protected:
@@ -44,6 +66,15 @@ class xigNode
 
 inline xigNode::xigNode( const std::string &name, ingr::instGraphXML *parentGraph ) : m_parentGraph( parentGraph )
 {
+<<<<<<< Updated upstream
+=======
+    if(m_parentGraph == nullptr)
+    {
+        std::string msg = XIGN_EXCEPTION("xigNode::loadConfig", "parent graph is null");
+        throw std::runtime_error(msg);
+    }
+
+>>>>>>> Stashed changes
     //This will throw if name is not in the parent's nodes
     m_node = m_parentGraph->node( name );
 }

@@ -25,9 +25,11 @@ using namespace ingr;
  * \ingroup instGraph
  */
 
+#include "xigNodes/indiPropNode.hpp"
 #include "xigNodes/fsmNode.hpp"
 #include "xigNodes/pwrOnOffNode.hpp"
 #include "xigNodes/stdMotionNode.hpp"
+#include "xigNodes/staticNode.hpp"
 
 class xInstGraph;
 
@@ -121,7 +123,8 @@ class xInstGraph : public mx::app::application
     virtual int appShutdown();
 
     virtual void handleSetProperty(
-        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the set property message.*/ );
+        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                  the the set property message.*/ );
 };
 
 xInstGraph::xInstGraph()
@@ -145,7 +148,7 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
     std::string emsg;
     if( m_graph.loadXMLFile( emsg, file ) < 0 )
     {
-        std::cerr << emsg << "\n";
+        std::cerr << __FILE__ << " " << __LINE__ << " " << emsg << "\n";
         return -1;
     }
 
@@ -173,9 +176,50 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
 
         std::cerr << "found node " << sections[i] << ": " << type << "\n";
 
+<<<<<<< Updated upstream
         if( type == "pwrOnOff" )
+=======
+        xigNode * xn = nullptr;
+
+        if(type == "indiProp")
+>>>>>>> Stashed changes
         {
-            pwrOnOffNode *nn;
+            indiPropNode *ip = nullptr;
+            try
+            {
+                 ip = new indiPropNode(sections[i], &m_graph);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(ip == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
+                throw std::runtime_error(msg);
+            }
+
+            try
+            {
+                ip->loadConfig(_config);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            xn = ip;
+        }
+        else if( type == "pwrOnOff" )
+        {
+            pwrOnOffNode *nn = nullptr;
 
             try
             {
@@ -183,10 +227,15 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
             }
             catch(const std::exception& e)
             {
-                std::string msg = e.what();
-                msg += "\ncaught at ";
-                msg += __FILE__;
-                msg += " " + std::to_string(__LINE__);
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(nn == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
                 throw std::runtime_error(msg);
             }
 
@@ -196,40 +245,72 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
             }
             catch(const std::exception& e)
             {
-                std::string msg = e.what();
-                msg += "\ncaught at ";
-                msg += __FILE__;
-                msg += " " + std::to_string(__LINE__);
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+<<<<<<< Updated upstream
+=======
+            xn = nn;
+        }
+        else if( type == "fsm" )
+        {
+            fsmNode *nn = nullptr;
+
+>>>>>>> Stashed changes
+            try
+            {
+                nn = new fsmNode(sections[i], &m_graph);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(nn == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
                 throw std::runtime_error(msg);
             }
 
             try
             {
-                m_nodes.insert( { nn->node()->name(), nn } );
+                nn->loadConfig(_config);
             }
             catch(const std::exception& e)
             {
-                std::string msg = e.what();
-                msg += "\ncaught at ";
-                msg += __FILE__;
-                msg += " " + std::to_string(__LINE__);
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
                 throw std::runtime_error(msg);
             }
 
+            xn = nn;
         }
         else if(type == "stdMotion")
         {
-            stdMotionNode *nn;
+            stdMotionNode *nn = nullptr;
+
             try
             {
                  nn = new stdMotionNode(sections[i], &m_graph);
             }
             catch(const std::exception& e)
             {
-                std::string msg = e.what();
-                msg += "\ncaught at ";
-                msg += __FILE__;
-                msg += " " + std::to_string(__LINE__);
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(nn == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
                 throw std::runtime_error(msg);
             }
 
@@ -239,13 +320,56 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
             }
             catch(const std::exception& e)
             {
-                std::string msg = e.what();
-                msg += "\ncaught at ";
-                msg += __FILE__;
-                msg += " " + std::to_string(__LINE__);
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
                 throw std::runtime_error(msg);
             }
 
+<<<<<<< Updated upstream
+=======
+            xn = nn;
+        }
+        else if(type == "static")
+        {
+            staticNode *nn = nullptr;
+
+            try
+            {
+                 nn = new staticNode(sections[i], &m_graph);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(nn == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
+                throw std::runtime_error(msg);
+            }
+
+            try
+            {
+                nn->loadConfig(_config);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            xn = nn;
+        }
+
+        if(xn != nullptr)
+        {
+>>>>>>> Stashed changes
             try
             {
                 m_nodes.insert( { nn->node()->name(), nn } );
