@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS file_origins (
     PRIMARY KEY (origin_host, origin_path)
 );
 
+CREATE INDEX IF NOT EXISTS file_origins_modification_time ON file_origins (modification_time);
+
 CREATE TABLE IF NOT EXISTS file_ingest_times (
     ts TIMESTAMPTZ,
     device VARCHAR(50),
