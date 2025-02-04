@@ -258,11 +258,6 @@ protected:
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
    pcf::IndiProperty m_indiP_power;
    pcf::IndiProperty m_indiP_power_status;
-   //pcf::IndiProperty m_indiP_power_data; //tried to wrap all power data in one structure, couldn't make strings & doubles work
-   //pcf::IndiProperty m_indiP_on_duration;
-   //pcf::IndiProperty m_indiP_last_power_on;
-   //pcf::IndiProperty m_indiP_last_power_off;
-   //pcf::IndiProperty m_indiP_power_cycles;
 
 public:
 
@@ -325,6 +320,7 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    // fps, expsoure, black level, gain, 
    // roi start pos, ver start pos, end pos, etc.
+   m_powerCycles = 0;
 
    return;
 }
@@ -343,7 +339,6 @@ void nsvCtrl::setupConfig()
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
-
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -409,7 +404,7 @@ void nsvCtrl::loadConfig()
 }
 
 inline
-int nsvCtrl::appStartup() // if camera is off, can't get values yet...
+int nsvCtrl::appStartup()
 {
    // register new indi properties
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
@@ -419,29 +414,6 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
 
    createStandardIndiToggleSw( m_indiP_power, "power");
    registerIndiPropertyNew( m_indiP_power, INDI_NEWCALLBACK(m_indiP_power));
-
-   //createROIndiNumber( m_indiP_power_data, "power_info");
-   /*
-   createStandardIndiText( m_indiP_last_power_on, "power_on_last", "", ""); 
-   if(registerIndiPropertyNew( m_indiP_last_power_on, INDI_NEWCALLBACK(m_indiP_last_power_on)) < 0)
-   {
-      return log<software_critical>({__FILE__, __LINE__});
-   }   
-
-   createStandardIndiText( m_indiP_last_power_off, "power_off_last", "", ""); 
-   if(registerIndiPropertyNew( m_indiP_last_power_off, INDI_NEWCALLBACK(m_indiP_last_power_off)) < 0)
-   {
-      return log<software_critical>({__FILE__, __LINE__});
-   }  
-   
-   createStandardIndiNumber( m_indiP_on_duration, "power_duration_on", 0, 999999999, 0.001, "%0.3f");
-   if(registerIndiPropertyNew( m_indiP_on_duration, INDI_NEWCALLBACK(m_indiP_last_power_off)) < 0)
-   {
-      return log<software_critical>({__FILE__, __LINE__});
-   }
-   
-   createStandardIndiNumber<int>(m_indiP_power_cycles, "power_cycles", 0, 1, 1, "%d");
-   */
 
    createROIndiText(m_indiP_power_status, "power_status", "power_status", "power_status", "power_status", "power_status");
    indi::addTextElement(m_indiP_power_status, "last_power_on", "Power On TS:");
@@ -453,8 +425,6 @@ int nsvCtrl::appStartup() // if camera is off, can't get values yet...
    m_indiP_power_status["on_duration"] = m_poweredOnDuration;
    m_indiP_power_status["power_cycles"] = std::to_string(m_powerCycles);
    registerIndiPropertyReadOnly(m_indiP_power_status);
-
-   m_powerCycles = 0;
 
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
