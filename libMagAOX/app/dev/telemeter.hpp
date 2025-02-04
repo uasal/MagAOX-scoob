@@ -189,7 +189,7 @@ int telemeter<derivedT>::telem(const typename telT::messageT &msg)
     m_tel.template log<telT>(msg, logPrio::LOG_TELEM);
 
     // Set timestamp
-    clock_gettime(CLOCK_TAI, &telT::lastRecord);
+    clock_gettime(CLOCK_ISIO, &telT::lastRecord);
 
     return 0;
 }
@@ -202,7 +202,7 @@ int telemeter<derivedT>::telem()
     m_tel.template log<telT>(logPrio::LOG_TELEM);
 
     // Set timestamp
-    clock_gettime(CLOCK_TAI, &telT::lastRecord);
+    clock_gettime(CLOCK_ISIO, &telT::lastRecord);
 
     return 0;
 }
@@ -282,7 +282,7 @@ int telemeter<derivedT>::checkRecordTimes(const telT &tel, telTs... tels)
 {
     timespec ts;
 
-    clock_gettime(CLOCK_TAI, &ts);
+    clock_gettime(CLOCK_ISIO, &ts);
     return checkRecordTimes(ts, tel, tels...);
 }
 

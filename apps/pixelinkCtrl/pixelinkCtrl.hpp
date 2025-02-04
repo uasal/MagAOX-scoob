@@ -957,7 +957,7 @@ int pixelinkCtrl::acquireAndCheckValid()
    }
 
    // timestamp
-   clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+   clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
 
 
    return 0;

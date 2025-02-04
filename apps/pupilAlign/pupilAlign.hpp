@@ -802,7 +802,7 @@ int pupilAlign::processImage( void* curr_src,
    m_threshShmim.md->write=1;
    m_edgeShmim.md->write=1;
    
-   clock_gettime(CLOCK_TAI, &m_threshShmim.md->writetime);
+   clock_gettime(CLOCK_ISIO, &m_threshShmim.md->writetime);
    m_edgeShmim.md->writetime = m_threshShmim.md->writetime;
    
    m_threshShmim.md->atime = m_threshShmim.md->writetime;

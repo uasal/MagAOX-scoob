@@ -557,7 +557,7 @@ int pwfsSlopeCalc::acquireAndCheckValid()
 {
    timespec ts;
          
-   if(clock_gettime(CLOCK_TAI, &ts) < 0)
+   if(clock_gettime(CLOCK_ISIO, &ts) < 0)
    {
       log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"}); 
       return -1;
@@ -567,7 +567,7 @@ int pwfsSlopeCalc::acquireAndCheckValid()
         
    if(sem_timedwait(&m_smSemaphore, &ts) == 0)
    {
-      clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+      clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
       return 0;
    }
    else

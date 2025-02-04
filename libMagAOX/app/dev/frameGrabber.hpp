@@ -693,7 +693,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          m_imageStream->md->write=1;
          
          //Set the time of last write
-         clock_gettime(CLOCK_TAI, &writestart);
+         clock_gettime(CLOCK_ISIO, &writestart);
          
          if(derived().loadImageIntoStream(next_dest) < 0) 
          {
@@ -701,7 +701,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          }
 
          //Set the time of last write
-         clock_gettime(CLOCK_TAI, &m_imageStream->md->writetime);
+         clock_gettime(CLOCK_ISIO, &m_imageStream->md->writetime);
 
          //Set the image acquisition timestamp
          m_imageStream->md->atime = m_currImageTimestamp;

@@ -852,7 +852,7 @@ int baslerCtrl::acquireAndCheckValid()
    
    if (ptrGrabResult->GrabSucceeded()) // If image is grabbed successfully 
    {
-      clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+      clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
       return 0;
    }
    else

@@ -18,7 +18,7 @@
   *  
   */
 #define XWC_SEM_WAIT_TS_RETVOID_DERIVED( ts, sec, nsec )                                        \
-    if(clock_gettime(CLOCK_TAI, &ts) < 0)                                                  \
+    if(clock_gettime(CLOCK_ISIO, &ts) < 0)                                                  \
     {                                                                                           \
         derivedT::template log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"}); \
         return; /*will trigger a shutdown*/                                                     \
@@ -35,7 +35,7 @@
   *  
   */
 #define XWC_SEM_WAIT_TS_DERIVED( ts, sec, nsec )                             \
-    if(clock_gettime(CLOCK_TAI, &ts) < 0)                               \
+    if(clock_gettime(CLOCK_ISIO, &ts) < 0)                               \
     {                                                                        \
         derivedT::template log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"}); \
         return -1;                                                           \

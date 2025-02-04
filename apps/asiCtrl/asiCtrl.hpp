@@ -1027,7 +1027,7 @@ int asiCtrl::acquireAndCheckValid()
    ASIGetVideoData(m_camNum, m_imgBuff, m_imgSize, 6000000); // really long time-out (100 minutes)
 
    // timestamp
-   clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+   clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
 
    return 0;
 

@@ -590,7 +590,7 @@ inline void dmSpeckle::modThreadExec()
             recordDmSpeck(true);
 
             dnsec = 0;
-            clock_gettime(CLOCK_TAI, &modstart);
+            clock_gettime(CLOCK_ISIO, &modstart);
 
             unsigned dwelled = 0;
             if (m_dwell == 0)
@@ -607,7 +607,7 @@ inline void dmSpeckle::modThreadExec()
                 {
                     timespec ts;
 
-                    if (clock_gettime(CLOCK_TAI, &ts) < 0)
+                    if (clock_gettime(CLOCK_ISIO, &ts) < 0)
                     {
                         log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
                         return;
@@ -651,7 +651,7 @@ inline void dmSpeckle::modThreadExec()
                 else
                 {
                     mx::sys::nanoSleep(0.5 * dnsec);
-                    clock_gettime(CLOCK_TAI, &currtime);
+                    clock_gettime(CLOCK_ISIO, &currtime);
 
                     dnsec = (currtime.tv_sec - modstart.tv_sec) * 1000000000 + (currtime.tv_nsec - modstart.tv_nsec);
                     triggered = false;
@@ -702,7 +702,7 @@ inline void dmSpeckle::modThreadExec()
             recordDmSpeck(true);
             log<text_log>("stopped modulating", logPrio::LOG_NOTICE);
             // Always zero when done
-            clock_gettime(CLOCK_TAI, &currtime);
+            clock_gettime(CLOCK_ISIO, &currtime);
             m_imageStream.md->write = 1;
 
             memset(m_imageStream.array.raw, 0.0, m_width * m_height * m_typeSize);
@@ -1076,7 +1076,7 @@ INDI_NEWCALLBACK_DEFN(dmSpeckle, m_indiP_zero)
 
         memset(m_imageStream.array.raw, 0, m_width * m_height * m_typeSize);
         timespec currtime;
-        clock_gettime(CLOCK_TAI, &currtime);
+        clock_gettime(CLOCK_ISIO, &currtime);
         m_imageStream.md->atime = currtime;
         m_imageStream.md->writetime = currtime;
 

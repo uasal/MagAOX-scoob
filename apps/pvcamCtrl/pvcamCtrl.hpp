@@ -874,7 +874,7 @@ int pvcamCtrl::acquireAndCheckValid()
 
     timespec ts;
 
-    if(clock_gettime(CLOCK_TAI, &ts) < 0)
+    if(clock_gettime(CLOCK_ISIO, &ts) < 0)
     {
         log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
         return -1;
@@ -898,7 +898,7 @@ int pvcamCtrl::acquireAndCheckValid()
 
 int pvcamCtrl::loadImageIntoStream(void *dest)
 {
-    clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+    clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
     
     // Obtain a pointer to the last acquired frame
     uns8 *frame;

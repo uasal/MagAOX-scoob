@@ -1245,7 +1245,7 @@ int pupilFit::processImage( void* curr_src,
    m_threshShmim.md->write=1;
    m_edgeShmim.md->write=1;
 
-   clock_gettime(CLOCK_TAI, &m_threshShmim.md->writetime);
+   clock_gettime(CLOCK_ISIO, &m_threshShmim.md->writetime);
    m_edgeShmim.md->writetime = m_threshShmim.md->writetime;
 
    m_threshShmim.md->atime = m_threshShmim.md->writetime;
@@ -1329,7 +1329,7 @@ int pupilFit::acquireAndCheckValid()
 {
    timespec ts;
 
-   if(clock_gettime(CLOCK_TAI, &ts) < 0)
+   if(clock_gettime(CLOCK_ISIO, &ts) < 0)
    {
       log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"});
       return -1;
@@ -1341,7 +1341,7 @@ int pupilFit::acquireAndCheckValid()
    {
       if( m_updated )
       {
-         clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
+         clock_gettime(CLOCK_ISIO, &m_currImageTimestamp);
          return 0;
       }
       else
