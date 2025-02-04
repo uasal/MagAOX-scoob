@@ -53,7 +53,7 @@ def creation_time_from_filename(filepath, stat_result=None):
     except ValueError:
         if stat_result is None:
             stat_result = os.stat(filepath)
-        ts = datetime.datetime.fromtimestamp(stat_result.st_ctime)
+        ts = datetime.datetime.fromtimestamp(stat_result.st_ctime, tz=timezone.utc)
     return ts
 
 
