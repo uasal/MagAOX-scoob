@@ -19,6 +19,12 @@
 
 #include "logDefs.hpp"
 
+#ifdef CLOCK_TAI
+#define CLOCK_ISIO CLOCK_TAI
+#else
+#define CLOCK_ISIO CLOCK_REALTIME
+#endif
+
 namespace flatlogs
 {
 
