@@ -19,6 +19,7 @@ import numpy as np
 from magaox import db
 import xconf
 import psycopg
+from psycopg.sql import SQL, Identifier, Literal
 
 from ..constants import FOLDER_TIMESTAMP_FORMAT
 from .core import datestamp_strings_from_ts, PathRewriteConfig
@@ -37,11 +38,13 @@ DEFAULT_CHANNELS = [
     'camllowfs',
     'camflowfs',
     'camlowfs',
+    'camacq',
+    'camtip',
+]
+DEFAULT_DMS = [
     'dm00disp',
     'dm01disp',
     'dm02disp',
-    'camacq',
-    'camtip',
 ]
 
 @xconf.config
@@ -190,7 +193,7 @@ def infer_common_xrif_cube_size_dtype(paths):
     return common_shape, img_dtype, times_dtype
 
 
-def repack_cam_channel(
+def repack_xrif_channel(
     camera_channel: ChannelConfig,
     channel_grouping_root: zarr.Group,
     cur: psycopg.Connection,
@@ -200,14 +203,15 @@ def repack_cam_channel(
     pool: futures.ThreadPoolExecutor,
 ) -> tuple[list[str], int]:
     other_files_args = bounds + (camera_channel.name,)
-    other_files_q_body = """
-    FROM file_origins 
-    WHERE creation_time 
-        BETWEEN %s AND %s
-        AND origin_path LIKE '%%' || %s || '%%.xrif'
-    """
-    other_files_count_q = """SELECT COUNT(*) as count""" + other_files_q_body
-    cur.execute(other_files_count_q, other_files_args)
+    other_files_q_body = SQL("""
+    FROM file_origins
+    WHERE creation_time
+        BETWEEN {create_from} AND {create_to}
+        AND origin_path LIKE '%%' || {channel_name} || '%%.xrif'
+    """).format(create_from=bounds[0], create_to=bounds[1], channel_name=camera_channel.name)
+    other_files_count_q = SQL("""SELECT COUNT(*) as count {}""").format(other_files_q_body)
+    log.debug(f"Checking for xrifs using: {other_files_count_q}")
+    cur.execute(other_files_count_q)
     xrifs_row_count = cur.fetchone()["count"]
     if xrifs_row_count == 0:
         log.info(f"No {camera_channel.name} frames to process")
@@ -215,10 +219,10 @@ def repack_cam_channel(
 
     camera_root = channel_grouping_root.require_group(camera_channel.name)
     other_files_q = (
-        """
+        SQL("""
     SELECT
         origin_host, origin_path, creation_time, size_bytes
-    """
+    """)
         + other_files_q_body
     )
 
@@ -229,10 +233,9 @@ def repack_cam_channel(
     # instead, maybe just find the most common shape, and drop the rest
     # with a warning?
     n_shape_samples = 10
-    cur.execute(
-        other_files_q + f" order by random() desc limit {n_shape_samples}",
-        other_files_args,
-    )
+    samples_q = SQL("{} ORDER BY random() DESC LIMIT {}").format(other_files_q, n_shape_samples)
+    log.debug(f"Getting a sample of paths to guess data shape: {samples_q}")
+    cur.execute(samples_q)
     ex_rows = cur.fetchall()
     ex_paths = []
     for r in ex_rows:
@@ -268,10 +271,8 @@ def repack_cam_channel(
         )
 
         futs = []
-        cur.execute(
-            other_files_q + " ORDER BY creation_time ASC",
-            bounds + (camera_channel.name,),
-        )
+        full_files_q = SQL("{} ORDER BY creation_time ASC").format(other_files_q)
+        cur.execute(full_files_q)
         log.debug("Submitting futures...")
         orig_total_bytes, final_total_bytes = 0, 0
         for idx, row in enumerate(cur):
@@ -393,7 +394,7 @@ WHERE
             one_example["msg"], [], this_ec_root, row_count, chunk_size=1000
         )
         ts_dtype = [("sec", "i4"), ("nsec", "i4")]
-        
+
         ts_arr = get_or_zeros(this_ec_root, "ts", shape=(row_count,), chunks=(chunk_size,), dtype=ts_dtype)
         chunks = max(1, row_count // chunk_size + 1)
         log.debug(f"Using {row_count=} {chunk_size=} gives {chunks=}")
@@ -451,6 +452,7 @@ WHERE
 def pack_one_obs(
     span,
     channels: list[ChannelConfig],
+    dms: list[ChannelConfig],
     root: zarr.Group,
     conn,
     path_rewrites: list[PathRewriteConfig],
@@ -461,218 +463,28 @@ def pack_one_obs(
     paths_packed = []
     orig_total_bytes, final_total_bytes = 0, 0
 
-    images_root = root.require_group('images')
-    for camera_channel in channels:
-        log.info(f"Checking for {camera_channel.name}...")
-        cam_files_packed, orig_bytes_packed, final_bytes_packed = (
-            repack_cam_channel(
-                camera_channel,
-                images_root,
-                cur,
-                path_rewrites,
-                bounds,
-                camera_channel.chunk_size_mb,
-                pool,
+    detector = root.require_group('detector')
+    dm = root.require_group('dm')
+    for channel_root, channels in zip((detector, dm), (channels, dms)):
+        for channel in channels:
+            log.info(f"Checking for {channel.name}...")
+            cam_files_packed, orig_bytes_packed, final_bytes_packed = (
+                repack_xrif_channel(
+                    channel,
+                    channel_root,
+                    cur,
+                    path_rewrites,
+                    bounds,
+                    channel.chunk_size_mb,
+                    pool,
+                )
             )
-        )
-        paths_packed.extend(cam_files_packed)
-        orig_total_bytes += orig_bytes_packed
-        final_total_bytes += final_bytes_packed
-        if final_bytes_packed > 0:
-            log.debug(
-                f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
-            )
+            paths_packed.extend(cam_files_packed)
+            orig_total_bytes += orig_bytes_packed
+            final_total_bytes += final_bytes_packed
+            if final_bytes_packed > 0:
+                log.debug(
+                    f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
+                )
     repack_telem(root.require_group("telem"), cur, bounds, chunk_size=TELEM_ENTRIES_CHUNK)
     return paths_packed, orig_total_bytes, final_total_bytes
-    raise NotImplementedError()
-    for camera_channel in [
-        # 'camwfs',
-        "camlowfs",
-    ]:
-        log.info(f"Checking for {camera_channel}...")
-        res = repack_cam_channel(
-            camera_channel,
-            root.require_group("wfs/" + camera_channel),
-            bounds,
-            cur,
-            wfs_chunk_size,
-        )
-        if res is not None:
-            frames, times = res
-            log.debug(f"{frames.info=}")
-        else:
-            log.debug(f"No {camera_channel} frames")
-
-    semester, night = datestamp_strings_from_ts(start_ts)
-    title = f"{start_ts.strftime(FOLDER_TIMESTAMP_FORMAT)}_{obs_name}"
-
-    if not obs_email:  # can be empty
-        obs_email = "_no_email_"
-
-    # ... / 2022B / a@b.edu / 2022-02-02_020304_label
-    simple_observer_prefix = f"{semester}/{obs_email}/{title}.zarr"
-    root = zarr.open_group(f"file://./output/{simple_observer_prefix}/")
-
-
-def main():
-    obs_name = "HD141569_2x2binning_iz_unsats"
-    sci_chunk_size, wfs_chunk_size = 400, 5 * 2000
-    root = zarr.open_group(f"file:///home/jlong/packr/output/{obs_name}.zarr/")
-
-    # dbconfig = db.DbConfig(user='jlong', host='localhost')
-    os.environ["XTELEMDB_PASSWORD"] = "extremeAO!"
-    dbconfig = db.DbConfig(user="xsup")
-    conn = dbconfig.connect()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM observations WHERE obsName = %s", (obs_name,))
-    rows = cur.fetchall()
-    if len(rows) > 1:
-        print("Got more than one matching obs:", rows)
-    res = rows[0]
-    bounds = start_ts, end_ts = res["start_ts"], res["end_ts"]
-
-    # bounds = '2023-03-13 07:17:30.589645+00', '2023-03-13 07:19:54.23374+00'
-    start_ts, end_ts = (
-        "2024-05-25T07:44:01.893517+00:00",
-        "2024-05-25T09:27:42.979882+00:00",
-    )
-
-    if False:
-        cur.execute(
-            """
-        SELECT DISTINCT device, ec FROM telem WHERE ts BETWEEN %s AND %s;
-        """,
-            bounds,
-        )
-        device_event_code_pairs = cur.fetchall()
-
-        for dev_ec in device_event_code_pairs:
-            log.debug(f"Processing {dev_ec}")
-            telem_query_args = (dev_ec["device"], dev_ec["ec"]) + bounds
-            cur.execute(
-                """
-    SELECT COUNT(*)
-    FROM telem
-    WHERE
-        device = %s
-        AND ec = %s
-        AND ts BETWEEN %s AND %s
-    """,
-                telem_query_args,
-            )
-            row_count = cur.fetchone()["count"]
-            log.debug(f"{dev_ec['device']} {dev_ec['ec']} has {row_count} rows")
-
-            telem_range_query = "SELECT * FROM telem WHERE device = %s AND ec = %s AND ts BETWEEN %s AND %s ORDER BY ts ASC"
-            cur.execute(telem_range_query + " LIMIT 1", telem_query_args)
-            one_example = cur.fetchone()
-
-            this_dev_ec_path = f"telem/{dev_ec['device']}/{dev_ec['ec']}"
-            this_ec_root = root.require_group(this_dev_ec_path)
-            telem_element_sequence = tel2zarr(
-                one_example["msg"], [], this_ec_root, row_count, 1000
-            )
-            ts_dtype = [("sec", "i4"), ("nsec", "i4")]
-            ts_arr = this_ec_root.zeros(
-                "ts", shape=(row_count,), chunks=(wfs_chunk_size,), dtype=ts_dtype
-            )
-            chunks = max(1, row_count // wfs_chunk_size + 1)
-            log.debug(f"Using {row_count=} {wfs_chunk_size=} gives {chunks=}")
-            # allocate chunks per telem element
-            per_telem_chunks = []
-            buffer_size = min(wfs_chunk_size, row_count)
-            for path, arr, accessor in telem_element_sequence:
-                per_telem_chunks.append(
-                    np.zeros((buffer_size,) + arr.shape[1:], dtype=arr.dtype)
-                )
-                log.debug(
-                    f"Preallocating {buffer_size} {arr.dtype} elements for {path}"
-                )
-            ts_chunk = np.zeros(buffer_size, dtype=ts_dtype)
-            for i in range(chunks):
-                log.debug(f"Chunk {i+1}")
-                q = telem_range_query
-                if chunks == 1:
-                    q = telem_range_query
-                else:
-                    q = telem_range_query + f" LIMIT {wfs_chunk_size}"
-                if i != 0:
-                    q += f" OFFSET {i * wfs_chunk_size}"
-                log.debug(f"Querying: {q}")
-                cur.execute(q, telem_query_args)
-
-                # _count = 0
-                for idx, row in enumerate(cur):
-                    # log.debug(f"Chunk {i+1} row {idx}")
-                    sec, nsec = datetime_to_seconds_nanos(row["ts"])
-                    ts_chunk[idx]["sec"] = sec
-                    ts_chunk[idx]["nsec"] = nsec
-                    # log.debug(f"{ts_chunk[idx]=}")
-                    for buffer_array, (path, _, accessor) in zip(
-                        per_telem_chunks, telem_element_sequence
-                    ):
-                        # log.debug(f"{path} {buffer_array[idx]=}")
-                        buffer_array[idx] = accessor(row["msg"])
-                    # _count += 1
-
-                # assert _count == idx + 1
-                slice_start = i * wfs_chunk_size
-                chunk_len = (
-                    idx + 1
-                )  # for partial chunks: after loop, `idx` is last index, exclusive bound is one more
-                slice_stop = slice_start + chunk_len
-
-                # assign chunk into zarr
-                for buffer_array, (path, arr, accessor) in zip(
-                    per_telem_chunks, telem_element_sequence
-                ):
-                    log.debug(f"{path} {arr} {slice_start=} {slice_stop=}")
-                    arr[slice_start:slice_stop] = buffer_array[:chunk_len]
-                ts_arr[slice_start:slice_stop] = ts_chunk[:chunk_len]
-
-    # loop over other matching files
-
-    for camera_channel in [
-        'camsci1',
-        'camsci2',
-        'camtip',
-        'camacq',
-    ]:
-        log.info(f"Checking for {camera_channel}...")
-        res = repack_cam_channel(
-            camera_channel,
-            root.require_group("images/" + camera_channel),
-            bounds,
-            cur,
-            sci_chunk_size,
-        )
-        if res is not None:
-            frames, times = res
-            log.debug(f"{frames.info=}")
-        else:
-            log.debug(f"No {camera_channel} frames")
-    for camera_channel in [
-        'camwfs',
-        "camlowfs",
-    ]:
-        log.info(f"Checking for {camera_channel}...")
-        res = repack_cam_channel(
-            camera_channel,
-            root.require_group("images/" + camera_channel),
-            bounds,
-            cur,
-            wfs_chunk_size,
-        )
-        if res is not None:
-            frames, times = res
-            log.debug(f"{frames.info=}")
-        else:
-            log.debug(f"No {camera_channel} frames")
-
-    import IPython
-
-    IPython.embed()
-
-
-if __name__ == "__main__":
-    main()

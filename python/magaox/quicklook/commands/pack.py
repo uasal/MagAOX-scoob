@@ -36,7 +36,7 @@ from ..core import (
     decide_to_process,
     create_bundle_from_span,
 )
-from ..pack import pack_one_obs, ChannelConfig, DEFAULT_CHANNELS
+from ..pack import pack_one_obs, ChannelConfig, DEFAULT_CHANNELS, DEFAULT_DMS
 from ._base import BaseQuicklookCommand
 
 
@@ -63,6 +63,9 @@ class Pack(BaseQuicklookCommand):
     channels: list[ChannelConfig] = xconf.field(
         default_factory=lambda: [ChannelConfig(name=chan) for chan in DEFAULT_CHANNELS]
     )
+    dms: list[ChannelConfig] = xconf.field(
+        default_factory=lambda: [ChannelConfig(name=chan) for chan in DEFAULT_DMS]
+    )
     zarr_mode: ZarrMode = xconf.field(default=ZarrMode.WRITE_NO_OVERWRITE)
 
     def main(self):
@@ -70,7 +73,7 @@ class Pack(BaseQuicklookCommand):
             self.destination.mkdir(parents=True, exist_ok=True)
         log.debug(f"Starting the packer with {self.destination / self.name}")
 
-        root = zarr.open(self.destination / self.name, mode=self.zarr_mode.value)
+
         dbconn = self.database.connect()
 
         start_dt, end_dt = self.get_time_range()
@@ -88,6 +91,10 @@ class Pack(BaseQuicklookCommand):
         else:
             log.error("No matching observation spans to pack")
             return
+
+        # Don't open the destination archive unless we found something to pack
+        # (avoid creating empty archives)
+        root = zarr.open(self.destination / self.name, mode=self.zarr_mode.value)
 
         total_files, orig_total_bytes, final_total_bytes = 0, 0, 0
 
@@ -107,6 +114,7 @@ class Pack(BaseQuicklookCommand):
                 paths_packed, orig_bytes, final_bytes = pack_one_obs(
                     span,
                     self.channels,
+                    self.dms,
                     pack_target_group,
                     dbconn,
                     self.path_rewrites,
