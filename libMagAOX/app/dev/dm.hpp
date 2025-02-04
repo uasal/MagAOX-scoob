@@ -1347,7 +1347,7 @@ int dm<derivedT, realT>::setFlat(bool update)
     memcpy(m_flatImageStream.array.raw, m_flatCommand.data(), m_dmWidth * m_dmHeight * sizeof(realT));
 
     // Set the time of last write
-    clock_gettime(CLOCK_REALTIME, &m_flatImageStream.md->writetime);
+    clock_gettime(CLOCK_TAI, &m_flatImageStream.md->writetime);
 
     // Set the image acquisition timestamp
     m_flatImageStream.md->atime = m_flatImageStream.md->writetime;
@@ -1404,7 +1404,7 @@ int dm<derivedT, realT>::zeroFlat()
     memset(m_flatImageStream.array.raw, 0, m_dmWidth * m_dmHeight * sizeof(realT));
 
     // Set the time of last write
-    clock_gettime(CLOCK_REALTIME, &m_flatImageStream.md->writetime);
+    clock_gettime(CLOCK_TAI, &m_flatImageStream.md->writetime);
 
     // Set the image acquisition timestamp
     m_flatImageStream.md->atime = m_flatImageStream.md->writetime;
@@ -1657,7 +1657,7 @@ int dm<derivedT, realT>::setTest()
     memcpy(m_testImageStream.array.raw, m_testCommand.data(), m_dmWidth * m_dmHeight * sizeof(realT));
 
     // Set the time of last write
-    clock_gettime(CLOCK_REALTIME, &m_testImageStream.md->writetime);
+    clock_gettime(CLOCK_TAI, &m_testImageStream.md->writetime);
 
     // Set the image acquisition timestamp
     m_testImageStream.md->atime = m_testImageStream.md->writetime;
@@ -1711,7 +1711,7 @@ int dm<derivedT, realT>::zeroTest()
     memset(m_testImageStream.array.raw, 0, m_dmWidth * m_dmHeight * sizeof(realT));
 
     // Set the time of last write
-    clock_gettime(CLOCK_REALTIME, &m_testImageStream.md->writetime);
+    clock_gettime(CLOCK_TAI, &m_testImageStream.md->writetime);
 
     // Set the image acquisition timestamp
     m_testImageStream.md->atime = m_testImageStream.md->writetime;
@@ -1774,7 +1774,7 @@ int dm<derivedT, realT>::zeroAll(bool nosem)
         imageStream.md->write = 1;
         memset(imageStream.array.raw, 0, m_dmWidth * m_dmHeight * sizeof(realT));
 
-        clock_gettime(CLOCK_REALTIME, &imageStream.md->writetime);
+        clock_gettime(CLOCK_TAI, &imageStream.md->writetime);
 
         // Set the image acquisition timestamp
         imageStream.md->atime = imageStream.md->writetime;
@@ -1852,7 +1852,7 @@ int dm<derivedT, realT>::clearSat()
         imageStream.md->write = 1;
         memset(imageStream.array.raw, 0, m_dmWidth * m_dmHeight * ImageStreamIO_typesize(imageStream.md->datatype));
 
-        clock_gettime(CLOCK_REALTIME, &imageStream.md->writetime);
+        clock_gettime(CLOCK_TAI, &imageStream.md->writetime);
 
         // Set the image acquisition timestamp
         imageStream.md->atime = imageStream.md->writetime;
@@ -1925,7 +1925,7 @@ void dm<derivedT, realT>::satThreadExec()
     {
         // Get timespec for sem_timedwait
         timespec ts;
-        if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
+        if (clock_gettime(CLOCK_TAI, &ts) < 0)
         {
             derivedT::template log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
             return;
@@ -1990,7 +1990,7 @@ void dm<derivedT, realT>::satThreadExec()
             memcpy(m_satPercImageStream.array.raw, m_satPercMap.data(), m_dmWidth * m_dmHeight * sizeof(float));
 
             // Set the time of last write
-            clock_gettime(CLOCK_REALTIME, &m_satImageStream.md->writetime);
+            clock_gettime(CLOCK_TAI, &m_satImageStream.md->writetime);
             m_satPercImageStream.md->writetime = m_satImageStream.md->writetime;
 
             // Set the image acquisition timestamp

@@ -1045,7 +1045,7 @@ void streamWriter::fgThreadExec()
                 if (curr_timing[1] == 0)
                 {
 
-                    if (clock_gettime(CLOCK_REALTIME, &missing_ts) < 0)
+                    if (clock_gettime(CLOCK_TAI, &missing_ts) < 0)
                     {
                         log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
                         return;
@@ -1409,7 +1409,7 @@ void streamWriter::swThreadExec()
 
         timespec ts;
 
-        if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
+        if (clock_gettime(CLOCK_TAI, &ts) < 0)
         {
             log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
 

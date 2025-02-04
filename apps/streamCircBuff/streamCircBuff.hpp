@@ -319,7 +319,7 @@ int streamCircBuff::acquireAndCheckValid()
 {
    timespec ts;
          
-   if(clock_gettime(CLOCK_REALTIME, &ts) < 0)
+   if(clock_gettime(CLOCK_TAI, &ts) < 0)
    {
       log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"}); 
       return -1;
@@ -329,7 +329,7 @@ int streamCircBuff::acquireAndCheckValid()
         
    if(sem_timedwait(&m_smSemaphore, &ts) == 0)
    {
-      clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+      clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
       return 0;
    }
    else

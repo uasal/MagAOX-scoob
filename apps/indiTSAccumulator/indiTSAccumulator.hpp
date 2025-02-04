@@ -282,7 +282,7 @@ int indiTSAccumulator::setCallBack_all( const pcf::IndiProperty &ipRecv )
             image->md->write=1;
 
             //Set the times            
-            clock_gettime(CLOCK_REALTIME, &image->md->writetime);
+            clock_gettime(CLOCK_TAI, &image->md->writetime);
             image->writetimearray[cnt1] = image->md->writetime;
 
             image->md->atime = ts;

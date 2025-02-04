@@ -85,12 +85,12 @@ struct timespecX
    
    ///Fill the the timespecX with the current time.
    /** This is based on the usual clock_gettime.  clockid_t is a template parameter 
-     * since we probaby always want CLOCK_REALTIME, but if we don't for some reason
+     * since we probaby always want CLOCK_TAI, but if we don't for some reason
      * it will be passed in the same order as in clock_gettime.
      * 
      * \tparam clk_id specifies the type.
      */ 
-   template<clockid_t clk_id=CLOCK_REALTIME>
+   template<clockid_t clk_id=CLOCK_TAI>
    void gettime()
    {
       struct timespec ts;
@@ -366,7 +366,7 @@ void timespecFromX ( timespec & ts, ///< [out] the native timespec to set
 
 ///Fill in a timespecX with the current time.
 /** This is based on the usual clock_gettime.  clockid_t is a template parameter 
-  * since we probaby always want CLOCK_REALTIME, but if we don't for some reason
+  * since we probaby always want CLOCK_TAI, but if we don't for some reason
   * it will be passed in the same order as in clock_gettime.
   * 
   * \tparam clk_id specifies the type.
@@ -374,7 +374,7 @@ void timespecFromX ( timespec & ts, ///< [out] the native timespec to set
   * \ingroup flatlogs_time
   * 
   */ 
-template<clockid_t clk_id=CLOCK_REALTIME>
+template<clockid_t clk_id=CLOCK_TAI>
 void clock_gettimeX( timespecX & tsX /**< [out] the fixed-width timespec to populate */)
 {
    tsX.gettime<clk_id>();

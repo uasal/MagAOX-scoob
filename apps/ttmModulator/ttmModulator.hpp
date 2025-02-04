@@ -510,7 +510,7 @@ int waitValue( const T & var,
    if(var == tgtVal) return 0;
 
    struct timespec ts0, ts1;
-   clock_gettime(CLOCK_REALTIME, &ts0);
+   clock_gettime(CLOCK_TAI, &ts0);
    ts1 = ts0;
 
 
@@ -520,7 +520,7 @@ int waitValue( const T & var,
 
       nanoSleep(pauseWait);
 
-      clock_gettime(CLOCK_REALTIME, &ts1);
+      clock_gettime(CLOCK_TAI, &ts1);
    }
 
    if(var == tgtVal) return 0;
@@ -542,7 +542,7 @@ int waitValue( const T & var,
    if(fabs(tgtVal - var) <= tol) return 0;
 
    struct timespec ts0, ts1;
-   clock_gettime(CLOCK_REALTIME, &ts0);
+   clock_gettime(CLOCK_TAI, &ts0);
    ts1 = ts0;
 
    while( (ts1.tv_sec - ts0.tv_sec)*1e9 + (ts1.tv_nsec - ts0.tv_nsec) < timeout)
@@ -551,7 +551,7 @@ int waitValue( const T & var,
 
       nanoSleep(pauseWait);
 
-      clock_gettime(CLOCK_REALTIME, &ts1);
+      clock_gettime(CLOCK_TAI, &ts1);
    }
 
    if(fabs(tgtVal - var) <= tol) return 0;

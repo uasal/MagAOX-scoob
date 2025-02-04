@@ -915,7 +915,7 @@ int userGainCtrl::writeGains()
    memcpy(dest, m_gainsTarget.data(), shmimMonitorT::m_width*shmimMonitorT::m_height*shmimMonitorT::m_typeSize  ); 
 
    //Set the time of last write
-   clock_gettime(CLOCK_REALTIME, &shmimMonitorT::m_imageStream.md->writetime);
+   clock_gettime(CLOCK_TAI, &shmimMonitorT::m_imageStream.md->writetime);
 
    //Set the image acquisition timestamp
    shmimMonitorT::m_imageStream.md->atime = shmimMonitorT::m_imageStream.md->writetime;
@@ -1050,7 +1050,7 @@ int userGainCtrl::writeMCs()
    memcpy(dest, m_mcsTarget.data(), mcShmimMonitorT::m_width*mcShmimMonitorT::m_height*mcShmimMonitorT::m_typeSize  ); 
 
    //Set the time of last write
-   clock_gettime(CLOCK_REALTIME, &mcShmimMonitorT::m_imageStream.md->writetime);
+   clock_gettime(CLOCK_TAI, &mcShmimMonitorT::m_imageStream.md->writetime);
 
    //Set the image acquisition timestamp
    mcShmimMonitorT::m_imageStream.md->atime = mcShmimMonitorT::m_imageStream.md->writetime;
@@ -1184,7 +1184,7 @@ int userGainCtrl::writeLimits()
    memcpy(dest, m_limitsTarget.data(), limitShmimMonitorT::m_width*limitShmimMonitorT::m_height*limitShmimMonitorT::m_typeSize  ); 
 
    //Set the time of last write
-   clock_gettime(CLOCK_REALTIME, &limitShmimMonitorT::m_imageStream.md->writetime);
+   clock_gettime(CLOCK_TAI, &limitShmimMonitorT::m_imageStream.md->writetime);
 
    //Set the image acquisition timestamp
    limitShmimMonitorT::m_imageStream.md->atime = limitShmimMonitorT::m_imageStream.md->writetime;

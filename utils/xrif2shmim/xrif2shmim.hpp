@@ -539,7 +539,7 @@ inline int xrif2shmim::execute()
         memcpy( next_dest, m_frames.image( findex ).data(), m_width * m_height * m_typeSize );
 
         // Set the time of last write
-        clock_gettime( CLOCK_REALTIME, &m_imageStream.md->writetime );
+        clock_gettime( CLOCK_TAI, &m_imageStream.md->writetime );
         m_imageStream.md->atime = m_imageStream.md->writetime;
 
         // Update cnt1

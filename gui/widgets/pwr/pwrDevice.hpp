@@ -455,7 +455,7 @@ void pwrDevice::handleSetProperty( const pcf::IndiProperty &ipRecv )
     if( ipRecv.getName() == "load" )
     {
         timespec ts;
-        clock_gettime( CLOCK_REALTIME, &ts );
+        clock_gettime( CLOCK_ISIO, &ts );
 
         if( ipRecv.find( "current" ) )
         {

@@ -571,7 +571,7 @@ int qhyCtrl::acquireAndCheckValid()
    /*
    if (ptrGrabResult->GrabSucceeded()) // If image is grabbed successfully 
    {
-      clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+      clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
       return 0;
    }
    else

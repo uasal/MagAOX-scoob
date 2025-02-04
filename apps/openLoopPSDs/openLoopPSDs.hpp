@@ -262,7 +262,7 @@ int openLoopPSDs::processImage( void * curr_src,
    }
 
    //Set the time of last write
-   clock_gettime(CLOCK_REALTIME, &m_olpsdStream->md->writetime);
+   clock_gettime(CLOCK_TAI, &m_olpsdStream->md->writetime);
    m_olpsdStream->md->atime = m_olpsdStream->md->writetime;
 
    //Update cnt1

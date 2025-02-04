@@ -401,7 +401,7 @@ int modalPSDs::allocate(const dev::shmimT& dummy)
    }
 
    //Set the time of last write
-   clock_gettime(CLOCK_REALTIME, &m_freqStream->md->writetime);
+   clock_gettime(CLOCK_TAI, &m_freqStream->md->writetime);
    m_freqStream->md->atime = m_freqStream->md->writetime;
 
    //Update cnt1
@@ -568,7 +568,7 @@ void modalPSDs::psdThreadExec()
          m_rawpsdStream->md->write = 1;
 
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &m_rawpsdStream->md->writetime);
+         clock_gettime(CLOCK_TAI, &m_rawpsdStream->md->writetime);
          m_rawpsdStream->md->atime = m_rawpsdStream->md->writetime;
 
          uint64_t cnt1 = m_rawpsdStream->md->cnt1 + 1;
@@ -615,7 +615,7 @@ void modalPSDs::psdThreadExec()
          m_avgpsdStream->md->write = 1;
 
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &m_avgpsdStream->md->writetime);
+         clock_gettime(CLOCK_TAI, &m_avgpsdStream->md->writetime);
          m_avgpsdStream->md->atime = m_avgpsdStream->md->writetime;
 
          //Move to next pointer

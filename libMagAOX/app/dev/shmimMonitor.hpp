@@ -627,7 +627,7 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
 
             timespec ts;
 
-            if (clock_gettime(CLOCK_REALTIME, &ts) < 0)
+            if (clock_gettime(CLOCK_TAI, &ts) < 0)
             {
                 derivedT::template log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
                 return;

@@ -1909,7 +1909,7 @@ int picamCtrl::acquireAndCheckValid()
       return 1; //This sends it back to framegrabber to check for reconfig, etc.
    }
 
-   clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+   clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
 
    if(error != PicamError_None)
    {

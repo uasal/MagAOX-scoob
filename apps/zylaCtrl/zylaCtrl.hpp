@@ -1090,7 +1090,7 @@ int zylaCtrl::acquireAndCheckValid()
       return 1;
    }
    
-   clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+   clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
       
    
    if(rv != AT_SUCCESS )

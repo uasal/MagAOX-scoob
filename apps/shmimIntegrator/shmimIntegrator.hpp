@@ -776,7 +776,7 @@ int shmimIntegrator::processImage( void * curr_src,
                   ///\todo this should happen in a different less-real-time thread.
                   //Otherwise we save:
                   timespec fts;
-                  clock_gettime(CLOCK_REALTIME, &fts);
+                  clock_gettime(CLOCK_TAI, &fts);
          
                   tm uttime;//The broken down time.   
         
@@ -1076,7 +1076,7 @@ int shmimIntegrator::acquireAndCheckValid()
 {
    timespec ts;
          
-   if(clock_gettime(CLOCK_REALTIME, &ts) < 0)
+   if(clock_gettime(CLOCK_TAI, &ts) < 0)
    {
       log<software_critical>({__FILE__,__LINE__,errno,0,"clock_gettime"}); 
       return -1;
@@ -1088,7 +1088,7 @@ int shmimIntegrator::acquireAndCheckValid()
    {
       if( m_updated )
       {
-         clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+         clock_gettime(CLOCK_TAI, &m_currImageTimestamp);
          return 0;
       }
       else
