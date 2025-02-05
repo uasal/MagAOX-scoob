@@ -208,7 +208,7 @@ int setCamImageFormat(int width, int height, int bitDepth) {
                                                 ,V4L2_PIX_FMT_SBGGR12, V4L2_PIX_FMT_SGBRG12, V4L2_PIX_FMT_SGRBG12, V4L2_PIX_FMT_SRGGB12
                                                 ,V4L2_PIX_FMT_SBGGR14, V4L2_PIX_FMT_SGBRG14, V4L2_PIX_FMT_SGRBG14, V4L2_PIX_FMT_SRGGB14
                                                 ,V4L2_PIX_FMT_SRGGB16, V4L2_PIX_FMT_SBGGR16, V4L2_PIX_FMT_SGBRG16, V4L2_PIX_FMT_SGRBG16
-
+                    This should be a monochrome sensor.. no?  Should be V4L2_PIX_FMT_Y16 ?????
                                         only supporting SRGGB for now (unclear whether camera firmware will every be any other format)
     */
     switch (bitDepth) {
@@ -717,10 +717,17 @@ void updateCameraControls() {
 int getAndUpdateSingleControlVal(std::string search_str){
     auto it = camera_controls.find(search_str);
     if(it != camera_controls.end()){
+        struct v4l2_ext_controls controls;
         struct v4l2_ext_control control;
         memset(&control, 0, sizeof(control));
+        memset(&controls, 0, sizeof(controls));
+        
         control.id = it->second.id;
-        if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &control) == 0) {
+        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id); 
+        controls.count = 1;
+        controls.controls = &control;
+
+        if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
             it->second.current_value = control.value;
             return control.value;
         } else {
@@ -743,14 +750,20 @@ int getAndUpdateSingleControlVal(std::string search_str){
 int writeSingleControlVal(std::string search_str, int value) {
     auto it = camera_controls.find(search_str);
     if (it != camera_controls.end()) {
+        struct v4l2_ext_controls controls; // apparently there is no way to send a single control in unless it's wrapped inside controls
         struct v4l2_ext_control control;
+        memset(&controls, 0, sizeof(controls));
         memset(&control, 0, sizeof(control));
         control.id = it->second.id;
         control.value = value;
-        it->second.current_value = value;  //best guess, but won't be correct much of the time
 
-        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &control) == 0) {
+        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);  // need to id the class to get the type
+        controls.count = 1;  // only sending in one control
+        controls.controls = &control;   // reference to the control we're sending in
+
+        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0) {          // VIDIOC_S_EXT_CTRLS accepts v4l2_ext_controls which contains an array of v4l2_ext_control structs... maybe just use an array of 
             printf("Control '%s' updated to value %d\n", search_str.c_str(), control.value);
+            it->second.current_value = control.value;  // Update stored value after success
             return control.value;
         } else {
             printf("Failed to set control value %s\n", search_str.c_str());

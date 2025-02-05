@@ -798,7 +798,9 @@ int nsvCtrl::setReadoutMode()
    //    then check outputs -> VIDIOC_QUERYCAP: ok   VIDIOC_G_FMT: ok   VIDIOC_S_FMT: ok
    
    // not generically supporting setting width and height. Will need to change when Neutralino adds true ROI support. Still doing pseudo-ROI
+   printf("width: %d height: %d\n", m_cameraModes[m_modeName].m_sizeX, m_cameraModes[m_modeName].m_sizeY);
    setCamImageFormat(m_cameraModes[m_modeName].m_sizeX, m_cameraModes[m_modeName].m_sizeY, m_bitDepth); 
+   sleep(1);
    updateCameraControls();  // update controls after updating image format
    updateCurrentMode(); 
 
@@ -1062,7 +1064,7 @@ int nsvCtrl::setVCrop(int offset)
    if(res == PARAM_NOT_FOUND){ 
       return 1;
    }
-   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + res});
+   return res < 0 ? log<software_error>({__FILE__,__LINE__, "error setting vcrop to" + std::to_string(offset)}) : log<text_log,1>({"set vcrop to: " + res});
 }
 
 // ROI controls
