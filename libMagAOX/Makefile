@@ -22,6 +22,7 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              app/dev/edtCamera.hpp \
              app/dev/dssShutter.hpp \
              app/dev/shmimMonitor.hpp \
+             app/dev/summerDevice.hpp \
              app/dev/dm.hpp \
              app/dev/telemeter.hpp \
 			 app/dev/dmPokeWFS.hpp \
