@@ -42,6 +42,8 @@ ALL_CAMERAS = {
     'camsci1': DEFAULT_SEPARATE,
     'camsci2': DEFAULT_SEPARATE,
     'camlowfs': DEFAULT_SEPARATE,
+    'camflowfs': DEFAULT_SEPARATE,
+    'camllowfs': DEFAULT_SEPARATE,
     'camwfs': DEFAULT_SEPARATE,
     'camtip': DEFAULT_SEPARATE,
     'camacq': DEFAULT_SEPARATE,

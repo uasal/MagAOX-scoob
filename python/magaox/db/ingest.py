@@ -1,4 +1,5 @@
 import datetime
+from datetime import timezone
 import logging
 import os
 import pathlib
@@ -146,7 +147,7 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
                     origin_host=host,
                     origin_path=fn,
                     creation_time=creation_time_from_filename(fn, stat_result=stat_result),
-                    modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime),
+                    modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc),
                     size_bytes=stat_result.st_size,
                 ))
             batch_file_origins(cur, origin_records)
