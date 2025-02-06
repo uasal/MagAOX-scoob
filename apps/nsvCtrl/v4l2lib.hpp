@@ -234,7 +234,7 @@ int setCamImageFormat(int width, int height, int bitDepth) {
             break;
         default:
             fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_SRGGB16;  // 16-bit Bayer format
-            std::cerr << "Invalid bit depth! Supported bit depths are 8, 10, and 16" << std::endl;
+            std::cerr << "Invalid bit depth! Supported bit depths are 8, 10, 12, 14 and 16" << std::endl;
             break;
     }
 
@@ -529,10 +529,6 @@ void updateCurrentMode() {
         return;
     }
 
-    // NOTE: ONLY DOING FIRST MODE FOR NOW. 
-    // DRIVER DOES NOT SHOW A DIFFERENCE BETWEEN MODES FOR NOW BUT MAY CHANGE IN THE FUTURE
-    CameraMode mode = camera_modes[0];
-
     struct v4l2_format current_fmt;
     memset(&current_fmt, 0, sizeof(current_fmt));
     current_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -542,21 +538,21 @@ void updateCurrentMode() {
         return;
     }
 
-    if(mode.resolutions.size() < 1){
+    if(camera_modes[0].resolutions.size() < 1){
         printf("Camera modes not initialized\n");
         return;
     }
 
     // Determine the active resolution
-    for (size_t i = 0; i < mode.resolutions.size(); ++i) {
-        if (mode.resolutions[i].first == current_fmt.fmt.pix.width && mode.resolutions[i].second == current_fmt.fmt.pix.height) {
-            mode.current_resolution = static_cast<int>(i);
+    for (size_t i = 0; i < camera_modes[0].resolutions.size(); ++i) {
+        if (camera_modes[0].resolutions[i].first == current_fmt.fmt.pix.width && camera_modes[0].resolutions[i].second == current_fmt.fmt.pix.height) {
+            camera_modes[0].current_resolution = static_cast<int>(i);
             break;
         }
     }
 
-    printf("Curent resolution: %d x %d\n", mode.resolutions[mode.current_resolution].first, mode.resolutions[mode.current_resolution].second);
-    printf("Current interval: %f\n", mode.intervals[mode.current_resolution]);
+    printf("Curent resolution: %d x %d\n", camera_modes[0].resolutions[camera_modes[0].current_resolution].first, camera_modes[0].resolutions[camera_modes[0].current_resolution].second);
+    printf("Current interval: %f\n", camera_modes[0].intervals[camera_modes[0].current_resolution]);
 }
 
 // get bayer pattern, bit depth, and viable resolutions w/ corresponding framerates)
@@ -714,16 +710,32 @@ void updateCameraControls() {
 
     @Return value of the parameter or -1 for failure
 */
-int getAndUpdateSingleControlVal(std::string search_str){
+int getAndUpdateSingleControlVal(std::string search_str) {
     auto it = camera_controls.find(search_str);
-    if(it != camera_controls.end()){
+    if (it == camera_controls.end()) {
+        printf("Control '%s' not found\n", search_str.c_str());
+        return PARAM_NOT_FOUND;
+    }
+
+    struct v4l2_control ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    ctrl.id = it->second.id;
+
+    // Attempt to use VIDIOC_G_CTRL first
+    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
+        it->second.current_value = ctrl.value;
+        return ctrl.value;
+    }
+
+    // If VIDIOC_G_CTRL fails with EINVAL, try VIDIOC_G_EXT_CTRLS
+    if (errno == EINVAL) {
         struct v4l2_ext_controls controls;
         struct v4l2_ext_control control;
         memset(&control, 0, sizeof(control));
         memset(&controls, 0, sizeof(controls));
-        
+
         control.id = it->second.id;
-        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id); 
+        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);
         controls.count = 1;
         controls.controls = &control;
 
@@ -731,13 +743,15 @@ int getAndUpdateSingleControlVal(std::string search_str){
             it->second.current_value = control.value;
             return control.value;
         } else {
-            printf("Error getting current value of %s\n", search_str.c_str());
-            return -1;
+            printf("Failed to get control value for '%s' with both methods, error: %s\n", search_str.c_str(), strerror(errno));
         }
+    } else {
+        printf("Failed to get control value for '%s', error: %s\n", search_str.c_str(), strerror(errno));
     }
-    printf("Couldn't find camera parameter %s\n", search_str.c_str());
-    return PARAM_NOT_FOUND; // inform when parameter doesn't exist
+
+    return -1;  // Indicate failure
 }
+
 
 /* VIDIOC_S_CTRL returns 0 or -1 and writes to errno variable
    errno could be EINVAL, ERANGE, EBUSY, EACCESS 
@@ -749,32 +763,52 @@ int getAndUpdateSingleControlVal(std::string search_str){
 */
 int writeSingleControlVal(std::string search_str, int value) {
     auto it = camera_controls.find(search_str);
-    if (it != camera_controls.end()) {
-        struct v4l2_ext_controls controls; // apparently there is no way to send a single control in unless it's wrapped inside controls
+    if (it == camera_controls.end()) {
+        printf("Control '%s' not found\n", search_str.c_str());
+        return PARAM_NOT_FOUND;
+    }
+
+    struct v4l2_control ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    ctrl.id = it->second.id;
+    ctrl.value = value;
+
+    // Attempt to use VIDIOC_S_CTRL first
+    if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
+        printf("Control '%s' updated using VIDIOC_S_CTRL to value %d\n", search_str.c_str(), ctrl.value);
+        it->second.current_value = ctrl.value;  // Store the new value
+        return ctrl.value;
+    }
+
+    // If VIDIOC_S_CTRL fails with EINVAL, try VIDIOC_S_EXT_CTRLS
+    if (errno == EINVAL) {
+        struct v4l2_ext_controls controls;
         struct v4l2_ext_control control;
-        memset(&controls, 0, sizeof(controls));
         memset(&control, 0, sizeof(control));
+        memset(&controls, 0, sizeof(controls));
+
         control.id = it->second.id;
         control.value = value;
+        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id); 
+        controls.count = 1;
+        controls.controls = &control;
 
-        controls.ctrl_class = V4L2_CTRL_ID2CLASS(control.id);  // need to id the class to get the type
-        controls.count = 1;  // only sending in one control
-        controls.controls = &control;   // reference to the control we're sending in
-
-        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0) {          // VIDIOC_S_EXT_CTRLS accepts v4l2_ext_controls which contains an array of v4l2_ext_control structs... maybe just use an array of 
-            printf("Control '%s' updated to value %d\n", search_str.c_str(), control.value);
-            it->second.current_value = control.value;  // Update stored value after success
-            return control.value;
+        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) == 0) {
+            printf("Control '%s' updated using VIDIOC_S_EXT_CTRLS to value %d\n", search_str.c_str(), control.value);
+            it->second.current_value = control.value; 
+            return 1; //control.value; segfaults, so just return success or not.. we are simply setting. Return a success code or a failure code instead
         } else {
-            printf("Failed to set control value %s\n", search_str.c_str());
+            perror("VIDIOC_S_EXT_CTRLS failed");
+            printf("Failed to set control value for '%s' with both methods, error: %s\n", search_str.c_str(), strerror(errno));
         }
+    } else {
+        perror("VIDIOC_S_CTRL failed");
+        printf("Failed to set control value for '%s', error: %s\n", search_str.c_str(), strerror(errno));
     }
-        
-    printf("Control '%s' not found\n", search_str.c_str());
-    return PARAM_NOT_FOUND; // inform when parameter doesn't exist
 
-    // below min return, above max return? 
+    return -1;  // Indicate failure
 }
+
 
 // removes and rebuilds list of all camera controls and values 
 void getAllCameraControls() {
