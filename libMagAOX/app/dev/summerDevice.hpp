@@ -18,7 +18,8 @@
 #include <memory> // For std::unique_pointer 
 #include <vector> // For std::vector
 using namespace std;
-typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
+
+// typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
 
 #include "summerDeviceUtils/commands.hpp"
 #include "summerDeviceUtils/binaryUart.hpp"
@@ -35,23 +36,11 @@ namespace app
 namespace dev
 {
 
-struct sdevT
-{
-    static std::string configSection()
-    {
-        return "summerDevice";
-    };
-
-    static std::string indiPrefix()
-    {
-        return "sdev";
-    };
-};
 
 /** Generic interface for Summer-made electronics.
   *
   *
-  * The derived class `derivedT` has the following requirements (see below for discussion of specificT):
+  * The derived class `derivedT` has the following requirements:
   * 
   * - Must be derived from MagAOXApp<true>
   * 
@@ -87,7 +76,7 @@ struct sdevT
   *
   * \ingroup appdev
   */
-template <class derivedT, class specificT = sdevT>
+template <class derivedT>
 class summerDevice
 {
 
@@ -104,10 +93,10 @@ protected:
 
 public:
     char Buffer[4096];
-    CGraphPacket SocketProtocol;
+    CGraphPacket PacketProtocol;
+    SocketBinaryUartCallbacks PacketCallbacks;
     std::unique_ptr<IUart> LocalPortPinout;
     std::unique_ptr<BinaryUart> UartParser;
-    std::vector<sdevQuery*> queries = {};
 
     const std::string &connectionType() const;
 
@@ -123,7 +112,7 @@ public:
     /**
       * This should be called in `derivedT::setupConfig` as
       * \code
-        summerDevice<derivedT, specificT>::setupConfig(config);
+        summerDevice<derivedT>::setupConfig(config);
         \endcode
       * with appropriate error checking.
       */
@@ -133,7 +122,7 @@ public:
     /**
       * This should be called in `derivedT::loadConfig` as
       * \code
-        summerDevice<derivedT, specificT>::loadConfig(config);
+        summerDevice<derivedT>::loadConfig(config);
         \endcode
       * with appropriate error checking.
       */
@@ -143,7 +132,7 @@ public:
     /** Starts the summerDevice thread
       * This should be called in `derivedT::appStartup` as
       * \code
-        summerDevice<derivedT, specificT>::appStartup();
+        summerDevice<derivedT>::appStartup();
         \endcode
       * with appropriate error checking.
       *
@@ -155,7 +144,7 @@ public:
     /// Checks the summerDevice thread
     /** This should be called in `derivedT::appLogic` as
       * \code
-        summerDevice<derivedT, specificT>::appLogic();
+        summerDevice<derivedT>::appLogic();
         \endcode
       * with appropriate error checking.
       *
@@ -167,7 +156,7 @@ public:
     /// Shuts down the summerDevice thread
     /** This should be called in `derivedT::appShutdown` as
       * \code
-        summerDevice<derivedT, specificT>::appShutdown();
+        summerDevice<derivedT>::appShutdown();
         \endcode
       * with appropriate error checking.
       *
@@ -176,7 +165,16 @@ public:
       */
     int appShutdown();
 
+    /// Return queries variable. Will need to be overriden in classes implementing the template
+    /** This should be called in `derivedT::appShutdown` as
+      * \returns std::vector<sdevQuery*>&
+      */
+    virtual const std::vector<sdevQuery*>& getQueries() const {
+        return queries;
+    }
+
 protected:
+    std::vector<sdevQuery*> queries = {};
 
     /// Initialize UartParser
     /**
@@ -272,81 +270,75 @@ private:
     }
 };
 
-template <class derivedT, class specificT>
-const std::string & summerDevice<derivedT, specificT>::connectionType() const
+template <class derivedT>
+const std::string & summerDevice<derivedT>::connectionType() const
 {
     return m_connectionType;
 }
 
-template <class derivedT, class specificT>
-const std::string & summerDevice<derivedT, specificT>::portName() const
+template <class derivedT>
+const std::string & summerDevice<derivedT>::portName() const
 {
     return m_portName;
 }
 
-template <class derivedT, class specificT>
-const uint32_t & summerDevice<derivedT, specificT>::baudRate() const
+template <class derivedT>
+const uint32_t & summerDevice<derivedT>::baudRate() const
 {
     return m_baudRate;
 }
 
-template <class derivedT, class specificT>
-const std::string & summerDevice<derivedT, specificT>::ipName() const
+template <class derivedT>
+const std::string & summerDevice<derivedT>::ipName() const
 {
     return m_ipName;
 }
 
-template <class derivedT, class specificT>
-const int & summerDevice<derivedT, specificT>::hostPort() const
+template <class derivedT>
+const int & summerDevice<derivedT>::hostPort() const
 {
     return m_hostPort;
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::setupConfig(mx::app::appConfigurator &config)
+template <class derivedT>
+int summerDevice<derivedT>::setupConfig(mx::app::appConfigurator &config)
 {
-  config.add(specificT::configSection() + ".connection_type", "", specificT::configSection() + ".connection_type", argType::Required, specificT::configSection(), "connection_type", false, "string", "The type of connection: serial_port or socket.");
-  config.add(specificT::configSection() + ".port_address", "", specificT::configSection() + ".port_address", argType::Optional, specificT::configSection(), "port_address", false, "string", "The address where the client machine is connected to.");
-  config.add(specificT::configSection() + ".baud_rate", "", specificT::configSection() + ".baud_rate", argType::Optional, specificT::configSection(), "baud_rate", false, "int", "The baud rate for the serial port.");
-  config.add(specificT::configSection() + ".client_entrance_ip", "", specificT::configSection() + ".client_entrance_ip", argType::Optional, specificT::configSection(), "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
-  config.add(specificT::configSection() + ".host_port", "", specificT::configSection() + ".host_port", argType::Optional, specificT::configSection(), "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
-  
-
-  // Set this here to allow derived classes to set their own default before calling loadConfig
-  m_connectionType = derived().configName();
-  m_portName = derived().configName();
-  m_baudRate = derived().configName();
-  m_ipName = derived().configName();
-  m_hostPort = derived().configName();
+  config.add("sdev.connection_type", "", "sdev.connection_type", argType::Required, "sdev", "connection_type", false, "string", "The type of connection: serial_port or socket.");
+  config.add("sdev.port_address", "", "sdev.port_address", argType::Optional, "sdev", "port_address", false, "string", "The address where the client machine is connected to.");
+  config.add("sdev.baud_rate", "", "sdev.baud_rate", argType::Optional, "sdev", "baud_rate", false, "int", "The baud rate for the serial port.");
+  config.add("sdev.client_entrance_ip", "", "sdev.client_entrance_ip", argType::Optional, "sdev", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
+  config.add("sdev.host_port", "", "sdev.host_port", argType::Optional, "sdev", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
 
   return 0;
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::loadConfig(mx::app::appConfigurator &config)
+template <class derivedT>
+int summerDevice<derivedT>::loadConfig(mx::app::appConfigurator &config)
 {
-  config(m_connectionType, specificT::configSection() + ".connection_type");
+  derivedT::template log<text_log>( "Sdev loading config");
+  config(m_connectionType, "sdev.connection_type");
 
   if (m_connectionType == "socket")
   {
-    config(m_ipName, specificT::configSection() + ".client_entrance_ip");
-    config(m_hostPort, specificT::configSection() + ".host_port");
+    config(m_ipName, "sdev.client_entrance_ip");
+    config(m_hostPort, "sdev.host_port");
 
     LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
   }
-  else // defaulting to serial_port
+  else if (m_connectionType == "serial_port")
   {
-    config(m_portName, specificT::configSection() + ".port_address");
-    config(m_baudRate, specificT::configSection() + ".baud_rate");
+    config(m_portName, "sdev.port_address");
+    config(m_baudRate, "sdev.baud_rate");
 
     LocalPortPinout = std::make_unique<linux_pinout_uart>();
   }
+
   // Since LocalPortPinout is now initialized, can also initialize UartParser
   return initUartParser();
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::appStartup()
+template <class derivedT>
+int summerDevice<derivedT>::appStartup()
 {
     // // Register the shmimName INDI property
     // m_indiP_shmimName = pcf::IndiProperty(pcf::IndiProperty::Text);
@@ -360,42 +352,38 @@ int summerDevice<derivedT, specificT>::appStartup()
     return 0;
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::appLogic()
+template <class derivedT>
+int summerDevice<derivedT>::appLogic()
 {
     return 0;
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::appShutdown()
+template <class derivedT>
+int summerDevice<derivedT>::appShutdown()
 {
     return 0;
 }
 
-// template <class derivedT, class specificT>
-// int summerDevice<derivedT, specificT>::updateINDI()
-// {
-//     if (!derived().m_indiDriver)
-//         return 0;
+template <class derivedT>
+int summerDevice<derivedT>::updateINDI()
+{
+    if (!derived().m_indiDriver)
+        return 0;
 
-//     // indi::updateIfChanged(m_indiP_shmimName, "name", m_shmimName, derived().m_indiDriver);
-//     // indi::updateIfChanged(m_indiP_frameSize, "width", m_width, derived().m_indiDriver);
-//     // indi::updateIfChanged(m_indiP_frameSize, "height", m_height, derived().m_indiDriver);
-
-//     return 0;
-// }
+    return 0;
+}
 
 
 //////////////
 // CONNECTION
 //////////////
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::initUartParser()
+template <class derivedT>
+int summerDevice<derivedT>::initUartParser()
 {
   try
   {
-    UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false);
+    UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, PacketProtocol, PacketCallbacks, getQueries(), false);
     return 0;
   }
   catch (...)
@@ -406,8 +394,8 @@ int summerDevice<derivedT, specificT>::initUartParser()
 
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::socketConnect()
+template <class derivedT>
+int summerDevice<derivedT>::socketConnect()
 {
   PinoutConfig pinoutConfig = PinoutConfig::CreateSocketConfig(m_hostPort, m_portName.c_str());
   int err = LocalPortPinout->init(pinoutConfig);
@@ -421,8 +409,8 @@ int summerDevice<derivedT, specificT>::socketConnect()
   return 0;
 }
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::serialPortConnect()
+template <class derivedT>
+int summerDevice<derivedT>::serialPortConnect()
 {
   PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(m_baudRate, m_portName.c_str());
   int err = LocalPortPinout->init(pinoutConfig);
@@ -437,17 +425,18 @@ int summerDevice<derivedT, specificT>::serialPortConnect()
 }
 
 
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::connect()
+template <class derivedT>
+int summerDevice<derivedT>::connect()
 {
-  int rv;
-  if (m_connectionType == "serial_port")
-  {
-    rv = serialPortConnect();
-  }
-  else if (m_connectionType == "socket")
+  int rv = -1;
+  
+  if (m_connectionType == "socket")
   {
     rv = socketConnect();
+  } 
+  else if (m_connectionType == "serial_port")
+  {
+    rv = serialPortConnect();
   }
 
   return rv;
@@ -455,26 +444,24 @@ int summerDevice<derivedT, specificT>::connect()
 
 
 /// TODO: Test the connection to the device
-template <class derivedT, class specificT>
-int summerDevice<derivedT, specificT>::testConnection()
+template <class derivedT>
+int summerDevice<derivedT>::testConnection()
 {
   return 0;
 }
 
-template <class derivedT, class specificT>
-void summerDevice<derivedT, specificT>::query(sdevQuery *Query)
+template <class derivedT>
+void summerDevice<derivedT>::query(sdevQuery *Query)
 {
-  derivedT::template log<text_log>(Query->startLog);
+  // derivedT::template log<text_log>(Query->startLog);
   // Send command packet
   UartParser->TxBinaryPacket(Query->getPayloadType(), Query->getPayloadData(), Query->getPayloadLen());
   // debug
-  // derivedT::template log<text_log>(Query->endLog);
-
-  receive();
+  derivedT::template log<text_log>(Query->endLog);
 }
 
-template <class derivedT, class specificT>
-void summerDevice<derivedT, specificT>::receive() {
+template <class derivedT>
+void summerDevice<derivedT>::receive() {
   // The packet is read byte by byte, so keep going while there are bytes left
   bool Bored = false;
   while (!Bored)
@@ -490,127 +477,58 @@ void summerDevice<derivedT, specificT>::receive() {
       connect();
     }
   }
-
-  // // Once packet had been received, make sure updates are propagated.
-  // // Since we don't know the packet type, update all.
-  // receiveAdcs();
-  // receiveDacs();
 }
 
 
-// /// Call summerDeviceT::setupConfig with error checking for summerDevice
-// /**
-//   * \param cfig the application configurator 
-//   */
-// #define SUMMERDEVICE_SETUP_CONFIG( cfig )                                                   \
-//     if(summerDeviceT::setupConfig(cfig) < 0)                                                \
-//     {                                                                                       \
-//         log<software_error>({__FILE__, __LINE__, "Error from summerDeviceT::setupConfig"}); \
-//         m_shutdown = true;                                                                  \
-//         return;                                                                             \
-//     }
+/// Call summerDeviceT::setupConfig with error checking for summerDevice
+/**
+  * \param cfig the application configurator 
+  */
+#define SUMMERDEVICE_SETUP_CONFIG( cfig )                                                   \
+    if(summerDeviceT::setupConfig(cfig) < 0)                                                \
+    {                                                                                       \
+        log<software_error>({__FILE__, __LINE__, "Error from summerDeviceT::setupConfig"}); \
+        m_shutdown = true;                                                                  \
+        return;                                                                             \
+    }
 
-// /// Call summerDeviceT::setupConfig with error checking for a typedef-ed summerDevice
-// /**
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   * \param cfig the application configurator 
-//   */
-// #define SUMMERDEVICET_SETUP_CONFIG( SUMMERDEVICET, cfig )                                        \
-//     if(SUMMERDEVICET::setupConfig(cfig) < 0)                                                     \
-//     {                                                                                            \
-//         log<software_error>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::setupConfig"}); \
-//         m_shutdown = true;                                                                       \
-//         return;                                                                                  \
-//     }
+/// Call summerDeviceT::loadConfig with error checking for summerDevice
+/** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
+  * \param cfig the application configurator 
+  */
+#define SUMMERDEVICE_LOAD_CONFIG( cfig )                                                             \
+    if(summerDeviceT::loadConfig(cfig) < 0)                                                          \
+    {                                                                                                \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::loadConfig"}); \
+    }
 
-// /// Call summerDeviceT::loadConfig with error checking for summerDevice
-// /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-//   * \param cfig the application configurator 
-//   */
-// #define SUMMERDEVICE_LOAD_CONFIG( cfig )                                                             \
-//     if(summerDeviceT::loadConfig(cfig) < 0)                                                          \
-//     {                                                                                                \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::loadConfig"}); \
-//     }
+/// Call summerDeviceT::appStartup with error checking for summerDevice
+#define SUMMERDEVICE_APP_STARTUP                                                                     \
+    if(summerDeviceT::appStartup() < 0)                                                              \
+    {                                                                                                \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appStartup"}); \
+    }
 
-// /// Call summerDeviceT::loadConfig with error checking for a typedef-ed summerDevice
-// /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   * \param cfig the application configurator 
-//   */
-// #define SUMMERDEVICET_LOAD_CONFIG( SUMMERDEVICET, cfig )                                                  \
-//     if(SUMMERDEVICET::loadConfig(cfig) < 0)                                                               \
-//     {                                                                                                     \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::loadConfig"}); \
-//     }
+/// Call summerDeviceT::appLogic with error checking for summerDevice
+#define SUMMERDEVICE_APP_LOGIC                                                                     \
+    if(summerDeviceT::appLogic() < 0)                                                              \
+    {                                                                                              \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appLogic"}); \
+    }
 
-// /// Call summerDeviceT::appStartup with error checking for summerDevice
-// #define SUMMERDEVICE_APP_STARTUP                                                                     \
-//     if(summerDeviceT::appStartup() < 0)                                                              \
-//     {                                                                                                \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appStartup"}); \
-//     }
+/// Call summerDeviceT::updateINDI with error checking for summerDevice
+#define SUMMERDEVICE_UPDATE_INDI                                                                     \
+    if(summerDeviceT::updateINDI() < 0)                                                              \
+    {                                                                                                \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::updateINDI"}); \
+    }
 
-// /// Call summerDeviceT::appStartup with error checking for a typedef-ed summerDevice
-// /** 
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   */
-// #define SUMMERDEVICET_APP_STARTUP( SUMMERDEVICET )                                                        \
-//     if(SUMMERDEVICET::appStartup() < 0)                                                                   \
-//     {                                                                                                     \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::appStartup"}); \
-//     }
-
-// /// Call summerDeviceT::appLogic with error checking for summerDevice
-// #define SUMMERDEVICE_APP_LOGIC                                                                     \
-//     if(summerDeviceT::appLogic() < 0)                                                              \
-//     {                                                                                              \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appLogic"}); \
-//     }
-
-// /// Call summerDeviceT::appLogic with error checking for a typedef-ed summerDevice
-// /** 
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   */
-// #define SUMMERDEVICET_APP_LOGIC( SUMMERDEVICET )                                                        \
-//     if(SUMMERDEVICET::appLogic() < 0)                                                                   \
-//     {                                                                                                   \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::appLogic"}); \
-//     }
-
-// /// Call summerDeviceT::updateINDI with error checking for summerDevice
-// #define SUMMERDEVICE_UPDATE_INDI                                                                     \
-//     if(summerDeviceT::updateINDI() < 0)                                                              \
-//     {                                                                                                \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::updateINDI"}); \
-//     }
-
-// /// Call summerDeviceT::updateINDI with error checking for a typedef-ed summerDevice
-// /** 
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   */
-// #define SUMMERDEVICET_UPDATE_INDI( SUMMERDEVICET )                                                        \
-//     if(SUMMERDEVICET::updateINDI() < 0)                                                                   \
-//     {                                                                                                     \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::updateINDI"}); \
-//     }
-
-// /// Call summerDeviceT::appShutdown with error checking for summerDevice
-// #define SUMMERDEVICE_APP_SHUTDOWN                                                                     \
-//     if(summerDeviceT::appShutdown() < 0)                                                              \
-//     {                                                                                                 \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appShutdown"}); \
-//     }
-
-// /// Call summerDeviceT::appShutodwn with error checking for a typedef-ed summerDevice
-// /** 
-//   * \param SUMMERDEVICET is the typedef-ed name of the summerDevice class, e.g. darkShmimMonitorT.
-//   */
-// #define SUMMERDEVICET_APP_SHUTDOWN( SUMMERDEVICET )                                                        \
-//     if(SUMMERDEVICET::appShutdown() < 0)                                                                   \
-//     {                                                                                                      \
-//         return log<software_error,-1>({__FILE__, __LINE__, "Error from " #SUMMERDEVICET "::appShutdown"}); \
-//     }
+/// Call summerDeviceT::appShutdown with error checking for summerDevice
+#define SUMMERDEVICE_APP_SHUTDOWN                                                                     \
+    if(summerDeviceT::appShutdown() < 0)                                                              \
+    {                                                                                                 \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from summerDeviceT::appShutdown"}); \
+    }
 
 } // namespace dev
 } // namespace app

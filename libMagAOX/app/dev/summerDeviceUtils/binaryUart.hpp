@@ -42,6 +42,8 @@ namespace MagAOX
 {
 namespace app
 {
+namespace dev
+{
 
 struct BinaryUartCallbacks
 {
@@ -126,9 +128,9 @@ struct BinaryUart
 		InPacket = InPacketInit;		
         memset(RxBuffer, EmptyBufferChar, RxBufferLenBytes);
 
-        std::ostringstream oss;
-        oss << "Binary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").";
-        MagAOXAppT::log<text_log>(oss.str());
+        // std::ostringstream oss;
+        // oss << "Binary Uart: Init(PktH " << Packet.HeaderLen() << ", PktF " << Packet.FooterLen() << ").";
+        // MagAOXAppT::log<text_log>(oss.str());
 
         return(0);
     }
@@ -158,12 +160,12 @@ struct BinaryUart
 		}
 		else
 		{
-			if (debug) 
-			{
-				std::ostringstream oss;
-				oss << "BinaryUart: Buffer(" << RxBuffer <<") overflow; this packet will not fit (" << RxCount << "b), flushing buffer.";
-				MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
-			}				
+			// if (debug) 
+			// {
+			// 	std::ostringstream oss;
+			// 	oss << "BinaryUart: Buffer(" << RxBuffer <<") overflow; this packet will not fit (" << RxCount << "b), flushing buffer.";
+			// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
+			// }				
 
 			Callbacks.BufferOverflow(RxCount);
 
@@ -178,7 +180,7 @@ struct BinaryUart
 		{
 			if (Packet.FindPacketStart(RxBuffer, RxCount, PacketStart)) //This is wasteful, we really only need to look at the 4 newest bytes every time...
 			{
-				if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet start detected! Buffering."}); }
+				// if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet start detected! Buffering."}); }
 
 				InPacket = true;
 			}
@@ -195,15 +197,15 @@ struct BinaryUart
 
 		//This is wasteful, we really only need to look at the 4 newest bytes every time...
 		if (!Packet.FindPacketEnd(RxBuffer, RxCount, packetEnd)) {
-			if (debug) {
-				MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Still waiting for packet end..."});
-			}
-			return false;
+			// if (debug) {
+			// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Still waiting for packet end..."});
+			// }
+			// return false;
 		}
 
-		if (debug) {
-			MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet end detected; Looking for matching packet handlers."});
-		}
+		// if (debug) {
+		// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet end detected; Looking for matching packet handlers."});
+		// }
 
 		const size_t payloadLen = Packet.PayloadLen(RxBuffer, RxCount, PacketStart);
 
@@ -211,12 +213,12 @@ struct BinaryUart
 		{
 			if ( (payloadLen > RxBufferLenBytes) || (payloadLen > Packet.MaxPayloadLength())  )
 			{
-				if (debug)
-				{ 
-					std::ostringstream oss;
-					oss << "BinaryUart: Short packet (" << RxCount << " bytes) with unrealistic payload len; ignoring corrupted packet (should have been header() + payload(" << payloadLen << ") + footer().";
-					MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});				
-				}
+				// if (debug)
+				// { 
+				// 	std::ostringstream oss;
+				// 	oss << "BinaryUart: Short packet (" << RxCount << " bytes) with unrealistic payload len; ignoring corrupted packet (should have been header() + payload(" << payloadLen << ") + footer().";
+				// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});				
+				// }
 
 				Callbacks.InvalidPacket(reinterpret_cast<uint8_t*>(RxBuffer), RxCount);
 
@@ -226,12 +228,12 @@ struct BinaryUart
 			}
 			else
 			{
-				if (debug)
-				{
-					std::ostringstream oss;
-					oss << "BinaryUart: Short packet (" << RxCount << " bytes); we'll assume the packet footer was part of the payload data and keep searching for the packet end (should have been header() + payload(" << payloadLen << ") + footer().";
-					MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
-				}
+				// if (debug)
+				// {
+				// 	std::ostringstream oss;
+				// 	oss << "BinaryUart: Short packet (" << RxCount << " bytes); we'll assume the packet footer was part of the payload data and keep searching for the packet end (should have been header() + payload(" << payloadLen << ") + footer().";
+				// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
+				// }
 
 				return false;
 			}			
@@ -257,12 +259,12 @@ struct BinaryUart
 			}
 			else
 			{
-				if (debug)
-				{ 
-					std::ostringstream oss;
-					oss << "BinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum() << ").";
-					MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});								
-				}
+				// if (debug)
+				// { 
+				// 	std::ostringstream oss;
+				// 	oss << "BinaryUart: Packet received, but SerialNumber comparison failed (expected: 0x" << SerialNum << "; got: 0x" << Packet.SerialNum() << ").";
+				// 	MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});								
+				// }
 
 				Callbacks.UnHandledPacket(reinterpret_cast<IPacket*>(&RxBuffer[PacketStart]), packetEnd - PacketStart);
 			}
@@ -272,7 +274,7 @@ struct BinaryUart
 		}
 		else
 		{
-			if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet received, but invalid."}); }
+			// if (debug) { MagAOXAppT::log<software_debug>({__FILE__, __LINE__, "BinaryUart: Packet received, but invalid."}); }
 
 			Callbacks.InvalidPacket(reinterpret_cast<uint8_t*>(RxBuffer), RxCount);
 		}
@@ -307,22 +309,23 @@ struct BinaryUart
 		uint8_t TxBuffer[TxBufferLenBytes];
 		size_t PacketLen = Packet.MakePacket(TxBuffer, TxBufferLenBytes, PayloadData, PayloadType, PayloadLen);
 
-        std::ostringstream oss;
-        oss << "Packet length: " << PacketLen;
-        MagAOXAppT::log<text_log>(oss.str());
+        // std::ostringstream oss;
+        // oss << "Packet length: " << PacketLen;
+        // MagAOXAppT::log<text_log>(oss.str());
 
 		for (size_t i = 0; i < PacketLen; i++) { Pinout.putcqq(TxBuffer[i]); }
 
-		// Log packet sent
-		oss.str("");
-        oss << "Binary Uart: Sending packet(" << PayloadType << ", " << PayloadLen << "): ";
-        MagAOXAppT::log<text_log>(oss.str());	
-		oss.str("");
-		for(size_t i = 0; i < PacketLen; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(TxBuffer[i]) << ":"; }
-		MagAOXAppT::log<text_log>(oss.str());		
+		// // Log packet sent
+		// oss.str("");
+        // oss << "Binary Uart: Sending packet(" << PayloadType << ", " << PayloadLen << "): ";
+        // MagAOXAppT::log<text_log>(oss.str());	
+		// oss.str("");
+		// for(size_t i = 0; i < PacketLen; i++) { oss << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(TxBuffer[i]) << ":"; }
+		// MagAOXAppT::log<text_log>(oss.str());		
 
 	}
 };
 
+} //namespace dev
 } //namespace app
 } //namespace MagAOX

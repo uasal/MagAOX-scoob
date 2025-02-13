@@ -5,6 +5,13 @@
 #include <stdio.h>
 #include <fcntl.h> // For O_RDWR, O_NOCTTY, O_NONBLOCK and O_SYNC
 
+namespace MagAOX
+{
+namespace app
+{
+namespace dev
+{
+
 struct PinoutConfig;
 
 class IUart
@@ -74,3 +81,7 @@ public:
     }
 
 };
+
+} // namespace dev
+} // namespace app
+} // namespace MagAOX

@@ -32,211 +32,213 @@ namespace MagAOX
 {
 	namespace app
 	{
-
-		class linux_pinout_client_socket : public IUart
+		namespace dev
 		{
-		public:
-			linux_pinout_client_socket() : IUart(), hSocket(-1) {}
-			virtual ~linux_pinout_client_socket() {}
-
-			int init(const PinoutConfig& config)
+			class linux_pinout_client_socket : public IUart
 			{
-				struct hostent *pHostInfo;	/* holds info about a machine */
-				struct sockaddr_in Address; /* Internet socket address stuct */
-				long nHostAddress;
-				char strHostName[HOST_NAME_SIZE];
-				int nHostPort = 20339;
+			public:
+				linux_pinout_client_socket() : IUart(), hSocket(-1) {}
+				virtual ~linux_pinout_client_socket() {}
 
-				if (-1 != hSocket)
+				int init(const PinoutConfig& config)
 				{
-					deinit();
+					struct hostent *pHostInfo;	/* holds info about a machine */
+					struct sockaddr_in Address; /* Internet socket address stuct */
+					long nHostAddress;
+					char strHostName[HOST_NAME_SIZE];
+					int nHostPort = 20339;
+
+					if (-1 != hSocket)
+					{
+						deinit();
+					}
+
+					strcpy(strHostName, "localhost");
+
+					if (NULL != config.HostName)
+					{
+						strncpy(strHostName, config.HostName, HOST_NAME_SIZE);
+						strHostName[HOST_NAME_SIZE] = '\0';
+					}
+					if (0 != config.HostPort)
+					{
+						nHostPort = config.HostPort;
+					}
+
+					// MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Making a socket");
+					/* make a socket */
+					hSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+					if (hSocket == -1)
+					{
+						// MagAOXAppT::log<software_error>({__FILE__, __LINE__, "linux_pinout_client_socket::init(): Could not make a socket"});
+						return (errno);
+					}
+					else
+					{
+						// std::ostringstream oss;
+						// oss << "linux_pinout_client_socket::init(): Socket handle: " << hSocket;
+						// MagAOXAppT::log<text_log>(oss.str());
+					}
+
+					/* get IP address from name */
+					pHostInfo = gethostbyname(strHostName);
+					if (NULL == pHostInfo)
+					{
+						// std::ostringstream oss;
+						// oss << "linux_pinout_client_socket::init(): Could not gethostbyname(): " << strerror(errno);
+						// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+						return (errno);
+					}
+					/* copy address into long */
+					memcpy(&nHostAddress, pHostInfo->h_addr, pHostInfo->h_length);
+
+					/* fill address struct */
+					Address.sin_addr.s_addr = nHostAddress;
+					Address.sin_port = htons(nHostPort);
+					Address.sin_family = AF_INET;
+
+					// std::ostringstream oss;
+					// oss << "linux_pinout_client_socket::init(): Connecting to " << strHostName << " on port " << nHostPort;
+					// MagAOXAppT::log<text_log>(oss.str());
+
+					int isConnected = connect(hSocket, (struct sockaddr *)&Address, sizeof(Address));
+					/* connect to host */
+					if (isConnected == -1)
+					{
+						// std::ostringstream oss;
+						// oss << "linux_pinout_client_socket::init(): Could not connect to host: " << strerror(errno);
+						// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+						return (errno);
+					}
+					else
+					{
+						// MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Connected.");
+					}
+
+					return (IUartOK);
 				}
 
-				strcpy(strHostName, "localhost");
+				virtual void deinit()
+				{
+					if (-1 != hSocket)
+					{
+						// MagAOXAppT::log<text_log>("linux_pinout_client_socket::deinit(): Closing socket");
 
-				if (NULL != config.HostName)
-				{
-					strncpy(strHostName, config.HostName, HOST_NAME_SIZE);
-					strHostName[HOST_NAME_SIZE] = '\0';
-				}
-				if (0 != config.HostPort)
-				{
-					nHostPort = config.HostPort;
-				}
+						close(hSocket);
 
-				MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Making a socket");
-				/* make a socket */
-				hSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-				if (hSocket == -1)
-				{
-					MagAOXAppT::log<software_error>({__FILE__, __LINE__, "linux_pinout_client_socket::init(): Could not make a socket"});
-					return (errno);
-				}
-				else
-				{
-					std::ostringstream oss;
-					oss << "linux_pinout_client_socket::init(): Socket handle: " << hSocket;
-					MagAOXAppT::log<text_log>(oss.str());
+						hSocket = -1;
+					}
 				}
 
-				/* get IP address from name */
-				pHostInfo = gethostbyname(strHostName);
-				if (NULL == pHostInfo)
+				virtual bool dataready() const
 				{
-					std::ostringstream oss;
-					oss << "linux_pinout_client_socket::init(): Could not gethostbyname(): " << strerror(errno);
-					MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
-					return (errno);
-				}
-				/* copy address into long */
-				memcpy(&nHostAddress, pHostInfo->h_addr, pHostInfo->h_length);
-
-				/* fill address struct */
-				Address.sin_addr.s_addr = nHostAddress;
-				Address.sin_port = htons(nHostPort);
-				Address.sin_family = AF_INET;
-
-				std::ostringstream oss;
-				oss << "linux_pinout_client_socket::init(): Connecting to " << strHostName << " on port " << nHostPort;
-				MagAOXAppT::log<text_log>(oss.str());
-
-				int isConnected = connect(hSocket, (struct sockaddr *)&Address, sizeof(Address));
-				/* connect to host */
-				if (isConnected == -1)
-				{
-					std::ostringstream oss;
-					oss << "linux_pinout_client_socket::init(): Could not connect to host: " << strerror(errno);
-					MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
-					return (errno);
-				}
-				else
-				{
-					MagAOXAppT::log<text_log>("linux_pinout_client_socket::init(): Connected.");
-				}
-
-				return (IUartOK);
-			}
-
-			virtual void deinit()
-			{
-				if (-1 != hSocket)
-				{
-					MagAOXAppT::log<text_log>("linux_pinout_client_socket::deinit(): Closing socket");
-
-					close(hSocket);
-
-					hSocket = -1;
-				}
-			}
-
-			virtual bool dataready() const
-			{
-				fd_set sockset;
-				struct timeval nowait;
-				memset((char *)&nowait, 0, sizeof(nowait));
-				if (-1 == hSocket)
-				{
+					fd_set sockset;
+					struct timeval nowait;
+					memset((char *)&nowait, 0, sizeof(nowait));
+					if (-1 == hSocket)
+					{
+						return (false);
+					} // open?
+					FD_ZERO(&sockset);
+					FD_SET(hSocket, &sockset);
+					int result = select(hSocket + 1, &sockset, NULL, NULL, &nowait);
+					if (result < 0)
+					{
+					} //"You have an error"
+					else if (result == 1)
+					{
+						if (FD_ISSET(hSocket, &sockset)) // The socket has data. For good measure, it's not a bad idea to test further
+						{
+							return (true);
+						}
+					}
 					return (false);
-				} // open?
-				FD_ZERO(&sockset);
-				FD_SET(hSocket, &sockset);
-				int result = select(hSocket + 1, &sockset, NULL, NULL, &nowait);
-				if (result < 0)
+				}
+
+				virtual char getcqq()
 				{
-				} //"You have an error"
-				else if (result == 1)
-				{
-					if (FD_ISSET(hSocket, &sockset)) // The socket has data. For good measure, it's not a bad idea to test further
+					char c = 0;
+
+					if (-1 != hSocket)
 					{
-						return (true);
+						int numbytes = recv(hSocket, &c, 1, 0);
+						if (1 != numbytes)
+						{
+							// std::ostringstream oss;
+							// oss << "linux_pinout_client_socket::getcqq(): read from socket error (" << numbytes << " bytes gave: " << errno << ")";
+							// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+
+							deinit();
+
+							return (0);
+						}
+					}
+					else
+					{
+						// MagAOXAppT::log<text_log>("linux_pinout_client_socket::getcqq(): read on uninitialized socket; please open socket!");
+					}
+
+					return (c);
+				}
+
+				virtual char putcqq(char c)
+				{
+					// std::ostringstream oss;
+					// oss << "Char: " << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(c);
+					// MagAOXAppT::log<text_log>(oss.str());
+
+					if (-1 != hSocket)
+					{
+						int numbytes = send(hSocket, &c, 1, 0);
+
+						if (1 != numbytes)
+						{
+							// std::ostringstream oss;
+							// oss << "linux_pinout_client_socket::putcqq(): write from socket error (" << numbytes << " bytes gave: " << errno << ")";
+							// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+
+							deinit();
+
+							return (0);
+						}
+					}
+					else
+					{
+						// MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): write on uninitialized socket; please open socket!"});
+					}
+
+					return (c);
+				}
+
+				virtual void flushoutput()
+				{
+					if (-1 != hSocket)
+					{
+						fsync(hSocket);
+					}
+					else
+					{
+						// MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): fflush on uninitialized socket; please open socket!"});
 					}
 				}
-				return (false);
-			}
 
-			virtual char getcqq()
-			{
-				char c = 0;
-
-				if (-1 != hSocket)
+				virtual void purgeinput()
 				{
-					int numbytes = recv(hSocket, &c, 1, 0);
-					if (1 != numbytes)
-					{
-						std::ostringstream oss;
-						oss << "linux_pinout_client_socket::getcqq(): read from socket error (" << numbytes << " bytes gave: " << errno << ")";
-						MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
-
-						deinit();
-
-						return (0);
-					}
-				}
-				else
-				{
-					MagAOXAppT::log<text_log>("linux_pinout_client_socket::getcqq(): read on uninitialized socket; please open socket!");
+					//~ if(dataready)
 				}
 
-				return (c);
-			}
-
-			virtual char putcqq(char c)
-			{
-				// std::ostringstream oss;
-				// oss << "Char: " << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned>(c);
-				// MagAOXAppT::log<text_log>(oss.str());
-
-				if (-1 != hSocket)
+				virtual bool connected() const
 				{
-					int numbytes = send(hSocket, &c, 1, 0);
-
-					if (1 != numbytes)
-					{
-						std::ostringstream oss;
-						oss << "linux_pinout_client_socket::putcqq(): write from socket error (" << numbytes << " bytes gave: " << errno << ")";
-						MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
-
-						deinit();
-
-						return (0);
-					}
-				}
-				else
-				{
-					MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): write on uninitialized socket; please open socket!"});
+					return (-1 != hSocket);
 				}
 
-				return (c);
-			}
+				virtual bool isopen() const { return (connected()); }
 
-			virtual void flushoutput()
-			{
-				if (-1 != hSocket)
-				{
-					fsync(hSocket);
-				}
-				else
-				{
-					MagAOXAppT::log<software_warning>({__FILE__, __LINE__, "linux_pinout_client_socket::putcqq(): fflush on uninitialized socket; please open socket!"});
-				}
-			}
+			public:
+				int hSocket; /* handle to socket */
+			};
 
-			virtual void purgeinput()
-			{
-				//~ if(dataready)
-			}
-
-			virtual bool connected() const
-			{
-				return (-1 != hSocket);
-			}
-
-			virtual bool isopen() const { return (connected()); }
-
-		public:
-			int hSocket; /* handle to socket */
-		};
-
+		} // namespace dev
 	} // namespace app
 } // namespace MagAOX

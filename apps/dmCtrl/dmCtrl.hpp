@@ -14,11 +14,11 @@
 typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
 
 #include "dmCommands.hpp"
-#include "binaryUart.hpp"
-#include "cGraphPacket.hpp"
-#include "linux_pinout_uart.hpp"
-#include "socket.hpp"
-#include "IUart.h"
+// #include "binaryUart.hpp"
+// #include "cGraphPacket.hpp"
+// #include "linux_pinout_uart.hpp"
+// #include "socket.hpp"
+// #include "IUart.h"
 
 
 /** \defgroup dmCtrl
@@ -80,7 +80,7 @@ namespace MagAOX
       ///@}
 
         char Buffer[4096];
-        CGraphPacket SocketProtocol;
+        CGraphPacket PacketProtocol;
         std::unique_ptr<IUart> LocalPortPinout;
         std::unique_ptr<BinaryUart> UartParser;
         PZTQuery *telemetryQuery = new TelemetryQuery();
@@ -394,7 +394,7 @@ namespace MagAOX
 
     void dmCtrl::initUartParser()
     {
-      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false);
+      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, PacketProtocol, PacketCallbacks, queries, false);
     }
 
     /// TODO: Test the connection to the device
