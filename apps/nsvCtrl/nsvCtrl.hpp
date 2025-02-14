@@ -45,7 +45,7 @@ public:
      */
    static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera to expose temperature controls
    
-   static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera to expose temperature
+   static constexpr bool c_stdCamera_temp = true; ///< app::dev config to tell stdCamera to expose temperature
    
    static constexpr bool c_stdCamera_readoutSpeed = false; ///< app::dev config to tell stdCamera to expose readout speed controls
    
@@ -544,7 +544,7 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      if(getPowerStatus() < 0){
+      if(getPowerStatus() < 0 && getPowerStatus() != PARAM_NOT_FOUND){
          log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
          state(stateCodes::NODEVICE);
          return 0;
@@ -705,11 +705,7 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-   printf("here\n");
-
    resizeROIbufs();
-
-   printf("here2\n");
 
    if(startStreaming() == -1){
       log<text_log>("Failed to start camera stream", logPrio::LOG_CRITICAL);
@@ -717,17 +713,11 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
-
-   printf("here3\n");
-
    if(queueBuffers() == -1){ // load up initial images
       log<text_log>("Failed to start queueing images", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
-
-
-   printf("here4\n");
 
    m_current_frame = 0; 
    m_oldest_frame = 0;
@@ -852,10 +842,11 @@ int nsvCtrl::setReadoutMode()
       m_minVCrop = vc->second.minimum;  
       m_maxVCrop = vc->second.maximum;
       m_vCrop = vc->second.current_value;
-      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", m_minVCrop, m_maxVCrop, vc->second.step, "%d");
+      if()
+      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", m_minVCrop, m_maxVCrop, vc->second.step, "%d");  // need to check if already defined
       m_indiP_vCrop["current"] = m_vCrop;
       m_indiP_vCrop["target"] = m_vCrop;
-      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop)); // only create if already created
    } else {
       uses_vCrop = false;
    }
@@ -918,11 +909,15 @@ int nsvCtrl::setReadoutMode()
 inline
 int nsvCtrl::getTemp()
 {
-   float temp = -999;
-
-   m_ccdTemp = temp;
-
-   return 0;
+   int res = getAndUpdateSingleControlVal("get_fpga_temperature");  // values range from -1 to 15
+   if(res == PARAM_NOT_FOUND){
+      // handle when we can't see power explicitly.  Assume turned on..
+      //m_poweredOn = true;
+      //m_powerState = 1;
+      return PARAM_NOT_FOUND;
+   }
+   m_ccdTemp = res;
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get fpga temperature"}) : m_ccdTemp;
 }
 
 inline
@@ -933,7 +928,7 @@ int nsvCtrl::getPowerStatus()
       // handle when we can't see power explicitly.  Assume turned on..
       m_poweredOn = true;
       m_powerState = 1;
-      return 1;
+      return PARAM_NOT_FOUND;
    }
 
    // TODO delete this block once they actually make the fpga report correctly
@@ -1239,7 +1234,7 @@ int nsvCtrl::setNextROI()
 { 
    if(m_poweredOn)
       m_reconfig = true; 
-
+   
    updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
 
    return 0;
@@ -1307,6 +1302,7 @@ float nsvCtrl::fps()
 inline
 int nsvCtrl::startAcquisition()
 {
+   resizeROIbufs(); // ensure new ROI is always up to date before starting stream
 
    if(startStreaming() == -1){
       state(stateCodes::ERROR);
@@ -1366,7 +1362,7 @@ inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
    //if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[m_current_frame], m_width, m_height, m_typeSize) == nullptr) return -1;
-   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return -1;
+   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return log<software_error,-1>({__FILE__, __LINE__, "grabbing subframe failed"});;
    return 0;
 }
 
@@ -1395,7 +1391,7 @@ int nsvCtrl::writeROISubframe()
    int ROIIndex = 0;
    for(int i = 0; i < m_currentROI.h; i++){
       for(int j = 0; j < m_currentROI.w; j++){
-         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_full_w + (startX + j))];
+         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_full_w + (startX + j))]; //m_full_w or should it be bytes_per_line?
          ROIIndex++;
       }
    }

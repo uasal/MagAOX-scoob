@@ -74,6 +74,7 @@ struct CameraMode {
     std::string pixelFormat;
     std::vector<std::pair<__u32, __u32>> resolutions; // Pair of width, height
     std::vector<double> intervals;   // Nested vector for intervals per resolution
+    std::vector<int> padding;
     int bitDepth;
     int current_resolution;                 // Index of the current resolution
 };
@@ -83,7 +84,7 @@ struct CameraMode {
 struct CameraParams {
     unsigned int width;
     unsigned int height;
-    unsigned int bitDepth;          
+    unsigned int bitDepth;   
     float exposure;
     float frameRate;
     std::string pixelFormat;   
@@ -244,10 +245,11 @@ int setCamImageFormat(int width, int height, int bitDepth) {
     }
 
     // read back values after attempting to set. Driver may change width/height 
-    params.width = fmt.fmt.pix.width;
-    params.height = fmt.fmt.pix.height;
-    params.pixelFormat = fmt.fmt.pix.pixelformat; 
-    params.bitDepth = bitDepth;
+    //params.width = fmt.fmt.pix.width;
+    //params.height = fmt.fmt.pix.height;
+    //params.pixelFormat = fmt.fmt.pix.pixelformat; 
+    //params.padding =  fmt.fmt.pix.bytesperline - fmt.fmt.pix.width; // how many to ignore
+    //params.bitDepth = bitDepth;
 
     return 0;
 }
