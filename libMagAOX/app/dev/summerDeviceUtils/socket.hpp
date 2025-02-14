@@ -8,6 +8,8 @@ namespace MagAOX
 {
 namespace app
 {
+namespace dev
+{
 
 struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
 {
@@ -19,19 +21,19 @@ struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
 	{
 		if ( (NULL == Buffer) || (BufferLen < 1) )
 		{ 
-			std::ostringstream oss;
-			oss << "SocketUartCallbacks: NULL(" << BufferLen << " ) InvalidPacket!";
-			MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
+			// std::ostringstream oss;
+			// oss << "SocketUartCallbacks: NULL(" << BufferLen << " ) InvalidPacket!";
+			// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
 			return; 
 		}
 
 		size_t len = BufferLen;
 		if (len > 32) { len = 32; }
-		MagAOXAppT::log<software_error>({__FILE__, __LINE__, "SocketUartCallbacks: InvalidPacket! contents: :"});
-		for(size_t i = 0; i < len; i++)
-		{ 
-			MagAOXAppT::log<software_error>({__FILE__, __LINE__, Buffer[i]}); 
-		}
+		// MagAOXAppT::log<software_error>({__FILE__, __LINE__, "SocketUartCallbacks: InvalidPacket! contents: :"});
+		// for(size_t i = 0; i < len; i++)
+		// { 
+		// 	MagAOXAppT::log<software_error>({__FILE__, __LINE__, Buffer[i]}); 
+		// }
 	}
 
 	//Packet with no matching command handler:
@@ -39,17 +41,17 @@ struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
 	{
 		if ( (NULL == Packet) || (PacketLen < sizeof(CGraphPacketHeader)) ) 
 		{ 
-			std::ostringstream oss;
-			oss << "SocketUartCallbacks: NULL(" << PacketLen << " ) UnHandledPacket!";
-			MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
+			// std::ostringstream oss;
+			// oss << "SocketUartCallbacks: NULL(" << PacketLen << " ) UnHandledPacket!";
+			// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
 			return;
 		}
 
 		const CGraphPacketHeader* Header = reinterpret_cast<const CGraphPacketHeader*>(Packet);
-		std::ostringstream oss;
-		oss << "SocketUartCallbacks: Unhandled packet(" << PacketLen << "): ";
-		MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
-		Header->formatf();
+		// std::ostringstream oss;
+		// oss << "SocketUartCallbacks: Unhandled packet(" << PacketLen << "): ";
+		// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
+		// Header->formatf();
 	}
 
 	//In case we need to look at every packet that goes by...
@@ -58,12 +60,14 @@ struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
 	//We just wanna see if this is happening, not much to do about it
 	virtual void BufferOverflow(const size_t& BufferLen)
 	{
-		std::ostringstream oss;
-		oss << "SocketBinaryUartCallbacks: BufferOverflow(" << BufferLen << ")!";
-		MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
+		// std::ostringstream oss;
+		// oss << "SocketBinaryUartCallbacks: BufferOverflow(" << BufferLen << ")!";
+		// MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});			
 	}
 
-} PacketCallbacks;
+};
 
+
+} //namespace dev
 } //namespace app
 } //namespace MagAOX

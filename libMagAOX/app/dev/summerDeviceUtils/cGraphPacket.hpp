@@ -11,12 +11,15 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sstream> // for stringstreams
+#include <cstring> // For memset
 
 #include "iPacket.hpp"
 
 namespace MagAOX
 {
 namespace app
+{
+namespace dev
 {
 
 uint32_t CRC32(const uint8_t* data, const size_t length);
@@ -37,11 +40,11 @@ struct CGraphPacketHeader
 
 	void* PayloadDataNonConst() { return(reinterpret_cast<void*>(&(this[1]))); }
 
-	void formatf() const {
-		std::ostringstream oss;
-		oss << "CGraphPacketHeader: StartToken: 0x" << (long)PacketStartToken << ", PayloadType: " << (unsigned long)PayloadType << ", PayloadLen: " << (unsigned long)PayloadLen;
-		MagAOXAppT::log<text_log>(oss.str());
-	}
+	// void formatf() const {
+	// 	std::ostringstream oss;
+	// 	oss << "CGraphPacketHeader: StartToken: 0x" << (long)PacketStartToken << ", PayloadType: " << (unsigned long)PayloadType << ", PayloadLen: " << (unsigned long)PayloadLen;
+	// 	MagAOXAppT::log<text_log>(oss.str());
+	// }
 
 } __attribute__((__packed__));
 
@@ -136,7 +139,7 @@ public:
 
 
 //This technically is a "BZIP2CRC32", not an "ANSICRC32"; seealso: https://crccalc.com/
-uint32_t CRC32(const uint8_t* data, const size_t length)
+inline uint32_t CRC32(const uint8_t* data, const size_t length)
 {
 	static const uint32_t table[256] =
 	{
@@ -219,5 +222,6 @@ uint32_t CRC32(const uint8_t* data, const size_t length)
 }
 
 
+} //namespace dev
 } //namespace app
 } //namespace MagAOX
