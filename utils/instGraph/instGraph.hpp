@@ -378,6 +378,9 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
         }
     }
 
+
+    m_graph.hideLinks();
+    m_graph.hidePuts();
     return 0;
 }
 
