@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
+#include <linux/media.h> 
 #include <sys/mman.h>
 #include <vector>
 #include <stdexcept>
@@ -20,6 +21,7 @@
 #include <ctime>
 #include <chrono>
 #include <cstdlib> 
+#include <dirent.h>
 
 #include <unordered_map>
 #include <string>
@@ -124,6 +126,9 @@ void updateCameraControls();
 int getAndUpdateSingleControlVal(std::string search_str);
 int writeSingleControlVal(std::string search_str, int value);
 
+std::string getCameraID(int fd);
+std::string findCameraByID(const std::string &target_cam_id);
+
 std::string parseFlags();
 std::string pixelFormatToString();
 int getBitDepthFromPixelFormat();
@@ -169,23 +174,12 @@ int closeCamera() {
 
 int getCamInput() {
     struct v4l2_input input;
-    //unsigned int input_count = 0;
-    
-    /*
-    // Enumerate all inputs and print their names and indices
-    while (ioctl(fd, VIDIOC_ENUMINPUT, &input) == 0) {
-        printf("Input %d: %s\n", input.index, input.name);
-        input_count++;
-        input.index++;
-    }
-    */
 
-    // Get the current input index   v4l2-ctl --list-inputs
     if (ioctl(fd, VIDIOC_G_INPUT, &input) == -1) {
         close(fd);
     }
 
-    cam_input = input.index;
+    //cam_input = input.index;
     printf("Current active input: %d\n", input.index);
     return 0;
 }
@@ -417,25 +411,13 @@ void send_i2c_cmd(int channel, uint8_t action) {
 }
 
 void turn_on_power() {
-    //send_i2c_cmd(cam_input, 1); 
-    send_i2c_cmd(0, 1);                 // currently turning all on and off. TODO verify cam_input corresponds with right power channel
-    send_i2c_cmd(1, 1); 
-    send_i2c_cmd(2, 1); 
-    send_i2c_cmd(3, 1); 
-    send_i2c_cmd(4, 1); 
-    send_i2c_cmd(5, 1); 
-    std::cout << "Power turned on for channel " << 0 << std::endl;
+    send_i2c_cmd(cam_input, 1); 
+    std::cout << "Power turned on for channel " << cam_input << std::endl;
 }
 
 void turn_off_power() {
-    //send_i2c_cmd(cam_input, 0); 
-    send_i2c_cmd(0, 0); 
-    send_i2c_cmd(1, 0); 
-    send_i2c_cmd(2, 0); 
-    send_i2c_cmd(3, 0); 
-    send_i2c_cmd(4, 0); 
-    send_i2c_cmd(5, 0); 
-    std::cout << "Power turned off for channel " << 0 << std::endl;
+    send_i2c_cmd(cam_input, 0); 
+    std::cout << "Power turned off for channel " << cam_input << std::endl;
 }
 
 CameraParams getCameraParams(){
@@ -519,6 +501,35 @@ int getBitDepthFromPixelFormat(__u32 pixelformat) {
         default:
             return -1;
     }
+}
+
+std::string findCameraByID(const std::string &target_cam_id) {
+    for (int i = 0; i < 6; i++) {  // Check for at most 6 video devices
+        std::string dev_path = "/dev/video" + std::to_string(i);
+        int fd = open(dev_path.c_str(), O_RDWR);
+        if (fd == -1) {
+            continue;  // Skip if device can't be opened
+        }
+
+        struct v4l2_capability cap;
+        
+        if (ioctl(fd, VIDIOC_QUERYCAP, &cap) == -1) {
+            std::cerr << "Error querying device capabilities" << std::endl;
+            return "";
+        }
+
+        std::string bus_info(reinterpret_cast<char*>(cap.bus_info));
+
+        if (bus_info == target_cam_id) {      //looking for platform:tegra-capture-vi:#
+            close(fd);  
+            cam_input = i;
+            return dev_path; 
+        }
+
+        close(fd);
+    }
+
+    return ""; 
 }
 
 // works on global 'mode' assuming has already been created. Need to already have opened the camera and gotten modes

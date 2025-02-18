@@ -100,7 +100,8 @@ protected:
    std::string m_powerOffTS;
    std::string m_poweredOnDuration;
 
-   std::string m_camPath; ///< /dev/video2 or similar, path to l4v2 cam, read from config
+   std::string m_camID; // ID encoded in the camera (necessary to pair with path)
+   std::string m_camPath; // dev/videoX
 
    int m_current_frame; ///< frame index, from 0 to bufsize for current frame to read out
    int m_oldest_frame; ///< the oldest camera frame in the buffer (must be dequeued first)
@@ -335,7 +336,7 @@ inline
 void nsvCtrl::setupConfig()
 {
  
-   config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
+   config.add("camera.camID", "", "camera.camID", argType::Required, "camera","camID", false, "str", "v4l2 Card Type identifyer for camera.");
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
@@ -349,8 +350,7 @@ void nsvCtrl::setupConfig()
 inline
 void nsvCtrl::loadConfig()
 {
-
-   config(m_camPath, "camera.camPath");
+   config(m_camID, "camera.camID");
    config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
@@ -396,7 +396,9 @@ void nsvCtrl::loadConfig()
       m_maxEMGain = 360;
       log<text_log>("maxGain set to 360");
    }
-
+   
+   m_camPath = findCameraByID(m_camID);
+   
    dev::frameGrabber<nsvCtrl>::loadConfig(config);
    
    dev::telemeter<nsvCtrl>::loadConfig(config);
@@ -652,9 +654,8 @@ int nsvCtrl::appShutdown()
 inline
 int nsvCtrl::cameraSelect()  
 {  
-   const char *path = m_camPath.c_str();
-   if(openCamera(path) == -1){
-      log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
+   if(openCamera(m_camPath.c_str()) == -1){
+      log<text_log>("No nsv camera found matching id", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
@@ -723,7 +724,7 @@ int nsvCtrl::cameraSelect()
    m_oldest_frame = 0;
 
    state(stateCodes::CONNECTED);
-   log<text_log>(std::string("Connected to ") + m_camPath);
+   log<text_log>(std::string("Connected to ") + m_camID);
 
    m_init = true;
 
@@ -761,12 +762,12 @@ int nsvCtrl::setReadoutMode()
    if(it != camera_controls.end()){ 
       if(m_modeName == "sliced")  // keep sliced and fullframe config to indicate mode for old firmware for now
       {
-         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camID;
          result = std::system(command.c_str());
       }
       if(m_modeName == "fullframe")
       {
-         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camID;
          result = std::system(command.c_str());
       }
 
@@ -842,7 +843,7 @@ int nsvCtrl::setReadoutMode()
       m_minVCrop = vc->second.minimum;  
       m_maxVCrop = vc->second.maximum;
       m_vCrop = vc->second.current_value;
-      if()
+      // TODO check if it's already been added to indi../
       createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", m_minVCrop, m_maxVCrop, vc->second.step, "%d");  // need to check if already defined
       m_indiP_vCrop["current"] = m_vCrop;
       m_indiP_vCrop["target"] = m_vCrop;
@@ -1619,7 +1620,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
    return 0;
 }
 
-// piping through shell commands. Todo convert to ioctl v4l2 calls per parameter
 std::string nsvCtrl::cmdRes(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -1629,9 +1629,6 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
         result += buffer.data();
     }
 
-    // Check for errors, for example:
-      //    Cannot open device /dev/video5, exiting.
-      //    unknown control 'some_invalid_param_name'
     std::string str(cmd);
     if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
         log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + str + ": " + result});
