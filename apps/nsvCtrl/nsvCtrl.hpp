@@ -190,6 +190,8 @@ public:
 
    int setCropMode();
 
+   int set_preferred_stride(int stride);
+
    int setShutter(unsigned os);
 
    int setFPS();
@@ -795,6 +797,14 @@ int nsvCtrl::setReadoutMode()
    updateCameraControls();  // update controls after updating image format
    updateCurrentMode(); 
 
+   // update sensor parameters after camera image format
+   // bypass_mode
+   // override_enable
+   // height_align
+   // size_align
+   // preferred_stride 
+   set_preferred_stride(32);
+
    // now update local variables.  some redundancy with CameraControl struct
    int width = camera_modes[0].resolutions[camera_modes[0].current_resolution].first;
    int height = camera_modes[0].resolutions[camera_modes[0].current_resolution].second;
@@ -1122,6 +1132,16 @@ inline
 int nsvCtrl::setCropMode()
 {
    return 0;
+}
+
+inline
+int nsvCtrl::set_preferred_stride(int stride)
+{
+   int res = writeSingleControlVal("preferred_stride", stride);  // 8-bit, 16-bit, 32-bit, 64-bit
+   if(res == PARAM_NOT_FOUND){
+      return PARAM_NOT_FOUND;
+   }
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to set stride to" + std::to_string(stride)}) : log<text_log,1>({"set preferred_stride to: " + std::to_string(res)});
 }
 
 inline 
