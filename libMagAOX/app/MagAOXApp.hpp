@@ -932,6 +932,14 @@ class MagAOXApp : public application
                               pcf::IndiProperty::Ok ///< [in] [optional] The state of the property
     );
 
+    template <typename T>
+    void updatesIfChanged( pcf::IndiProperty &p, ///< [in/out] The property containing the element to possibly update
+                          const std::vector<const char *> &els, ///< [in] String vector of element names
+                          const std::vector<T> &newVals,       ///< [in] the new values
+                          pcf::IndiProperty::PropertyStateType newState =
+                              pcf::IndiProperty::Ok ///< [in] [optional] The state of the property
+    );
+
     /// Get the target element value from an new property
     /**
      * \returns 0 on success
@@ -3190,6 +3198,26 @@ void MagAOXApp<_useINDI>::updateIfChanged( pcf::IndiProperty &p,
         return;
 
     indi::updateIfChanged( p, els, newVals, m_indiDriver, newState );
+}
+
+template <bool _useINDI>
+template <typename T>
+void MagAOXApp<_useINDI>::updatesIfChanged( pcf::IndiProperty &p,
+                                           const std::vector<const char *> &els,
+                                           const std::vector<T> &newVals,
+                                           pcf::IndiProperty::PropertyStateType newState )
+{
+    if( !_useINDI )
+    {
+        return;
+    }
+
+    if( !m_indiDriver )
+    {
+        return;
+    }
+    
+    indi::updatesIfChanged( p, els, newVals, m_indiDriver, newState );
 }
 
 template <bool _useINDI>

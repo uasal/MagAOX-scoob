@@ -318,6 +318,33 @@ if( derived().template registerIndiPropertySet( prop,devName,  propName, INDI_SE
         return -1;                                                                              \
     }
 
+/// Create and register a NEW INDI property as a standard number as double, using the standard callback name.
+/** This wraps createStandardIndiNumber and registerIndiPropertyNew, with error checking.
+  * \p prop will have elements "current" and "target".
+  *
+  * \param prop   [out] the property to create and setup
+  * \param name   [in] the name of the property
+  * \param min    [in] the minimum value for the elements, applied to both target and current
+  * \param max    [in] the minimum value for the elements, applied to both target and current
+  * \param step   [in] the step size for the elements, applied to both target and current
+  * \param format [in] the _ value for the elements, applied to both target and current.  Set to "" to use the MagAO-X standard for type.
+  * \param label  [in] [optional] the GUI label suggestion for this property
+  * \param group  [in] [optional] the group for this property
+  * 
+  * \ingroup indi
+  */
+#define CREATE_REG_INDI_NEW_NUMBERD( prop, name, min, max, step, format, label, group)           \
+    if( createStandardIndiNumber<double>( prop, name, min, max, step, format, label, group) < 0) \
+    {                                                                                            \
+        log<software_error>({__FILE__,__LINE__, "error from createStandardIndiNumber"});         \
+        return -1;                                                                               \
+    }                                                                                            \
+    if( registerIndiPropertyNew( prop, INDI_NEWCALLBACK(prop)) < 0)                              \
+    {                                                                                            \
+        log<software_error>({__FILE__,__LINE__, "error from registerIndiPropertyNew"});          \
+        return -1;                                                                               \
+    }
+
 /// Create and register a NEW INDI property as a standard number as int, using the standard callback name.
 /** This wraps createStandardIndiNumber and registerIndiPropertyNew, with error checking
   * \p prop will have elements "current" and "target".
