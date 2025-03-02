@@ -45,6 +45,9 @@ class stdMotionNode : public fsmNode
      */
     ingr::ioDir m_presetDir{ ingr::ioDir::output };
 
+    /// Contains the names of any puts which are always on if any are on.
+    std::set<std::string> m_alwaysOn;
+
     /// The INDI key (device.property) for the switch denoting that this stage should be or should not be tracking
     std::string m_trackingReqKey;
 
@@ -63,51 +66,54 @@ class stdMotionNode : public fsmNode
     /// Flag indicating whether or not the stage is currently tracking (default false).
     bool m_tracking{ false };
 
+
   public:
     /// Only c'tor.  Must be constructed with node name and a parent graph.
-    stdMotionNode( const std::string &name, ingr::instGraphXML *parentGraph );
+    stdMotionNode( const std::string &name,        /** [in] the name of this node*/
+                   ingr::instGraphXML *parentGraph /** [in] the graph which this node belongs to*/);
 
     /// Set the device name.  This can only be done once.
     /**
      * \throws
      */
-    virtual void device( const std::string &dev /**< [in] */);
+    virtual void device( const std::string &dev /**< [in] */ );
 
     using fsmNode::device;
 
-    virtual void presetPrefix( const std::string &pp /**< [in] */);
+    virtual void presetPrefix( const std::string &pp /**< [in] */ );
 
-    const std::string & presetPrefix();
+    const std::string &presetPrefix();
 
     /// Get the current label text
     /**
      * \returns the current value of m_curLabel.
      */
-    const std::string & curLabel();
+    const std::string &curLabel();
 
-    void presetPutName( const std::vector<std::string> &ppp /**< [in] */);
+    void presetPutName( const std::vector<std::string> &ppp /**< [in] */ );
 
-    const std::vector<std::string> & presetPutName();
+    const std::vector<std::string> &presetPutName();
 
-    void presetDir( const ingr::ioDir &dir /**< [in] */);
+    void presetDir( const ingr::ioDir &dir /**< [in] */ );
 
-    const ingr::ioDir & presetDir();
+    const ingr::ioDir &presetDir();
 
-    void trackingReqKey( const std::string &tk /**< [in] */);
+    void trackingReqKey( const std::string &tk /**< [in] */ );
 
-    const std::string & trackingReqKey();
+    const std::string &trackingReqKey();
 
-    void trackingReqElement( const std::string &te /**< [in] */);
+    void trackingReqElement( const std::string &te /**< [in] */ );
 
-    const std::string & trackingReqElement();
+    const std::string &trackingReqElement();
 
-    void trackerKey( const std::string &tk /**< [in] */);
+    void trackerKey( const std::string &tk /**< [in] */ );
 
-    const std::string & trackerKey();
+    const std::string &trackerKey();
 
-    void trackerElement( const std::string &te /**< [in] */);
+    void trackerElement( const std::string &te /**< [in] */ );
 
-    const std::string & trackerElement();
+    const std::string &trackerElement();
+
 
     /// INDI SetProperty callback
     virtual void handleSetProperty( const pcf::IndiProperty &ipRecv /**< [in] the received INDI property to handle*/ );
@@ -116,10 +122,13 @@ class stdMotionNode : public fsmNode
 
     virtual void togglePutsOff();
 
-    void loadConfig( mx::app::appConfigurator &config /**< [in] the application configurator loaded with this node's options*/);
+    void loadConfig(
+        mx::app::appConfigurator &config /**< [in] the application configurator loaded with this node's options*/ );
 };
 
-inline stdMotionNode::stdMotionNode( const std::string &name, ingr::instGraphXML *parentGraph ) : fsmNode( name, parentGraph )
+
+inline stdMotionNode::stdMotionNode( const std::string &name, ingr::instGraphXML *parentGraph )
+    : fsmNode( name, parentGraph )
 {
 }
 
@@ -141,7 +150,8 @@ inline void stdMotionNode::presetPrefix( const std::string &pp )
     // Set it one time only
     if( m_presetPrefix != "" && pp != m_presetPrefix )
     {
-        std::string msg = "stdMotionNode::presetPrefix: attempt to change preset prefix from " + m_presetPrefix + " to " + pp;
+        std::string msg =
+            "stdMotionNode::presetPrefix: attempt to change preset prefix from " + m_presetPrefix + " to " + pp;
         msg += " at ";
         msg += __FILE__;
         msg += " " + std::to_string( __LINE__ );
@@ -158,12 +168,12 @@ inline void stdMotionNode::presetPrefix( const std::string &pp )
     }
 }
 
-inline const std::string & stdMotionNode::presetPrefix()
+inline const std::string &stdMotionNode::presetPrefix()
 {
     return m_presetPrefix;
 }
 
-inline const std::string & stdMotionNode::curLabel()
+inline const std::string &stdMotionNode::curLabel()
 {
     return m_curLabel;
 }
@@ -173,7 +183,7 @@ inline void stdMotionNode::presetPutName( const std::vector<std::string> &ppp )
     m_presetPutName = ppp;
 }
 
-inline const std::vector<std::string> & stdMotionNode::presetPutName()
+inline const std::vector<std::string> &stdMotionNode::presetPutName()
 {
     return m_presetPutName;
 }
@@ -183,7 +193,7 @@ inline void stdMotionNode::presetDir( const ingr::ioDir &dir )
     m_presetDir = dir;
 }
 
-inline const ingr::ioDir & stdMotionNode::presetDir()
+inline const ingr::ioDir &stdMotionNode::presetDir()
 {
     return m_presetDir;
 }
@@ -198,7 +208,7 @@ inline void stdMotionNode::trackingReqKey( const std::string &tk )
     }
 }
 
-inline const std::string & stdMotionNode::trackingReqKey()
+inline const std::string &stdMotionNode::trackingReqKey()
 {
     return m_trackingReqKey;
 }
@@ -208,7 +218,7 @@ inline void stdMotionNode::trackingReqElement( const std::string &te )
     m_trackingReqElement = te;
 }
 
-inline const std::string & stdMotionNode::trackingReqElement()
+inline const std::string &stdMotionNode::trackingReqElement()
 {
     return m_trackingReqElement;
 }
@@ -223,7 +233,7 @@ inline void stdMotionNode::trackerKey( const std::string &tk )
     }
 }
 
-inline const std::string & stdMotionNode::trackerKey()
+inline const std::string &stdMotionNode::trackerKey()
 {
     return m_trackerKey;
 }
@@ -233,7 +243,7 @@ inline void stdMotionNode::trackerElement( const std::string &te )
     m_trackerElement = te;
 }
 
-inline const std::string & stdMotionNode::trackerElement()
+inline const std::string &stdMotionNode::trackerElement()
 {
     return m_trackerElement;
 }
@@ -307,7 +317,7 @@ inline void stdMotionNode::handleSetProperty( const pcf::IndiProperty &ipRecv )
                 }
             }
 
-            if(nothingIsOn)
+            if( nothingIsOn )
             {
                 if( m_curVal != "" && !m_tracking ) // we only update if not tracking
                 {
@@ -322,20 +332,21 @@ inline void stdMotionNode::handleSetProperty( const pcf::IndiProperty &ipRecv )
     {
         m_changes = 0;
 
-        if(m_trackingReq)
+        if( m_trackingReq )
         {
-            if(m_tracking && (m_state == MagAOX::app::stateCodes::READY || m_state == MagAOX::app::stateCodes::OPERATING ) )
+            if( m_tracking &&
+                ( m_state == MagAOX::app::stateCodes::READY || m_state == MagAOX::app::stateCodes::OPERATING ) )
             {
                 togglePutsOn();
             }
             else
-            {   //Either we aren't tracking or we aren't READY || OPERATING
+            { // Either we aren't tracking or we aren't READY || OPERATING
                 togglePutsOff();
             }
         }
         else
         {
-            if( m_state != MagAOX::app::stateCodes::READY || m_tracking || m_curVal == "none" || m_curVal == "")
+            if( m_state != MagAOX::app::stateCodes::READY || m_tracking || m_curVal == "none" || m_curVal == "" )
             {
                 togglePutsOff();
             }
@@ -349,7 +360,7 @@ inline void stdMotionNode::handleSetProperty( const pcf::IndiProperty &ipRecv )
 
 inline void stdMotionNode::togglePutsOn()
 {
-    if(m_node == nullptr || !m_parentGraph || !m_node->auxDataValid())
+    if( m_node == nullptr || !m_parentGraph || !m_node->auxDataValid() )
     {
         return;
     }
@@ -400,7 +411,7 @@ inline void stdMotionNode::togglePutsOn()
                     return;
                 }
 
-                if( s == m_curVal )
+                if( s == m_curVal || m_alwaysOn.count(s) == 1)
                 {
                     pptr->state( ingr::putState::on );
                 }
@@ -418,27 +429,27 @@ inline void stdMotionNode::togglePutsOn()
 
 inline void stdMotionNode::togglePutsOff()
 {
-    if(m_node == nullptr || !m_parentGraph || !m_node->auxDataValid())
+    if( m_node == nullptr || !m_parentGraph || !m_node->auxDataValid() )
     {
         return;
     }
 
-    if( m_tracking ) //regardless of whether required, if tracking this is our state
+    if( m_tracking ) // regardless of whether required, if tracking this is our state
     {
         m_curLabel = "tracking";
         m_parentGraph->valuePut( name(), m_presetPutName[0], m_presetDir, "tracking" );
     }
-    else if( m_trackingReq ) //we can only be "not tracking" if tracking is required
+    else if( m_trackingReq ) // we can only be "not tracking" if tracking is required
     {
         m_curLabel = "not tracking";
         m_parentGraph->valuePut( name(), m_presetPutName[0], m_presetDir, "not tracking" );
     }
-    else if( m_presetPutName.size() == 1 ) //otherwise, if we have a single node it's off
+    else if( m_presetPutName.size() == 1 ) // otherwise, if we have a single node it's off
     {
         m_curLabel = "off";
         m_parentGraph->valuePut( name(), m_presetPutName[0], m_presetDir, "off" );
     }
-    //We don't change labels if m_presetPutName.size() > 1
+    // We don't change labels if m_presetPutName.size() > 1
 
     xigNode::togglePutsOff();
 }
@@ -447,22 +458,16 @@ inline void stdMotionNode::loadConfig( mx::app::appConfigurator &config )
 {
     if( !m_parentGraph )
     {
-        std::string msg = "stdMotionNode::loadConfig: parent graph is null";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "parent graph is null" );
         throw std::runtime_error( msg );
     }
 
     std::string type;
-    config.configUnused(type, mx::app::iniFile::makeKey( name(), "type" ));
+    config.configUnused( type, mx::app::iniFile::makeKey( name(), "type" ) );
 
-    if(type != "stdMotion")
+    if( type != "stdMotion" )
     {
-        std::string msg = "stdMotionNode::loadConfig: node type is not stdMotion";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "node type is not stdMotion" );
         throw std::runtime_error( msg );
     }
 
@@ -485,24 +490,35 @@ inline void stdMotionNode::loadConfig( mx::app::appConfigurator &config )
     }
     else
     {
-        std::string msg = "stdMotionNode::loadConfig: invalid presetDir (must be input or output)";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "invalid presetDir (must be input or output)" );
         throw std::runtime_error( msg );
     }
-
 
     std::vector<std::string> prePutName( { "out" } );
     config.configUnused( prePutName, mx::app::iniFile::makeKey( name(), "presetPutName" ) );
     if( prePutName.size() == 0 )
     {
-        std::string msg = "stdMotionNode::loadConfig: presetPutName can't be empty";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "presetPutName can't be empty" );
         throw std::runtime_error( msg );
     }
+
+    std::vector<std::string> alwaysOn;
+    config.configUnused(alwaysOn, mx::app::iniFile::makeKey( name(), "alwaysOn" ));
+    try
+    {
+        for(auto & ao : alwaysOn)
+        {
+            m_alwaysOn.insert(ao);
+        }
+    }
+    catch(const std::exception& e)
+    {
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "exception from insert in m_alwaysOn" );
+        msg += ":";
+        msg += e.what();
+        throw std::runtime_error( msg );
+    }
+
 
     std::string trackReqKey;
     config.configUnused( trackReqKey, mx::app::iniFile::makeKey( name(), "trackingReqKey" ) );
@@ -510,13 +526,10 @@ inline void stdMotionNode::loadConfig( mx::app::appConfigurator &config )
     std::string trackReqEl;
     config.configUnused( trackReqEl, mx::app::iniFile::makeKey( name(), "trackingReqElement" ) );
 
-    //Check if both are set
+    // Check if both are set
     if( ( trackReqKey == "" && trackReqEl != "" ) || ( trackReqKey != "" && trackReqEl == "" ) )
     {
-        std::string msg = "stdMotionNode::loadConfig: trackingReqKey and trackingReqElement must both be provided)";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "trackingReqKey and trackingReqElement must both be provided" );
         throw std::runtime_error( msg );
     }
 
@@ -526,23 +539,17 @@ inline void stdMotionNode::loadConfig( mx::app::appConfigurator &config )
     std::string trackEl;
     config.configUnused( trackEl, mx::app::iniFile::makeKey( name(), "trackerElement" ) );
 
-    //Check if both are set
+    // Check if both are set
     if( ( trackKey == "" && trackEl != "" ) || ( trackKey != "" && trackEl == "" ) )
     {
-        std::string msg = "stdMotionNode::loadConfig: trackerKey and trackerElement must both be provided)";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "trackingKey and trackingElement must both be provided" );
         throw std::runtime_error( msg );
     }
 
-    //This will catch the case where one or the other pair was set, but not both
+    // This will catch the case where one or the other pair was set, but not both
     if( ( trackKey == "" && trackReqKey != "" ) || ( trackKey != "" && trackReqKey == "" ) )
     {
-        std::string msg = "stdMotionNode::loadConfig: trackingReqKey and trackerKey must both be provided)";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION( "stdMotionNode::loadConfig", "trackingReqKey and trackerKey must both be provided" );
         throw std::runtime_error( msg );
     }
 
