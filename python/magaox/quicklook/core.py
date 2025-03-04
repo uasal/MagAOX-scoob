@@ -75,7 +75,6 @@ class ObserverTelem:
 
     @classmethod
     def from_row(cls, row):
-        print(row)
         return cls(
             ts=row['ts'],
             email=row['email'],
@@ -163,7 +162,6 @@ class ObservationSpan:
 
     @classmethod
     def from_row(cls, row):
-        print(row)
         return cls(
             email=row['email'],
             title=row['obsname'],
@@ -333,12 +331,13 @@ def get_new_observation_spans(
         email : typing.Optional[str]=None,
         title : typing.Optional[str]=None,
         existing_observation_spans : typing.Set[ObservationSpan]=None,
+        exact_title: bool = False,
 ) -> tuple[set[ObservationSpan, datetime.datetime]]:
     if existing_observation_spans is None:
         existing_observation_spans = set()
     # events = get_observation_telems(data_roots, start_dt, end_dt, ignore_data_integrity)
     # result = fetch('observers', ec="telem_observer", start=start_dt, end=end_dt)
-    result = query_observations(start_dt=start_dt, end_dt=end_dt, title=title, email=email)
+    result = query_observations(start_dt=start_dt, end_dt=end_dt, title=title, email=email, exact_title=exact_title)
     spans = set(ObservationSpan.from_row(r) for r in result)
 
     if len(spans):
@@ -651,6 +650,7 @@ def process_span(
 ):
     log.info(f"Observation interval to process: {span}")
     for device in cameras:
+        # TODO currently all cams are separate because cube mode is not useful
         cube_mode = ALL_CAMERAS.get(device, DEFAULT_SEPARATE) is DEFAULT_CUBE
         if force_cube_or_separate is DEFAULT_CUBE:
             cube_mode = True

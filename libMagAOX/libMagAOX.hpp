@@ -24,6 +24,7 @@
 #include "app/dev/edtCamera.hpp"
 #include "app/dev/dssShutter.hpp"
 #include "app/dev/shmimMonitor.hpp"
+#include "app/dev/summerDevice.hpp"
 #include "app/dev/dm.hpp"
 #include "app/dev/telemeter.hpp"
 #include "app/dev/dmPokeWFS.hpp"

@@ -411,6 +411,15 @@ inline
 int nsvCtrl::appStartup()
 {
    // register new indi properties
+   if(config.isSet("camera.vcropoffset"))
+   {
+      getVCrop();
+   }
+   createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
+   m_indiP_vCrop["current"] = m_vCrop;
+   m_indiP_vCrop["target"] = m_vCrop;
+   registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
    m_indiP_bitDepth["current"] = m_bitDepth;
    m_indiP_bitDepth["target"] = m_bitDepth;

@@ -22,12 +22,12 @@ typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the 
 
 #include "conversion.hpp"
 #include "fsmCommands.hpp"
-#include "binaryUart.hpp"
-#include "cGraphPacket.hpp"
-#include "linux_pinout_client_socket.hpp"
-#include "linux_pinout_uart.hpp"
-#include "socket.hpp"
-#include "IUart.h"
+// #include "binaryUart.hpp"
+// #include "cGraphPacket.hpp"
+// #include "linux_pinout_client_socket.hpp"
+// #include "linux_pinout_uart.hpp"
+// #include "socket.hpp"
+// #include "IUart.h"
 
 /** \defgroup fsmCtrl
  * \brief Application to interface with ESC FSM
@@ -51,7 +51,7 @@ namespace MagAOX
     /**
      * \ingroup fsmCtrl
      */
-    class fsmCtrl : public MagAOXApp<true>, public dev::telemeter<fsmCtrl>, public dev::shmimMonitor<fsmCtrl>
+    class fsmCtrl : public MagAOXApp<true>, public dev::telemeter<fsmCtrl>, public dev::shmimMonitor<fsmCtrl>, public dev::summerDevice<fsmCtrl>
     {
 
       // Give the test harness access.
@@ -61,6 +61,8 @@ namespace MagAOX
       typedef dev::telemeter<fsmCtrl> telemeterT;
 
       friend class dev::shmimMonitor<fsmCtrl>;
+
+      friend class dev::summerDevice<fsmCtrl>;
 
     protected:
       /** \name Constants
@@ -78,11 +80,11 @@ namespace MagAOX
       /** \name Configurable Parameters
        *@{
        */
-      // Connection parameters
-      std::string type;
-      std::string PortName;
-      int nHostPort = 66873; // 65536 + 1337 ; socket-specific
-      uint32_t BaudRate = 115200; // serial-port-specific
+      // // Connection parameters
+      // std::string type;
+      // std::string PortName;
+      // int nHostPort = 66873; // 65536 + 1337 ; socket-specific
+      // uint32_t BaudRate = 115200; // serial-port-specific
 
       // Telemeter callback parameters
       int period_s;
@@ -116,14 +118,10 @@ namespace MagAOX
       // here add parameters which will be config-able at runtime
       ///@}
 
-      char Buffer[4096];
-      CGraphPacket SocketProtocol;
-      std::unique_ptr<IUart> LocalPortPinout;
-      std::unique_ptr<BinaryUart> UartParser;
-      PZTQuery *telemetryQuery = new TelemetryQuery();
-      PZTQuery *adcsQuery = new AdcsQuery();
-      PZTQuery *dacsQuery = new DacsQuery();
-      std::vector<PZTQuery*> queries = { telemetryQuery, adcsQuery, dacsQuery };
+      // char Buffer[4096];
+      // CGraphPacket PacketProtocol;
+      // std::unique_ptr<IUart> LocalPortPinout;
+      // std::unique_ptr<BinaryUart> UartParser;
       uint32_t targetSetpoints[3];
 
       double m_dac1{0};
@@ -133,6 +131,12 @@ namespace MagAOX
       double m_adc1{0};
       double m_adc2{0};
       double m_adc3{0};
+
+    private:
+      dev::sdevQuery *telemetryQuery = new TelemetryQuery();
+      dev::sdevQuery *adcsQuery = new AdcsQuery();
+      dev::sdevQuery *dacsQuery = new DacsQuery();
+      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, adcsQuery, dacsQuery };
 
     protected:
       // INDI properties
@@ -200,30 +204,7 @@ namespace MagAOX
        */
       virtual int appShutdown();
 
-      /// Initialize UartParser
-      /**
-       *
-       */
-      void initUartParser();
-
-      /// TODO: Test the connection to the fsm
-      int testConnection();
-
-      /// Connect to fsm via Socket
-      /**
-       *
-       * \returns 0 if connection successful
-       * \returns -1 on an error
-       */
-      int socketConnect();
-
-      /// Connect to fsm via Serial Port
-      /**
-       *
-       * \returns 0 if connection successful
-       * \returns -1 on an error
-       */
-      int serialPortConnect();
+      const std::vector<dev::sdevQuery*>& getQueries() const override;
 
       // /**
       //  * @brief Request fsm telemetry
@@ -240,7 +221,7 @@ namespace MagAOX
        *
        * Wrapper that calls query() with instance of AdcsQuery.
        * Response is stored in instance's AdcVals member.
-       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       * Response is also logged in /opt/logs/fsmCtrl_xxxxxx.binlog
        */
       void receiveAdcs();
 
@@ -249,9 +230,18 @@ namespace MagAOX
        *
        * Wrapper that calls query() with instance of DacsQuery.
        * Response is stored in instance's DacSetpoints member.
-       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       * Response is also logged in /opt/logs/fsmCtrl_xxxxxx.binlog
        */
       void receiveDacs();
+
+      // /**
+      //  * @brief Request fsm's telemetry
+      //  *
+      //  * Wrapper that calls query() with instance of TelemetryQuery.
+      //  * Response is stored in instance's DacSetpoints member.
+      //  * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+      //  */
+      // void receiveTelemetry();
 
       /**
        * @brief Set fsm's DACs values to those in the argument.
@@ -265,14 +255,14 @@ namespace MagAOX
        */
       int setDacs(uint32_t *);
 
-      /**
-       * @brief Query interface for the fsm
-       *
-       * Function that sends a command packet to the fsm.
-       *
-       * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
-       */
-      void query(PZTQuery *);
+      // /**
+      //  * @brief Query interface for the fsm
+      //  *
+      //  * Function that sends a command packet to the fsm.
+      //  *
+      //  * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
+      //  */
+      // void query(PZTQuery *);
 
       /**
        * @brief Function that listens for responses from the fsm
@@ -283,7 +273,7 @@ namespace MagAOX
        *
        * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
        */
-      void receive();
+      void receive() override;
 
       /**
        * @brief Utility function that sets 'current' INDI values, if updated
@@ -390,7 +380,8 @@ namespace MagAOX
       ///@}
     };
 
-    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)
+    // fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)
+    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
     {
       m_powerMgtEnabled = true;
       m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)
@@ -399,16 +390,17 @@ namespace MagAOX
 
     void fsmCtrl::setupConfig()
     {
+      dev::summerDevice<fsmCtrl>::setupConfig(config);
       shmimMonitor::setupConfig(config);
 
-      config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
+      // config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
       config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
 
-      config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Optional, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
-      config.add("socket.host_port", "", "socket.host_port", argType::Optional, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
+      // config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Optional, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
+      // config.add("socket.host_port", "", "socket.host_port", argType::Optional, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
       
-      config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
-      config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
+      // config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
+      // config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
 
       config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
       config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
@@ -436,27 +428,28 @@ namespace MagAOX
     int fsmCtrl::loadConfigImpl(mx::app::appConfigurator &_config)
     {
       /// CONNECTION PARAMETERS ///
-      _config(type, "parameters.connection_type");
+      // _config(type, "parameters.connection_type");
       _config(period_s, "parameters.period_s");
+      log<text_log>("Loading config");
 
-      if (type == "socket")
-      {
-        PortName = LOCALHOST;
-        _config(PortName, "socket.client_entrance_ip");
-        _config(nHostPort, "socket.host_port");
+      // if (type == "socket")
+      // {
+      //   PortName = LOCALHOST;
+      //   _config(PortName, "socket.client_entrance_ip");
+      //   _config(nHostPort, "socket.host_port");
 
-        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
-      }
-      else // defaulting to serial_port
-      {
-        PortName = USB0;
-        _config(PortName, "serial_port.port_address");
-        _config(BaudRate, "serial_port.baud_rate");
+      //   fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
+      // }
+      // else // defaulting to serial_port
+      // {
+      //   PortName = USB0;
+      //   _config(PortName, "serial_port.port_address");
+      //   _config(BaudRate, "serial_port.baud_rate");
 
-        fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
-      }
-      // Since LocalPortPinout is now initialized, can also initialize UartParser
-      initUartParser();
+      //   fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
+      // }
+      // // Since LocalPortPinout is now initialized, can also initialize UartParser
+      // initUartParser();
 
       /// CONVERSTION PARAMETERS ///
       _config(m_L, "fsm.L");
@@ -503,8 +496,6 @@ namespace MagAOX
         log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
         return -1;
       }      
-
-      shmimMonitor::loadConfig(_config);
       return 0;
     }
 
@@ -516,11 +507,24 @@ namespace MagAOX
         m_shutdown = true;
       }
 
+      if (dev::summerDevice<fsmCtrl>::loadConfig(config) < 0)
+      {
+        log<text_log>("Error during summerDevice config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
       if (telemeterT::loadConfig(config) < 0)
       {
         log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
         m_shutdown = true;
       }
+
+      if (shmimMonitor::loadConfig(config) < 0)
+      {
+        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
     }
 
     int fsmCtrl::appStartup()
@@ -531,6 +535,11 @@ namespace MagAOX
       }
 
       if (shmimMonitor::appStartup() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      if (dev::summerDevice<fsmCtrl>::appStartup() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
@@ -641,14 +650,15 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        if (type == "serial_port")
-        {
-          rv = serialPortConnect();
-        }
-        else if (type == "socket")
-        {
-          rv = socketConnect();
-        }
+        // if (type == "serial_port")
+        // {
+        //   rv = serialPortConnect();
+        // }
+        // else if (type == "socket")
+        // {
+        //   rv = socketConnect();
+        // }
+        rv = dev::summerDevice<fsmCtrl>::connect();
 
         if (rv == 0)
         {
@@ -659,10 +669,10 @@ namespace MagAOX
       if (state() == stateCodes::CONNECTED)
       {
         // // Get current adc values
-        query(adcsQuery);
+        dev::summerDevice<fsmCtrl>::query(adcsQuery);
 
         // // Get current dac values
-        query(dacsQuery);
+        dev::summerDevice<fsmCtrl>::query(dacsQuery);
 
         // Get telemetry
         // queryTelemetry();
@@ -695,63 +705,31 @@ namespace MagAOX
     {
       telemeterT::appShutdown();
       shmimMonitor<fsmCtrl>::appShutdown();
+      dev::summerDevice<fsmCtrl>::appShutdown();
 
       return 0;
     }
 
-    //////////////
-    // CONNECTION
-    //////////////
+    // //////////////
+    // // CONNECTION
+    // //////////////
 
-    void fsmCtrl::initUartParser()
-    {
-      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, SocketProtocol, PacketCallbacks, queries, false);
+    const std::vector<dev::sdevQuery*>& fsmCtrl::getQueries() const {
+      return customQueries;
     }
 
-    /// TODO: Test the connection to the device
-    int fsmCtrl::testConnection()
-    {
-      return 0;
-    }
+    void fsmCtrl::receive() {
+      dev::summerDevice<fsmCtrl>::receive();
 
-    int fsmCtrl::socketConnect()
-    {
-      PinoutConfig pinoutConfig = PinoutConfig::CreateSocketConfig(nHostPort, PortName.c_str());
-      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
-      if (IUart::IUartOK != err)
-      {
-        log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open socket (" + PortName + ":" + std::to_string(nHostPort) + "), exiting.\n"});
-        return -1;
-      }
-
-      log<text_log>("Connected to socket (" + PortName + ":" + std::to_string(nHostPort) + ")");
-      return 0;
-    }
-
-    int fsmCtrl::serialPortConnect()
-    {
-      PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(BaudRate, PortName.c_str());
-      int err = fsmCtrl::LocalPortPinout->init(pinoutConfig);
-      if (IUart::IUartOK != err)
-      {
-        log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open port (" + PortName + ":" + std::to_string(BaudRate) + "), exiting.\n"});
-        return -1;
-      }
-
-      log<text_log>("Connected to port (" + PortName + ":" + std::to_string(BaudRate) + ")");
-      return 0;
+      // Once packet had been received, make sure updates are propagated.
+      // Since we don't know the packet type, update all.
+      receiveAdcs();
+      receiveDacs();  
     }
 
     //////////////
     // FSM QUERIES
     //////////////
-
-    // // Function to request fsm Telemetry
-    // void fsmCtrl::queryTelemetry()
-    // {
-    //   query(telemetryQuery);
-    //   // recordFsm(false);
-    // }
 
     // Function to request fsm ADCs
     void fsmCtrl::receiveAdcs()
@@ -787,6 +765,12 @@ namespace MagAOX
       updateINDICurrentParams();
     }
 
+    // // Function to request fsm telemetry
+    // void fsmCtrl::receiveTelemetry()
+    // {
+    //   TelemetryQuery *castTelemetryQuery = dynamic_cast<TelemetryQuery *>(telemetryQuery);
+    // }
+
     // Function to set fsm DACs
     int fsmCtrl::setDacs(uint32_t *Setpoints)
     {
@@ -821,60 +805,19 @@ namespace MagAOX
       DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
 
       castDacsQuery->setPayload(Setpoints, 3 * sizeof(uint32_t));
-      query(castDacsQuery);
+      dev::summerDevice<fsmCtrl>::query(castDacsQuery);
 
-      castDacsQuery->logReply();
+      // castDacsQuery->logReply();
       castDacsQuery->resetPayload();
 
-      m_dac1 = castDacsQuery->DacSetpoints[0];
-      m_dac2 = castDacsQuery->DacSetpoints[1];
-      m_dac3 = castDacsQuery->DacSetpoints[2];
-      updateINDICurrentParams();
+      // m_dac1 = castDacsQuery->DacSetpoints[0];
+      // m_dac2 = castDacsQuery->DacSetpoints[1];
+      // m_dac3 = castDacsQuery->DacSetpoints[2];
+      // updateINDICurrentParams();
 
-      query(dacsQuery);
-      query(adcsQuery);
+      // dev::summerDevice<fsmCtrl>::query(dacsQuery);
+      // dev::summerDevice<fsmCtrl>::query(adcsQuery);
       return 0;
-    }
-
-    void fsmCtrl::query(PZTQuery *pztQuery)
-    {
-      log<text_log>(pztQuery->startLog);
-      // Send command packet
-      UartParser->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
-      // debug
-      // log<text_log>(pztQuery->endLog);
-
-      receive();
-    }
-
-    void fsmCtrl::receive() {
-      // The packet is read byte by byte, so keep going while there are bytes left
-      bool Bored = false;
-      while (!Bored)
-      {
-        Bored = true;
-        if (UartParser->Process())
-        {
-          Bored = false;
-        }
-
-        if (false == fsmCtrl::LocalPortPinout->isopen())
-        {
-          if (type == "serial_port")
-          {
-            serialPortConnect();
-          }
-          else if (type == "socket")
-          {
-            socketConnect();
-          }
-        }
-      }
-
-      // Once packet had been received, make sure updates are propagated.
-      // Since we don't know the packet type, update all.
-      receiveAdcs();
-      receiveDacs();
     }
 
     /////////////////////////
@@ -888,7 +831,11 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
-      query(telemetryQuery);
+      dev::summerDevice<fsmCtrl>::query(telemetryQuery);
+      
+      dev::summerDevice<fsmCtrl>::receive();
+      telemetryQuery->logReply();
+
       return recordFsm(true);
     }
 
@@ -1485,13 +1432,13 @@ namespace MagAOX
         if (query_obj == "adc")
         {
           log<text_log>("INDI query ADCs.");
-          query(adcsQuery);
+          dev::summerDevice<fsmCtrl>::query(adcsQuery);
           updateIfChanged(m_indiP_query, "query", "adc");
         }
         else if (query_obj == "dac")
         {
           log<text_log>("INDI query ADCs.");
-          query(dacsQuery);
+          dev::summerDevice<fsmCtrl>::query(dacsQuery);
           updateIfChanged(m_indiP_query, "query", "dac");
         }
         else

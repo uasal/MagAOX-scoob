@@ -4,6 +4,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+namespace MagAOX
+{
+namespace app
+{
+namespace dev
+{
+
 class IPacket
 {
 public:
@@ -23,3 +30,7 @@ public:
 	virtual bool DoesPayloadTypeMatch(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const uint32_t CmdType) const = 0;
 	virtual size_t MakePacket(uint8_t* Buffer, const size_t BufferCount, const void* Payload, const uint16_t PayloadType, const size_t PayloadLen) const = 0;
 };
+
+} // namespace dev
+} // namespace app
+} // namespace MagAOX

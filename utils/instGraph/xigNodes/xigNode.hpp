@@ -11,6 +11,21 @@
 
 #include "../../INDI/libcommon/IndiProperty.hpp"
 
+std::string xign_exception( const std::string & src,
+const std::string & expl,
+const std::string & file,
+int line )
+{
+    std::string msg = src + ": " + expl;
+    msg += " at ";
+    msg += file;
+    msg += " " + std::to_string( line );
+
+    return msg;
+}
+
+#define XIGN_EXCEPTION(src, expl) xign_exception(src, expl, __FILE__, __LINE__)
+
 /// Implementation of basic instGraph node interface for MagAO-X
 /** This class is pure virtual, derived classes must implement handleSetProperty.
   *
@@ -82,10 +97,7 @@ inline xigNode::xigNode( const std::string &name, ingr::instGraphXML *parentGrap
 {
     if(m_parentGraph == nullptr)
     {
-        std::string msg = "xigNode::loadConfig: parent graph is null";
-        msg += " at ";
-        msg += __FILE__;
-        msg += " " + std::to_string( __LINE__ );
+        std::string msg = XIGN_EXCEPTION("xigNode::loadConfig", "parent graph is null");
         throw std::runtime_error(msg);
     }
 

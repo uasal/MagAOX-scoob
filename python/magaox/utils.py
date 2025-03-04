@@ -26,6 +26,9 @@ XFILENAME_TIME_FORMAT_OUT = "%Y%m%d%H%M%S%f000"
 # Python devices use a different time stamp format
 PUREPYINDI_DEVICE_FILENAME_TIME_FORMAT = "%Y-%m-%dT%H%M%S"
 
+def make_filename_safe(name):
+    return name.replace('/', '__')
+
 def parse_iso_datetime_as_utc(input_str):
     input_str = input_str[:26]  # chop off nanoseconds and anything else
     dt = datetime.datetime.fromisoformat(input_str)
@@ -50,7 +53,7 @@ def creation_time_from_filename(filepath, stat_result=None):
     except ValueError:
         if stat_result is None:
             stat_result = os.stat(filepath)
-        ts = datetime.datetime.fromtimestamp(stat_result.st_ctime)
+        ts = datetime.datetime.fromtimestamp(stat_result.st_ctime, tz=timezone.utc)
     return ts
 
 
