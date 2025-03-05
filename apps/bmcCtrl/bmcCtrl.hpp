@@ -207,7 +207,7 @@ public:
 
 bmcCtrl::bmcCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = true;
+   m_powerMgtEnabled = false;//true;
    return;
 }
 
@@ -272,7 +272,12 @@ int bmcCtrl::appLogic()
    dev::dm<bmcCtrl,float>::appLogic();
    shmimMonitor<bmcCtrl>::appLogic();
    
-   if(state()==stateCodes::POWEROFF) return 0;
+   //if(state()==stateCodes::POWEROFF) return 0;
+
+   if(state()==stateCodes::INITIALIZED)
+   {
+      state(stateCodes::POWERON);
+   }
 
    if(state()==stateCodes::POWERON)
    {
@@ -343,7 +348,7 @@ int bmcCtrl::initDM()
 
 
    // enable high resolution mode (dithering filter)
-   ret = BMC_PCIeEnableHighRes(&m_dm, true);
+   /*ret = BMC_PCIeEnableHighRes(&m_dm, true);
    if(ret != NO_ERR)
    {
       const char *err;
@@ -351,7 +356,7 @@ int bmcCtrl::initDM()
       log<text_log>(std::string("Enabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
    }
    log<text_log>("BMC high resolution mode enabled", logPrio::LOG_NOTICE);
-
+*/
    // Get number of actuators
    m_nbAct = m_dm.ActCount;
 

@@ -181,7 +181,7 @@ public:
 
 inline smc100ccCtrl::smc100ccCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-   m_powerMgtEnabled = true;
+   //m_powerMgtEnabled = true;
    m_powerOnWait = 5; // default to 5 seconds for controller boot up.
    
    m_defaultPositions = false;
@@ -232,6 +232,7 @@ void smc100ccCtrl::loadConfig()
 
 int smc100ccCtrl::appStartup()
 {
+    state(stateCodes::POWERON);
    
     REG_INDI_NEWPROP(m_indiP_position, "position", pcf::IndiProperty::Number);
     m_indiP_position.add (pcf::IndiElement("current"));

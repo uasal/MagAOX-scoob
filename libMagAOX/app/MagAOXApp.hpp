@@ -1389,7 +1389,7 @@ int MagAOXApp<_useINDI>::execute() //virtual
       state(stateCodes::FAILURE);
       log<text_log>({"Failed to lock PID."}, logPrio::LOG_CRITICAL);
       //Return immediately, not safe to go on.
-      return -1;
+      // return -1;
    }
 
    //----------------------------------------//

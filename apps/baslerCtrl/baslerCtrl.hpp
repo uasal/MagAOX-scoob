@@ -8,7 +8,7 @@
 
 #ifndef baslerCtrl_hpp
 #define baslerCtrl_hpp
-
+#define BREADCRUMB std::cerr << __FILE__ << " " << __LINE__ << "\n";
 
 
 #include <pylon/PylonIncludes.h>
@@ -565,7 +565,7 @@ int baslerCtrl::connect()
    m_camera->StopGrabbing();
    m_camera->OffsetX.SetValue(0); //ensure that all values are valid
    m_camera->OffsetY.SetValue(0);
-      
+   
    int minb = m_camera->BinningHorizontal.GetMin();
    int incb = m_camera->BinningHorizontal.GetInc();
    int maxb = m_camera->BinningHorizontal.GetMax();
@@ -626,8 +626,12 @@ int baslerCtrl::connect()
       */
    }
       
-   m_full_w = m_camera->SensorWidth.GetValue();
-   m_full_h = m_camera->SensorHeight.GetValue();
+   m_full_h = m_camera->SensorWidth.GetValue();
+   m_full_w = m_camera->SensorHeight.GetValue();
+   // m_full_w = 512;
+   // m_full_h = 512;
+   // std::cout<<m_full_w;
+   log<text_log>( "m_full_w: " + std::to_string(m_full_w));
    m_full_x = 0.5*((float) m_full_w-1.0);
    m_full_y = 0.5*((float) m_full_h-1.0);
 
@@ -660,9 +664,11 @@ int baslerCtrl::configureAcquisition()
       /*
 	  	The CenterX/Y has to be set to false otherwise the software tries to auto-center the frames.
 		See: https://docs.baslerweb.com/image-roi
+      "If you are using an ace Classic/U/L camera, set the CenterX and CenterY parameters to false."
+      The current baslers are ace 2 cameras so we need to comment out the lines setting CenterX/Y to false.
 	   */
-	   m_camera->CenterX.SetValue(false);
-	   m_camera->CenterY.SetValue(false);
+	   // m_camera->CenterX.SetValue(false);
+	   // m_camera->CenterY.SetValue(false);
 
       //set offsets to 0 so any valid w/h will work.
       m_camera->OffsetX.SetValue(0);
@@ -725,7 +731,7 @@ int baslerCtrl::configureAcquisition()
 
       m_camera->Width.SetValue(m_nextROI.w);
       m_camera->Height.SetValue(m_nextROI.h);
-      
+
       m_camera->OffsetX.SetValue(xoff);
       m_camera->OffsetY.SetValue(yoff);
 

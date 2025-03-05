@@ -54,6 +54,7 @@ nothing added to commit but untracked files present (use "git add" to track)
 apps/adcTracker/adcTracker
 apps/alpaoCtrl/alpaoCtrl
 apps/andorCtrl/andorCtrl
+apps/asiCtrl/asiCtrl
 apps/acronameUsbHub/acronameUsbHub
 apps/acronameUsbHub/utils/configusbhub
 apps/alignLoop/alignLoop
