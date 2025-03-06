@@ -64,7 +64,7 @@ class XCam():
 
 		if self._use_hcipy:
 			from hcipy import make_pupil_grid
-			self.grid = make_pupil_grid(self.shape, self._pixel_size * self.shape)
+			self.grid = make_pupil_grid(self.shape, self._pixel_size * np.array(self.shape))
 		else:
 			self.grid = None
 
