@@ -42,12 +42,29 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     friend class dev::telemeter<observerCtrl>;
 
+    typedef dev::telemeter<observerCtrl> telemeterT;
+
+    typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
+
   protected:
     /** \name Configurable Parameters
      *@{
      */
 
     std::vector<std::string> m_streamWriters; ///< The stream writers to stop and start
+
+    std::string m_tcsDev {"tcsi"};
+    std::string m_catalogProp {"catalog"};
+    std::string m_objEl {"object"};
+    std::string m_catdataProp {"catdata"};
+    std::string m_raEl {"ra"};
+    std::string m_decEl {"dec"};
+
+    std::string m_teldataProp {"teldata"};
+    std::string m_parangEl {"pa"};
+
+    std::string m_loopDev {"holoop"};
+    std::string m_loopStateProp {"loop_state"};
 
     ///@}
 
@@ -73,17 +90,32 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     bool m_observing{ false }; ///< Flag indicating whether or not we are in an observation
 
-    bool m_newTargetBlock{ true }; ///< Flag to indicate that this is a new target block
-    bool m_newTarget{ false };     ///< Flag to track when the target changes
+    std::string m_target;
+
+    std::string m_catObj;
+
+    std::string m_catRA;
+    std::string m_catDec;
+
+    bool m_newTargetBlock{ true }; /**< Flag to indicate that this is a new target block.  This starts out as true
+                                        but becomes false on the first observation.  Then becomes true when the
+                                        loop closes for the first time after a target change. */
+    bool m_newTarget{ false };     /**< Flag to track when the target changes.  Occurs either automatically on a TCS update
+                                        or on a user override.*/
+
+
+
+    /// The current parallactic angle
+    double m_parang;
 
     /// The start time of the current observation
-    std::chrono::time_point<std::chrono::steady_clock> m_obsStartTime;
+    timePointT m_obsStartTime;
 
     /// The parallactic angle at the start of the observation
     double                                             m_obsStartParang{ 0 };
 
     /// The start time of the current target
-    std::chrono::time_point<std::chrono::steady_clock> m_tgtStartTime;
+    timePointT m_tgtStartTime;
 
     /// Teh parallactic angle at the start of observing the current target
     double                                             m_tgtStartParang{ 0 };
@@ -145,6 +177,14 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     pcf::IndiProperty m_indiP_sws;         ///< Selection to switch to define which stream writers are enabled
     pcf::IndiProperty m_indiP_userlog;     ///< Text to enter a user log
 
+    pcf::IndiProperty m_indiP_target;      ///< The target name, which can be overridden by the user
+
+    pcf::IndiProperty m_indiP_catalog;
+    pcf::IndiProperty m_indiP_catdata;
+    pcf::IndiProperty m_indiP_teldata;
+
+    pcf::IndiProperty m_indiP_loop;
+
   public:
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_observers );
 
@@ -156,6 +196,15 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_userlog );
 
+    INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_target );
+
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catalog);
+
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catdata);
+
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_teldata);
+
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_loop);
     ///@}
 
     /** \name Telemeter Interface
@@ -309,19 +358,9 @@ int observerCtrl::appStartup()
         return -1;
     }
 
-    createStandardIndiText( m_indiP_obsName, "obs_name", "Observation Name", "Observer" );
-    if( registerIndiPropertyNew( m_indiP_obsName, INDI_NEWCALLBACK( m_indiP_obsName ) ) < 0 )
-    {
-        log<software_critical>( { __FILE__, __LINE__ } );
-        return -1;
-    }
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_obsName, "obs_name", "Observation Name", "Observer" );
 
-    createStandardIndiToggleSw( m_indiP_observing, "obs_on", "Observation On", "Observer" );
-    if( registerIndiPropertyNew( m_indiP_observing, INDI_NEWCALLBACK( m_indiP_observing ) ) < 0 )
-    {
-        log<software_critical>( { __FILE__, __LINE__ } );
-        return -1;
-    }
+    CREATE_REG_INDI_NEW_TOGGLESWITCH(m_indiP_observing, "obs_on");
 
     CREATE_REG_INDI_NEW_NUMBERD( m_indiP_obsDuration, "obs_duration", 0, 300, 0.1, "%0.1f", "Duration", "Observer" );
 
@@ -348,11 +387,7 @@ int observerCtrl::appStartup()
         m_indiP_sws.add( pcf::IndiElement( m_streamWriters[n], pcf::IndiElement::Off ) );
     }
 
-    if( registerIndiPropertyNew( m_indiP_sws, INDI_NEWCALLBACK( m_indiP_sws ) ) < 0 )
-    {
-        log<software_critical>( { __FILE__, __LINE__ } );
-        return -1;
-    }
+    REG_INDI_NEWPROP_NOSETUP(m_indiP_sws);
 
     m_indiP_userlog = pcf::IndiProperty( pcf::IndiProperty::Text );
     m_indiP_userlog.setDevice( configName() );
@@ -363,16 +398,17 @@ int observerCtrl::appStartup()
     m_indiP_userlog.add( pcf::IndiElement( "message" ) );
     m_indiP_userlog.add( pcf::IndiElement( "time_s" ) );
     m_indiP_userlog.add( pcf::IndiElement( "time_ns" ) );
-    if( registerIndiPropertyNew( m_indiP_userlog, INDI_NEWCALLBACK( m_indiP_userlog ) ) < 0 )
-    {
-        log<software_critical>( { __FILE__, __LINE__ } );
-        return -1;
-    }
 
-    if( dev::telemeter<observerCtrl>::appStartup() < 0 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
-    }
+    REG_INDI_NEWPROP_NOSETUP( m_indiP_userlog );
+
+    CREATE_REG_INDI_NEW_TEXT(m_indiP_target, "target", "Target", "Observer");
+
+    REG_INDI_SETPROP(m_indiP_catalog, m_tcsDev, m_catalogProp);
+    REG_INDI_SETPROP(m_indiP_catdata, m_tcsDev, m_catdataProp);
+    REG_INDI_SETPROP(m_indiP_teldata, m_tcsDev, m_teldataProp);
+    REG_INDI_SETPROP(m_indiP_loop, m_loopDev, m_loopStateProp);
+
+    TELEMETER_APP_STARTUP;
 
     state( stateCodes::READY );
     return 0;
@@ -429,18 +465,14 @@ int observerCtrl::appLogic()
         }
     }
 
-    if( telemeter<observerCtrl>::appLogic() < 0 )
-    {
-        log<software_error>( { __FILE__, __LINE__ } );
-        return 0;
-    }
+    TELEMETER_APP_LOGIC;
 
     return 0;
 }
 
 int observerCtrl::appShutdown()
 {
-    dev::telemeter<observerCtrl>::appShutdown();
+    TELEMETER_APP_SHUTDOWN;
 
     return 0;
 }
@@ -465,13 +497,13 @@ void observerCtrl::startObserving()
     mx::sys::sleep( 1 );
 
     m_obsStartTime = std::chrono::steady_clock::now();
-    // set m_obsStartParang
+    m_obsStartParang = m_parang;
 
     if( m_newTargetBlock )
     {
         m_tgtStartTime   = m_obsStartTime;
         m_tgtStartParang = m_obsStartParang;
-        m_newTargetBlock = true; /// \todo change after target tracking implemented
+        m_newTargetBlock = false; /// \todo change after target tracking implemented
     }
 
     m_observing = true;
@@ -536,9 +568,13 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_observers )( const pcf::IndiPropert
     for( auto it = m_observers.begin(); it != m_observers.end(); ++it )
     {
         if( it->first == m_currentObserver.m_sanitizedEmail )
+        {
             updateSwitchIfChanged( m_indiP_observers, it->second.m_sanitizedEmail, pcf::IndiElement::On, INDI_IDLE );
+        }
         else
+        {
             updateSwitchIfChanged( m_indiP_observers, it->second.m_sanitizedEmail, pcf::IndiElement::Off, INDI_IDLE );
+        }
     }
 
     log<logger::observer>( { m_currentObserver.m_fullName,
@@ -668,6 +704,110 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_userlog )( const pcf::IndiProperty 
     else
     {
         log<user_log>( { email, message } );
+    }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_target )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_target, ipRecv );
+
+    std::string target;
+    if(indiTargetUpdate(m_indiP_target, target, ipRecv) < 0)
+    {
+        return log<software_error, -1>({__FILE__, __LINE__});
+    }
+
+    if(target != m_target)
+    {
+        m_target = target;
+        m_newTarget = true;
+
+        updatesIfChanged<std::string>(m_indiP_target, {"current", "target"}, {m_target, m_target});
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catalog )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_catalog, ipRecv );
+
+    if(!ipRecv.find("object"))
+    {
+        return -1;
+    }
+
+    std::string object = ipRecv["object"].get();
+
+    if(object != m_catObj)
+    {
+        m_catObj = object;
+        m_target = object;
+        m_newTarget = true;
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_catdata, ipRecv );
+
+    if(ipRecv.find("ra"))
+    {
+        std::string ra = ipRecv["ra"].get();
+
+        if(ra != m_catRA)
+        {
+            m_catRA = ra;
+            m_target = m_catObj;
+            m_newTarget = true;
+        }
+    }
+
+    if(ipRecv.find("dec"))
+    {
+        std::string dec = ipRecv["dec"].get();
+
+        if(dec != m_catDec)
+        {
+            m_catDec = dec;
+            m_target = m_catObj;
+            m_newTarget = true;
+        }
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_teldata )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_teldata, ipRecv );
+
+    if(ipRecv.find("pa"))
+    {
+        m_parang = ipRecv["pa"].get<double>();
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_loop )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_loop, ipRecv );
+
+    if(ipRecv.find("toggle"))
+    {
+        if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+        {
+            if(m_newTarget == true)
+            {
+                m_newTargetBlock = true;
+                m_newTarget = false;
+            }
+        }
     }
 
     return 0;
