@@ -8,6 +8,7 @@
 #define observerCtrl_hpp
 
 #include <map>
+#include <mx/math/geo.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
@@ -45,6 +46,7 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     typedef dev::telemeter<observerCtrl> telemeterT;
 
     typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
+    typedef std::chrono::duration<double> durationT;
 
   protected:
     /** \name Configurable Parameters
@@ -53,30 +55,31 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     std::vector<std::string> m_streamWriters; ///< The stream writers to stop and start
 
-    std::string m_tcsDev {"tcsi"};
-    std::string m_catalogProp {"catalog"};
-    std::string m_objEl {"object"};
-    std::string m_catdataProp {"catdata"};
-    std::string m_raEl {"ra"};
-    std::string m_decEl {"dec"};
+    std::string m_tcsDev{ "tcsi" };
+    std::string m_catalogProp{ "catalog" };
+    std::string m_objEl{ "object" };
+    std::string m_catdataProp{ "catdata" };
+    std::string m_raEl{ "ra" };
+    std::string m_decEl{ "dec" };
+    std::string m_labModeProp{"labMode"};
 
-    std::string m_teldataProp {"teldata"};
-    std::string m_parangEl {"pa"};
+    std::string m_teldataProp{ "teldata" };
+    std::string m_parangEl{ "pa" };
 
-    std::string m_loopDev {"holoop"};
-    std::string m_loopStateProp {"loop_state"};
+    std::string m_loopDev{ "holoop" };
+    std::string m_loopStateProp{ "loop_state" };
 
     ///@}
 
     /// The observer specification
     struct observer
     {
-        std::string m_fullName; ///< Obsever's full name
-        std::string m_pfoa; ///< Observer's preferred forma of address
-        std::string m_pronunciation; ///< Guide for the TTS to pronounced the pfoa (defaults to pfoa)
-        std::string m_email; ///< Observer's email.  Must be unique.
+        std::string m_fullName;       ///< Obsever's full name
+        std::string m_pfoa;           ///< Observer's preferred forma of address
+        std::string m_pronunciation;  ///< Guide for the TTS to pronounced the pfoa (defaults to pfoa)
+        std::string m_email;          ///< Observer's email.  Must be unique.
         std::string m_sanitizedEmail; ///< Observer's email sanitized for use in INDI properties
-        std::string m_institution; ///< The observer's institution
+        std::string m_institution;    ///< The observer's institution
     };
 
     typedef std::map<std::string, observer> observerMapT;
@@ -97,28 +100,40 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     std::string m_catRA;
     std::string m_catDec;
 
+    bool m_loop {false}; ///< Flag tracking loop state.  true is loop closed.
+
+    bool m_labMode {false}; ///< Flag tracking whether the TCS interface is in lab mode.
+
+
     bool m_newTargetBlock{ true }; /**< Flag to indicate that this is a new target block.  This starts out as true
                                         but becomes false on the first observation.  Then becomes true when the
                                         loop closes for the first time after a target change. */
-    bool m_newTarget{ false };     /**< Flag to track when the target changes.  Occurs either automatically on a TCS update
-                                        or on a user override.*/
+    bool m_newTarget{ false }; /**< Flag to track when the target changes.  Occurs either automatically on a TCS update
+                                    or on a user override.*/
 
 
-
-    /// The current parallactic angle
-    double m_parang;
 
     /// The start time of the current observation
     timePointT m_obsStartTime;
 
     /// The parallactic angle at the start of the observation
-    double                                             m_obsStartParang{ 0 };
+    double m_obsStartParang{ 0 };
 
     /// The start time of the current target
     timePointT m_tgtStartTime;
 
     /// Teh parallactic angle at the start of observing the current target
-    double                                             m_tgtStartParang{ 0 };
+    double m_tgtStartParang{ 0 };
+
+    /// The current parallactic angle
+    double m_parang;
+
+    /// The current target time.  Only updated while observing.
+    durationT m_tgtTime;
+
+    /// The current target angle. Only updated while observing.
+    double m_tgtAng {0};
+
 
   public:
     /// Default c'tor.
@@ -134,8 +149,9 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     /// Implementation of loadConfig logic, separated for testing.
     /** This is called by loadConfig().
      */
-    int loadConfigImpl(
-        mx::app::appConfigurator &_config /**< [in] an application configuration from which to load values*/ );
+    int loadConfigImpl( mx::app::appConfigurator &_config /**< [in] an application configuration
+                                                                    from which to load values*/
+    );
 
     virtual void loadConfig();
 
@@ -177,13 +193,18 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     pcf::IndiProperty m_indiP_sws;         ///< Selection to switch to define which stream writers are enabled
     pcf::IndiProperty m_indiP_userlog;     ///< Text to enter a user log
 
-    pcf::IndiProperty m_indiP_target;      ///< The target name, which can be overridden by the user
+    pcf::IndiProperty m_indiP_resetTarget; ///< Reset the target statistics
 
-    pcf::IndiProperty m_indiP_catalog;
-    pcf::IndiProperty m_indiP_catdata;
-    pcf::IndiProperty m_indiP_teldata;
+    pcf::IndiProperty m_indiP_target; ///< The target name, which can be overridden by the user
 
-    pcf::IndiProperty m_indiP_loop;
+    pcf::IndiProperty m_indiP_catalog; ///< Catalog text data
+    pcf::IndiProperty m_indiP_catdata; ///< Catalog numeric data
+    pcf::IndiProperty m_indiP_teldata; ///< Telescope data (for parang)
+
+    pcf::IndiProperty m_indiP_labMode; ///< Tracks whether TCS is in lab mode.
+
+    pcf::IndiProperty m_indiP_loop; ///< Tracks the loop state
+
 
   public:
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_observers );
@@ -196,15 +217,21 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_userlog );
 
+    INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_resetTarget );
+
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_target );
 
-    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catalog);
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catalog );
 
-    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catdata);
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catdata );
 
-    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_teldata);
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_teldata );
 
-    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_loop);
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_labMode );
+
+    INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_loop );
+
+
     ///@}
 
     /** \name Telemeter Interface
@@ -216,8 +243,6 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     int recordTelem( const telem_observer * );
 
     int recordObserver( bool force = false );
-
-    int recordObserverNow();
 
     ///@}
 };
@@ -352,21 +377,21 @@ int observerCtrl::appStartup()
         }
     }
 
-    if( registerIndiPropertyNew( m_indiP_observers, INDI_NEWCALLBACK( m_indiP_observers ) ) < 0 )
-    {
-        log<software_critical>( { __FILE__, __LINE__ } );
-        return -1;
-    }
+    REG_INDI_NEWPROP_NOSETUP( m_indiP_observers );
 
     CREATE_REG_INDI_NEW_TEXT( m_indiP_obsName, "obs_name", "Observation Name", "Observer" );
 
-    CREATE_REG_INDI_NEW_TOGGLESWITCH(m_indiP_observing, "obs_on");
+    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_observing, "obs_on" );
 
     CREATE_REG_INDI_NEW_NUMBERD( m_indiP_obsDuration, "obs_duration", 0, 300, 0.1, "%0.1f", "Duration", "Observer" );
 
     CREATE_REG_INDI_RO_NUMBER( m_indiP_obsTime, "obs_time", "Observation Time", "Observer" );
     indi::addNumberElement<double>( m_indiP_obsTime, "observation", 0, 14400, 0.1, "%0.1f", "Current Obs" );
     indi::addNumberElement<double>( m_indiP_obsTime, "target", 0, 14400, 0.1, "%0.1f", "Target" );
+
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_obsAngle, "obs_delta_parang", "Change in Par. Ang.", "Observer" );
+    indi::addNumberElement<double>( m_indiP_obsAngle, "observation", 0, 360, 0.1, "%0.1f", "Current Obs" );
+    indi::addNumberElement<double>( m_indiP_obsAngle, "target", 0, 360, 0.1, "%0.1f", "Target" );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_observer, "current_observer", pcf::IndiProperty::Text );
     indi::addTextElement( m_indiP_observer, "full_name" );
@@ -387,7 +412,7 @@ int observerCtrl::appStartup()
         m_indiP_sws.add( pcf::IndiElement( m_streamWriters[n], pcf::IndiElement::Off ) );
     }
 
-    REG_INDI_NEWPROP_NOSETUP(m_indiP_sws);
+    REG_INDI_NEWPROP_NOSETUP( m_indiP_sws );
 
     m_indiP_userlog = pcf::IndiProperty( pcf::IndiProperty::Text );
     m_indiP_userlog.setDevice( configName() );
@@ -401,12 +426,16 @@ int observerCtrl::appStartup()
 
     REG_INDI_NEWPROP_NOSETUP( m_indiP_userlog );
 
-    CREATE_REG_INDI_NEW_TEXT(m_indiP_target, "target", "Target", "Observer");
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_resetTarget, "target_reset");
 
-    REG_INDI_SETPROP(m_indiP_catalog, m_tcsDev, m_catalogProp);
-    REG_INDI_SETPROP(m_indiP_catdata, m_tcsDev, m_catdataProp);
-    REG_INDI_SETPROP(m_indiP_teldata, m_tcsDev, m_teldataProp);
-    REG_INDI_SETPROP(m_indiP_loop, m_loopDev, m_loopStateProp);
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_target, "target", "Target", "Observer" );
+
+    REG_INDI_SETPROP( m_indiP_catalog, m_tcsDev, m_catalogProp );
+    REG_INDI_SETPROP( m_indiP_catdata, m_tcsDev, m_catdataProp );
+    REG_INDI_SETPROP( m_indiP_teldata, m_tcsDev, m_teldataProp );
+    REG_INDI_SETPROP( m_indiP_labMode, m_tcsDev, m_labModeProp );
+
+    REG_INDI_SETPROP( m_indiP_loop, m_loopDev, m_loopStateProp );
 
     TELEMETER_APP_STARTUP;
 
@@ -421,22 +450,26 @@ int observerCtrl::appLogic()
 
     if( lock.owns_lock() )
     {
-        updateIfChanged<std::string>( m_indiP_observer,
-                                      { "full_name", "email", "pfoa", "pronunciation", "institution" },
-                                      { m_currentObserver.m_fullName,
-                                        m_currentObserver.m_email,
-                                        m_currentObserver.m_pfoa,
-                                        m_currentObserver.m_pronunciation,
-                                        m_currentObserver.m_institution } );
+        updatesIfChanged<std::string>( m_indiP_observer,
+                                       { "full_name", "email", "pfoa", "pronunciation", "institution" },
+                                       { m_currentObserver.m_fullName,
+                                         m_currentObserver.m_email,
+                                         m_currentObserver.m_pfoa,
+                                         m_currentObserver.m_pronunciation,
+                                         m_currentObserver.m_institution } );
 
         for( auto it = m_observers.begin(); it != m_observers.end(); ++it )
         {
             if( it->first == m_currentObserver.m_email )
+            {
                 updateSwitchIfChanged(
                     m_indiP_observers, it->second.m_sanitizedEmail, pcf::IndiElement::On, INDI_IDLE );
+            }
             else
+            {
                 updateSwitchIfChanged(
                     m_indiP_observers, it->second.m_sanitizedEmail, pcf::IndiElement::Off, INDI_IDLE );
+            }
         }
 
         updatesIfChanged<std::string>( m_indiP_obsName, { "current", "target" }, { m_obsName, m_obsName } );
@@ -445,13 +478,18 @@ int observerCtrl::appLogic()
 
         if( m_observing )
         {
-            std::chrono::time_point<std::chrono::steady_clock> ct      = std::chrono::steady_clock::now();
-            const std::chrono::duration<double>                obstime = ct - m_obsStartTime;
-            const std::chrono::duration<double>                tgttime = ct - m_tgtStartTime;
+            timePointT                          ct      = std::chrono::steady_clock::now();
+            const std::chrono::duration<double> obstime = ct - m_obsStartTime;
+            m_tgtTime = ct - m_tgtStartTime;
+
+            double obsang = mx::math::angleDiff<mx::math::degreesT<double>>( m_parang, m_obsStartParang );
+            m_tgtAng = mx::math::angleDiff<mx::math::degreesT<double>>( m_parang, m_tgtStartParang );
 
             updateSwitchIfChanged( m_indiP_observing, "toggle", pcf::IndiElement::On, INDI_OK );
             updatesIfChanged<double>(
-                m_indiP_obsTime, { "observation", "target" }, { obstime.count(), tgttime.count() } );
+                m_indiP_obsTime, { "observation", "target" }, { obstime.count(), m_tgtTime.count() } );
+
+            updatesIfChanged<double>( m_indiP_obsAngle, { "observation", "target" }, { obsang, m_tgtAng } );
 
             if( m_obsDuration > 0.0 && obstime.count() > m_obsDuration )
             {
@@ -461,7 +499,8 @@ int observerCtrl::appLogic()
         else
         {
             updateSwitchIfChanged( m_indiP_observing, "toggle", pcf::IndiElement::Off, INDI_IDLE );
-            updatesIfChanged<double>( m_indiP_obsTime, { "observation", "target" }, { 0.0, 0.0 } );
+            updatesIfChanged<double>( m_indiP_obsTime, { "observation", "target" }, { 0.0, m_tgtTime.count() } );
+            updatesIfChanged<double>( m_indiP_obsAngle, { "observation", "target" }, { 0.0, m_tgtAng } );
         }
     }
 
@@ -496,24 +535,24 @@ void observerCtrl::startObserving()
 
     mx::sys::sleep( 1 );
 
-    m_obsStartTime = std::chrono::steady_clock::now();
+    m_obsStartTime   = std::chrono::steady_clock::now();
     m_obsStartParang = m_parang;
 
-    if( m_newTargetBlock )
+    if( m_newTargetBlock || m_labMode ) //We always reset if in lab mode
     {
         m_tgtStartTime   = m_obsStartTime;
         m_tgtStartParang = m_obsStartParang;
-        m_newTargetBlock = false; /// \todo change after target tracking implemented
+        m_newTargetBlock = false;
     }
 
     m_observing = true;
-    recordObserver();
+    recordObserver( true );
 }
 
 void observerCtrl::stopObserving()
 {
     m_observing = false;
-    recordObserver();
+    recordObserver( true );
 
     for( size_t n = 0; n < m_streamWriters.size(); ++n )
     {
@@ -561,6 +600,7 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_observers )( const pcf::IndiPropert
         return 0;
     }
 
+    {
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
     m_currentObserver = m_observers[newEmail];
@@ -575,6 +615,7 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_observers )( const pcf::IndiPropert
         {
             updateSwitchIfChanged( m_indiP_observers, it->second.m_sanitizedEmail, pcf::IndiElement::Off, INDI_IDLE );
         }
+    }
     }
 
     log<logger::observer>( { m_currentObserver.m_fullName,
@@ -613,16 +654,16 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_observing )( const pcf::IndiPropert
         return 0;
     }
 
-    std::unique_lock<std::mutex> lock( m_indiMutex );
-
     recordObserver( true );
     if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
     {
+        std::unique_lock<std::mutex> lock( m_indiMutex );
         startObserving();
         updateSwitchIfChanged( m_indiP_observing, "toggle", pcf::IndiElement::On, INDI_OK );
     }
     else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off )
     {
+        std::unique_lock<std::mutex> lock( m_indiMutex );
         stopObserving();
         updateSwitchIfChanged( m_indiP_observing, "toggle", pcf::IndiElement::Off, INDI_IDLE );
     }
@@ -650,8 +691,11 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_sws )( const pcf::IndiProperty &ipR
     for( size_t n = 0; n < m_streamWriters.size(); ++n )
     {
         if( !ipRecv.find( m_streamWriters[n] ) )
+        {
             continue;
+        }
 
+        std::unique_lock<std::mutex> lock( m_indiMutex );
         updateSwitchIfChanged( m_indiP_sws, m_streamWriters[n], ipRecv[m_streamWriters[n]].getSwitchState() );
     }
 
@@ -709,22 +753,51 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_userlog )( const pcf::IndiProperty 
     return 0;
 }
 
+INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_resetTarget )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_resetTarget, ipRecv );
+
+    if( !ipRecv.find( "request" ) )
+    {
+        return 0;
+    }
+
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        if(m_observing)
+        {
+            m_tgtStartTime   = m_obsStartTime;
+            m_tgtStartParang = m_obsStartParang;
+        }
+        else
+        {
+            m_newTargetBlock = true;
+        }
+
+    }
+
+    return 0;
+}
+
 INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_target )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_target, ipRecv );
 
     std::string target;
-    if(indiTargetUpdate(m_indiP_target, target, ipRecv) < 0)
+    if( indiTargetUpdate( m_indiP_target, target, ipRecv ) < 0 )
     {
-        return log<software_error, -1>({__FILE__, __LINE__});
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
-    if(target != m_target)
+    if( target != m_target )
     {
-        m_target = target;
+        m_target    = target;
         m_newTarget = true;
 
-        updatesIfChanged<std::string>(m_indiP_target, {"current", "target"}, {m_target, m_target});
+        log<text_log>( "Target updated by observer to " + m_target, logPrio::LOG_NOTICE );
+
+        std::unique_lock<std::mutex> lock( m_indiMutex );
+        updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
     }
 
     return 0;
@@ -734,18 +807,24 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catalog )( const pcf::IndiProperty 
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_catalog, ipRecv );
 
-    if(!ipRecv.find("object"))
+    if( !ipRecv.find( "object" ) )
     {
         return -1;
     }
 
     std::string object = ipRecv["object"].get();
 
-    if(object != m_catObj)
+    if( object != m_catObj )
     {
-        m_catObj = object;
-        m_target = object;
+        m_catObj    = object;
+        m_target    = object;
         m_newTarget = true;
+
+        // Always log change in name (different from RA and DEC)
+        log<text_log>( "Target updated by TCS to " + m_target, logPrio::LOG_NOTICE );
+
+        std::unique_lock<std::mutex> lock( m_indiMutex );
+        updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
     }
 
     return 0;
@@ -755,28 +834,50 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty 
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_catdata, ipRecv );
 
-    if(ipRecv.find("ra"))
+    bool change = false;
+    if( ipRecv.find( "ra" ) )
     {
         std::string ra = ipRecv["ra"].get();
 
-        if(ra != m_catRA)
+        if( ra != m_catRA )
         {
-            m_catRA = ra;
+            m_catRA  = ra;
             m_target = m_catObj;
-            m_newTarget = true;
+
+            if( !m_newTarget ) // Only log if not already new
+            {
+                change      = true;
+                m_newTarget = true;
+            }
+
+            std::unique_lock<std::mutex> lock( m_indiMutex );
+            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
         }
     }
 
-    if(ipRecv.find("dec"))
+    if( ipRecv.find( "dec" ) )
     {
         std::string dec = ipRecv["dec"].get();
 
-        if(dec != m_catDec)
+        if( dec != m_catDec )
         {
             m_catDec = dec;
             m_target = m_catObj;
-            m_newTarget = true;
+
+            if( !m_newTarget ) // Only log if not already new
+            {
+                change      = true;
+                m_newTarget = true;
+            }
+
+            std::unique_lock<std::mutex> lock( m_indiMutex );
+            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
         }
+    }
+
+    if( change ) // Only log if not already new
+    {
+        log<text_log>( "Target updated by TCS", logPrio::LOG_NOTICE );
     }
 
     return 0;
@@ -786,9 +887,29 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_teldata )( const pcf::IndiProperty 
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_teldata, ipRecv );
 
-    if(ipRecv.find("pa"))
+    if( ipRecv.find( "pa" ) )
     {
         m_parang = ipRecv["pa"].get<double>();
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_labMode )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_labMode, ipRecv );
+
+    if( ipRecv.find( "toggle" ) )
+    {
+        if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+        {
+            m_labMode = true;
+        }
+        else
+        {
+            m_newTargetBlock = true;
+            m_labMode = false;
+        }
     }
 
     return 0;
@@ -798,15 +919,21 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_loop )( const pcf::IndiProperty &ip
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_loop, ipRecv );
 
-    if(ipRecv.find("toggle"))
+    if( ipRecv.find( "toggle" ) )
     {
-        if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+        if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
         {
-            if(m_newTarget == true)
+            if( m_newTarget == true && !m_loop)
             {
                 m_newTargetBlock = true;
-                m_newTarget = false;
+                m_newTarget      = false;
             }
+
+            m_loop = true;
+        }
+        else
+        {
+            m_loop = false;
         }
     }
 
@@ -828,22 +955,19 @@ inline int observerCtrl::recordObserver( bool force )
     static std::string last_email;
     static std::string last_obsName;
     static bool        last_observing;
+    static std::string last_target;
 
-    if( last_email != m_currentObserver.m_email || last_obsName != m_obsName || last_observing != m_observing || force )
+    if( last_email != m_currentObserver.m_email || last_obsName != m_obsName ||
+        last_observing != m_observing || last_target != m_target || force )
     {
-        telem<telem_observer>( { m_currentObserver.m_email, m_obsName, m_observing } );
+        telem<telem_observer>( { m_currentObserver.m_email, m_obsName, m_observing, m_target } );
 
         last_email     = m_currentObserver.m_email;
         last_obsName   = m_obsName;
         last_observing = m_observing;
+        last_target = m_target;
     }
 
-    return 0;
-}
-
-inline int observerCtrl::recordObserverNow()
-{
-    telem<telem_observer>( { m_currentObserver.m_email, m_obsName, m_observing } );
     return 0;
 }
 

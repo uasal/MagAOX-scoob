@@ -3,7 +3,7 @@
   * \author Jared R. Males (jaredmales@gmail.com)
   *
   * \ingroup logger_types_files
-  * 
+  *
   * History:
   * - 2018-09-06 created by JRM
   */
@@ -34,20 +34,22 @@ struct telem_observer : public flatbuffer_log
 
    static timespec lastRecord; ///< The time of the last time this log was recorded.  Used by the telemetry system.
 
-   
+
    ///The type of the input message
    struct messageT : public fbMessage
    {
       ///Construct from components
-      messageT( const std::string & email,   /// <[in] observer email
-                const std::string & obsName, /// <[in] observer email
-                const bool & observing       /// <[in] status of observing
+      messageT( const std::string & email,   ///< [in] observer email
+                const std::string & obsName, ///< [in] observer email
+                const bool & observing,      ///< [in] status of observing
+                const std::string & tgtName  ///< [in] the target name
               )
       {
          auto _email = builder.CreateString(email);
          auto _obsName = builder.CreateString(obsName);
-         
-         auto fp = CreateTelem_observer_fb(builder, _email, _obsName, observing);
+         auto _tgtName = builder.CreateString(tgtName);
+
+         auto fp = CreateTelem_observer_fb(builder, _email, _obsName, observing, _tgtName);
          builder.Finish(fp);
       }
 
@@ -59,7 +61,7 @@ struct telem_observer : public flatbuffer_log
    {
       auto verifier = flatbuffers::Verifier( static_cast<uint8_t*>(flatlogs::logHeader::messageBuffer(logBuff)), static_cast<size_t>(len));
 
-      bool ok = VerifyTelem_observer_fbBuffer(verifier); 
+      bool ok = VerifyTelem_observer_fbBuffer(verifier);
       if(!ok) return ok;
 
       auto fbs = GetTelem_observer_fb(static_cast<uint8_t*>(flatlogs::logHeader::messageBuffer(logBuff)));
@@ -88,10 +90,22 @@ struct telem_observer : public flatbuffer_log
          }
       }
 
+      if(fbs->tgt_name())
+      {
+         std::string tgtn = fbs->tgt_name()->c_str();
+         for(size_t n = 0; n < tgtn.size(); ++n)
+         {
+            if(!isprint(tgtn[n]))
+            {
+               return false;
+            }
+         }
+      }
+
       return ok;
    }
 
-   ///Get the message formattd for human consumption.
+   ///Get the message formatted for human consumption.
    static std::string msgString( void * msgBuffer,      ///< [in] Buffer containing the flatbuffer serialized message.
                                  flatlogs::msgLenT len  ///< [in] [unused] length of msgBuffer.
                                )
@@ -101,27 +115,37 @@ struct telem_observer : public flatbuffer_log
       auto fbs = GetTelem_observer_fb(msgBuffer);
 
       std::string msg = "[observer] ";
-      
+
       if(fbs->email())
       {
          msg += "email: ";
          msg += fbs->email()->c_str();
          msg += " ";
       }
-      
+
       if(fbs->obsName())
       {
          msg += "obs: ";
          msg += fbs->obsName()->c_str();
          msg += " ";
       }
-      
+
       msg += std::to_string(fbs->observing());
-      
+
       return msg;
-   
+
+      if(fbs->tgt_name())
+      {
+         msg += "tgt: ";
+         msg += fbs->tgt_name()->c_str();
+         msg += " ";
+      }
+      else
+      {
+        msg += "tgt: notimpl";
+      }
    }
-   
+
    static std::string email( void * msgBuffer )
    {
       auto fbs = GetTelem_observer_fb(msgBuffer);
@@ -148,16 +172,27 @@ struct telem_observer : public flatbuffer_log
       return fbs->observing();
    }
 
+   static std::string tgtName( void * msgBuffer )
+   {
+      auto fbs = GetTelem_observer_fb(msgBuffer);
+      if(fbs->tgt_name() != nullptr)
+      {
+         return std::string(fbs->tgt_name()->c_str());
+      }
+      else return "notimpl";
+   }
+
    /// Get the logMetaDetail for a member by name
    /**
      * \returns the a logMetaDetail filled in with the appropriate details
      * \returns an empty logmegaDetail if member not recognized
-     */ 
+     */
    static logMetaDetail getAccessor( const std::string & member /**< [in] the name of the member */ )
    {
       if(     member == "email")     return logMetaDetail({"OBSERVER", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&email), false});
-      else if(member == "obsName")   return logMetaDetail({"OBS-NAME", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&obsName), false});
-      else if(member == "observing") return logMetaDetail({"OBSERVING", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&observing)}); 
+      else if(member == "obsName")   return logMetaDetail({"OBSERVATION NAME", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&obsName), false});
+      else if(member == "observing") return logMetaDetail({"OBSERVING", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&observing)});
+      else if(member == "tgtName")   return logMetaDetail({"TARGET NAME", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&tgtName), false});
       else
       {
          std::cerr << "No string member " << member << " in telem_observer\n";
@@ -165,8 +200,8 @@ struct telem_observer : public flatbuffer_log
       }
    }
 
-   
-   
+
+
 }; //telem_observer
 
 
