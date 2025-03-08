@@ -132,18 +132,19 @@ struct telem_observer : public flatbuffer_log
 
       msg += std::to_string(fbs->observing());
 
-      return msg;
-
       if(fbs->tgt_name())
       {
-         msg += "tgt: ";
+         msg += " tgt: ";
          msg += fbs->tgt_name()->c_str();
          msg += " ";
       }
       else
       {
-        msg += "tgt: notimpl";
+        msg += " tgt: notimpl";
       }
+      
+      return msg;
+
    }
 
    static std::string email( void * msgBuffer )
