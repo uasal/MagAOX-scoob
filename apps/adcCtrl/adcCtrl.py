@@ -13,8 +13,6 @@ from magaox.constants import StateCodes
 from purepyindi2 import device, properties, constants
 from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
-#from utils import *
-
 import hcipy as hp
 from scipy.optimize import minimize
 
@@ -30,7 +28,6 @@ class AdcFitter:
         self.control_mtx = np.matrix([[0,0],])
         self.current_speckle = None
 
-    '''this is all the gaussian fitting stuff'''
     def set_measurement(self, data):
         self.data = data
 
@@ -53,7 +50,6 @@ class AdcFitter:
         j = np.sum( (self.data - fit)**2)
 
         aspect_ratio = np.abs(theta[3] / theta[4])
-        #print(f'current speckle: {self.current_speckle}')
 
         ##boundary condition for the aspect ratio
         if self.current_speckle == 0 or self.current_speckle == 2:
@@ -96,7 +92,6 @@ class AdcFitter:
         return angle
 
     def find_speckle(self, image,speckle_number):
-        #this assumes that the units of the image x and y axes are lam/d at 656 nm. will this always be the case?
         '''speckles are indexed from the top right going counter clockwise'''
         grating_freq = self.grating_freq
         grating_angle = self.grating_angle
@@ -133,7 +128,6 @@ class AdcFitter:
             elif self.current_speckle == 1 or self.current_speckle == 3:
                 orientation = -orientation
 
-            #params common to all four
             amplitude = self.data.max()
             centroid = self.estimate_centroid()
             mu_x = centroid[0]
@@ -195,13 +189,12 @@ class AdcFitter:
 
         return img
 
-    def crop_cube(self, data_cube,extent=400,mask_diam=60): #if you add the wavelength in here it'll make sure that nothing gets cut off of the edges
+    def crop_cube(self, data_cube,extent=400,mask_diam=60):
         cropped_cube = []
         for i in range(len(data_cube)):
             img = self.crop_image(data_cube[i],extent,mask_diam)
             cropped_cube.append(img)
         return cropped_cube
-
 
     def filter_image(self,img,low_freq = 0.01,high_freq=1):
 
@@ -212,12 +205,7 @@ class AdcFitter:
         ff2 = hp.FourierFilter(img.grid, hp.make_circular_aperture(2 * np.pi * high_freq))
         filtered_img = np.real(ff2.forward(img + 0j))
         img = filtered_img
-
-        # binc, profile, std_profile, ncount = radial_profile(img,.25)
-        # r_coordinates = img.grid.as_('polar').r
-        # radial_map = np.interp(r_coordinates, binc, profile)
-
-        filtered_subtracted = img #- radial_map
+        filtered_subtracted = img 
         
         return filtered_subtracted
 
@@ -242,28 +230,25 @@ class States(Enum):
     ONESHOT = 2 
 
 class adcCtrl(XDevice):
-    config: AdcCtrlConfig #need to create this
+    config: AdcCtrlConfig
 
     def setup(self):
         self.log.debug(f"I was configured! See? {self.config=}")
 
-        #not sure what fsm stands for, but it contains the state of the whole app, i.e. initialized, ready, operating
         fsm = properties.TextVector(name='fsm')
         fsm.add_element(DefText(name='state', _value=StateCodes.INITIALIZED.name))
         self.add_property(fsm)
 
-        #sv is the vector that tells the program what to do when it switches between the states. SEE: callback function handle_state
         sv = properties.SwitchVector(
             name='state',
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
-        sv.add_element(DefSwitch(name="idle", _value=constants.SwitchState.ON)) #let adcTrack do its thing
-        sv.add_element(DefSwitch(name="adcLoop", _value=constants.SwitchState.OFF)) #this is the state where we'll actively control
-        sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF)) #this is the state where we can find a new response matrix
-        self.add_property(sv, callback=self.handle_state) #callback function tells us what to do when we switch the value of this property
+        sv.add_element(DefSwitch(name="idle", _value=constants.SwitchState.ON))
+        sv.add_element(DefSwitch(name="adcLoop", _value=constants.SwitchState.OFF)) 
+        sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF)) 
+        self.add_property(sv, callback=self.handle_state) 
 
-        #adding properties that are associated with numbers
         nv = properties.NumberVector(name='counter')
         nv.add_element(DefNumber(
             name= '_loop_counter', label= 'Loop Counter', format= '%i',
@@ -280,40 +265,35 @@ class adcCtrl(XDevice):
             name='target', label='Number of frames', format='%i',
             min=1, max=150, step=1, _value=1
         ))
-        self.add_property(nv, callback=self.handle_n_avg) #this one has a callback function to handle switching the number of frames
+        self.add_property(nv, callback=self.handle_n_avg)
 
         nv = properties.NumberVector(name='gain')
         nv.add_element(DefNumber(
             name='current', label='ADC Loop Gain', format='%.2f',
-            min=0, max=1, step=.01, _value=0.1 #what is the _value ? I'm guessing it's the default
+            min=0.00, max=1.00, step=0.01, _value=0.10
         ))
         nv.add_element(DefNumber(
             name='target', label='ADC Loop Gain', format='%.2f',
-            min=0, max=1, step=.01, _value=0.1
+            min=0.00, max=1.00, step=0.01, _value=0.10
         ))
         self.add_property(nv, callback=self.handle_gain)
 
-        #grabbing existing INDI properties
         self.client.get_properties('adctrack')
         self.client.get_properties('fwsci1')
 
-        #setting up the camera
         self.log.info("Found camera: {:s}".format(self.config.camera.shmim))
-        self.camera = XCam(self.config.camera.shmim, pixel_size=6.0/21.0, use_hcipy=True) #you might want to change this pixel_size value to be more accurate
+        self.camera = XCam(self.config.camera.shmim, pixel_size=6.0/21.0, use_hcipy=True)
         
-        #starting out in IDLE instead of CLOSED_LOOP or ONESHOT
         self._state = States.IDLE
 
-        #defining variables we'll use later
         self._loop_counter = 0
         self._n_avg = 1
         self._gain = 0.1
         self._command = 0
-        self._control_mtx = np.array([-0.22312707, -0.22983197]) #you're going to have to read this in from somewhere
-        self.delta_1 = 0 #intial values for commands to be sent
+        self._control_mtx = np.array([-0.22312707, -0.22983197])
+        self.delta_1 = 0
         self.delta_2 = 0
 
-        #wavelength
         if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
             self._center_wavelength = 762E-9
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
@@ -322,24 +302,23 @@ class adcCtrl(XDevice):
 
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
 
-        #letting it know we're ready to go
         self.properties['fsm']['state'] = StateCodes.READY.name
         self.update_property(self.properties['fsm'])
 
-    def handle_state(self, existing_property, new_message): #function to handle switching between different states defined in sv in setup function           
+    def handle_state(self, existing_property, new_message):        
         target_list = ['idle', 'adcLoop', 'oneshot']
-        for key in target_list: #runs through all the states to see which one is the one that's currently active
+        for key in target_list: 
             if existing_property[key] == constants.SwitchState.ON: 
                 current_state = key
         
-        if current_state not in new_message: #if the current state and the new state aren't the same
+        if current_state not in new_message: 
 
             for key in target_list:
-                existing_property[key] = constants.SwitchState.OFF  # Turn everything off
-                if key in new_message: #if this state is the one we want to change to,
-                    existing_property[key] = new_message[key] #then switch to the value of the new message, which is that the new state = constants.SwitchState.ON
+                existing_property[key] = constants.SwitchState.OFF 
+                if key in new_message: 
+                    existing_property[key] = new_message[key] 
 
-                    if key == 'idle': #now we update the state of the app generally, whether it's ready or actually operating
+                    if key == 'idle': 
                         self._state = States.IDLE
                         self.properties['fsm']['state'] = StateCodes.READY.name                    
                     elif key == 'adcLoop':
@@ -349,42 +328,22 @@ class adcCtrl(XDevice):
                         self._state = States.ONESHOT
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
 
-            #send update to the properties
             self.update_property(existing_property)
             self.update_property(self.properties['fsm'])
 
     def handle_n_avg(self, existing_property, new_message):
-        if 'target' in new_message and new_message['target'] != existing_property['current']: #if the current number of frames and the target number don't match
-            existing_property['current'] = new_message['target'] #update the current value to the existing property
-            existing_property['target'] = new_message['target'] #make sure the existing property also has the target value
-            self._n_avg = int(new_message['target']) #updating the variable for when we use it in the loop function
+        if 'target' in new_message and new_message['target'] != existing_property['current']: 
+            existing_property['current'] = new_message['target']
+            existing_property['target'] = new_message['target']
+            self._n_avg = int(new_message['target'])
         self.update_property(existing_property)
 
     def handle_gain(self, existing_property, new_message):
         if 'target' in new_message and new_message['target'] != existing_property['current']: 
             existing_property['current'] = new_message['target'] 
             existing_property['target'] = new_message['target'] 
-            self._gain = (new_message['target']) #does this output a string or a value? do I need to convert this into another datatype?
+            self._gain = float(new_message['target'])
         self.update_property(existing_property)
-
-    #I don't really understand where this comes into play because it's never called or used as a callback, but it seems important 
-    def handle_closed_loop(self, existing_property, new_message):
-        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.ON:
-            self.log.info("ADC Loop Closed")
-
-            existing_property['toggle'] = constants.SwitchState.ON
-            self._state = States.CLOSED_LOOP
-            self.properties['fsm']['state'] = StateCodes.OPERATING.name
-
-        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.OFF:
-            self.log.info("ADC Loop Opened")
-            existing_property['toggle'] = constants.SwitchState.OFF
-            self._state = States.IDLE
-            self.properties['fsm']['state'] = StateCodes.READY.name
-
-
-        self.update_property(existing_property)
-        self.update_property(self.properties['fsm'])
 
     def transition_to_idle(self):
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
@@ -394,8 +353,8 @@ class adcCtrl(XDevice):
         self._state = States.IDLE    
 
     def set_command(self, d1, d2):
-        self.delta_1 = d1 #this is the co-rotation ### I think this might actually be flipped but I can't remember if I corrrected it or not
-        self.delta_2 = d2 #this is the counter-rotation
+        self.delta_1 = d1 
+        self.delta_2 = d2 
     
     def send_command(self):
         self.client['adctrack.deltaADC1.target'] = self.delta_1 + self.delta_2
@@ -427,14 +386,13 @@ class adcCtrl(XDevice):
             error = self.ADC.calculate_command(pair_angles)
             self._command = self._command + self._gain * error
             
-            if np.all(self.command) < 1: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self.command),0) #this will have to change when you update to do 2 parameters again
+            if np.all(self.command) < 2: #setting a threshold so the prisms don't do anything crazy     
+                self.set(np.squeeze(self.command),0) 
                 self.send()
                 self.log.debug(f'ADC command sent: {self.command}')
             else: self.log.info(f'ADC command {self.command} exceeds acceptable threshold and was not sent')
 
         elif self._state == States.ONESHOT:
-            self._command = 0
             img = self.camera.grab_stack(self._n_avg)
             img = self.ADC.filter_image(img)
             img = self.ADC.crop_image(img)
@@ -448,8 +406,8 @@ class adcCtrl(XDevice):
 
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
-            if np.all(self.command) < 7: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self.command),0) #this will have to change when you update to do 2 parameters again
+            if np.all(self.command) < 5: #setting a threshold so the prisms don't do anything crazy     
+                self.set(np.squeeze(self.command),0)
                 self.send()
                 self.log.debug(f'ADC command sent: {self.command}')
             else: self.log.info(f'ADC command {self.command} exceeds acceptable threshold and was not sent')            
