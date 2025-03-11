@@ -63,7 +63,11 @@ protected:
      *@{
      */
 
-   std::string m_fpsSource; ///< Device name for getting fps to set circular buffer length.  This device should have *.fps.current.
+   std::string m_fpsDevice; ///< Device name for getting fps to set circular buffer length.
+   std::string m_fpsProperty {"fps"}; ///< Property name for getting fps to set circular buffer length.
+   std::string m_fpsElement {"current"}; ///< Element name for getting fps to set circular buffer length.
+
+   float m_fpsTol {0}; ///< The tolerance for detecting a change in FPS.
 
    realT m_psdTime{ 1 }; ///< The length of time over which to calculate PSDs.  The default is 1 sec.
    realT m_psdAvgTime{ 10 }; ///< The time over which to average PSDs.  The default is 10 sec.
@@ -86,7 +90,7 @@ protected:
    realT m_fps{ 0 };
    realT m_df{ 1 };
 
-   //unsigned m_tsCircBuffLength {4000}; ///< Length of the time-series circular buffers.  This is updated by m_fpsSource and m_psdTime. 
+   //unsigned m_tsCircBuffLength {4000}; ///< Length of the time-series circular buffers.  This is updated by m_fpsDevice and m_psdTime.
 
    unsigned m_tsSize{ 2000 }; ///< The length of the time series sample over which the PSD is calculated
    unsigned m_tsOverlapSize{ 1000 }; ///< The number of samples in the overlap
@@ -213,7 +217,10 @@ void modalPSDs::setupConfig()
 {
    SHMIMMONITOR_SETUP_CONFIG(config);
 
-   config.add("circBuff.fpsSource", "", "circBuff.fpsSource", argType::Required, "circBuff", "fpsSource", false, "string", "Device name for getting fps to set circular buffer length.  This device should have *.fps.current.");
+   config.add("circBuff.fpsDevice", "", "circBuff.fpsDevice", argType::Required, "circBuff", "fpsDevice", false, "string", "Device name for getting fps to set circular buffer length.");
+   config.add("circBuff.fpsProperty", "", "circBuff.fpsProperty", argType::Required, "circBuff", "fpsProperty", false, "string", "Property name for getting fps to set circular buffer length. Default is 'fps'.");
+   config.add("circBuff.fpsElement", "", "circBuff.fpsElement", argType::Required, "circBuff", "fpsElement", false, "string", "Property name for getting fps to set circular buffer length. Default is 'current'.");
+   config.add("circBuff.fpsTol", "", "circBuff.fpsTol", argType::Required, "circBuff", "fpsTol", false, "float", "Tolerance for detecting a change in FPS.  Default is 0.");
    config.add("circBuff.defaultFPS", "", "circBuff.defaultFPS", argType::Required, "circBuff", "defaultFPS", false, "realT", "Default FPS at startup, will enable changing average length with psdTime before INDI available.");
    config.add("circBuff.psdTime", "", "circBuff.psdTime", argType::Required, "circBuff", "psdTime", false, "realT", "The length of time over which to calculate PSDs.  The default is 1 sec.");
 }
@@ -222,7 +229,10 @@ int modalPSDs::loadConfigImpl(mx::app::appConfigurator& _config)
 {
    SHMIMMONITOR_LOAD_CONFIG(_config);
 
-   _config(m_fpsSource, "circBuff.fpsSource");
+   _config(m_fpsDevice, "circBuff.fpsDevice");
+   _config(m_fpsProperty, "circBuff.fpsProperty");
+   _config(m_fpsElement, "circBuff.fpsElement");
+   _config(m_fpsTol, "circBuff.fpsTol");
    _config(m_fps, "circBuff.defaultFPS");
    _config(m_psdTime, "circBuff.psdTime");
 
@@ -244,9 +254,9 @@ int modalPSDs::appStartup()
    m_indiP_psdAvgTime["current"].set(m_psdAvgTime);
    m_indiP_psdAvgTime["target"].set(m_psdAvgTime);
 
-   if (m_fpsSource != "")
+   if (m_fpsDevice != "")
    {
-      REG_INDI_SETPROP(m_indiP_fpsSource, m_fpsSource, std::string("fps"));
+      REG_INDI_SETPROP(m_indiP_fpsSource, m_fpsDevice, m_fpsProperty);
    }
 
    CREATE_REG_INDI_RO_NUMBER(m_indiP_fps, "fps", "current", "Circular Buffer");
@@ -319,8 +329,14 @@ int modalPSDs::allocate(const dev::shmimT& dummy)
 
    if (m_fps > 0)
    {
-      //m_tsCircBuffLength = m_fps * m_psdTime * m_overSize;
       m_tsSize = m_fps * m_psdTime;
+
+      //Adjust length if odd to ensure we get the Nyquist frequency
+      if(m_tsSize % 2 == 1)
+      {
+        m_tsSize += 1;
+      }
+
       m_tsOverlapSize = m_tsSize * m_psdOverlapFraction;
    }
 
@@ -522,8 +538,8 @@ void modalPSDs::psdThreadExec()
          //Calc PSDs here
          ne0 = ne1;
 
-         std::cerr << "calculating: " << ne0 << " " << m_ampCircBuff.size() << " " << m_tsSize << "\n";
-         double t0 = mx::sys::get_curr_time();
+         //std::cerr << "calculating: " << ne0 << " " << m_ampCircBuff.size() << " " << m_tsSize << "\n";
+         //double t0 = mx::sys::get_curr_time();
 
          for (size_t m = 0; m < shmimMonitorT::m_width * shmimMonitorT::m_height; ++m) //Loop over each mode
          {
@@ -632,8 +648,8 @@ void modalPSDs::psdThreadExec()
          m_avgpsdStream->md->write = 0;
          ImageStreamIO_sempost(m_avgpsdStream, -1);
 
-         double t1 = mx::sys::get_curr_time();
-         std::cerr << "done " << t1 - t0 << "\n";
+         //double t1 = mx::sys::get_curr_time();
+         //std::cerr << "done " << t1 - t0 << "\n";
 
          //Have to be cycling within the overlap
          if (m_ampCircBuff.mono() - mono0 >= m_tsOverlapSize)
@@ -731,7 +747,7 @@ INDI_SETCALLBACK_DEFN(modalPSDs, m_indiP_fpsSource)(const pcf::IndiProperty& ipR
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_fpsSource, ipRecv);
 
-   if (ipRecv.find("current") != true) //this isn't valid
+   if (ipRecv.find(m_fpsElement) != true) //this isn't valid
    {
       log<software_error>({ __FILE__, __LINE__, "No current property in fps source." });
       return 0;
@@ -739,9 +755,9 @@ INDI_SETCALLBACK_DEFN(modalPSDs, m_indiP_fpsSource)(const pcf::IndiProperty& ipR
 
    std::lock_guard<std::mutex> guard(m_indiMutex);
 
-   realT fps = ipRecv["current"].get<realT>();
+   realT fps = ipRecv[m_fpsElement].get<realT>();
 
-   if (fps != m_fps)
+   if (fabs(fps - m_fps) > m_fpsTol)
    {
       m_fps = fps;
       log<text_log>("set fps to " + std::to_string(m_fps), logPrio::LOG_NOTICE);
