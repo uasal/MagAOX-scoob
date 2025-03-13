@@ -301,6 +301,7 @@ class adcCtrl(XDevice):
         else: self._center_wavelength = 656E-9
 
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
+        self.ADC.set_control_mtx(self._control_mtx)
 
         self.properties['fsm']['state'] = StateCodes.READY.name
         self.update_property(self.properties['fsm'])
@@ -386,11 +387,11 @@ class adcCtrl(XDevice):
             error = self.ADC.calculate_command(pair_angles)
             self._command = self._command + self._gain * error
             
-            if np.all(self.command) < 2: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self.command),0) 
+            if np.all(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
+                self.set(np.squeeze(self._command),0) 
                 self.send()
-                self.log.debug(f'ADC command sent: {self.command}')
-            else: self.log.info(f'ADC command {self.command} exceeds acceptable threshold and was not sent')
+                self.log.debug(f'ADC command sent: {self._command}')
+            else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
 
         elif self._state == States.ONESHOT:
             img = self.camera.grab_stack(self._n_avg)
@@ -406,11 +407,11 @@ class adcCtrl(XDevice):
 
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
-            if np.all(self.command) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self.command),0)
+            if np.all(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+                self.set(np.squeeze(self._command),0)
                 self.send()
-                self.log.debug(f'ADC command sent: {self.command}')
-            else: self.log.info(f'ADC command {self.command} exceeds acceptable threshold and was not sent')            
+                self.log.debug(f'ADC command sent: {self._command}')
+            else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
             self.transition_to_idle()
 
