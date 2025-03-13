@@ -249,12 +249,12 @@ class adcCtrl(XDevice):
         sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF)) 
         self.add_property(sv, callback=self.handle_state) 
 
-        nv = properties.NumberVector(name='counter')
-        nv.add_element(DefNumber(
-            name= '_loop_counter', label= 'Loop Counter', format= '%i',
-            min= 0, max= 2**32 - 1, step=1, _value= 0
-        ))
-        self.add_property(nv)
+        # nv = properties.NumberVector(name='counter')
+        # nv.add_element(DefNumber(
+        #     name= '_loop_counter', label= 'Loop Counter', format= '%i',
+        #     min= 0, max= 2**32 - 1, step=1, _value= 0
+        # ))
+        # self.add_property(nv)
 
         nv = properties.NumberVector(name='n_avg')
         nv.add_element(DefNumber(
@@ -286,7 +286,7 @@ class adcCtrl(XDevice):
         
         self._state = States.IDLE
 
-        self._loop_counter = 0
+        #self._loop_counter = 0
         self._n_avg = 1
         self._gain = 0.1
         self._command = 0
@@ -408,8 +408,8 @@ class adcCtrl(XDevice):
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
             if np.all(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self._command),0)
-                self.send()
+                self.set_command(np.squeeze(self._command),0)
+                self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
