@@ -63,9 +63,13 @@ protected:
 
     std::string m_rawimageDir; ///< The path where files will be saved.
 
-    size_t m_circBuffLength{1024}; ///< The length of the circular buffer, in frames
+    size_t m_maxCircBuffLength{1024}; ///< The maximum length of the circular buffer, in frames
 
-    size_t m_writeChunkLength{512}; ///< The number of frames to write at a time
+    double m_maxCircBuffSize{2048}; ///< The maximum size of the circular bufffer in MB.
+
+    size_t m_maxWriteChunkLength{512}; /**< The maximum number of frames to write at a time.  Must
+                                            be an integer factor of m_maxCircBuffLength.*/
+
 
     double m_maxChunkTime{10}; ///< The maximum time before writing regardless of number of frames.
 
@@ -84,6 +88,10 @@ protected:
     bool m_compress{true};
 
     ///@}
+
+    size_t m_circBuffLength{1024}; ///< The length of the circular buffer, in frames
+    double m_circBuffSize{2048.0}; ///< The size of the circular buffer, in MB
+    size_t m_writeChunkLength{512}; ///< The number of frames to write at a time
 
     size_t m_width{0};     ///< The width of the image
     size_t m_height{0};    ///< The height of the image
@@ -199,6 +207,18 @@ protected:
 
     pcf::IndiProperty m_fgThreadProp; ///< The property to hold the f.g. thread details.
 
+public:
+    static void getCircBuffLengths( size_t & circBuffLength,
+        double & circBuffSize,
+        size_t & writeChunkLength,
+        size_t maxCircBuffLength,
+        double maxCircBuffSize,
+        size_t maxWriteChunkLength,
+        uint32_t width,
+        uint32_t height,
+        size_t typeSize );
+
+protected:
     /// Worker function to allocate the circular buffers.
     /** This takes place in the fg thread after connecting to the stream.
      *
@@ -317,9 +337,11 @@ void streamWriter::setupConfig()
 {
     config.add("writer.savePath", "", "writer.savePath", argType::Required, "writer", "savePath", false, "string", "The absolute path where images are saved. Will use MagAO-X default if not set.");
 
-    config.add("writer.circBuffLength", "", "writer.circBuffLength", argType::Required, "writer", "circBuffLength", false, "size_t", "The length in frames of the circular buffer. Should be an integer multiple of and larger than writeChunkLength.");
+    config.add("writer.maxCircBuffLength", "", "writer.maxCircBuffLength", argType::Required, "writer", "maxCircBuffLength", false, "size_t", "The maximum length in frames of the circular buffer. Should be an integer multiple of and larger than maxWriteChunkLength.");
 
-    config.add("writer.writeChunkLength", "", "writer.writeChunkLength", argType::Required, "writer", "writeChunkLength", false, "size_t", "The length in frames of the chunks to write to disk. Should be smaller than circBuffLength.");
+    config.add("writer.maxCircBuffSize", "", "writer.maxCircBuffSize", argType::Required, "writer", "maxCircBuffSize", false, "double", "The maximum size in MB of the circular buffer. Should be sized to hold at least 2 of the maximum frame size.");
+
+    config.add("writer.maxWriteChunkLength", "", "writer.maxWriteChunkLength", argType::Required, "writer", "maxWriteChunkLength", false, "size_t", "The maximum length in frames of the chunks to write to disk. Should be smaller than maxCircBuffLength.");
 
     config.add("writer.maxChunkTime", "", "writer.maxChunkTime", argType::Required, "writer", "maxChunkTime", false, "float", "The max length in seconds of the chunks to write to disk. Default is 60 sec.");
 
@@ -349,8 +371,9 @@ void streamWriter::setupConfig()
 void streamWriter::loadConfig()
 {
 
-    config(m_circBuffLength, "writer.circBuffLength");
-    config(m_writeChunkLength, "writer.writeChunkLength");
+    config(m_maxCircBuffLength, "writer.maxCircBuffLength");
+    config(m_maxCircBuffSize, "writer.maxCircBuffSize");
+    config(m_maxWriteChunkLength, "writer.maxWriteChunkLength");
     config(m_maxChunkTime, "writer.maxChunkTime");
     config(m_swThreadPrio, "writer.threadPrio");
     config(m_swCpuset, "writer.cpuset");
@@ -438,7 +461,7 @@ int streamWriter::appStartup()
         return log<software_critical, -1>({__FILE__, __LINE__, errno, 0, "Initializing S.W. semaphore"});
 
     // Check if we have a safe writeChunkLengthh
-    if (m_circBuffLength % m_writeChunkLength != 0)
+    if (m_maxCircBuffLength % m_maxWriteChunkLength != 0)
     {
         return log<software_critical, -1>({__FILE__, __LINE__, "Write chunk length is not a divisor of circular buffer length."});
     }
@@ -522,6 +545,9 @@ int streamWriter::appLogic()
 
 int streamWriter::appShutdown()
 {
+    m_writing = NOT_WRITING;
+    updateINDI();
+
     try
     {
         if (m_fgThread.joinable())
@@ -674,8 +700,82 @@ void streamWriter::handlerSigSegv(int signum,
     return;
 }
 
+void streamWriter::getCircBuffLengths( size_t & circBuffLength,
+                 double & circBuffSize,
+                 size_t & writeChunkLength,
+                 size_t maxCircBuffLength,
+                 double maxCircBuffSize,
+                 size_t maxWriteChunkLength,
+                 uint32_t width,
+                 uint32_t height,
+                 size_t typeSize )
+{
+    static constexpr double MB = 1048576.0;
+
+    size_t isz = width * height * typeSize * maxCircBuffLength;
+
+    if(isz <= maxCircBuffSize*MB)
+    {
+        circBuffLength = maxCircBuffLength;
+        circBuffSize = isz/MB;
+        writeChunkLength = maxWriteChunkLength;
+
+        return;
+    }
+
+    circBuffLength = maxCircBuffSize*MB / (width * height * typeSize);
+    circBuffSize = (width * height * typeSize * circBuffLength) / MB;
+
+    writeChunkLength = (1.0*maxWriteChunkLength/maxCircBuffLength) * circBuffLength;
+
+    if(circBuffLength == 0)
+    {
+        return;
+    }
+
+    if(writeChunkLength == 0)
+    {
+        writeChunkLength = 1;
+    }
+
+    while(circBuffLength % writeChunkLength != 0)
+    {
+        --writeChunkLength;
+    }
+
+
+
+    return;
+}
+
 int streamWriter::allocate_circbufs()
 {
+
+    getCircBuffLengths(m_circBuffLength, m_circBuffSize, m_writeChunkLength,
+                        m_maxCircBuffLength, m_maxCircBuffSize, m_maxWriteChunkLength,
+                         m_width, m_height, m_typeSize);
+
+    if(m_circBuffLength < 2)
+    {
+        return log<software_critical, -1>({__FILE__, __LINE__, "frame size too large to fit in maxCircBuffSize"});
+    }
+
+    if(m_writeChunkLength >= m_circBuffLength)
+    {
+        return log<software_critical, -1>({__FILE__, __LINE__, "writeChunkLength is not smaller than circBuffLength"});
+    }
+
+    if(m_circBuffLength % m_writeChunkLength != 0)
+    {
+        return log<software_critical, -1>({__FILE__, __LINE__, "writeChunkLength is not an integer factor of circBuffLength"});
+    }
+
+    std::string msg = "Set circ buff length: " + std::to_string(m_circBuffLength) + " frames (";
+    msg += std::to_string(m_circBuffSize) + " MB).  Write chunk length: " + std::to_string(m_writeChunkLength);
+    msg += " frames.";
+
+    log<text_log>(msg, logPrio::LOG_NOTICE );
+
     if (m_rawImageCircBuff)
     {
         free(m_rawImageCircBuff);
@@ -683,6 +783,8 @@ int streamWriter::allocate_circbufs()
 
     errno = 0;
     m_rawImageCircBuff = (char *)malloc(m_width * m_height * m_typeSize * m_circBuffLength);
+
+
 
     if (m_rawImageCircBuff == NULL)
     {
@@ -807,7 +909,8 @@ void streamWriter::fgThreadExec()
         int logged = 0;
         while (!opened && !m_shutdown && !m_restart)
         {
-            // b/c ImageStreamIO prints every single time, and latest version don't support stopping it yet, and that isn't thread-safe-able anyway
+            // b/c ImageStreamIO prints every single time, and latest version don't support stopping it yet,
+            // and that isn't thread-safe-able anyway
             // we do our own checks.  This is the same code in ImageStreamIO_openIm...
             int SM_fd;
             char SM_fname[200];
@@ -816,7 +919,9 @@ void streamWriter::fgThreadExec()
             if (SM_fd == -1)
             {
                 if (!logged)
+                {
                     log<text_log>("ImageStream " + m_shmimName + " not found (yet).  Retrying . . .", logPrio::LOG_NOTICE);
+                }
                 logged = 1;
                 sleep(1); // be patient
                 continue;
@@ -903,11 +1008,15 @@ void streamWriter::fgThreadExec()
 
         // Now allocate the circBuffs
         if (allocate_circbufs() < 0)
+        {
             return; // will cause shutdown!
+        }
 
         // And allocate the xrifs
         if (allocate_xrif() < 0)
+        {
             return; // Will cause shutdown!
+        }
 
         uint8_t atype;
         size_t snx, sny, snz;
@@ -1072,11 +1181,11 @@ void streamWriter::fgThreadExec()
                 switch (m_writing)
                 {
                     case START_WRITING:
-                        
+
                         m_currChunkStart = m_currImage;
                         m_nextChunkStart = (m_currImage / m_writeChunkLength) * m_writeChunkLength;
                         m_currChunkStartTime = m_currImageTime;
-        
+
                         if(!restartWriting) //We only log if this is really a start
                         {
                             log<saving_start>({1, new_cnt0});
@@ -1095,28 +1204,28 @@ void streamWriter::fgThreadExec()
                             m_currSaveStart = m_currChunkStart;
                             m_currSaveStop = m_nextChunkStart + m_writeChunkLength;
                             m_currSaveStopFrameNo = new_cnt0;
-    
+
                             #ifdef SW_DEBUG
-                            std::cerr << __FILE__ << " " << __LINE__ << " WRITING " << m_currImage << " " 
-                                                   << m_nextChunkStart << " " 
+                            std::cerr << __FILE__ << " " << __LINE__ << " WRITING " << m_currImage << " "
+                                                   << m_nextChunkStart << " "
                                                     << (m_currImage - m_nextChunkStart == m_writeChunkLength - 1) << " "
                                                      << (m_currImageTime - m_currChunkStartTime > m_maxChunkTime) << " "
                                                       << new_cnt0 << "\n";
                             #endif
-                            
+
                             // Now tell the writer to get going
                             if (sem_post(&m_swSemaphore) < 0)
                             {
                                 log<software_critical>({__FILE__, __LINE__, errno, 0, "Error posting to semaphore"});
                                 return;
                             }
-    
+
                             m_nextChunkStart = ((m_currImage + 1) / m_writeChunkLength) * m_writeChunkLength;
                             if (m_nextChunkStart >= m_circBuffLength)
                             {
                                 m_nextChunkStart = 0;
                             }
-    
+
                             m_currChunkStart = m_nextChunkStart;
                             m_currChunkStartTime = m_currImageTime;
                         }
@@ -1125,10 +1234,10 @@ void streamWriter::fgThreadExec()
                             m_currSaveStart = m_currChunkStart;
                             m_currSaveStop = m_currImage + 1;
                             m_currSaveStopFrameNo = new_cnt0;
-    
+
                             #ifdef SW_DEBUG
-                            std::cerr << __FILE__ << " " << __LINE__ << " IMAGE TIME WRITING " << m_currImage << " " 
-                                                   << m_nextChunkStart << " " 
+                            std::cerr << __FILE__ << " " << __LINE__ << " IMAGE TIME WRITING " << m_currImage << " "
+                                                   << m_nextChunkStart << " "
                                                     << (m_currImage - m_nextChunkStart == m_writeChunkLength - 1) << " "
                                                      << (m_currImageTime - m_currChunkStartTime > m_maxChunkTime) << " "
                                                       << new_cnt0 << "\n";
@@ -1140,18 +1249,18 @@ void streamWriter::fgThreadExec()
                                 log<software_critical>({__FILE__, __LINE__, errno, 0, "Error posting to semaphore"});
                                 return;
                             }
-    
+
                             m_writing = START_WRITING;
                             restartWriting = true;
 
                         }
                         break;
-    
+
                     case STOP_WRITING:
                         m_currSaveStart = m_currChunkStart;
                         m_currSaveStop = m_currImage+1;
                         m_currSaveStopFrameNo = new_cnt0;
-    
+
                         #ifdef SW_DEBUG
                         std::cerr << __FILE__ << " " << __LINE__ << " STOP_WRITING\n";
                         #endif
@@ -1164,7 +1273,7 @@ void streamWriter::fgThreadExec()
                         }
                         restartWriting = false;
                         break;
-    
+
                     default:
                         break;
                 }
@@ -1189,9 +1298,9 @@ void streamWriter::fgThreadExec()
                             m_currSaveStart = m_currChunkStart;
                             m_currSaveStop = m_currImage;
                             m_currSaveStopFrameNo = last_cnt0;
-    
+
                             #ifdef SW_DEBUG
-                            std::cerr << __FILE__ << " " << __LINE__ << " TIMEOUT WRITING " << " " 
+                            std::cerr << __FILE__ << " " << __LINE__ << " TIMEOUT WRITING " << " "
                                 << m_currImage << " " << m_nextChunkStart << " " <<(m_currImage - m_nextChunkStart)  << " "
                                  << last_cnt0 << "\n";
                             #endif
@@ -1202,7 +1311,7 @@ void streamWriter::fgThreadExec()
                                 log<software_critical>({__FILE__, __LINE__, errno, 0, "Error posting to semaphore"});
                                 return;
                             }
-    
+
                             m_writing = START_WRITING;
                             restartWriting = true;
 
@@ -1213,7 +1322,7 @@ void streamWriter::fgThreadExec()
                         m_currSaveStart = m_currChunkStart;
                         m_currSaveStop = m_currImage;
                         m_currSaveStopFrameNo = last_cnt0;
-    
+
                         #ifdef SW_DEBUG
                         std::cerr << __FILE__ << " " << __LINE__ << " TIMEOUT STOP_WRITING\n";
                         #endif
@@ -1288,7 +1397,7 @@ void streamWriter::fgThreadExec()
                 m_currSaveStart = m_currChunkStart;
                 m_currSaveStop = m_currImage;
                 m_currSaveStopFrameNo = last_cnt0;
-    
+
                 m_writing = STOP_WRITING;
 
                 std::cerr << __FILE__ << " " << __LINE__ << " WRITING ON RESTART " << last_cnt0 << "\n";
@@ -1304,7 +1413,7 @@ void streamWriter::fgThreadExec()
                 m_writing = NOT_WRITING;
              }
 
-             
+
              while(m_writing != NOT_WRITING)
              {
                 std::cerr << __FILE__ << " " << __LINE__ << " WAITING TO FINISH WRITING " << last_cnt0 << "\n";
