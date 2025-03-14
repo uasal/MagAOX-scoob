@@ -117,8 +117,9 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
 
     bool m_psdThreadInit{ true }; ///< Initialization flag for the PSD Calculation thread.
 
-    bool m_psdRestarting{
-        true }; ///< Synchronization flag.  This will only become false after a successful call to allocate.
+    bool m_psdRestarting{ true }; /**< Synchronization flag.  This will only become false
+                                       after a successful call to allocate.*/
+
     bool m_psdWaiting{ false }; ///< Synchronization flag.  This is set to true when the PSD thread is safely waiting
                                 ///< for allocation to complete.
 
@@ -156,8 +157,8 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
     /// Implementation of loadConfig logic, separated for testing.
     /** This is called by loadConfig().
      */
-    int loadConfigImpl(
-        mx::app::appConfigurator &_config /**< [in] an application configuration from which to load values*/ );
+    int loadConfigImpl( mx::app::appConfigurator &_config /**< [in] an application configuration
+                                                                    from which to load values*/ );
 
     virtual void loadConfig();
 
@@ -362,9 +363,13 @@ int modalPSDs::appShutdown()
     }
 
     if( m_tsWork )
+    {
         fftw_free( m_tsWork );
+    }
     if( m_fftWork )
+    {
         fftw_free( m_fftWork );
+    }
 
     return 0;
 }
@@ -377,10 +382,14 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     // Prevent reallocation while the psd thread might be calculating
     while( m_psdWaiting == false && !shutdown() )
+    {
         mx::sys::microSleep( 100 );
+    }
 
     if( shutdown() )
+    {
         return 0; // If shutdown() is true then shmimMonitor will cleanup
+    }
 
     if( m_fps > 0 )
     {
@@ -438,7 +447,10 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
     m_tsWork = mx::math::ft::fftw_malloc<realT>( m_tsSize );
 
     if( m_fftWork )
+    {
         fftw_free( m_fftWork );
+    }
+
     m_fftWork = mx::math::ft::fftw_malloc<std::complex<realT>>( ( m_tsSize / 2 + 1 ) );
 
     m_psd.resize( m_tsSize / 2 + 1 );
@@ -587,13 +599,19 @@ void modalPSDs::psdThreadExec()
     while( shutdown() == 0 )
     {
         if( m_psdRestarting == true || m_ampCircBuff.maxEntries() == 0 )
+        {
             m_psdWaiting = true;
+        }
 
         while( ( m_psdRestarting == true || m_ampCircBuff.maxEntries() == 0 ) && !shutdown() )
+        {
             mx::sys::microSleep( 100 );
+        }
 
         if( shutdown() )
+        {
             break;
+        }
 
         m_psdWaiting = false;
 
@@ -616,9 +634,13 @@ void modalPSDs::psdThreadExec()
         ampCircBuffT::indexT ne0;
         ampCircBuffT::indexT ne1 = m_ampCircBuff.latest();
         if( ne1 > m_tsOverlapSize )
+        {
             ne1 -= m_tsSize;
+        }
         else
+        {
             ne1 = m_ampCircBuff.size() + ne1 - m_tsSize;
+        }
 
         while( m_psdRestarting == false && !shutdown() )
         {
@@ -679,7 +701,9 @@ void modalPSDs::psdThreadExec()
 
             uint64_t cnt1 = m_rawpsdStream->md->cnt1 + 1;
             if( cnt1 >= m_rawpsdStream->md->size[2] )
+            {
                 cnt1 = 0;
+            }
 
             // Move to next pointer
             float *F = m_rawpsdStream->array.F + m_psdBuffer.rows() * m_psdBuffer.cols() * cnt1;
@@ -700,9 +724,13 @@ void modalPSDs::psdThreadExec()
             int nPSDAverage = ( m_psdAvgTime / m_psdTime ) / m_psdOverlapFraction;
 
             if( nPSDAverage <= 0 )
+            {
                 nPSDAverage = 1;
+            }
             else if( (uint64_t)nPSDAverage > m_rawpsdStream->md->size[2] )
+            {
                 nPSDAverage = m_rawpsdStream->md->size[2];
+            }
 
             // Move to next pointer
             F = m_rawpsdStream->array.F + m_psdBuffer.rows() * m_psdBuffer.cols() * cnt1;
@@ -712,9 +740,13 @@ void modalPSDs::psdThreadExec()
             for( int n = 1; n < nPSDAverage; ++n )
             {
                 if( cnt1 == 0 )
+                {
                     cnt1 = m_rawpsdStream->md->size[2] - 1;
+                }
                 else
+                {
                     --cnt1;
+                }
 
                 F = m_rawpsdStream->array.F + m_psdBuffer.rows() * m_psdBuffer.cols() * cnt1;
 
@@ -752,9 +784,13 @@ void modalPSDs::psdThreadExec()
                 log<text_log>( "PSD calculations getting behind, skipping ahead.", logPrio::LOG_WARNING );
                 ne0 = m_ampCircBuff.latest();
                 if( ne0 > m_tsOverlapSize )
+                {
                     ne0 -= m_tsOverlapSize;
+                }
                 else
+                {
                     ne0 = m_ampCircBuff.size() + ne0 - m_tsOverlapSize;
+                }
             }
 
             // Now wait until we get to next one
@@ -768,9 +804,13 @@ void modalPSDs::psdThreadExec()
             // wrapped difference
             long dn;
             if( ce >= ne1 )
+            {
                 dn = ce - ne1;
+            }
             else
+            {
                 dn = ce + ( m_ampCircBuff.size() - ne1 );
+            }
 
             while( dn < m_tsOverlapSize && !shutdown() && m_psdRestarting == false )
             {
@@ -780,9 +820,13 @@ void modalPSDs::psdThreadExec()
                 ce = m_ampCircBuff.latest();
 
                 if( ce >= ne1 )
+                {
                     dn = ce - ne1;
+                }
                 else
+                {
                     dn = ce + ( m_ampCircBuff.size() - ne1 );
+                }
             }
         }
     }
