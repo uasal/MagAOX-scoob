@@ -110,6 +110,7 @@ apps/openLoopPSDs/openLoopPSDs
 apps/pi335Ctrl/pi335Ctrl
 apps/picamCtrl/picamCtrl
 apps/picoMotorCtrl/picoMotorCtrl
+apps/psdGainOpt/psdGainOpt
 apps/psfFit/psfFit
 apps/psfAcq/psfAcq
 apps/pupilAlign/pupilAlign
