@@ -503,9 +503,13 @@ void streamWriter::loadConfig()
     config( m_compress, "writer.compress" );
     config( m_lz4accel, "writer.lz4accel" );
     if( m_lz4accel < XRIF_LZ4_ACCEL_MIN )
+    {
         m_lz4accel = XRIF_LZ4_ACCEL_MIN;
+    }
     if( m_lz4accel > XRIF_LZ4_ACCEL_MAX )
+    {
         m_lz4accel = XRIF_LZ4_ACCEL_MAX;
+    }
 
     config( m_shmimName, "framegrabber.shmimName" );
 
@@ -910,6 +914,12 @@ void streamWriter::getCircBuffLengths( size_t  &circBuffLength,
     }
 
     circBuffLength = maxCircBuffSize * MB / ( width * height * typeSize );
+
+    if(circBuffLength % 2 == 1)
+    {
+        --circBuffLength;
+    }
+    
     circBuffSize   = ( width * height * typeSize * circBuffLength ) / MB;
 
     writeChunkLength = ( 1.0 * maxWriteChunkLength / maxCircBuffLength ) * circBuffLength;
