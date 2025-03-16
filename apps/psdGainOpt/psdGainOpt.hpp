@@ -154,7 +154,14 @@ class psdGainOpt : public MagAOXApp<true>,
                                   where N is m_loopNum.*/
 
     bool m_autoUpdate{ false }; ///< Flag controlling whether gains are automatically updated
+
+    float m_gainGain{ 0.1 }; ///< The gain to use for closed-loop gain updates.  Default is 0.1.
+
     ///@}
+
+    bool m_updateOnce{ false }; ///< Flag to trigger a single update with gain.
+
+    bool m_dump{ false }; ///< Flag to trigger a single update with no gain.
 
     float m_fps{ 0 };
 
@@ -191,6 +198,10 @@ class psdGainOpt : public MagAOXApp<true>,
     std::vector<float> m_taus;
 
     int m_sinceChange{ -1 };
+
+    std::string m_optGainsShmimName;
+
+    IMAGE *m_optGainsStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
 
   public:
     /// Default c'tor.
@@ -283,8 +294,9 @@ class psdGainOpt : public MagAOXApp<true>,
      *
      * @{
      */
-    int         m_goptThreadPrio{ 0 }; ///< Priority of the gain optimization thread.
-    std::string m_goptThreadCpuset;    ///< The cpuset to use for the gain optimization thread.
+    int m_goptThreadPrio{ 0 }; ///< Priority of the gain optimization thread.
+
+    std::string m_goptThreadCpuset; ///< The cpuset to use for the gain optimization thread.
 
     std::thread m_goptThread; ///< The gain optimization thread.
 
@@ -312,6 +324,11 @@ class psdGainOpt : public MagAOXApp<true>,
      */
 
     pcf::IndiProperty m_indiP_autoUpdate;
+    pcf::IndiProperty m_indiP_updateOnce;
+    pcf::IndiProperty m_indiP_dump;
+
+    pcf::IndiProperty m_indiP_gainGain;
+
     pcf::IndiProperty m_indiP_fps;
     pcf::IndiProperty m_indiP_psdTime;
     pcf::IndiProperty m_indiP_psdAvgTime;
@@ -320,7 +337,9 @@ class psdGainOpt : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_mc;
 
     INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_autoUpdate );
-
+    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_updateOnce );
+    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_dump );
+    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_gainGain );
     INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_fps );
     INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_psdTime );
     INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_psdAvgTime );
@@ -384,6 +403,16 @@ void psdGainOpt::setupConfig()
                 "bool",
                 "Flag controlling whether the gains are auto updated.  Also settable via INDI." );
 
+    config.add( "loop.gainGain",
+                "",
+                "loop.gainGain",
+                argType::Required,
+                "loop",
+                "gainGain",
+                false,
+                "float",
+                "The gain to use for closed-loop gain updates.  Default is 0.1" );
+
     SHMIMMONITORT_SETUP_CONFIG( psdShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( freqShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( gainShmimMonitorT, config );
@@ -397,6 +426,7 @@ int psdGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_loopNum, "loop.number" );
     _config( m_loopName, "loop.name" );
     _config( m_autoUpdate, "loop.audoUpdate" );
+    _config( m_autoUpdate, "loop.gainGain" );
 
     char shmim[1024];
 
@@ -426,6 +456,8 @@ int psdGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     tauShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( tauShmimMonitorT, _config );
 
+    snprintf( shmim, sizeof( shmim ), "aol%d_optimalGains", m_loopNum );
+    m_optGainsShmimName = shmim;
     return 0;
 }
 
@@ -443,7 +475,11 @@ int psdGainOpt::appStartup()
     SHMIMMONITORT_APP_STARTUP( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( tauShmimMonitorT );
 
-    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_autoUpdate, "auto_update" );
+    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_autoUpdate, "update_auto" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_updateOnce, "update_once" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dump, "update_dump" );
+
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_gainGain, "gainGain", 0, 1, 0.01, "%0.01f", "Gain Gain", "Gain Opt." );
 
     REG_INDI_SETPROP( m_indiP_psdTime, m_psdDevice, "psdTime" );
     REG_INDI_SETPROP( m_indiP_psdAvgTime, m_psdDevice, "psdAvgTime" );
@@ -495,6 +531,27 @@ int psdGainOpt::appLogic()
     {
         updateSwitchIfChanged( m_indiP_autoUpdate, "toggle", pcf::IndiElement::Off, INDI_IDLE );
     }
+
+    if( m_updateOnce )
+    {
+        updateSwitchIfChanged( m_indiP_updateOnce, "request", pcf::IndiElement::On, INDI_OK );
+    }
+    else
+    {
+        updateSwitchIfChanged( m_indiP_updateOnce, "request", pcf::IndiElement::Off, INDI_IDLE );
+    }
+
+    if( m_dump )
+    {
+        updateSwitchIfChanged( m_indiP_dump, "request", pcf::IndiElement::On, INDI_OK );
+    }
+    else
+    {
+        updateSwitchIfChanged( m_indiP_dump, "request", pcf::IndiElement::Off, INDI_IDLE );
+    }
+
+    updatesIfChanged<float>( m_indiP_gainGain, { "current", "target" }, { m_gainGain, m_gainGain } );
+
     return 0;
 }
 
@@ -508,6 +565,13 @@ int psdGainOpt::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( multcoShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
+
+    if( m_optGainsStream != nullptr)
+    {
+        ImageStreamIO_destroyIm( m_optGainsStream );
+        free( m_optGainsStream );
+        m_optGainsStream = nullptr;
+    }
 
     return 0;
 }
@@ -532,6 +596,38 @@ int psdGainOpt::allocate( const psdShmimT &dummy )
 
     m_optGain.resize( psdShmimMonitorT::m_height );
     m_modeVar.resize( psdShmimMonitorT::m_height );
+
+    if( m_optGainsStream != nullptr &&
+        ( m_optGainsStream->md->size[0] != psdShmimMonitorT::m_height && m_optGainsStream->md->size[1] != 1 ) )
+    {
+        ImageStreamIO_destroyIm( m_optGainsStream );
+        free( m_optGainsStream );
+        m_optGainsStream = nullptr;
+    }
+
+    if( m_optGainsStream == nullptr )
+    {
+        m_optGainsStream = (IMAGE *)malloc( sizeof( IMAGE ) );
+        uint32_t imsize[3];
+
+        imsize[0] = psdShmimMonitorT::m_height;
+        imsize[1] = 1;
+        imsize[2] = 1;
+        ImageStreamIO_createIm_gpu( m_optGainsStream,
+                                    m_optGainsShmimName.c_str(),
+                                    3,
+                                    imsize,
+                                    psdShmimMonitorT::m_dataType,
+                                    -1,
+                                    1,
+                                    IMAGE_NB_SEMAPHORE,
+                                    0,
+                                    CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
+                                    0 );
+
+        m_optGainsStream->md->cnt0 = 0;
+        m_optGainsStream->md->cnt1 = 0;
+    }
 
     m_sinceChange = -1;
 
@@ -572,12 +668,12 @@ int psdGainOpt::processImage( void *curr_src, const psdShmimT &dummy )
 
     m_updating = false;
 
+    lock.unlock();
+
     if( sem_post( &m_goptSemaphore ) < 0 )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "Error posting to semaphore" } );
     }
-
-    // Trigger calculation
 
     return 0;
 }
@@ -970,6 +1066,12 @@ void psdGainOpt::goptThreadExec()
                 continue;
             }
 
+            if( m_optGainsStream == nullptr )
+            {
+                log<software_error>( { __FILE__, __LINE__, "optGainsStream is not allocated" } );
+                continue;
+            }
+
             if( m_goptUpdated || m_freqUpdated || m_gopt.size() != m_gains.size() )
             {
                 if( m_gopt.size() != m_gains.size() )
@@ -1038,39 +1140,59 @@ void psdGainOpt::goptThreadExec()
             }
 
             std::cerr << "Optimization took " << dt.count() << " seconds\n";
-            size_t Np = m_optGain.size();
-            if( Np > 10 )
-                Np = 10;
-            std::cerr << "Optimal gains:";
-            for( size_t n = 0; n < Np; ++n )
-            {
-                std::cerr << ' ' << m_optGain[n];
-            }
-            std::cerr << '\n';
-            std::cerr << "Calibrated Optimal gains:";
-            for( size_t n = 0; n < Np; ++n )
-            {
-                std::cerr << ' ' << m_optGain[n] / m_gainCals[n];
-            }
-            std::cerr << '\n';
 
-            if( m_autoUpdate )
+            float *f = static_cast<float *>(m_optGainsStream->array.raw);
+
+            m_optGainsStream->md->write = 1;
+            for( size_t n = 0; n < m_optGain.size(); ++n )
             {
-                float *f = (float *)gainShmimMonitorT::m_imageStream.array.raw;
+                f[n] = m_optGain[n] / m_gainCals[n];
+            }
+            clock_gettime( CLOCK_ISIO, &m_optGainsStream->md->writetime );
+            m_optGainsStream->md->atime = m_optGainsStream->md->writetime;
+
+            ++m_optGainsStream->md->cnt0;
+            m_optGainsStream->md->write = 0;
+            ImageStreamIO_sempost( m_optGainsStream, -1 );
+
+            if( m_autoUpdate || m_updateOnce || m_dump )
+            {
+                float *f = static_cast<float *>(gainShmimMonitorT::m_imageStream.array.raw);
 
                 gainShmimMonitorT::m_imageStream.md->write = 1;
 
-                for( size_t n = 0; n < m_optGain.size(); ++n )
+                if( !m_loop || m_dump )
                 {
-                    f[n] = m_optGain[n] / m_gainCals[n];
+                    for( size_t n = 0; n < m_optGain.size(); ++n )
+                    {
+                        f[n] = m_optGain[n] / m_gainCals[n];
+                    }
+                }
+                else
+                {
+                    for( size_t n = 0; n < m_optGain.size(); ++n )
+                    {
+                        f[n] = f[n] + m_gainGain * ( m_optGain[n] / m_gainCals[n] - f[n] );
+                    }
                 }
 
                 clock_gettime( CLOCK_ISIO, &gainShmimMonitorT::m_imageStream.md->writetime );
                 gainShmimMonitorT::m_imageStream.md->atime = gainShmimMonitorT::m_imageStream.md->writetime;
+                ++gainShmimMonitorT::m_imageStream.md->cnt0;
                 gainShmimMonitorT::m_imageStream.md->write = 0;
                 ImageStreamIO_sempost( &( gainShmimMonitorT::m_imageStream ), -1 );
 
-                std::cerr << "time to update!\n";
+                if( m_dump )
+                {
+                    log<text_log>( "gains updated by dump", logPrio::LOG_NOTICE );
+                    m_dump = false;
+                }
+                else if( m_updateOnce && !m_autoUpdate )
+                {
+                    log<text_log>( "gains updated once", logPrio::LOG_NOTICE );
+                }
+
+                m_updateOnce = false;
             }
 
             if( m_loop & m_autoUpdate )
@@ -1110,13 +1232,75 @@ INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_autoUpdate )( const pcf::IndiProperty
     {
         if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
         {
+            if( !m_autoUpdate )
+            {
+                log<text_log>( "updating gains", logPrio::LOG_NOTICE );
+            }
             m_autoUpdate = true;
         }
         else
         {
+            if( m_autoUpdate )
+            {
+                log<text_log>( "stopped updating gains", logPrio::LOG_NOTICE );
+            }
             m_autoUpdate = false;
         }
     }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_updateOnce )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_updateOnce, ipRecv );
+
+    if( ipRecv.find( "request" ) )
+    {
+        if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+        {
+            m_updateOnce = true;
+        }
+        else
+        {
+            m_updateOnce = false;
+        }
+    }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_dump )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dump, ipRecv );
+
+    if( ipRecv.find( "request" ) )
+    {
+        if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+        {
+            m_dump = true;
+        }
+        else
+        {
+            m_dump = false;
+        }
+    }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_gainGain )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_gainGain, ipRecv );
+
+    float target;
+    if( indiTargetUpdate( m_indiP_gainGain, target, ipRecv, true ) < 0 )
+    {
+        log<software_error>( { __FILE__, __LINE__ } );
+        return -1;
+    }
+
+    m_gainGain = target;
 
     return 0;
 }
