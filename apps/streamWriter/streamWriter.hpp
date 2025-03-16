@@ -24,6 +24,8 @@
 #define WRITING ( 2 )
 #define STOP_WRITING ( 3 )
 
+//#define SW_DEBUG
+
 namespace MagAOX
 {
 namespace app
@@ -1795,6 +1797,24 @@ int streamWriter::doEncode()
     std::cerr << "nFrames: " << nFrames << "\n";
 #endif
 
+    if(nFrames == 0) //can happend during a stop.  just clean up but don't try to write nothting.
+    {
+        #ifdef SW_DEBUG
+            std::cerr << "nothing to write\n";
+        #endif
+
+        recordSavingStats( true );
+
+        if( m_writing == STOP_WRITING )
+        {
+            m_writing = NOT_WRITING;
+            log<saving_stop>( { 0, saveStopFrameNo } );
+        }
+
+        recordSavingState( true );
+
+        return 0;
+    }
     // Configure xrif and copy image data -- this does no allocations
     int rv = xrif_set_size( m_xrif, m_width, m_height, 1, nFrames, m_dataType );
     if( rv != XRIF_NOERROR )
