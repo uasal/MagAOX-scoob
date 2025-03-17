@@ -566,7 +566,7 @@ int psdGainOpt::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
 
-    if( m_optGainsStream != nullptr)
+    if( m_optGainsStream != nullptr )
     {
         ImageStreamIO_destroyIm( m_optGainsStream );
         free( m_optGainsStream );
@@ -607,7 +607,7 @@ int psdGainOpt::allocate( const psdShmimT &dummy )
 
     if( m_optGainsStream == nullptr )
     {
-        m_optGainsStream = (IMAGE *)malloc( sizeof( IMAGE ) );
+        m_optGainsStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
         uint32_t imsize[3];
 
         imsize[0] = psdShmimMonitorT::m_height;
@@ -1141,7 +1141,7 @@ void psdGainOpt::goptThreadExec()
 
             std::cerr << "Optimization took " << dt.count() << " seconds\n";
 
-            float *f = static_cast<float *>(m_optGainsStream->array.raw);
+            float *f = m_optGainsStream->array.F;
 
             m_optGainsStream->md->write = 1;
             for( size_t n = 0; n < m_optGain.size(); ++n )
@@ -1157,7 +1157,7 @@ void psdGainOpt::goptThreadExec()
 
             if( m_autoUpdate || m_updateOnce || m_dump )
             {
-                float *f = static_cast<float *>(gainShmimMonitorT::m_imageStream.array.raw);
+                float *f = gainShmimMonitorT::m_imageStream.array.F;
 
                 gainShmimMonitorT::m_imageStream.md->write = 1;
 
