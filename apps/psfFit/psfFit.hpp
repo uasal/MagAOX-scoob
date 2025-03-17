@@ -114,11 +114,10 @@ class psfFit : public MagAOXApp<true>,
 
     float m_fpsTol{ 0 }; ///< The tolerance for detecting a change in FPS.
 
-    //shutter a change in shutter state resets stats
-    std::string m_shutterDevice;               ///< Device name for getting shutter state
-    std::string m_shutterProperty{ "shutter" };    ///< Property name for getting shutter state
-    std::string m_shutterElement{ "toggle" }; ///< Element name for getting shutter state
-
+    // shutter a change in shutter state resets stats
+    std::string m_shutterDevice;                ///< Device name for getting shutter state
+    std::string m_shutterProperty{ "shutter" }; ///< Property name for getting shutter state
+    std::string m_shutterElement{ "toggle" };   ///< Element name for getting shutter state
 
     uint16_t m_fitCircBuffMaxLength{ 5 * 10000 }; ///< Maximum length of the latency measurement circular buffers
 
@@ -160,7 +159,7 @@ class psfFit : public MagAOXApp<true>,
 
     float m_fps{ 0 }; ///< The frame rate from the source camera
 
-    bool m_shutter {false};
+    bool m_shutter{ false };
 
     mx::sigproc::circularBufferIndex<float, cbIndexT> m_pcb; ///< Circular buffer for max pixel (p=peak)
     mx::sigproc::circularBufferIndex<float, cbIndexT> m_xcb; ///< Circular buffer for x COL coords
@@ -178,8 +177,8 @@ class psfFit : public MagAOXApp<true>,
     float m_mny{ 0 };  ///< The mean y coord over the stats time
     float m_rmsy{ 0 }; ///< The rms y coord over the stats time
 
-    uint64_t m_skipped_updating {0};
-    uint64_t m_skipped_updating_last {0};
+    uint64_t m_skipped_updating{ 0 };
+    uint64_t m_skipped_updating_last{ 0 };
 
     uint64_t m_skipped_DeltaFromMax{ 0 };
     uint64_t m_skipped_DeltaFromMax_last{ 0 };
@@ -341,7 +340,6 @@ class psfFit : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_shutter;
     INDI_SETCALLBACK_DECL( psfFit, m_indiP_shutter );
 
-
     ///@}
 
     /** \name Telemeter Interface
@@ -422,32 +420,32 @@ inline void psfFit::setupConfig()
                 "Default FPS at startup, will enable changing average length with psdTime before INDI available." );
 
     config.add( "fitter.shutterDevice",
-                    "",
-                    "fitter.shutterDevice",
-                    argType::Required,
-                    "fitter",
-                    "shutterDevice",
-                    false,
-                    "string",
-                    "Device name for getting shutter state to reset circular buffers" );
-        config.add( "fitter.shutterProperty",
-                    "",
-                    "fitter.shutterProperty",
-                    argType::Required,
-                    "fitter",
-                    "shutterProperty",
-                    false,
-                    "string",
-                    "Property name for getting shutter state to reset circular buffers. Default is 'shutter'." );
-        config.add( "fitter.shutterElement",
-                    "",
-                    "fitter.shutterElement",
-                    argType::Required,
-                    "fitter",
-                    "shutterElement",
-                    false,
-                    "string",
-                    "Property name for getting shutter state to reset circular buffers. Default is 'toggle'." );
+                "",
+                "fitter.shutterDevice",
+                argType::Required,
+                "fitter",
+                "shutterDevice",
+                false,
+                "string",
+                "Device name for getting shutter state to reset circular buffers" );
+    config.add( "fitter.shutterProperty",
+                "",
+                "fitter.shutterProperty",
+                argType::Required,
+                "fitter",
+                "shutterProperty",
+                false,
+                "string",
+                "Property name for getting shutter state to reset circular buffers. Default is 'shutter'." );
+    config.add( "fitter.shutterElement",
+                "",
+                "fitter.shutterElement",
+                argType::Required,
+                "fitter",
+                "shutterElement",
+                false,
+                "string",
+                "Property name for getting shutter state to reset circular buffers. Default is 'toggle'." );
 
     config.add( "fitter.deltaPixThresh",
                 "",
@@ -636,14 +634,15 @@ inline int psfFit::appLogic()
             m_rmsy = 0;
         }
 
-        int skipped_updating = m_skipped_updating - m_skipped_updating_last;
+        int skipped_updating     = m_skipped_updating - m_skipped_updating_last;
         int skipped_DeltaFromMax = m_skipped_DeltaFromMax - m_skipped_DeltaFromMax_last;
         int skipped_MaxRmsUp     = m_skipped_MaxRmsUp - m_skipped_MaxRmsUp_last;
         int skipped_MaxRmsDown   = m_skipped_MaxRmsDown - m_skipped_MaxRmsDown_last;
         int skipped_XRms         = m_skipped_XRms - m_skipped_XRms_last;
         int skipped_YRms         = m_skipped_YRms - m_skipped_YRms_last;
 
-        if( skipped_updating || skipped_DeltaFromMax || skipped_MaxRmsUp || skipped_MaxRmsDown || skipped_XRms || skipped_YRms )
+        if( skipped_updating || skipped_DeltaFromMax || skipped_MaxRmsUp || skipped_MaxRmsDown || skipped_XRms ||
+            skipped_YRms )
         {
             std::cerr << "skipping frames: \n";
             std::cerr << "          updating: " << skipped_updating << '\n';
@@ -653,7 +652,7 @@ inline int psfFit::appLogic()
             std::cerr << "             x-rms: " << skipped_XRms << '\n';
             std::cerr << "             y-rms: " << skipped_YRms << '\n';
         }
-        m_skipped_updating = m_skipped_updating_last;
+        m_skipped_updating          = m_skipped_updating_last;
         m_skipped_DeltaFromMax_last = m_skipped_DeltaFromMax;
         m_skipped_MaxRmsUp_last     = m_skipped_MaxRmsUp;
         m_skipped_MaxRmsDown_last   = m_skipped_MaxRmsDown;
@@ -764,8 +763,6 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
     // static int skip_interval = 10;
     // static int last_passed = skip_interval + 1;
 
-
-
     std::unique_lock<std::mutex> lock( m_imageMutex );
 
     if( m_dark.rows() == m_image.rows() && m_dark.cols() == m_image.cols() )
@@ -774,14 +771,14 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
         {
             for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
             {
-                m_image.data()[nn] = ( (uint16_t *)curr_src )[nn] - m_dark.data()[nn];
+                m_image.data()[nn] = ( reinterpret_cast<uint16_t *>( curr_src ) )[nn] - m_dark.data()[nn];
             }
         }
         else if( shmimMonitorT::m_dataType == _DATATYPE_FLOAT )
         {
             for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
             {
-                m_image.data()[nn] = ( (float *)curr_src )[nn] - m_dark.data()[nn];
+                m_image.data()[nn] = ( reinterpret_cast<float *>( curr_src ) )[nn] - m_dark.data()[nn];
             }
         }
     }
@@ -791,14 +788,14 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
         {
             for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
             {
-                m_image.data()[nn] = ( (uint16_t *)curr_src )[nn];
+                m_image.data()[nn] = ( reinterpret_cast<uint16_t *>( curr_src ) )[nn];
             }
         }
         else if( shmimMonitorT::m_dataType == _DATATYPE_FLOAT )
         {
             for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
             {
-                m_image.data()[nn] = ( (float *)curr_src )[nn];
+                m_image.data()[nn] = ( reinterpret_cast<float *>( curr_src ) )[nn];
             }
         }
     }
@@ -808,8 +805,8 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
     float max;
     realT local_x = 0;
     realT local_y = 0;
-    int   x = 0;
-    int   y = 0;
+    int   x       = 0;
+    int   y       = 0;
 
     max = m_image.maxCoeff( &x, &y );
 
@@ -817,12 +814,12 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
 
     bool local_skipped = false;
 
-    if(m_shutter)
+    if( m_shutter )
     {
-        local_skipped = true; //silently skip when shutter closed
+        local_skipped = true; // silently skip when shutter closed
     }
 
-    if( !local_skipped && (fabs( local_x - x ) > m_deltaPixThresh || fabs( local_y - y ) > m_deltaPixThresh) )
+    if( !local_skipped && ( fabs( local_x - x ) > m_deltaPixThresh || fabs( local_y - y ) > m_deltaPixThresh ) )
     {
         ++m_skipped_DeltaFromMax;
         local_skipped = true;
@@ -864,7 +861,7 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
         local_skipped = true;
     }
 
-    if( !local_skipped && ( ( m_mnp - max ) / m_mnp > (1.0 - m_fractionMaxThreshDown)) )
+    if( !local_skipped && ( ( m_mnp - max ) / m_mnp > ( 1.0 - m_fractionMaxThreshDown ) ) )
     {
         if( m_pcb.maxEntries() > 0 )
         {
@@ -926,15 +923,15 @@ inline int psfFit::processImage( void *curr_src, const dev::shmimT &dummy )
         }
     }
 
-    if(m_updated == true) //means the framegrabber hasn't posted the last one yet
+    if( m_updated == true ) // means the framegrabber hasn't posted the last one yet
     {
         ++m_skipped_updating;
         return 0;
     }
 
     m_skipped = local_skipped;
-    m_x = local_x;
-    m_y = local_y;
+    m_x       = local_x;
+    m_y       = local_y;
 
     m_updated = true;
 
@@ -987,7 +984,7 @@ int psfFit::processImage( void *curr_src, const darkShmimT &dummy )
 
     for( unsigned nn = 0; nn < darkShmimMonitorT::m_width * darkShmimMonitorT::m_height; ++nn )
     {
-        m_dark.data()[nn] = ( (float *)curr_src )[nn];
+        m_dark.data()[nn] = ( reinterpret_cast<float *>( curr_src ) )[nn];
     }
 
     lock.unlock();
@@ -1022,7 +1019,7 @@ int psfFit::processImage( void *curr_src, const refShmimT &dummy )
 
     for( unsigned nn = 0; nn < refShmimMonitorT::m_width * refShmimMonitorT::m_height; ++nn )
     {
-        m_ref.data()[nn] = ( (float *)curr_src )[nn];
+        m_ref.data()[nn] = ( reinterpret_cast<float *>( curr_src ) )[nn];
     }
 
     lock.unlock();
@@ -1081,13 +1078,13 @@ inline int psfFit::loadImageIntoStream( void *dest )
 {
     if( !m_skipped )
     {
-        ( (float *)dest )[0] = m_x - m_dx;
-        ( (float *)dest )[1] = m_y - m_dy;
+        ( reinterpret_cast<float *>( dest ) )[0] = m_x - m_dx;
+        ( reinterpret_cast<float *>( dest ) )[1] = m_y - m_dy;
     }
     else
     {
-        ( (float *)dest )[0] = m_x;
-        ( (float *)dest )[1] = m_y;
+        ( reinterpret_cast<float *>( dest ) )[0] = m_x;
+        ( reinterpret_cast<float *>( dest ) )[1] = m_y;
     }
 
     m_updated = false;
@@ -1289,7 +1286,7 @@ INDI_SETCALLBACK_DEFN( psfFit, m_indiP_shutter )( const pcf::IndiProperty &ipRec
     std::lock_guard<std::mutex> guard( m_indiMutex );
 
     bool shutter;
-    if(ipRecv[m_shutterElement].getSwitchState() == pcf::IndiElement::On)
+    if( ipRecv[m_shutterElement].getSwitchState() == pcf::IndiElement::On )
     {
         shutter = true;
     }
@@ -1298,7 +1295,7 @@ INDI_SETCALLBACK_DEFN( psfFit, m_indiP_shutter )( const pcf::IndiProperty &ipRec
         shutter = false;
     }
 
-    if(shutter != m_shutter  )
+    if( shutter != m_shutter )
     {
         m_shutter = shutter;
 
