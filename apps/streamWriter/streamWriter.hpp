@@ -809,7 +809,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno         = 0;
-    m_xrif_header = (char *)malloc( XRIF_HEADER_SIZE * sizeof( char ) );
+    m_xrif_header = reinterpret_cast< char *>(malloc( XRIF_HEADER_SIZE * sizeof( char ) ));
     if( m_xrif_header == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "xrif header allocation failed." } );
@@ -830,7 +830,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno                = 0;
-    m_xrif_timing_header = (char *)malloc( XRIF_HEADER_SIZE * sizeof( char ) );
+    m_xrif_timing_header = reinterpret_cast< char *>(malloc( XRIF_HEADER_SIZE * sizeof( char ) ));
     if( m_xrif_timing_header == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "xrif header allocation failed." } );
@@ -921,7 +921,7 @@ void streamWriter::getCircBuffLengths( size_t  &circBuffLength,
     {
         --circBuffLength;
     }
-    
+
     circBuffSize   = ( width * height * typeSize * circBuffLength ) / MB;
 
     writeChunkLength = ( 1.0 * maxWriteChunkLength / maxCircBuffLength ) * circBuffLength;
@@ -986,7 +986,7 @@ int streamWriter::allocate_circbufs()
     }
 
     errno              = 0;
-    m_rawImageCircBuff = (char *)malloc( m_width * m_height * m_typeSize * m_circBuffLength );
+    m_rawImageCircBuff = reinterpret_cast< char *>(malloc( m_width * m_height * m_typeSize * m_circBuffLength ));
 
     if( m_rawImageCircBuff == NULL )
     {
@@ -999,7 +999,7 @@ int streamWriter::allocate_circbufs()
     }
 
     errno            = 0;
-    m_timingCircBuff = (uint64_t *)malloc( 5 * sizeof( uint64_t ) * m_circBuffLength );
+    m_timingCircBuff = reinterpret_cast<uint64_t *>(malloc( 5 * sizeof( uint64_t ) * m_circBuffLength ));
     if( m_timingCircBuff == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "buffer allocation failure" } );
@@ -1343,7 +1343,7 @@ void streamWriter::fgThreadExec()
                 last_cnt0 = new_cnt0;
 
                 char *curr_dest = m_rawImageCircBuff + m_currImage * m_width * m_height * m_typeSize;
-                char *curr_src  = (char *)image.array.raw + curr_image * m_width * m_height * m_typeSize;
+                char *curr_src  = reinterpret_cast< char *>(image.array.raw) + curr_image * m_width * m_height * m_typeSize;
 
                 memcpy( curr_dest, curr_src, m_width * m_height * m_typeSize );
 
@@ -1723,7 +1723,7 @@ void streamWriter::swThreadExec()
             m_fnameBase = m_rawimageDir + "/" + m_outName + "_";
 
             m_fnameSz = m_fnameBase.size() + sizeof( "YYYYMMDDHHMMSSNNNNNNNNN.xrif" ); // the sizeof includes the \0
-            m_fname   = (char *)malloc( m_fnameSz );
+            m_fname   = reinterpret_cast< char *>(malloc( m_fnameSz ));
 
             snprintf( m_fname, m_fnameSz, "%sYYYYMMDDHHMMSSNNNNNNNNN.xrif", m_fnameBase.c_str() );
         }
@@ -1886,7 +1886,7 @@ int streamWriter::doEncode()
 
     // Now break down the acq time of the first image in the buffer for use in file name
     tm        uttime; // The broken down time.
-    timespec *fts = (timespec *)( m_timingCircBuff + saveStart * 5 + 1 );
+    timespec *fts = reinterpret_cast< timespec *>( m_timingCircBuff + saveStart * 5 + 1 );
 
     if( gmtime_r( &fts->tv_sec, &uttime ) == 0 )
     {
