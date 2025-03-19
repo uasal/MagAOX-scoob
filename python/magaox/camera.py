@@ -119,28 +119,28 @@ class XCam():
 		if 'emgain' in self._client[self.shm_name]:
 			return self._client[self.shm_name + '.emgain.current']
 		else:
-			raise MissingValueError("This camera has no emgain.")
+			raise ValueError("This camera has no emgain.")
 
 	@emgain.setter
 	def emgain(self, new_emgain):
 		if 'emgain' in self._client[self.shm_name]:
 			self._client[self.shm_name + '.emgain.target'] = new_emgain
 		else:
-			raise MissingValueError("This camera has no emgain.")
+			raise ValueError("This camera has no emgain.")
 
 	@property
 	def temperature(self):
 		if 'temp_ccd' in self._client[self.shm_name]:
 			return self._client[self.shm_name + '.temp_ccd.current']
 		else:
-			raise MissingValueError("This camera has no temperature monitor.")
+			raise ValueError("This camera has no temperature monitor.")
 
 	@temperature.setter
 	def temperature(self, new_temperature):
 		if 'temp_ccd' in self._client[self.shm_name]:
 			self._client[self.shm_name + '.temp_ccd.target'] = new_temperature
 		else:
-			raise MissingValueError("This camera has no temperature monitor.")
+			raise ValueError("This camera has no temperature monitor.")
 
 	@property
 	def shutter(self):
@@ -150,8 +150,10 @@ class XCam():
 	def shutter(self, shutter_state):
 		self._client[self.shm_name + '.shutter.toggle'] = indi.SwitchState.ON if shutter_state else indi.SwitchState.OFF
 
-	def process(self, data):
-		if self._dark_exists:
+	def process(self, data, subtract_dark):
+		if subtract_dark and not self._dark_exists:
+			raise RuntimeError("No dark found, but subtract_dark=False was not supplied")
+		elif self._dark_exists and subtract_dark:
 			if np.all(self.dark_shmim.md.size == self.shmim.md.size):
 				arr = data - self.dark_shmim.copy().astype(float)
 		else:
@@ -161,7 +163,7 @@ class XCam():
 			arr = Field(arr.ravel(), self.grid)
 		return arr
 
-	def grab(self, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
+	def grab(self, timeout=DEFAULT_TIMEOUT_SEC, subtract_dark=True) -> Union[np.ndarray, 'hcipy.Field']:
 		self._old_counter = self.counter
 		data = self.shmim.get_data(check=True, timeout=timeout).astype(float)
 		
@@ -170,10 +172,10 @@ class XCam():
 		else:
 			self._old_counter = self.counter
 		
-		data = self.process(data)
+		data = self.process(data, subtract_dark)
 		return data
 
-	def grab_stack(self, num_images, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
+	def grab_stack(self, num_images, timeout=DEFAULT_TIMEOUT_SEC, subtract_dark=True) -> Union[np.ndarray, 'hcipy.Field']:
 		stacked_image = 0
 		k = 0
 		for i in range(num_images):
@@ -192,6 +194,5 @@ class XCam():
 		if k != 0:
 			stacked_image = stacked_image / k
 
-		stacked_image = self.process(stacked_image)
+		stacked_image = self.process(stacked_image, subtract_dark)
 		return stacked_image
-		
