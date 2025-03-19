@@ -228,6 +228,7 @@ class States(Enum):
     IDLE = 0
     CLOSED_LOOP = 1 
     ONESHOT = 2 
+    CALIB = 3
 
 class adcCtrl(XDevice):
     config: AdcCtrlConfig
@@ -247,14 +248,8 @@ class adcCtrl(XDevice):
         sv.add_element(DefSwitch(name="idle", _value=constants.SwitchState.ON))
         sv.add_element(DefSwitch(name="adcLoop", _value=constants.SwitchState.OFF)) 
         sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF)) 
+        sv.add_element(DefSwitch(name="calibrate", _value=constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_state) 
-
-        # nv = properties.NumberVector(name='counter')
-        # nv.add_element(DefNumber(
-        #     name= '_loop_counter', label= 'Loop Counter', format= '%i',
-        #     min= 0, max= 2**32 - 1, step=1, _value= 0
-        # ))
-        # self.add_property(nv)
 
         nv = properties.NumberVector(name='n_avg')
         nv.add_element(DefNumber(
@@ -278,6 +273,17 @@ class adcCtrl(XDevice):
         ))
         self.add_property(nv, callback=self.handle_gain)
 
+        nv = properties.NumberVector(name='ctrl_mtx')
+        nv.add_element(DefNumber( #first element
+            name='m00', label='m00', format='%.4f',
+            min=-10.00, max=10.00, step=0.0001, _value=-0.2231 #default from matrix calc in november
+        ))
+        nv.add_element(DefNumber( 
+            name='m01', label='m01', format='%.4f',
+            min=-10.00, max=10.00, step=0.0001, _value=-0.2298 #default from matrix calc in november
+        ))
+        self.add_property(nv, callback=self.handle_ctrl_mtx) 
+
         self.client.get_properties('adctrack')
         self.client.get_properties('fwsci1')
 
@@ -299,6 +305,7 @@ class adcCtrl(XDevice):
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
             self._center_wavelength = 908E-9
         else: self._center_wavelength = 656E-9
+        self.log.debug(f'using center wavelength: {self._center_wavelength*1E9} nm')
 
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
         self.ADC.set_control_mtx(self._control_mtx)
@@ -307,7 +314,7 @@ class adcCtrl(XDevice):
         self.update_property(self.properties['fsm'])
 
     def handle_state(self, existing_property, new_message):        
-        target_list = ['idle', 'adcLoop', 'oneshot']
+        target_list = ['idle', 'adcLoop', 'oneshot','calibrate']
         for key in target_list: 
             if existing_property[key] == constants.SwitchState.ON: 
                 current_state = key
@@ -328,6 +335,9 @@ class adcCtrl(XDevice):
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
+                    elif key == 'calibrate':
+                        self._state = States.CALIB
+                        self.properties['fsm']['state'] = StateCodes.OPERATING.name
 
             self.update_property(existing_property)
             self.update_property(self.properties['fsm'])
@@ -345,6 +355,9 @@ class adcCtrl(XDevice):
             existing_property['target'] = new_message['target'] 
             self._gain = float(new_message['target'])
         self.update_property(existing_property)
+
+    def handle_ctrl_mtx(self, existing_property, new_message):
+        pass
 
     def transition_to_idle(self):
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
@@ -388,8 +401,8 @@ class adcCtrl(XDevice):
             self._command = self._command + self._gain * error
             
             if np.all(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
-                self.set(np.squeeze(self._command),0) 
-                self.send()
+                self.set_command(np.squeeze(self._command),0) 
+                self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
 
@@ -413,6 +426,43 @@ class adcCtrl(XDevice):
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
+            self.transition_to_idle()
+
+        elif self._state == States.CALIB:
+            sweep_angles = np.linspace(-3,3,26)
+            diff_pointing_pairs = np.zeros((len(sweep_angles),2)) 
+
+            for i, orientation in enumerate(sweep_angles):
+                self.log.info("Step {:d}".format(i))
+                self.set_command(orientation, 0)
+                self.send_command()
+
+                img = self.camera.grab_stack(self._n_avg)
+                self.ADC.filter_image(img)
+                self.ADC.crop_image(img)
+                self.ADC.set_psf(img)
+                
+                angles = self.ADC.find_speckle_angles2()
+                pointing_pair = self.ADC.speckle_pairs(angles)
+                diff_pointing_pairs[i,] = pointing_pair
+
+            a1 = np.zeros(2)
+            b1 = np.zeros(2)
+
+            for j in range(2):
+                b1[j] , a1[j] = np.polyfit(sweep_angles,diff_pointing_pairs[:,j],deg=1)
+
+            response = np.matrix([b1])
+            new_control_mtx = np.linalg.pinv(response)
+
+            self._control_mtx = new_control_mtx
+            self.ADC.set_control_mtx(self._control_mtx)
+            self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
+
+            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0]
+            self.properties['ctrl_mtx']['m01'] = self._control_mtx[1]
+            self.update_property(self.properties['ctrl_mtx'])
+            
             self.transition_to_idle()
 
 
