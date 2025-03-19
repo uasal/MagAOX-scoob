@@ -11,8 +11,8 @@
 
 #include <xrif/xrif.h>
 
-
-
+#include <sstream>
+#include <iomanip>
 
 #include <mx/ioutils/fileUtils.hpp>
 #include <mx/improc/eigenCube.hpp>
@@ -117,6 +117,9 @@ public:
                            logFileName & lfn,
                            std::vector<logMeta> & logMetas
                          );
+
+   std::string format_nano(uint64_t n);
+
 };
 
 inline
@@ -659,7 +662,7 @@ int xrif2fits::execute()
          
          if(!m_noMeta)
          {
-            metaOut << dateobs << " " << cnt0 << " " << atime.tv_sec << " " << atime.tv_nsec << " " << wtime.tv_sec << " " << wtime.tv_nsec << " ";
+            metaOut << dateobs << " " << cnt0 << " " << atime.tv_sec << " " << format_nano(atime.tv_nsec) << " " << wtime.tv_sec << " " << format_nano(wtime.tv_nsec) << " ";
          }
          
          if(exptime > -1)
@@ -680,9 +683,9 @@ int xrif2fits::execute()
 
          fh.append("FRAMENO", cnt0);
          fh.append("ACQSEC", atime.tv_sec);
-         fh.append("ACQNSEC", atime.tv_nsec);
+         fh.append("ACQNSEC", format_nano(atime.tv_nsec));
          fh.append("WRTSEC", wtime.tv_sec);
-         fh.append("WRTNSEC", wtime.tv_nsec);
+         fh.append("WRTNSEC", format_nano(wtime.tv_nsec));
 
 
          if(!m_noMeta) metaOut << "\n";
@@ -806,9 +809,9 @@ int xrif2fits::writeFloat( int n,
          
          fh.append("FRAMENO", cnt0);
          fh.append("ACQSEC", atime.tv_sec);
-         fh.append("ACQNSEC", atime.tv_nsec);
+         fh.append("ACQNSEC", format_nano(atime.tv_nsec));
          fh.append("WRTSEC", wtime.tv_sec);
-         fh.append("WRTNSEC", wtime.tv_nsec);
+         fh.append("WRTNSEC", format_nano(wtime.tv_nsec));
 
 
          mx::improc::eigenImage<float> im = tmpc.image(q);
@@ -817,5 +820,12 @@ int xrif2fits::writeFloat( int n,
       
    return 0;
 }
+
+inline
+std::string xrif2fits::format_nano(uint64_t n) {
+    std::ostringstream oss;
+    oss << std::setw(9) << std::setfill('0') << n;
+    return oss.str();
+};
 
 #endif //xrif2fits_hpp
