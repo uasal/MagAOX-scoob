@@ -1123,14 +1123,14 @@ int ocam2KCtrl::getEMGain()
          if(response.find("HV") != std::string::npos)
          {
             m_emGain = 1;
-            return log<software_warning, -1>({__FILE__, __LINE__, "EM Gain tripped!"});
             updateIfChanged(m_indiP_emProt, "status", std::string("TRIPPED"), INDI_ALERT);
-            return 0;
+            return log<software_warning, -1>({__FILE__, __LINE__, "EM Gain tripped!"});
+
          }
 
          std::cerr << "EM Gain parse error, response:\n" << response << "\n";
 
-         return log<software_error, 0>({__FILE__, __LINE__, "EM Gain parse error"});
+         return log<software_error, -1>({__FILE__, __LINE__, "EM Gain parse error"});
       }
 
       m_emGain = emGain;
@@ -1345,7 +1345,7 @@ int ocam2KCtrl::acquireAndCheckValid()
   
    //Get the image number to see if this is valid.
    //This is how it is in the ocam2_sdk:
-   unsigned currImageNumber = ((int *)m_image_p)[OCAM2_IMAGE_NB_OFFSET/4]; /* int offset */
+   unsigned currImageNumber = (reinterpret_cast<int *>(m_image_p))[OCAM2_IMAGE_NB_OFFSET/4]; /* int offset */
    m_currImageNumber = currImageNumber;
    
    //For the first loop after a restart

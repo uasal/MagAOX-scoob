@@ -111,183 +111,183 @@ protected:
    IMAGE m_edgeShmim;
    bool m_edgeShmimConnected {false};
 
-   double m_defSetx1 {29.5};
-   double m_defSety1 {29.5};
-   double m_defSetD1 {56.0};
+   float m_defSetx1 {29.5};
+   float m_defSety1 {29.5};
+   float m_defSetD1 {56.0};
 
-   double m_defSetx2 {89.5};
-   double m_defSety2 {29.5};
-   double m_defSetD2 {56.0};
+   float m_defSetx2 {89.5};
+   float m_defSety2 {29.5};
+   float m_defSetD2 {56.0};
 
-   double m_defSetx3 {29.5};
-   double m_defSety3 {89.5};
-   double m_defSetD3 {56.0};
+   float m_defSetx3 {29.5};
+   float m_defSety3 {89.5};
+   float m_defSetD3 {56.0};
 
-   double m_defSetx4 {89.5};
-   double m_defSety4 {89.5};
-   double m_defSetD4 {56.0};
+   float m_defSetx4 {89.5};
+   float m_defSety4 {89.5};
+   float m_defSetD4 {56.0};
 
-   double m_userSetx1 {29.5};
-   double m_userSety1 {29.5};
-   double m_userSetD1 {56.0};
+   float m_userSetx1 {29.5};
+   float m_userSety1 {29.5};
+   float m_userSetD1 {56.0};
 
-   double m_userSetx2 {89.5};
-   double m_userSety2 {29.5};
-   double m_userSetD2 {56.0};
+   float m_userSetx2 {89.5};
+   float m_userSety2 {29.5};
+   float m_userSetD2 {56.0};
 
-   double m_userSetx3 {29.5};
-   double m_userSety3 {89.5};
-   double m_userSetD3 {56.0};
+   float m_userSetx3 {29.5};
+   float m_userSety3 {89.5};
+   float m_userSetD3 {56.0};
 
-   double m_userSetx4 {89.5};
-   double m_userSety4 {89.5};
-   double m_userSetD4 {56.0};
+   float m_userSetx4 {89.5};
+   float m_userSety4 {89.5};
+   float m_userSetD4 {56.0};
 
    int m_setPointSource {USEDEFSET};
 
    bool m_refUpdated {false}; ///< Flag set if the online reference update is used.
 
-   double m_setx1 {29.5};
-   double m_sety1 {29.5};
-   double m_setD1 {56.0};
+   float m_setx1 {29.5};
+   float m_sety1 {29.5};
+   float m_setD1 {56.0};
 
-   double m_setx2 {89.5};
-   double m_sety2 {29.5};
-   double m_setD2 {56.0};
+   float m_setx2 {89.5};
+   float m_sety2 {29.5};
+   float m_setD2 {56.0};
 
-   double m_setx3 {29.5};
-   double m_sety3 {89.5};
-   double m_setD3 {56.0};
+   float m_setx3 {29.5};
+   float m_sety3 {89.5};
+   float m_setD3 {56.0};
 
-   double m_setx4 {89.5};
-   double m_sety4 {89.5};
-   double m_setD4 {56.0};
+   float m_setx4 {89.5};
+   float m_sety4 {89.5};
+   float m_setD4 {56.0};
 
-   double m_avg_dx;
-   double m_avg_dy;
+   float m_avg_dx {0};
+   float m_avg_dy {0};
 
    bool m_averaging {false};
    size_t m_navg {0};
 
-   double m_avgx1_accum {0};
-   double m_avgx1sq_accum {0};
+   float m_avgx1_accum {0};
+   float m_avgx1sq_accum {0};
 
-   double m_avgy1_accum {0};
-   double m_avgy1sq_accum {0};
+   float m_avgy1_accum {0};
+   float m_avgy1sq_accum {0};
 
-   double m_avgD1_accum {0};
-   double m_avgD1sq_accum {0};
+   float m_avgD1_accum {0};
+   float m_avgD1sq_accum {0};
 
-   double m_avgmed1_accum {0};
-   double m_avgmed1sq_accum {0};
+   float m_avgmed1_accum {0};
+   float m_avgmed1sq_accum {0};
 
-   double m_avgx1 {0};
-   double m_varx1 {0};
+   float m_avgx1 {0};
+   float m_varx1 {0};
 
-   double m_avgy1 {0};
-   double m_vary1 {0};
+   float m_avgy1 {0};
+   float m_vary1 {0};
 
-   double m_avgD1 {0};
-   double m_varD1 {0};
+   float m_avgD1 {0};
+   float m_varD1 {0};
 
-   double m_avgmed1 {0};
-   double m_varmed1 {0};
+   float m_avgmed1 {0};
+   float m_varmed1 {0};
 
-   double m_avgx2_accum {0};
-   double m_avgx2sq_accum {0};
+   float m_avgx2_accum {0};
+   float m_avgx2sq_accum {0};
 
-   double m_avgy2_accum {0};
-   double m_avgy2sq_accum {0};
+   float m_avgy2_accum {0};
+   float m_avgy2sq_accum {0};
 
-   double m_avgD2_accum {0};
-   double m_avgD2sq_accum {0};
+   float m_avgD2_accum {0};
+   float m_avgD2sq_accum {0};
 
-   double m_avgmed2_accum {0};
-   double m_avgmed2sq_accum {0};
+   float m_avgmed2_accum {0};
+   float m_avgmed2sq_accum {0};
 
-   double m_avgx2 {0};
-   double m_varx2 {0};
+   float m_avgx2 {0};
+   float m_varx2 {0};
 
-   double m_avgy2 {0};
-   double m_vary2 {0};
+   float m_avgy2 {0};
+   float m_vary2 {0};
 
-   double m_avgD2 {0};
-   double m_varD2 {0};
+   float m_avgD2 {0};
+   float m_varD2 {0};
 
-   double m_avgmed2 {0};
-   double m_varmed2 {0};
+   float m_avgmed2 {0};
+   float m_varmed2 {0};
 
-   double m_avgx3_accum {0};
-   double m_avgx3sq_accum {0};
+   float m_avgx3_accum {0};
+   float m_avgx3sq_accum {0};
 
-   double m_avgy3_accum {0};
-   double m_avgy3sq_accum {0};
+   float m_avgy3_accum {0};
+   float m_avgy3sq_accum {0};
 
-   double m_avgD3_accum {0};
-   double m_avgD3sq_accum {0};
+   float m_avgD3_accum {0};
+   float m_avgD3sq_accum {0};
 
-   double m_avgmed3_accum {0};
-   double m_avgmed3sq_accum {0};
+   float m_avgmed3_accum {0};
+   float m_avgmed3sq_accum {0};
 
-   double m_avgx3 {0};
-   double m_varx3 {0};
+   float m_avgx3 {0};
+   float m_varx3 {0};
 
-   double m_avgy3 {0};
-   double m_vary3 {0};
+   float m_avgy3 {0};
+   float m_vary3 {0};
 
-   double m_avgD3 {0};
-   double m_varD3 {0};
+   float m_avgD3 {0};
+   float m_varD3 {0};
 
-   double m_avgmed3 {0};
-   double m_varmed3 {0};
+   float m_avgmed3 {0};
+   float m_varmed3 {0};
 
-   double m_avgx4_accum {0};
-   double m_avgx4sq_accum {0};
+   float m_avgx4_accum {0};
+   float m_avgx4sq_accum {0};
 
-   double m_avgy4_accum {0};
-   double m_avgy4sq_accum {0};
+   float m_avgy4_accum {0};
+   float m_avgy4sq_accum {0};
 
-   double m_avgD4_accum {0};
-   double m_avgD4sq_accum {0};
+   float m_avgD4_accum {0};
+   float m_avgD4sq_accum {0};
 
-   double m_avgmed4_accum {0};
-   double m_avgmed4sq_accum {0};
+   float m_avgmed4_accum {0};
+   float m_avgmed4sq_accum {0};
 
-   double m_avgx4 {0};
-   double m_varx4 {0};
+   float m_avgx4 {0};
+   float m_varx4 {0};
 
-   double m_avgy4 {0};
-   double m_vary4 {0};
+   float m_avgy4 {0};
+   float m_vary4 {0};
 
-   double m_avgD4 {0};
-   double m_varD4 {0};
+   float m_avgD4 {0};
+   float m_varD4 {0};
 
-   double m_avgmed4 {0};
-   double m_varmed4 {0};
+   float m_avgmed4 {0};
+   float m_varmed4 {0};
 
-   double m_avgxAll_accum {0};
-   double m_avgxAllsq_accum {0};
+   float m_avgxAll_accum {0};
+   float m_avgxAllsq_accum {0};
 
-   double m_avgyAll_accum {0};
-   double m_avgyAllsq_accum {0};
+   float m_avgyAll_accum {0};
+   float m_avgyAllsq_accum {0};
 
-   double m_avgDAll_accum {0};
-   double m_avgDAllsq_accum {0};
+   float m_avgDAll_accum {0};
+   float m_avgDAllsq_accum {0};
 
-   double m_avgmedAll_accum {0};
-   double m_avgmedAllsq_accum {0};
+   float m_avgmedAll_accum {0};
+   float m_avgmedAllsq_accum {0};
 
-   double m_avgxAll {0};
-   double m_varxAll {0};
+   float m_avgxAll {0};
+   float m_varxAll {0};
 
-   double m_avgyAll {0};
-   double m_varyAll {0};
+   float m_avgyAll {0};
+   float m_varyAll {0};
 
-   double m_avgDAll {0};
-   double m_varDAll {0};
+   float m_avgDAll {0};
+   float m_varDAll {0};
 
-   double m_avgmedAll {0};
-   double m_varmedAll {0};
+   float m_avgmedAll {0};
+   float m_varmedAll {0};
 
 public:
    /// Default c'tor.
@@ -908,9 +908,6 @@ int pupilFit::allocate(const dev::shmimT & dummy)
    ImageStreamIO_createIm_gpu(&m_edgeShmim , m_edgeShmimName.c_str(), 3, imsize, shmimMonitorT::m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 0, CIRCULAR_BUFFER | ZAXIS_TEMPORAL,0);
    m_edgeShmimConnected = true;
 
-   if(m_edgeShmimConnected)
-   {
-   }
 
    return 0;
 }
@@ -924,7 +921,7 @@ int pupilFit::processImage( void* curr_src,
 
    for(unsigned nn=0; nn < shmimMonitorT::m_width*shmimMonitorT::m_height; ++nn)
    {
-      m_fitIm.data()[nn] = ((float*)curr_src) [nn];
+      m_fitIm.data()[nn] = (reinterpret_cast<float *>(curr_src)) [nn];
    }
 
    m_fitter.m_thresh = m_threshold;
@@ -1113,7 +1110,7 @@ int pupilFit::processImage( void* curr_src,
 
       if(m_numPupils == 3)
       {
-         double tmp = 0.333*(m_fitter.m_avgx[0]+m_fitter.m_avgx[1]+m_fitter.m_avgx[2]+m_fitter.m_avgx[3]);
+         float tmp = 0.333*(m_fitter.m_avgx[0]+m_fitter.m_avgx[1]+m_fitter.m_avgx[2]+m_fitter.m_avgx[3]);
          m_avgxAll_accum += tmp;
          m_avgxAllsq_accum += tmp*tmp;
 
@@ -1188,7 +1185,7 @@ int pupilFit::processImage( void* curr_src,
          m_varmed4 = m_avgmed4sq_accum / m_navg - m_avgmed4*m_avgmed4;
 
 
-         double tmp = 0.25*(m_fitter.m_avgx[0]+m_fitter.m_avgx[1]+m_fitter.m_avgx[2]+m_fitter.m_avgx[3]);
+         float tmp = 0.25*(m_fitter.m_avgx[0]+m_fitter.m_avgx[1]+m_fitter.m_avgx[2]+m_fitter.m_avgx[3]);
          m_avgxAll_accum += tmp;
          m_avgxAllsq_accum += tmp*tmp;
 
@@ -1293,7 +1290,7 @@ int pupilFit::processImage( void* curr_src,
    int npix = 0;
    for(unsigned nn=0; nn < refShmimMonitorT::m_width*refShmimMonitorT::m_height; ++nn)
    {
-      m_refIm.data()[nn] = ((float*)curr_src) [nn];
+      m_refIm.data()[nn] = (reinterpret_cast<float *>(curr_src)) [nn];
       ++npix;
    }
 
@@ -1358,8 +1355,8 @@ int pupilFit::acquireAndCheckValid()
 inline
 int pupilFit::loadImageIntoStream(void * dest)
 {
-   ((float *) dest)[0] = m_avg_dx;
-   ((float *) dest)[1] = m_avg_dy;
+   (reinterpret_cast<float *>(dest))[0] = m_avg_dx;
+   (reinterpret_cast<float *>(dest))[1] = m_avg_dy;
 
    m_updated = false;
    return 0;

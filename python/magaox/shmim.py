@@ -34,7 +34,8 @@ class Image(ImageStreamIOWrap.Image):
         if check:
             if self.semID is None:
                 self.semID = self.getsemwaitindex(0)
-                self.semflush(self.semID)
+            
+            self.semflush(self.semID)
             if timeout is None:
                 self.semwait(self.semID)
             else:
