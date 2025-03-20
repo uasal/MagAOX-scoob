@@ -201,6 +201,7 @@ class psdGainOpt : public MagAOXApp<true>,
 
     std::string m_optGainsShmimName;
 
+    IMAGE *m_olPSDStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
     IMAGE *m_optGainsStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
 
   public:
@@ -456,7 +457,7 @@ int psdGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     tauShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( tauShmimMonitorT, _config );
 
-    snprintf( shmim, sizeof( shmim ), "aol%d_optimalGains", m_loopNum );
+    snprintf( shmim, sizeof( shmim ), "aol%d_optimalgains", m_loopNum );
     m_optGainsShmimName = shmim;
     return 0;
 }
