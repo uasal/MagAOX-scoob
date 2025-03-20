@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <ctime>
+#include <time.h>
 #include <chrono>
 #include <cstdlib> 
 #include <dirent.h>
@@ -155,6 +156,11 @@ int currentBufIndex;
 int bufferCount; // length of queue
 int bufferSize;  // how many bytes per buffer index
 int camIndex;
+
+struct CameraTimestamp {
+    long seconds;
+    long nanoseconds;
+} cameraTimestamp;
 
 int openCamera(const char* device) {
     fd = open(device, O_RDWR);
@@ -340,6 +346,10 @@ int dequeueBuffer(int buf_index){
 		//throw std::runtime_error("Failed to dequeue buffer");
         return -1;
 	}
+
+    cameraTimestamp.seconds = bufdq.timestamp.tv_sec;
+    cameraTimestamp.nanoseconds = bufdq.timestamp.tv_usec * 1000;
+
     currentBufIndex = bufdq.index;  //returns index of image dequeued (FIFO)
     return currentBufIndex;
 }

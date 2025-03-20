@@ -1351,8 +1351,7 @@ int nsvCtrl::acquireAndCheckValid()
 {
    if(m_init)
    {
-      uint dmaTimeStamp[2];
-
+      
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
       if(m_current_frame == -1){ //fd is gone once powered off, so dequeue will fail
          /*
@@ -1374,14 +1373,9 @@ int nsvCtrl::acquireAndCheckValid()
          m_oldest_frame = 0; 
       }
 
-      time_t seconds = time(0); 
-      auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
-
-      dmaTimeStamp[0] = seconds;  // timing info for cam
-      dmaTimeStamp[1] = nanoseconds.count();
-
-      m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
-      m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+      // get timing information stored for the camera frame that was just dequeued
+      m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
+      m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
 
    }
 
@@ -1392,7 +1386,7 @@ inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
    //if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[m_current_frame], m_width, m_height, m_typeSize) == nullptr) return -1;
-   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return log<software_error,-1>({__FILE__, __LINE__, "grabbing subframe failed"});;
+   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return log<software_error,-1>({__FILE__, __LINE__, "grabbing subframe failed"});
    return 0;
 }
 
@@ -1400,7 +1394,7 @@ inline
 int nsvCtrl::writeROISubframe()
 {
    
-   uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
+   uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]); // need to static cast for appriate camera bitdepth
    uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
 
    // shouldn't have to threshold these here. Should have some indi blocker for invalid x and y...?
