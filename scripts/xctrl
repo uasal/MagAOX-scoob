@@ -151,7 +151,7 @@ class Process:
         if self.session_exists and self.pid_exists:
             return RUNNING, message + f"running (pid: {self.pid})"
         elif self.session_exists and self.pid_file_exists and not self.pid_exists:
-            return DEAD, message + "dead (session exists, stale pid file)"
+            return DEAD, message + "dead 💀 (session exists, stale pid file)"
         elif self.session_exists and not self.pid_file_exists:
             return SESSION_EXISTS, message + "session exists, but process is not running"
         elif not self.session_exists and not self.pid_file_exists:
@@ -172,20 +172,12 @@ def status(processes, targets, role):
     for process_name in sorted(targets):
         procs.append(Process(process_name))
 
-    for proc in [p for p in procs if p.state == RUNNING]:
-        success(proc.format())
-    print()
-    for proc in [p for p in procs if p.state == NOT_STARTED]:
-        info(proc.format())
-    print()
-    for proc in [p for p in procs if p.state == SESSION_EXISTS]:
-        warning(proc.format())
-    print()
-    for proc in [p for p in procs if p.state == DEAD]:
-        failure(proc.format())
-    print()
-    for proc in [p for p in procs if p.state == UNKNOWN]:
-        failure(proc.format())
+    for state, write_func in [(RUNNING, success), (NOT_STARTED, info), (SESSION_EXISTS, warning), (DEAD, failure), (UNKNOWN, failure)]:
+        matching_procs = [p for p in procs if p.state == state]
+        if matching_procs:
+            for proc in matching_procs:
+                write_func(proc.format())
+            print()
 
     return 0
 
