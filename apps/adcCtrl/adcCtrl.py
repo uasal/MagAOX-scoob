@@ -288,7 +288,12 @@ class adcCtrl(XDevice):
         self.client.get_properties('fwsci1')
 
         self.log.info("Found camera: {:s}".format(self.config.camera.shmim))
-        self.camera = XCam(self.config.camera.shmim, pixel_size=6.0/21.0, use_hcipy=True)
+        self.camera = XCam(
+            self.config.camera.shmim,
+            pixel_size=6.0/21.0,
+            use_hcipy=True,
+            indi_client=self.client,
+        )
         
         self._state = States.IDLE
 
