@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SEC = 10
 
-class XCam():
+class XCam:
 	'''A Python interface for MagAO-X cameras
 	'''
 	_roi_properties : tuple[str] = ('roi_region_h', 'roi_region_w', 'roi_region_bin_x', 'roi_region_bin_y')
@@ -25,6 +25,7 @@ class XCam():
 			indi_client = indi.client.IndiClient()
 			indi_client.connect()
 		self._client = indi_client
+		self._client.wait_to_connect()
 		self._client.get_properties_and_wait(shm_name)
 
 		self._old_counter = 0
