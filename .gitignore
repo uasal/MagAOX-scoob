@@ -95,6 +95,7 @@ apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
 #m
+apps/mcp3008Ctrl/mcp3008Ctrl
 apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
 
