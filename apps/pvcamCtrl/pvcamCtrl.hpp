@@ -140,6 +140,8 @@ protected:
 
     uint32_t m_circBuffMaxBytes {536870912}; ///< Max size in bytes of the circular buffer to allocate.  Default is 0.5 GB.
 
+    uint32_t m_acqSleep {5000}; ///< The acquisition pause time, in ns, when no frame is ready.Default is 5000.
+
     ///@}
 
     int16 m_handle{ -1 }; ///< Camera handle, set when camera is opened
@@ -182,6 +184,10 @@ protected:
     FRAME_INFO m_frameInfo;
 
     sem_t m_frSemaphore; ///< Semaphore used to signal that a frame is ready.
+    sem_t m_frDoneSemaphore; ///< Semaphore used to signal that a frame has been processed
+
+    uint64_t m_callbacks {0};
+    uint64_t m_lastCallbacks {0};
 
 
 public:
@@ -348,9 +354,15 @@ void pvcamCtrl::setupConfig()
     config.add("camera.circBuffMaxBytes", "", "camera.circBuffMaxBytes", argType::Required, "camera", "circBuffMaxBytes", false, "int", "Maximum size in bytes of the circular buffer to allocate.  Default is 0.5 GB.");
 
     stdCameraT::setupConfig(config);
-    dev::frameGrabber<pvcamCtrl>::setupConfig(config);
+
+    FRAMEGRABBER_SETUP_CONFIG(config);
+
+    config.add("framegrabber.acqSleep", "", "framegrabber.acqSleep", argType::Required, "framegrabber","acqSleep", false, "int", "The acquisition pause time, in ns, when no frame is ready. Default is 5000.");
+
+
     shutterT::setupConfig(config);
-    telemeterT::setupConfig(config);
+    
+    TELEMETER_SETUP_CONFIG(config);
 }
 
 int pvcamCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
@@ -380,9 +392,12 @@ int pvcamCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
     m_nextROI.bin_x = m_currentROI.bin_x;
     m_nextROI.bin_y = m_currentROI.bin_y;
     
-    dev::frameGrabber<pvcamCtrl>::loadConfig(_config);
+    FRAMEGRABBER_LOAD_CONFIG(_config);
+
+    _config(m_acqSleep, "framegrabber.acqSleep");
     shutterT::loadConfig(_config);
-    telemeterT::loadConfig(_config);
+    
+    TELEMETER_LOAD_CONFIG(_config);
    
 
    return 0;
@@ -409,20 +424,19 @@ int pvcamCtrl::appStartup()
         return log<software_critical, -1>({__FILE__, __LINE__, errno, 0, "Initializing frame ready semaphore"});
     }
 
-    if(frameGrabberT::appStartup() < 0)
+    if(sem_init(&m_frDoneSemaphore, 0, 0) < 0)
     {
-        return log<software_critical, -1>({__FILE__, __LINE__});
+        return log<software_critical, -1>({__FILE__, __LINE__, errno, 0, "Initializing frame done semaphore"});
     }
+
+    FRAMEGRABBER_APP_STARTUP;
 
     if(shutterT::appStartup() < 0)
     {
        return log<software_critical,-1>({__FILE__,__LINE__});
     }
 
-    if(telemeterT::appStartup() < 0)
-    {
-       return log<software_critical,-1>({__FILE__,__LINE__});
-    }
+    TELEMETER_APP_STARTUP;
 
     return 0;
 }
@@ -447,11 +461,7 @@ int pvcamCtrl::appLogic()
         return log<software_error, -1>({__FILE__, __LINE__});
     }
 
-    // run frammerGrabbers's appLogic
-    if(frameGrabberT::appLogic() < 0)
-    {
-        return log<software_error, -1>({__FILE__, __LINE__});
-    }
+    FRAMEGRABBER_APP_LOGIC;
 
     //and run dssShutter's appLogic
     if(shutterT::appLogic() < 0)
@@ -504,11 +514,7 @@ int pvcamCtrl::appLogic()
             return log<software_error,0>({__FILE__,__LINE__});
         }
 
-        if(telemeterT::appLogic() < 0)
-        {
-            log<software_error>({__FILE__, __LINE__});
-        }
-
+        TELEMETER_APP_LOGIC;
         recordCamera();
     }
 
@@ -535,21 +541,14 @@ int pvcamCtrl::appShutdown()
         }
     }
 
-    ///\todo error check these base class fxns.
-    if(frameGrabberT::appShutdown() < 0)
-    {
-        log<software_error>({__FILE__, __LINE__, "error from frameGrabberT::appShutdown()"});
-    }
+    FRAMEGRABBER_APP_SHUTDOWN;
 
     if(shutterT::appShutdown() < 0)
     {
         log<software_error>({__FILE__, __LINE__, "error from shutterT::appShutdown()"});
     }
 
-    if(telemeterT::appShutdown() < 0)
-    {
-        log<software_error>({__FILE__, __LINE__, "error from telemeterT::appShutdown()"});
-    }
+    TELEMETER_APP_SHUTDOWN;
 
     return 0;
 }
@@ -777,7 +776,6 @@ int pvcamCtrl::configureAcquisition()
     m_height = (pvROI.p2 - pvROI.p1 + 1) / pvROI.pbin;
     m_dataType = _DATATYPE_UINT16;
 
-
     //-- 3: Setup continuous acquisition
     //std::cerr << pvROI.s1 << " " << pvROI.s2 << " " << pvROI.sbin << " " << pvROI.p1 << " " << pvROI.p2 << " " << pvROI.pbin << "\n";
     uns32 fsize;
@@ -809,12 +807,19 @@ int pvcamCtrl::configureAcquisition()
         log_pvcam_software_error("pl_get_param", "PARAM_PRE_TRIGGER_DELAY");
     }
 
+    long64 clearing = 0;
+    if(pl_get_param(m_handle, PARAM_CLEARING_TIME, ATTR_CURRENT, &clearing) == false)
+    {
+        log_pvcam_software_error("pl_get_param", "PARAM_CLEARING_TIME");
+    }
+
     long64 postdelay = 0;
     if(pl_get_param(m_handle, PARAM_POST_TRIGGER_DELAY, ATTR_CURRENT, &postdelay) == false)
     {
         log_pvcam_software_error("pl_get_param", "PARAM_POST_TRIGGER_DELAY");
     }
 
+    std::cerr << "et: " << m_expTime << ' ' << readouttime << ' ' << predelay << ' ' << postdelay << ' ' << clearing << '\n';
     m_fps = 1.0/(m_expTime + predelay/1e9 + postdelay/1e9);
     m_fpsSet = m_fps;
 
@@ -861,9 +866,15 @@ int pvcamCtrl::startAcquisition()
 
 int pvcamCtrl::acquireAndCheckValid()
 {
+    //See if a frame is ready without waiting
     int rv = sem_trywait(&m_frSemaphore);
     if( rv == 0)
     {
+        if(clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp) < 0)
+        {
+            log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
+        }
+
         return 0;
     }
     else if(errno != EAGAIN)
@@ -872,33 +883,14 @@ int pvcamCtrl::acquireAndCheckValid()
         return -1;
     }
 
-    timespec ts;
-
-    if(clock_gettime(CLOCK_REALTIME, &ts) < 0)
-    {
-        log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
-        return -1;
-    }
-
-    mx::sys::timespecAddNsec(ts, 1e9);
-
-    rv = sem_timedwait(&m_frSemaphore, &ts);
-    if(rv == 0)
-    {
-        return 0;
-    }
-    else if(errno != EAGAIN && errno != ETIMEDOUT)
-    {
-        log<software_critical>({__FILE__, __LINE__, errno, 0, "sem_timedwait"});
-        return -1;
-    }
+    //if none is ready we pause before going on
+    mx::sys::nanoSleep(m_acqSleep);
 
     return 1;
 }
 
 int pvcamCtrl::loadImageIntoStream(void *dest)
 {
-    clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
     
     // Obtain a pointer to the last acquired frame
     uns8 *frame;
@@ -919,6 +911,13 @@ int pvcamCtrl::loadImageIntoStream(void *dest)
     else
     {
         memcpy(dest, frame, m_width*m_height*2);
+    }
+
+    //Now tell the callback it can go on
+    if(sem_post(&m_frDoneSemaphore) < 0)
+    {
+        log<software_critical>({__FILE__, __LINE__, errno, 0, "Error posting to frame done semaphore"});
+        return -1;
     }
 
     return 0;
@@ -1362,12 +1361,35 @@ void pvcamCtrl::endOfFrameCallback(FRAME_INFO *finfo)
 {
     m_frameInfo = *finfo;
 
-    // Now tell the writer to get going
+    //0 out the frDoneSemaphore just to be sure
+    int semval;
+    sem_getvalue(&m_frDoneSemaphore, &semval);
+    while(semval > 0)
+    {
+        sem_trywait(&m_frDoneSemaphore);
+        sem_getvalue(&m_frDoneSemaphore, &semval);
+    }
+
+    //Now tell the writer to get going
     if(sem_post(&m_frSemaphore) < 0)
     {
         log<software_critical>({__FILE__, __LINE__, errno, 0, "Error posting to frame ready semaphore"});
         return;
     }
+
+    //Now wait on the frame done semaphore
+    timespec ts;
+
+    if(clock_gettime(CLOCK_REALTIME, &ts) < 0)
+    {
+        log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
+    }
+
+    mx::sys::timespecAddNsec(ts, 1e9); //We wait for up to one second for the frame done processing signal
+
+    sem_timedwait(&m_frDoneSemaphore, &ts);
+
+
 }
 
 int pvcamCtrl::checkRecordTimes()

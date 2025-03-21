@@ -115,7 +115,7 @@ protected:
 
    uint32_t m_circBuffLength {1}; ///< Length of the circular buffer, in frames
 
-   uint16_t m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
+   uint32_t m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
    float m_latencyCircBuffMaxTime {5}; ///< Maximum time of the latency meaurement circular buffers
 
    int m_defaultFlip {fgFlipNone};
@@ -140,7 +140,7 @@ protected:
 
    IMAGE * m_imageStream {nullptr}; ///< The ImageStreamIO shared memory buffer.
 
-   typedef uint16_t cbIndexT;
+   typedef uint32_t cbIndexT;
 
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_atimes;
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_wtimes;
@@ -155,9 +155,13 @@ protected:
 
    double m_mna;
    double m_vara;
+   double m_mina;
+   double m_maxa;
 
    double m_mnw;
    double m_varw;
+   double m_minw;
+   double m_maxw;
 
    double m_mnwa;
    double m_varwa;
@@ -432,8 +436,12 @@ int frameGrabber<derivedT>::appStartup()
    //Register the timing INDI property
    derived().createROIndiNumber( m_indiP_timing, "fg_timing");
    m_indiP_timing.add(pcf::IndiElement("acq_fps"));
+   m_indiP_timing.add(pcf::IndiElement("acq_min"));
+   m_indiP_timing.add(pcf::IndiElement("acq_max"));
    m_indiP_timing.add(pcf::IndiElement("acq_jitter"));
    m_indiP_timing.add(pcf::IndiElement("write_fps"));
+   m_indiP_timing.add(pcf::IndiElement("write_min"));
+   m_indiP_timing.add(pcf::IndiElement("write_max"));
    m_indiP_timing.add(pcf::IndiElement("write_jitter"));
    m_indiP_timing.add(pcf::IndiElement("delta_aw"));
    m_indiP_timing.add(pcf::IndiElement("delta_aw_jitter"));
@@ -472,30 +480,87 @@ int frameGrabber<derivedT>::appLogic()
    {
       if(m_atimes.size() >= m_atimes.maxEntries())
       {
-         cbIndexT refEntry = m_atimes.earliest();
+         size_t latTime = m_latencyCircBuffMaxTime*derived().fps();
+         if(latTime > m_atimes.maxEntries())
+         {
+            latTime = m_atimes.maxEntries();
+         }
 
-         m_atimesD.resize(m_atimes.maxEntries()-1);
-         m_wtimesD.resize(m_wtimes.maxEntries()-1);
-         m_watimesD.resize(m_wtimes.maxEntries()-1);
+         m_atimesD.resize(latTime-1);
+         m_wtimesD.resize(latTime-1);
+         m_watimesD.resize(latTime-1);
 
-         double a0 = m_atimes.at(refEntry, 0).tv_sec + ((double) m_atimes.at(refEntry, 0).tv_nsec)/1e9;
-         double w0 = m_wtimes.at(refEntry, 0).tv_sec + ((double) m_wtimes.at(refEntry, 0).tv_nsec)/1e9;
+         cbIndexT refEntry = m_atimes.latest();
+
+         if(refEntry >= latTime)
+         {
+            refEntry -= latTime;
+         }
+         else
+         {
+            refEntry = m_atimes.maxEntries() + refEntry - latTime;
+         }
+
+         timespec ts = m_atimes.at(refEntry, 0);
+         double a0 = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+         ts = m_wtimes.at(refEntry, 0);
+         double w0 = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+         double mina = 1e9;
+         double maxa = -1e9;
+         double minw = 1e9;
+         double maxw = -1e9;
+
          for(size_t n=1; n <= m_atimesD.size(); ++n)
          {
-            double a = m_atimes.at(refEntry, n).tv_sec + ((double) m_atimes.at(refEntry, n).tv_nsec)/1e9;
-            double w = m_wtimes.at(refEntry, n).tv_sec + ((double) m_wtimes.at(refEntry, n).tv_nsec)/1e9;
+            ts = m_atimes.at(refEntry, n);
+            double a = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+            ts = m_wtimes.at(refEntry, n);
+            double w = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
             m_atimesD[n-1] = a - a0;
             m_wtimesD[n-1] = w - w0;
             m_watimesD[n-1] = w - a;
             a0 = a;
             w0 = w;
+
+            if(m_atimesD[n-1] < mina)
+            {
+               mina = m_atimesD[n-1];
+            }
+
+            if(m_atimesD[n-1] > maxa)
+            {
+               maxa = m_atimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] < minw)
+            {
+               minw = m_wtimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] > maxw)
+            {
+               maxw = m_wtimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] < 0)
+            {
+               std::cerr << m_wtimesD[n-1] << ' ' << n << ' ' << m_atimesD.size() << ' ' << refEntry << '\n';
+            }
          }
 
          m_mna = mx::math::vectorMean(m_atimesD);
          m_vara = mx::math::vectorVariance(m_atimesD, m_mna);
+         m_mina = mina;
+         m_maxa = maxa;
 
          m_mnw = mx::math::vectorMean(m_wtimesD);
          m_varw = mx::math::vectorVariance(m_wtimesD, m_mnw);
+         m_minw = minw;
+         m_maxw = maxw;
 
          m_mnwa = mx::math::vectorMean(m_watimesD);
          m_varwa = mx::math::vectorVariance(m_watimesD, m_mnwa);
@@ -506,8 +571,12 @@ int frameGrabber<derivedT>::appLogic()
       {
          m_mna = 0;
          m_vara = 0;
+         m_mina = 0;
+         m_maxa = 0;
          m_mnw = 0;
          m_varw = 0;
+         m_minw = 0;
+         m_maxw = 0;
          m_mnwa = 0;
          m_varwa = 0;
       }
@@ -516,8 +585,12 @@ int frameGrabber<derivedT>::appLogic()
    {
       m_mna = 0;
       m_vara = 0;
+      m_mina = 0;
+      m_maxa = 0;
       m_mnw = 0;
       m_varw = 0;
+      m_minw = 0;
+      m_maxw = 0;
       m_mnwa = 0;
       m_varwa = 0;
    }
@@ -531,8 +604,12 @@ int frameGrabber<derivedT>::onPowerOff()
 {
    m_mna = 0;
    m_vara = 0;
+   m_mina = 0;
+         m_maxa = 0;
    m_mnw = 0;
    m_varw = 0;
+   m_minw = 0;
+         m_maxw = 0;
    m_mnwa = 0;
    m_varwa = 0;
 
@@ -582,7 +659,7 @@ void frameGrabber<derivedT>::fgThreadExec()
    //Get the thread PID immediately so the caller can return.
    m_fgThreadID = syscall(SYS_gettid);
 
-   timespec writestart;
+   //timespec writestart;
 
    //Wait fpr the thread starter to finish initializing this thread.
    while(m_fgThreadInit == true && derived().shutdown() == 0)
@@ -601,7 +678,10 @@ void frameGrabber<derivedT>::fgThreadExec()
          sleep(1);
       }
 
-      if(derived().shutdown()) continue;
+      if(derived().shutdown()) 
+      {
+         continue;
+      }
       else
       {
          //At the end of this, must have m_width, m_height, m_dataType set, and derived()->fps must be valid.
@@ -615,9 +695,13 @@ void frameGrabber<derivedT>::fgThreadExec()
          else
          {
             //Set up the latency circ. buffs
-            cbIndexT cbSz = m_latencyCircBuffMaxTime * derived().fps();
+            cbIndexT cbSz = 2*m_latencyCircBuffMaxTime * derived().fps();
             if(cbSz > m_latencyCircBuffMaxLength) cbSz = m_latencyCircBuffMaxLength;
             if(cbSz < 3) cbSz = 3; //Make variance meaningful
+
+            std::cerr << "cbSz: " << cbSz << ' ' << derived().fps() << ' ' << m_latencyCircBuffMaxTime;
+            std::cerr << ' ' << m_latencyCircBuffMaxLength << '\n';
+
             m_atimes.maxEntries(cbSz);
             m_wtimes.maxEntries(cbSz);
          }
@@ -693,7 +777,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          m_imageStream->md->write=1;
 
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &writestart);
+         //clock_gettime(CLOCK_REALTIME, &writestart);
 
          if(derived().loadImageIntoStream(next_dest) < 0)
          {
@@ -701,7 +785,11 @@ void frameGrabber<derivedT>::fgThreadExec()
          }
 
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime);
+         //clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime);
+         if(clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime) < 0)
+         {
+            derivedT::template log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
+         }
 
          //Set the image acquisition timestamp
          m_imageStream->md->atime = m_currImageTimestamp;
@@ -731,7 +819,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          next_cnt1 = m_imageStream->md->cnt1+1;
          if(next_cnt1 >= m_circBuffLength) next_cnt1 = 0;
 
-         next_dest = reinterpret_cast<char *>(m_imageStream->array.raw + next_cnt1*m_width*m_height*m_typeSize);
+         next_dest = reinterpret_cast<char *>(m_imageStream->array.raw) + next_cnt1*m_width*m_height*m_typeSize;
          next_wtimearr = &m_imageStream->writetimearray[next_cnt1];
          next_atimearr = &m_imageStream->atimearray[next_cnt1];
          next_cntarr = &m_imageStream->cntarray[next_cnt1];
@@ -803,8 +891,8 @@ int frameGrabber<derivedT>::updateINDI()
    if(m_mna != 0 ) fpsa = 1.0/m_mna;
    if(m_mnw != 0 ) fpsw = 1.0/m_mnw;
 
-   indi::updateIfChanged<double>(m_indiP_timing, {"acq_fps","acq_jitter","write_fps","write_jitter","delta_aw","delta_aw_jitter"},
-                        {fpsa, sqrt(m_vara), fpsw, sqrt(m_varw), m_mnwa, sqrt(m_varwa)},derived().m_indiDriver);
+   indi::updateIfChanged<double>(m_indiP_timing, {"acq_fps","acq_min", "acq_max", "acq_jitter","write_fps","write_min", "write_max","write_jitter","delta_aw","delta_aw_jitter"},
+                        {fpsa, m_mina, m_maxa, sqrt(m_vara), fpsw, m_minw, m_maxw, sqrt(m_varw), m_mnwa, sqrt(m_varwa)},derived().m_indiDriver);
 
    return 0;
 }
