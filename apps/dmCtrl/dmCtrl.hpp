@@ -14,11 +14,7 @@
 typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
 
 #include "dmCommands.hpp"
-// #include "binaryUart.hpp"
-// #include "cGraphPacket.hpp"
-// #include "linux_pinout_uart.hpp"
-// #include "socket.hpp"
-// #include "IUart.h"
+
 
 
 /** \defgroup dmCtrl
@@ -43,22 +39,26 @@ namespace MagAOX
     /** 
       * \ingroup dmCtrl
       */
-    class dmCtrl : public MagAOXApp<true>, public dev::telemeter<dmCtrl>, public dev::shmimMonitor<dmCtrl>
+    class dmCtrl : public MagAOXApp<true>, public dev::telemeter<dmCtrl>, public dev::dm<dmCtrl,float>, public dev::shmimMonitor<dmCtrl>, public dev::summerDevice<dmCtrl>
     {
 
       //Give the test harness access.
       friend class dmCtrl_test;
 
+      friend class dev::dm<dmCtrl,float>;
       friend class dev::telemeter<dmCtrl>;
-      typedef dev::telemeter<dmCtrl> telemeterT;
-
       friend class dev::shmimMonitor<dmCtrl>;
+      friend class dev::summerDevice<dmCtrl>;
+
+      typedef dev::telemeter<dmCtrl> telemeterT;
+      typedef dev::dm<dmCtrl,float> dmT;
+      typedef dev::shmimMonitor<dmCtrl> shmimMonitorT;
 
     protected:
       /** \name Constants
        *@{
        */
-      const std::string USB0 = "/dev/ttyUSB0";
+        const std::string USB0 = "/dev/ttyUSB0";
       ///@}
 
       /** \name Configurable Parameters
@@ -67,10 +67,6 @@ namespace MagAOX
       
       //here add parameters which will be config-able at runtime
       
-        // Connection parameters
-        std::string PortName;
-        uint32_t BaudRate = 115200; // serial-port-specific
-
         // Telemeter callback parameters
         int period_s;
 
@@ -79,13 +75,9 @@ namespace MagAOX
         double height = 1; // shm size
       ///@}
 
-        char Buffer[4096];
-        CGraphPacket PacketProtocol;
-        std::unique_ptr<IUart> LocalPortPinout;
-        std::unique_ptr<BinaryUart> UartParser;
-        PZTQuery *telemetryQuery = new TelemetryQuery();
-        std::vector<PZTQuery*> queries = { telemetryQuery };
-
+    private:
+        dev::sdevQuery *telemetryQuery = new TelemetryQuery();
+        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery };
 
     public:
       /// Default c'tor.
@@ -123,43 +115,18 @@ namespace MagAOX
          */
       virtual int appShutdown();
 
-      /// Initialize UartParser
-      /**
-       *
-       */
-      void initUartParser();
-
-      /// TODO: Test the connection to the dm
-      int testConnection();
-
-
-      /// Connect to dm via Serial Port
-      /**
-       *
-       * \returns 0 if connection successful
-       * \returns -1 on an error
-       */
-      int serialPortConnect();
+      const std::vector<dev::sdevQuery*>& getQueries() const override;
 
       /**
-       * @brief Query interface for the dm
+       * @brief Function that listens for responses from the fsm
        *
-       * Function that sends a command packet to the dm.
-       *
-       * @param pztQuery pointer to a class inheriting from PZTQuery (see dmCommands.hpp)
-       */
-      void query(PZTQuery *);
-
-      /**
-       * @brief Function that listens for responses from the dm
-       *
-       * Function that checks for a response from the dm and processes it.
+       * Function that checks for a response from the fsm and processes it.
        * If a response is received it processes the response as appropriate for the
        * command sent.
        *
-       * @param pztQuery pointer to a class inheriting from PZTQuery (see dmCommands.hpp)
+       * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
        */
-      void receive();
+      void receive() override;
 
       /** \name Telemeter Interface
        *
@@ -237,35 +204,29 @@ namespace MagAOX
 
     void dmCtrl::setupConfig()
     {
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the dm.");
+      dev::summerDevice<dmCtrl>::setupConfig(config);
+      shmimMonitorT::setupConfig(config);
 
-      config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
-      config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
+      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the dm.");
 
       // shmim parameters
       config.add("shmimMonitor.shmimName", "", "shmimMonitor.shmimName", argType::Required, "shmimMonitor", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /tmp/<shmimName>.im.shm. Default is dm");
 
       config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the DM in actuators.");
       config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the DM in actuators.");
-
+      telemeterT::setupConfig(config);
     }
 
     int dmCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
     {
       /// CONNECTION PARAMETERS ///
-      PortName = USB0;
       _config(period_s, "parameters.period_s");
-      _config(PortName, "serial_port.port_address");
-      _config(BaudRate, "serial_port.baud_rate");
-    
-      dmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
-      initUartParser();
+      log<text_log>("Loading config");
 
       /// SHMIM PARAMETERS ///
       _config(width, "shmimMonitor.width");
       _config(height, "shmimMonitor.height");
 
-      shmimMonitor::loadConfig(_config);
       return 0;
     }
 
@@ -277,7 +238,19 @@ namespace MagAOX
         m_shutdown = true;
       }
 
+      if (dev::summerDevice<dmCtrl>::loadConfig(config) < 0)
+      {
+        log<text_log>("Error during summerDevice config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
       if (telemeterT::loadConfig(config) < 0)
+      {
+        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
+      if (shmimMonitorT::loadConfig(config) < 0)
       {
         log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
         m_shutdown = true;
@@ -291,7 +264,12 @@ namespace MagAOX
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
-      if (shmimMonitor::appStartup() < 0)
+      if (shmimMonitorT::appStartup() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      if (dev::summerDevice<dmCtrl>::appStartup() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
@@ -308,13 +286,13 @@ namespace MagAOX
 
     int dmCtrl::appLogic()
     {
-      if (shmimMonitor::appLogic() < 0)
+      if (shmimMonitorT::appLogic() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
       // Set the INDI name, width & heigh properties to those of the shmim
-      if (shmimMonitor::updateINDI() < 0)
+      if (shmimMonitorT::updateINDI() < 0)
       {
         log<software_error>({__FILE__, __LINE__});
       }
@@ -331,7 +309,7 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        rv = serialPortConnect();
+        rv = dev::summerDevice<dmCtrl>::connect();
 
         if (rv == 0)
         {
@@ -349,74 +327,23 @@ namespace MagAOX
     int dmCtrl::appShutdown()
     {
       telemeterT::appShutdown();
-      shmimMonitor<dmCtrl>::appShutdown();
+      shmimMonitorT::appShutdown();
+      dev::summerDevice<dmCtrl>::appShutdown();
 
       return 0;
-    }
-
-    void dmCtrl::query(PZTQuery *pztQuery)
-    {
-      log<text_log>(pztQuery->startLog);
-      // Send command packet
-      UartParser->TxBinaryPacket(pztQuery->getPayloadType(), pztQuery->getPayloadData(), pztQuery->getPayloadLen());
-      // debug
-      // log<text_log>(pztQuery->endLog);
-
-      receive();
-    }
-
-    void dmCtrl::receive() {
-      // The packet is read byte by byte, so keep going while there are bytes left
-      bool Bored = false;
-      while (!Bored)
-      {
-        Bored = true;
-        if (UartParser->Process())
-        {
-          Bored = false;
-        }
-
-        if (false == dmCtrl::LocalPortPinout->isopen())
-        {
-          serialPortConnect();
-        }
-      }
-
-      // // Once packet had been received, make sure updates are propagated.
-      // // Since we don't know the packet type, update all.
-      // receiveAdcs();
-      // receiveDacs();
     }
 
     //////////////
     // CONNECTION
     //////////////
 
-    void dmCtrl::initUartParser()
-    {
-      UartParser = std::make_unique<BinaryUart>(*LocalPortPinout, PacketProtocol, PacketCallbacks, queries, false);
+    const std::vector<dev::sdevQuery*>& dmCtrl::getQueries() const {
+      return customQueries;
     }
 
-    /// TODO: Test the connection to the device
-    int dmCtrl::testConnection()
-    {
-      return 0;
+    void dmCtrl::receive() {
+      dev::summerDevice<dmCtrl>::receive();
     }
-
-    int dmCtrl::serialPortConnect()
-    {
-      PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(BaudRate, PortName.c_str());
-      int err = dmCtrl::LocalPortPinout->init(pinoutConfig);
-      if (IUart::IUartOK != err)
-      {
-        log<software_error, -1>({__FILE__, __LINE__, errno, "SerialPortBinaryCmdr: can't open port (" + PortName + ":" + std::to_string(BaudRate) + "), exiting.\n"});
-        return -1;
-      }
-
-      log<text_log>("Connected to port (" + PortName + ":" + std::to_string(BaudRate) + ")");
-      return 0;
-    }
-
 
     /////////////////////////
     // TELEMETER INTERFACE
@@ -429,7 +356,10 @@ namespace MagAOX
 
     int dmCtrl::recordTelem(const telem_dm *)
     {
-      query(telemetryQuery);
+      dev::summerDevice<dmCtrl>::query(telemetryQuery);
+      
+      dev::summerDevice<dmCtrl>::receive();
+      telemetryQuery->logReply();
       return recordDM(true);
     }
 
@@ -485,6 +415,7 @@ namespace MagAOX
 
     int dmCtrl::commandDM(void *curr_src)
     {
+      return 0;
     }
 
   } //namespace app
