@@ -21,10 +21,12 @@ namespace MagAOX
          * The payload type is sent with the command packet and
          * tells the dm what command is being sent.
          */
-        static const uint16_t CGraphPayloadTypeDMDac = 0x3002U;
         static const uint16_t CGraphPayloadTypeDMTelemetry = 0x3004U;
-        static const uint16_t CGraphPayloadTypeDMHVSwitch = 0x3007U;
-        static const uint16_t CGraphPayloadTypeDMDacConfig = 0x3009U;
+        static const uint16_t CGraphPayloadTypeDMMappings = 0x300BU; //Payload: CGraphDMPixelPayloadHeader followed by one or more CGraphDMMappingPayload structs (num defined by packet payload length filed)
+        static const uint16_t CGraphPayloadTypeDMShortPixels = 0x300CU; //Payload: CGraphDMPixelPayloadHeader followed by one or more 16b pixel values (num defined by packet payload length filed)
+        static const uint16_t CGraphPayloadTypeDMDither = 0x300DU; //Payload: CGraphDMPixelPayloadHeader followed by one or more 8b dither values (num defined by packet payload length filed)[we reserve the right to be really tricky and bitpack multiple pixels per byte since dither will always be <8b / pix]
+        static const uint16_t CGraphPayloadTypeDMLongPixels = 0x300EU; //Payload: CGraphDMPixelPayloadHeader followed by one or more 24b pixel values (num defined by packet payload length filed)- this is gonna cause some funky math & casts when parsing packet to ram...
+
 
         struct CGraphDMTelemetryPayload
         {
@@ -86,59 +88,11 @@ namespace MagAOX
             }
         };
 
-        /**
-         * @brief Base class for all the dm queries
-         *
-         * PZTQuery is the class from which all the query classes inherit.
-         * It ensures that the all implement a minimal interfaces that includes
-         * processReply, logReply and errorLogString.
-         */
-        class PZTQuery
-        {
-        public:
-            std::string startLog = "";
-            std::string endLog = "";
-
-            virtual ~PZTQuery() = default;
-            virtual void errorLogString(const size_t ParamsLen) = 0;
-            virtual void processReply(char const *Params, const size_t ParamsLen) = 0;
-            virtual void logReply() = 0;
-            virtual uint16_t getPayloadType() const
-            {
-                return PayloadType;
-            }
-            virtual void *getPayloadData() const
-            {
-                return PayloadData;
-            }
-            virtual uint16_t getPayloadLen() const
-            {
-                return PayloadLen;
-            }
-            virtual void setPayload(void *newPayloadData, uint16_t newPayloadLen)
-            {
-                PayloadData = newPayloadData;
-                PayloadLen = newPayloadLen;
-            }
-            virtual void resetPayload()
-            {
-                PayloadData = DefaultPayloadData;
-                PayloadLen = DefaultPayloadLen;
-            }
-
-        protected:
-            uint16_t PayloadType = -1;
-            void *DefaultPayloadData = NULL;
-            size_t DefaultPayloadLen = 0;
-            void *PayloadData = DefaultPayloadData;
-            size_t PayloadLen = DefaultPayloadLen;
-        };
-
         // Derived classes
         /**
          * @brief Child query class that handles sending a telemetry query to the dm
          */
-        class TelemetryQuery : public PZTQuery
+        class TelemetryQuery : public dev::sdevQuery
         {
         public:
             TelemetryQuery()
