@@ -69,6 +69,7 @@ apps_icc = \
 	adcCtrl
 
 apps_aoc = \
+	labRules \
 	trippLitePDU \
 	tcsInterface \
 	adcTracker \
