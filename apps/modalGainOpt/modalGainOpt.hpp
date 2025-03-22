@@ -1,28 +1,28 @@
-/** \file psdGainOpt.hpp
+/** \file modalGainOpt.hpp
  * \brief The MagAO-X PSD-based gain optimizer header file
  *
- * \ingroup psdGainOpt_files
+ * \ingroup modalGainOpt_files
  */
 
-#ifndef psdGainOpt_hpp
-#define psdGainOpt_hpp
+#ifndef modalGainOpt_hpp
+#define modalGainOpt_hpp
 
 #include <mx/ao/analysis/clGainOpt.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
-/** \defgroup psdGainOpt
+/** \defgroup modalGainOpt
  * \brief The MagAO-X application to perform PSD-based gain optimization
  *
- * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
+ * <a href="../handbook/operating/software/apps/modalGainOpt.html">Application Documentation</a>
  *
  * \ingroup apps
  *
  */
 
-/** \defgroup psdGainOpt_files
- * \ingroup psdGainOpt
+/** \defgroup modalGainOpt_files
+ * \ingroup modalGainOpt
  */
 
 namespace MagAOX
@@ -110,34 +110,34 @@ struct tauShmimT
 
 /// The MagAO-X PSD-based gain optimizer
 /**
- * \ingroup psdGainOpt
+ * \ingroup modalGainOpt
  */
-class psdGainOpt : public MagAOXApp<true>,
-                   dev::shmimMonitor<psdGainOpt, psdShmimT>,
-                   dev::shmimMonitor<psdGainOpt, freqShmimT>,
-                   dev::shmimMonitor<psdGainOpt, gainShmimT>,
-                   dev::shmimMonitor<psdGainOpt, multcoShmimT>,
-                   dev::shmimMonitor<psdGainOpt, gainCalShmimT>,
-                   dev::shmimMonitor<psdGainOpt, tauShmimT>
+class modalGainOpt : public MagAOXApp<true>,
+                   dev::shmimMonitor<modalGainOpt, psdShmimT>,
+                   dev::shmimMonitor<modalGainOpt, freqShmimT>,
+                   dev::shmimMonitor<modalGainOpt, gainShmimT>,
+                   dev::shmimMonitor<modalGainOpt, multcoShmimT>,
+                   dev::shmimMonitor<modalGainOpt, gainCalShmimT>,
+                   dev::shmimMonitor<modalGainOpt, tauShmimT>
 {
 
     // Give the test harness access.
-    friend class psdGainOpt_test;
+    friend class modalGainOpt_test;
 
-    friend class dev::shmimMonitor<psdGainOpt, psdShmimT>;
-    friend class dev::shmimMonitor<psdGainOpt, freqShmimT>;
-    friend class dev::shmimMonitor<psdGainOpt, gainShmimT>;
-    friend class dev::shmimMonitor<psdGainOpt, multcoShmimT>;
-    friend class dev::shmimMonitor<psdGainOpt, gainCalShmimT>;
-    friend class dev::shmimMonitor<psdGainOpt, tauShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, psdShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, freqShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, gainShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, multcoShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, gainCalShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, tauShmimT>;
 
   public:
-    typedef dev::shmimMonitor<psdGainOpt, psdShmimT>     psdShmimMonitorT;
-    typedef dev::shmimMonitor<psdGainOpt, freqShmimT>    freqShmimMonitorT;
-    typedef dev::shmimMonitor<psdGainOpt, gainShmimT>    gainShmimMonitorT;
-    typedef dev::shmimMonitor<psdGainOpt, multcoShmimT>  multcoShmimMonitorT;
-    typedef dev::shmimMonitor<psdGainOpt, gainCalShmimT> gainCalShmimMonitorT;
-    typedef dev::shmimMonitor<psdGainOpt, tauShmimT>     tauShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, psdShmimT>     psdShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, freqShmimT>    freqShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, gainShmimT>    gainShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, multcoShmimT>  multcoShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, gainCalShmimT> gainCalShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, tauShmimT>     tauShmimMonitorT;
 
     typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
     typedef std::chrono::duration<double>                      durationT;
@@ -147,8 +147,9 @@ class psdGainOpt : public MagAOXApp<true>,
      *@{
      */
 
-    int         m_loopNum{ 1 }; ///< The number of the loop. Used to set shmim names, as in aolN_mgainfact.
-    std::string m_loopName;     ///< The name of the loop control INDI device name.
+    int m_loopNum{ 1 }; ///< The number of the loop. Used to set shmim names, as in aolN_mgainfact.
+
+    std::string m_loopName; ///< The name of the loop control INDI device name.
 
     std::string m_psdDevice; /**< The INDI device name of the PSD calculator.  Defaults to aolN_modevalPSDs
                                   where N is m_loopNum.*/
@@ -201,15 +202,15 @@ class psdGainOpt : public MagAOXApp<true>,
 
     std::string m_optGainsShmimName;
 
-    IMAGE *m_olPSDStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
+    IMAGE *m_olPSDStream{ nullptr };    ///< The ImageStreamIO shared memory buffer to publish the optimal gains
     IMAGE *m_optGainsStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
 
   public:
     /// Default c'tor.
-    psdGainOpt();
+    modalGainOpt();
 
     /// D'tor, declared and defined for noexcept.
-    ~psdGainOpt() noexcept
+    ~modalGainOpt() noexcept
     {
     }
 
@@ -229,7 +230,7 @@ class psdGainOpt : public MagAOXApp<true>,
      */
     virtual int appStartup();
 
-    /// Implementation of the FSM for psdGainOpt.
+    /// Implementation of the FSM for modalGainOpt.
     /**
      * \returns 0 on no critical error
      * \returns -1 on an error requiring shutdown
@@ -310,7 +311,7 @@ class psdGainOpt : public MagAOXApp<true>,
     sem_t m_goptSemaphore; ///< Semaphore used to synchronize the psdShmim thread and the gopt thread.
 
     /// Gain Optimization thread starter function
-    static void goptThreadStart( psdGainOpt *p /**< [in] pointer to this */ );
+    static void goptThreadStart( modalGainOpt *p /**< [in] pointer to this */ );
 
     /// Gain optimization thread function
     /** Runs until m_shutdown is true.
@@ -337,21 +338,21 @@ class psdGainOpt : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_gain;
     pcf::IndiProperty m_indiP_mc;
 
-    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_autoUpdate );
-    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_updateOnce );
-    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_dump );
-    INDI_NEWCALLBACK_DECL( psdGainOpt, m_indiP_gainGain );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_fps );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_psdTime );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_psdAvgTime );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_loop );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_gain );
-    INDI_SETCALLBACK_DECL( psdGainOpt, m_indiP_mc );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_autoUpdate );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_updateOnce );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_dump );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_gainGain );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_fps );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdTime );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdAvgTime );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_loop );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_gain );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_mc );
 
     ///@}
 };
 
-psdGainOpt::psdGainOpt() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
+modalGainOpt::modalGainOpt() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
     psdShmimMonitorT::m_getExistingFirst     = true;
     freqShmimMonitorT::m_getExistingFirst    = true;
@@ -363,7 +364,7 @@ psdGainOpt::psdGainOpt() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED 
     return;
 }
 
-void psdGainOpt::setupConfig()
+void modalGainOpt::setupConfig()
 {
     config.add( "loop.number",
                 "",
@@ -384,6 +385,7 @@ void psdGainOpt::setupConfig()
                 false,
                 "string",
                 "The name of the loop control INDI device name." );
+
     config.add( "loop.psdDev",
                 "",
                 "loop.psdDev",
@@ -422,7 +424,7 @@ void psdGainOpt::setupConfig()
     SHMIMMONITORT_SETUP_CONFIG( tauShmimMonitorT, config );
 }
 
-int psdGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
+int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     _config( m_loopNum, "loop.number" );
     _config( m_loopName, "loop.name" );
@@ -462,12 +464,12 @@ int psdGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     return 0;
 }
 
-void psdGainOpt::loadConfig()
+void modalGainOpt::loadConfig()
 {
     loadConfigImpl( config );
 }
 
-int psdGainOpt::appStartup()
+int modalGainOpt::appStartup()
 {
     SHMIMMONITORT_APP_STARTUP( psdShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( freqShmimMonitorT );
@@ -506,7 +508,7 @@ int psdGainOpt::appStartup()
     return 0;
 }
 
-int psdGainOpt::appLogic()
+int modalGainOpt::appLogic()
 {
     SHMIMMONITORT_APP_LOGIC( psdShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( freqShmimMonitorT );
@@ -556,7 +558,7 @@ int psdGainOpt::appLogic()
     return 0;
 }
 
-int psdGainOpt::appShutdown()
+int modalGainOpt::appShutdown()
 {
     XWCAPP_THREAD_STOP( m_goptThread );
 
@@ -577,7 +579,7 @@ int psdGainOpt::appShutdown()
     return 0;
 }
 
-int psdGainOpt::allocate( const psdShmimT &dummy )
+int modalGainOpt::allocate( const psdShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -636,7 +638,7 @@ int psdGainOpt::allocate( const psdShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const psdShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const psdShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -679,14 +681,14 @@ int psdGainOpt::processImage( void *curr_src, const psdShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::allocate( const freqShmimT &dummy )
+int modalGainOpt::allocate( const freqShmimT &dummy )
 {
     static_cast<void>( dummy );
 
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const freqShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const freqShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -745,14 +747,14 @@ int psdGainOpt::processImage( void *curr_src, const freqShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::allocate( const gainShmimT &dummy )
+int modalGainOpt::allocate( const gainShmimT &dummy )
 {
     static_cast<void>( dummy );
 
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -810,14 +812,14 @@ int psdGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::allocate( const multcoShmimT &dummy )
+int modalGainOpt::allocate( const multcoShmimT &dummy )
 {
     static_cast<void>( dummy );
 
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -878,14 +880,14 @@ int psdGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::allocate( const gainCalShmimT &dummy )
+int modalGainOpt::allocate( const gainCalShmimT &dummy )
 {
     static_cast<void>( dummy );
 
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const gainCalShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const gainCalShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -940,14 +942,14 @@ int psdGainOpt::processImage( void *curr_src, const gainCalShmimT &dummy )
     return 0;
 }
 
-int psdGainOpt::allocate( const tauShmimT &dummy )
+int modalGainOpt::allocate( const tauShmimT &dummy )
 {
     static_cast<void>( dummy );
 
     return 0;
 }
 
-int psdGainOpt::processImage( void *curr_src, const tauShmimT &dummy )
+int modalGainOpt::processImage( void *curr_src, const tauShmimT &dummy )
 {
     static_cast<void>( dummy );
 
@@ -1002,12 +1004,12 @@ int psdGainOpt::processImage( void *curr_src, const tauShmimT &dummy )
     return 0;
 }
 
-void psdGainOpt::goptThreadStart( psdGainOpt *p )
+void modalGainOpt::goptThreadStart( modalGainOpt *p )
 {
     p->goptThreadExec();
 }
 
-void psdGainOpt::goptThreadExec()
+void modalGainOpt::goptThreadExec()
 {
     m_goptThreadID = syscall( SYS_gettid );
 
@@ -1225,7 +1227,7 @@ void psdGainOpt::goptThreadExec()
     }
 }
 
-INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_autoUpdate )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_autoUpdate )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_autoUpdate, ipRecv );
 
@@ -1252,7 +1254,7 @@ INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_autoUpdate )( const pcf::IndiProperty
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_updateOnce )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_updateOnce )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_updateOnce, ipRecv );
 
@@ -1271,7 +1273,7 @@ INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_updateOnce )( const pcf::IndiProperty
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_dump )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_dump )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dump, ipRecv );
 
@@ -1290,7 +1292,7 @@ INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_dump )( const pcf::IndiProperty &ipRe
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_gainGain )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_gainGain )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_gainGain, ipRecv );
 
@@ -1306,7 +1308,7 @@ INDI_NEWCALLBACK_DEFN( psdGainOpt, m_indiP_gainGain )( const pcf::IndiProperty &
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_psdTime )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_psdTime )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdTime, ipRecv );
 
@@ -1331,7 +1333,7 @@ INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_psdTime )( const pcf::IndiProperty &i
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_psdAvgTime )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_psdAvgTime )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdAvgTime, ipRecv );
 
@@ -1357,7 +1359,7 @@ INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_psdAvgTime )( const pcf::IndiProperty
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_loop )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_loop )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_loop, ipRecv );
 
@@ -1391,7 +1393,7 @@ INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_loop )( const pcf::IndiProperty &ipRe
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_gain )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_gain )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_gain, ipRecv );
 
@@ -1421,7 +1423,7 @@ INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_gain )( const pcf::IndiProperty &ipRe
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_mc )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_mc )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_mc, ipRecv );
 
@@ -1454,4 +1456,4 @@ INDI_SETCALLBACK_DEFN( psdGainOpt, m_indiP_mc )( const pcf::IndiProperty &ipRecv
 } // namespace app
 } // namespace MagAOX
 
-#endif // psdGainOpt_hpp
+#endif // modalGainOpt_hpp

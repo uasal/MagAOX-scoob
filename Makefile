@@ -30,6 +30,7 @@ apps_rtcicc = \
     hsfwCtrl \
     rhusbMon \
 	cacaoInterface \
+    modalGainOpt \
     modalPSDs \
 	userGainCtrl \
     refRMS \
@@ -51,7 +52,7 @@ apps_rtc = \
 	dmSpeckle \
 	w2tcsOffloader \
 	pwfsSlopeCalc \
-        kcubeCtrl \
+    kcubeCtrl \
 	dmPokeXCorr
 
 apps_icc = \

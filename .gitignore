@@ -96,11 +96,11 @@ apps/koolanceCtrl/koolanceCtrl
 
 #m
 apps/mcp3008Ctrl/mcp3008Ctrl
+apps/modalGainOpt/modalGainOpt
+apps/modalPSDs/modalPSDs
 apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
-
 apps/mzmqClient/mzmqClient
-apps/modalPSDs/modalPSDs
 
 #o
 apps/observerCtrl/observerCtrl
@@ -111,7 +111,6 @@ apps/openLoopPSDs/openLoopPSDs
 apps/pi335Ctrl/pi335Ctrl
 apps/picamCtrl/picamCtrl
 apps/picoMotorCtrl/picoMotorCtrl
-apps/psdGainOpt/psdGainOpt
 apps/psfFit/psfFit
 apps/psfAcq/psfAcq
 apps/pupilAlign/pupilAlign

@@ -1,7 +1,7 @@
 
-allall: all 
+allall: all
 
 OTHER_HEADERS=
-TARGET=psdGainOpt
+TARGET=modalGainOpt
 include ../../Make/magAOXApp.mk
 
