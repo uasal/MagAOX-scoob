@@ -390,15 +390,14 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     // Wait for FPS to become not 0
     // We wait indefinitely, the other process just might not be alive
-    int nfps = 30;
+    bool logged = false;
     while( m_fps <= 0 && !shutdown() )
     {
-        if( nfps > 29 ) // log every thirty seconds
+        if( !logged ) // log every thirty seconds
         {
             log<text_log>( "waiting for FPS...", logPrio::LOG_NOTICE );
-            nfps = 0;
+            logged = true;
         }
-        ++nfps;
         mx::sys::sleep( 1 );
     }
 
