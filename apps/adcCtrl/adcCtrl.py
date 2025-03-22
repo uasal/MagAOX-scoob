@@ -101,8 +101,7 @@ class AdcFitter:
 
         rect = hp.make_rotated_aperture(hp.make_rectangular_aperture(size=sizes[speckle_number], center=corners[speckle_number]), np.deg2rad(-grating_angle))(image.grid)
         speckle_img = rect * image
-        return speckle_img
-    
+        return speckle_img   
 
     def set_psf(self,psf):
         self.psf = psf  
@@ -188,13 +187,6 @@ class AdcFitter:
         img = hp.Field([x if x>0 else 0 for x in img],img.grid)
 
         return img
-
-    def crop_cube(self, data_cube,extent=400,mask_diam=60):
-        cropped_cube = []
-        for i in range(len(data_cube)):
-            img = self.crop_image(data_cube[i],extent,mask_diam)
-            cropped_cube.append(img)
-        return cropped_cube
 
     def filter_image(self,img,low_freq = 0.01,high_freq=1):
 
@@ -310,7 +302,7 @@ class adcCtrl(XDevice):
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
             self._center_wavelength = 908E-9
         else: self._center_wavelength = 656E-9
-        self.log.debug(f'using center wavelength: {self._center_wavelength*1E9} nm')
+        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
         self.ADC.set_control_mtx(self._control_mtx)
@@ -333,7 +325,8 @@ class adcCtrl(XDevice):
 
                     if key == 'idle': 
                         self._state = States.IDLE
-                        self.properties['fsm']['state'] = StateCodes.READY.name                    
+                        self.properties['fsm']['state'] = StateCodes.READY.name
+                        self._command = 0                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
@@ -365,6 +358,7 @@ class adcCtrl(XDevice):
         pass
 
     def transition_to_idle(self):
+        self._command = 0
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
         self.properties['state']['adcLoop'] = constants.SwitchState.OFF
         self.properties['state']['idle'] = constants.SwitchState.ON
@@ -438,7 +432,7 @@ class adcCtrl(XDevice):
             diff_pointing_pairs = np.zeros((len(sweep_angles),2)) 
 
             for i, orientation in enumerate(sweep_angles):
-                self.log.info("Step {:d}".format(i))
+                self.log.info(f'Step {i:d}')
                 self.set_command(orientation, 0)
                 self.send_command()
 
