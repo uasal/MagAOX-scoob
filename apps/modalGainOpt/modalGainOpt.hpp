@@ -95,6 +95,19 @@ struct gainCalShmimT
     };
 };
 
+struct gainCalFactShmimT
+{
+    static std::string configSection()
+    {
+        return "gainCalFactShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "gainCalFact";
+    };
+};
+
 struct tauShmimT
 {
     static std::string configSection()
@@ -118,6 +131,7 @@ class modalGainOpt : public MagAOXApp<true>,
                    dev::shmimMonitor<modalGainOpt, gainShmimT>,
                    dev::shmimMonitor<modalGainOpt, multcoShmimT>,
                    dev::shmimMonitor<modalGainOpt, gainCalShmimT>,
+                   dev::shmimMonitor<modalGainOpt, gainCalFactShmimT>,
                    dev::shmimMonitor<modalGainOpt, tauShmimT>
 {
 
@@ -129,6 +143,7 @@ class modalGainOpt : public MagAOXApp<true>,
     friend class dev::shmimMonitor<modalGainOpt, gainShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, multcoShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, gainCalShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, gainCalFactShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, tauShmimT>;
 
   public:
@@ -137,6 +152,7 @@ class modalGainOpt : public MagAOXApp<true>,
     typedef dev::shmimMonitor<modalGainOpt, gainShmimT>    gainShmimMonitorT;
     typedef dev::shmimMonitor<modalGainOpt, multcoShmimT>  multcoShmimMonitorT;
     typedef dev::shmimMonitor<modalGainOpt, gainCalShmimT> gainCalShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, gainCalFactShmimT> gainCalFactShmimMonitorT;
     typedef dev::shmimMonitor<modalGainOpt, tauShmimT>     tauShmimMonitorT;
 
     typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
@@ -195,6 +211,8 @@ class modalGainOpt : public MagAOXApp<true>,
     std::vector<float> m_mcs;
 
     std::vector<float> m_gainCals;
+
+    std::vector<float> m_gainCalFacts;
 
     std::vector<float> m_taus;
 
@@ -278,6 +296,13 @@ class modalGainOpt : public MagAOXApp<true>,
                       const gainCalShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
+    int allocate( const gainCalFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,       ///< [in] pointer to the start of the current frame
+                      const gainCalFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
     int allocate( const tauShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
@@ -359,6 +384,7 @@ modalGainOpt::modalGainOpt() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIF
     gainShmimMonitorT::m_getExistingFirst    = true;
     multcoShmimMonitorT::m_getExistingFirst  = true;
     gainCalShmimMonitorT::m_getExistingFirst = true;
+    gainCalFactShmimMonitorT::m_getExistingFirst = true;
     tauShmimMonitorT::m_getExistingFirst     = true;
 
     return;
@@ -421,6 +447,7 @@ void modalGainOpt::setupConfig()
     SHMIMMONITORT_SETUP_CONFIG( gainShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( multcoShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( gainCalShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( gainCalFactShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( tauShmimMonitorT, config );
 }
 
@@ -451,15 +478,19 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     multcoShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( multcoShmimMonitorT, _config );
 
-    snprintf( shmim, sizeof( shmim ), "aol%d_modalgaincal", m_loopNum );
+    snprintf( shmim, sizeof( shmim ), "aol%d_mgaincal", m_loopNum );
     gainCalShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( gainCalShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_mgaincalfact", m_loopNum );
+    gainCalFactShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( gainCalFactShmimMonitorT, _config );
 
     snprintf( shmim, sizeof( shmim ), "aol%d_looptau", m_loopNum );
     tauShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( tauShmimMonitorT, _config );
 
-    snprintf( shmim, sizeof( shmim ), "aol%d_optimalgains", m_loopNum );
+    snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimal", m_loopNum );
     m_optGainsShmimName = shmim;
     return 0;
 }
@@ -476,6 +507,7 @@ int modalGainOpt::appStartup()
     SHMIMMONITORT_APP_STARTUP( gainShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( multcoShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( gainCalShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( tauShmimMonitorT );
 
     CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_autoUpdate, "update_auto" );
@@ -515,6 +547,7 @@ int modalGainOpt::appLogic()
     SHMIMMONITORT_APP_LOGIC( gainShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( multcoShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( gainCalShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( tauShmimMonitorT );
 
     XWCAPP_THREAD_CHECK( m_goptThread, "gainopt" );
@@ -524,6 +557,7 @@ int modalGainOpt::appLogic()
     SHMIMMONITORT_UPDATE_INDI( gainShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( multcoShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( gainCalShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( gainCalFactShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( tauShmimMonitorT );
 
     if( m_autoUpdate )
@@ -567,6 +601,7 @@ int modalGainOpt::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( gainShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( multcoShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( gainCalShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
 
     if( m_optGainsStream != nullptr )
@@ -942,6 +977,68 @@ int modalGainOpt::processImage( void *curr_src, const gainCalShmimT &dummy )
     return 0;
 }
 
+int modalGainOpt::allocate( const gainCalFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const gainCalFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    if( gainCalFactShmimMonitorT::m_height != 1 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "got gainCalFacts with height not 1" } );
+    }
+
+    bool change = false;
+
+    uint32_t w = gainCalFactShmimMonitorT::m_width;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    if( w != m_gainCalFacts.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+        m_gainCalFacts.resize( w );
+    }
+
+    float *g = static_cast<float *>( curr_src );
+
+    for( uint32_t n = 0; n < w; ++n )
+    {
+        if( change || m_gainCalFacts[n] != g[n] )
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                change = true;
+            }
+
+            m_gainCalFacts[n] = g[n];
+        }
+    }
+
+    if( change )
+    {
+        m_sinceChange = -1;
+        m_updating    = false;
+        lock.unlock();
+        std::cerr << "got gainCalsFacts: " << m_gainCalFacts.size() << "\n";
+    }
+
+    return 0;
+}
+
 int modalGainOpt::allocate( const tauShmimT &dummy )
 {
     static_cast<void>( dummy );
@@ -1057,6 +1154,12 @@ void modalGainOpt::goptThreadExec()
                 continue;
             }
 
+            if( (size_t)m_clPSDs.cols() != m_gainCalFacts.size() )
+            {
+                log<software_error>( { __FILE__, __LINE__, "PSDs and gain cal facts number of modes mismatch" } );
+                continue;
+            }
+
             if( (size_t)m_clPSDs.cols() != m_taus.size() )
             {
                 log<software_error>( { __FILE__, __LINE__, "Loop taus have not been set" } );
@@ -1149,7 +1252,7 @@ void modalGainOpt::goptThreadExec()
             m_optGainsStream->md->write = 1;
             for( size_t n = 0; n < m_optGain.size(); ++n )
             {
-                f[n] = m_optGain[n] / m_gainCals[n];
+                f[n] = m_gainCalFacts[n]*m_optGain[n] / m_gainCals[n];
             }
             clock_gettime( CLOCK_ISIO, &m_optGainsStream->md->writetime );
             m_optGainsStream->md->atime = m_optGainsStream->md->writetime;
@@ -1168,14 +1271,14 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t n = 0; n < m_optGain.size(); ++n )
                     {
-                        f[n] = m_optGain[n] / m_gainCals[n];
+                        f[n] = m_gainCalFacts[n] * m_optGain[n] / m_gainCals[n];
                     }
                 }
                 else
                 {
                     for( size_t n = 0; n < m_optGain.size(); ++n )
                     {
-                        f[n] = f[n] + m_gainGain * ( m_optGain[n] / m_gainCals[n] - f[n] );
+                        f[n] = f[n] + m_gainGain *  (m_gainCalFacts[n] * m_optGain[n] / m_gainCals[n] - f[n] );
                     }
                 }
 
