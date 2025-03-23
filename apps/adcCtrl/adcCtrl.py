@@ -326,16 +326,20 @@ class adcCtrl(XDevice):
                     if key == 'idle': 
                         self._state = States.IDLE
                         self.properties['fsm']['state'] = StateCodes.READY.name
-                        self._command = 0                    
+                        self._command = 0
+                        self.log.debug('State changed to idle')                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
+                        self.log.debug('State changed to closed-loop')
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
+                        self.log.debug('State changed to oneshot')
                     elif key == 'calibrate':
                         self._state = States.CALIB
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
+                        self.log.debug('State changed to calibration')
 
             self.update_property(existing_property)
             self.update_property(self.properties['fsm'])
@@ -345,6 +349,7 @@ class adcCtrl(XDevice):
             existing_property['current'] = new_message['target']
             existing_property['target'] = new_message['target']
             self._n_avg = int(new_message['target'])
+            self.log.debug(f'now averaging over {self._n_avg} frames')
         self.update_property(existing_property)
 
     def handle_gain(self, existing_property, new_message):
@@ -352,6 +357,7 @@ class adcCtrl(XDevice):
             existing_property['current'] = new_message['target'] 
             existing_property['target'] = new_message['target'] 
             self._gain = float(new_message['target'])
+            self.log.debug(f'loop gain changed to {self._gain}')
         self.update_property(existing_property)
 
     def handle_ctrl_mtx(self, existing_property, new_message):
