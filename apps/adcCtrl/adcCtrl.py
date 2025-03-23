@@ -291,7 +291,7 @@ class adcCtrl(XDevice):
 
         #self._loop_counter = 0
         self._n_avg = 1
-        self._gain = 0.1
+        self._gain = 0.5
         self._command = 0
         self._control_mtx = np.array([-0.22312707, -0.22983197])
         self.delta_1 = 0
