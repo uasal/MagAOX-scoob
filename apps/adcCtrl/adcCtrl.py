@@ -305,6 +305,7 @@ class adcCtrl(XDevice):
         # else: self._center_wavelength = 656E-9
         # self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
+        self.update_wavelength()
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
         self.ADC.set_control_mtx(self._control_mtx)
 
@@ -466,6 +467,9 @@ class adcCtrl(XDevice):
                 angles = self.ADC.find_speckle_angles2()
                 pointing_pair = self.ADC.speckle_pairs(angles)
                 diff_pointing_pairs[i,] = pointing_pair
+
+            self.set_command(0,0)
+            self.send()
 
             a1 = np.zeros(2)
             b1 = np.zeros(2)
