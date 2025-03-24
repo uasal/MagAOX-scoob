@@ -294,15 +294,16 @@ class adcCtrl(XDevice):
         self._gain = 0.5
         self._command = 0
         self._control_mtx = np.array([-0.22312707, -0.22983197])
+        self._extent = 400
         self.delta_1 = 0
         self.delta_2 = 0
 
-        if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
-            self._center_wavelength = 762E-9
-        elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
-            self._center_wavelength = 908E-9
-        else: self._center_wavelength = 656E-9
-        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
+        # if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
+        #     self._center_wavelength = 762E-9
+        # elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
+        #     self._center_wavelength = 908E-9
+        # else: self._center_wavelength = 656E-9
+        # self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
         self.ADC.set_control_mtx(self._control_mtx)
@@ -369,9 +370,13 @@ class adcCtrl(XDevice):
     def update_wavelength(self):
         if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
             self._center_wavelength = 762E-9
+            self._extent = 400
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
             self._center_wavelength = 908E-9
-        else: self._center_wavelength = 656E-9
+            self._extent = 480
+        else: 
+            self._center_wavelength = 656E-9
+            self._extent = 400
         self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
     def transition_to_idle(self):
@@ -406,7 +411,7 @@ class adcCtrl(XDevice):
         if self._state == States.CLOSED_LOOP:
             img = self.camera.grab_stack(self._n_avg)
             img = self.ADC.filter_image(img)
-            img = self.ADC.crop_image(img)
+            img = self.ADC.crop_image(img,self._extent)
             self.ADC.set_psf(img)
             
             angles = self.ADC.find_speckle_angles2()
@@ -425,7 +430,7 @@ class adcCtrl(XDevice):
         elif self._state == States.ONESHOT:
             img = self.camera.grab_stack(self._n_avg)
             img = self.ADC.filter_image(img)
-            img = self.ADC.crop_image(img)
+            img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
             
             angles = self.ADC.find_speckle_angles2()
@@ -454,8 +459,8 @@ class adcCtrl(XDevice):
                 self.send_command()
 
                 img = self.camera.grab_stack(self._n_avg)
-                self.ADC.filter_image(img)
-                self.ADC.crop_image(img)
+                img = self.ADC.filter_image(img)
+                img = self.ADC.crop_image(img,extent=self._extent)
                 self.ADC.set_psf(img)
                 
                 angles = self.ADC.find_speckle_angles2()
