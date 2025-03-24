@@ -9,6 +9,10 @@ class ShapeMismatchException(Exception):
     pass
 
 class Image(ImageStreamIOWrap.Image):
+    '''Customized Image from ImageStreamIOWrap that enforces transposition
+    (i.e. C-ordering) at the copy() and write() boundary for consistency
+    with Python image plotting
+    '''
     semID : Optional[int] = None
     def __init__(self, name):
         super().__init__()
@@ -17,7 +21,7 @@ class Image(ImageStreamIOWrap.Image):
             raise RuntimeError(f"Could not open {repr(name)}")
 
     def copy(self):
-        return np.squeeze(super().copy())
+        return np.squeeze(super().copy().T)
 
     def get_data(self, check: bool=False, timeout: Optional[float]=None):
         '''Get a copy of the image data, optionally waiting (with an
@@ -45,3 +49,13 @@ class Image(ImageStreamIOWrap.Image):
                 if ret != 0:
                     raise ShmimTimeout(f"Timed out after {timeout} sec without new data")
         return self.copy()
+
+    def write(self, buffer: np.ndarray):
+        '''Set the contents of the shmim, reordering buffer to
+        column-major if necessary
+        '''
+        if not buffer.flags['F_CONTIGUOUS']:
+            data_towrite = data_towrite.copy('F')
+        else:
+            data_towrite = buffer
+        return super().write(data_towrite)
