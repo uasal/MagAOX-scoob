@@ -330,14 +330,17 @@ class adcCtrl(XDevice):
                         self.log.debug('State changed to idle')                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
+                        self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to closed-loop')
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
+                        self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to oneshot')
                     elif key == 'calibrate':
                         self._state = States.CALIB
+                        self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to calibration')
 
@@ -362,6 +365,14 @@ class adcCtrl(XDevice):
 
     def handle_ctrl_mtx(self, existing_property, new_message):
         pass
+
+    def update_wavelength(self):
+        if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
+            self._center_wavelength = 762E-9
+        elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
+            self._center_wavelength = 908E-9
+        else: self._center_wavelength = 656E-9
+        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
     def transition_to_idle(self):
         self._command = 0
