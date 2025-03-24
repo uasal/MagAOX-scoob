@@ -469,7 +469,7 @@ class adcCtrl(XDevice):
                 diff_pointing_pairs[i,] = pointing_pair
 
             self.set_command(0,0)
-            self.send()
+            self.send_command()
 
             a1 = np.zeros(2)
             b1 = np.zeros(2)
