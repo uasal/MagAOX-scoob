@@ -3201,6 +3201,57 @@ int stdCamera<derivedT>::recordCamera( bool force )
     return 0;
 }
 
+
+/// Call stdCameraT::setupConfig with error checking for stdCamera
+/**
+  * \param cfig the application configurator
+  */
+ #define STDCAMERA_SETUP_CONFIG( cfig )                                                  \
+    if(stdCameraT::setupConfig(cfig) < 0)                                                \
+    {                                                                                    \
+        log<software_error>({__FILE__, __LINE__, "Error from stdCameraT::setupConfig"}); \
+        m_shutdown = true;                                                               \
+        return;                                                                          \
+    }
+
+ /// Call stdCameraT::loadConfig with error checking for stdCamera
+/** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
+  * \param cfig the application configurator
+  */
+#define STDCAMERA_LOAD_CONFIG( cfig )                                                             \
+    if(stdCameraT::loadConfig(cfig) < 0)                                                          \
+    {                                                                                             \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::loadConfig"}); \
+    }
+
+/// Call stdCameraT::appStartup with error checking for stdCamera
+#define STDCAMERA_APP_STARTUP                                                                     \
+    if(stdCameraT::appStartup() < 0)                                                              \
+    {                                                                                             \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appStartup"}); \
+    }
+
+/// Call stdCameraT::appLogic with error checking for stdCamera
+#define STDCAMERA_APP_LOGIC                                                                     \
+    if(stdCameraT::appLogic() < 0)                                                              \
+    {                                                                                           \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appLogic"}); \
+    }
+
+/// Call stdCameraT::updateINDI with error checking for stdCamera
+#define STDCAMERA_UPDATE_INDI                                                                     \
+    if(stdCameraT::updateINDI() < 0)                                                              \
+    {                                                                                             \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::updateINDI"}); \
+    }
+
+/// Call stdCameraT::appShutdown with error checking for stdCamera
+#define STDCAMERA_APP_SHUTDOWN                                                                     \
+    if(stdCameraT::appShutdown() < 0)                                                              \
+    {                                                                                              \
+        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appShutdown"}); \
+    }
+
 } // namespace dev
 } // namespace app
 } // namespace MagAOX

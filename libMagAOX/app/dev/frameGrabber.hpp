@@ -103,6 +103,8 @@ class frameGrabber
 public:
    enum fgFlip { fgFlipNone, fgFlipUD, fgFlipLR, fgFlipUDLR };
 
+   typedef int32_t cbIndexT;
+
 protected:
 
    /** \name Configurable Parameters
@@ -115,7 +117,8 @@ protected:
 
    uint32_t m_circBuffLength {1}; ///< Length of the circular buffer, in frames
 
-   uint32_t m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
+   cbIndexT m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
+
    float m_latencyCircBuffMaxTime {5}; ///< Maximum time of the latency meaurement circular buffers
 
    int m_defaultFlip {fgFlipNone};
@@ -140,7 +143,7 @@ protected:
 
    IMAGE * m_imageStream {nullptr}; ///< The ImageStreamIO shared memory buffer.
 
-   typedef uint32_t cbIndexT;
+
 
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_atimes;
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_wtimes;
@@ -480,7 +483,7 @@ int frameGrabber<derivedT>::appLogic()
    {
       if(m_atimes.size() >= m_atimes.maxEntries())
       {
-         size_t latTime = m_latencyCircBuffMaxTime*derived().fps();
+         cbIndexT latTime = m_latencyCircBuffMaxTime*derived().fps();
          if(latTime > m_atimes.maxEntries())
          {
             latTime = m_atimes.maxEntries();
@@ -678,7 +681,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          sleep(1);
       }
 
-      if(derived().shutdown()) 
+      if(derived().shutdown())
       {
          continue;
       }
@@ -717,7 +720,7 @@ void frameGrabber<derivedT>::fgThreadExec()
        */
       if(m_shmimName == "") m_shmimName = derived().configName();
 
-      if(m_width != imsize[0] || m_height != imsize[1] || m_circBuffLength != imsize[2] || m_shmimName != shmimName || m_imageStream == nullptr)
+      if(m_width != imsize[0] || m_height != imsize[1] || static_cast<uint32_t>(m_circBuffLength) != imsize[2] || m_shmimName != shmimName || m_imageStream == nullptr)
       {
          if(m_imageStream != nullptr)
          {
