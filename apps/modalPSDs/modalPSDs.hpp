@@ -50,11 +50,13 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
 
     typedef std::complex<realT> complexT;
 
+    typedef int32_t cbIndexT; ///< The index for the circular buffer
+
     /// The base shmimMonitor type
     typedef dev::shmimMonitor<modalPSDs> shmimMonitorT;
 
     /// The amplitude circular buffer type
-    typedef mx::sigproc::circularBufferIndex<float *, uint32_t> ampCircBuffT;
+    typedef mx::sigproc::circularBufferIndex<realT *, cbIndexT> ampCircBuffT;
 
   protected:
     /** \name Configurable Parameters
@@ -89,13 +91,13 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
 
     realT m_df{ 1 };
 
-    // unsigned m_tsCircBuffLength {4000}; ///< Length of the time-series circular buffers.  This is updated by
-    // m_fpsDevice and m_psdTime.
+    cbIndexT m_tsSize{ 2000 }; ///< The length of the time series sample over which the PSD is calculated
 
-    unsigned           m_tsSize{ 2000 }; ///< The length of the time series sample over which the PSD is calculated
-    unsigned           m_tsOverlapSize{ 1000 }; ///< The number of samples in the overlap
-    unsigned           m_meanSize{ 20000 };     ///< The length of the time series over which to calculate the mean
-    std::vector<realT> m_win;                   ///< The window function.  By default this is Hann.
+    cbIndexT m_tsOverlapSize{ 1000 }; ///< The number of samples in the overlap
+
+    cbIndexT m_meanSize{ 20000 }; ///< The length of the time series over which to calculate the mean
+
+    std::vector<realT> m_win; ///< The window function.  By default this is Hann.
 
     realT *m_tsWork{ nullptr };
     size_t m_tsWorkSize{ 0 };
@@ -452,7 +454,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     m_meanSize = m_fps * m_psdAvgTime;
 
-    if( m_meanSize > shmimMonitorT::m_depth )
+    if( static_cast<uint32_t>(m_meanSize) > shmimMonitorT::m_depth )
     {
         log<software_error>( { __FILE__, __LINE__, "input circ buff is not long enough for psd avg. time" } );
         m_meanSize = shmimMonitorT::m_depth;
@@ -460,7 +462,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     // Size the circ buff
     // we really want 2*m_meanSize but might not be able to
-    if( 2 * m_meanSize > shmimMonitorT::m_depth )
+    if( 2 * static_cast<uint32_t>(m_meanSize) > shmimMonitorT::m_depth )
     {
         m_ampCircBuff.maxEntries( shmimMonitorT::m_depth );
     }
@@ -697,7 +699,7 @@ void modalPSDs::psdThreadExec()
             {
                 // get mean going over avg time
                 realT mn = 0;
-                for( size_t n = 0; n < m_meanSize; ++n )
+                for( cbIndexT n = 0; n < m_meanSize; ++n )
                 {
                     mn += ( m_ampCircBuff.at( mne0, n ) )[m];
                 }
@@ -705,7 +707,7 @@ void modalPSDs::psdThreadExec()
 
                 double var = 0;
 
-                for( size_t n = 0; n < m_tsSize; ++n )
+                for( cbIndexT n = 0; n < m_tsSize; ++n )
                 {
                     m_tsWork[n] = ( m_ampCircBuff.at( ne0, n )[m] - mn ); // load mean subtracted chunk
 
@@ -767,7 +769,7 @@ void modalPSDs::psdThreadExec()
             {
                 nPSDAverage = 1;
             }
-            else if( (uint64_t)nPSDAverage > m_rawpsdStream->md->size[2] )
+            else if( static_cast<uint64_t>(nPSDAverage) > m_rawpsdStream->md->size[2] )
             {
                 nPSDAverage = m_rawpsdStream->md->size[2];
             }
@@ -816,13 +818,13 @@ void modalPSDs::psdThreadExec()
             // std::cerr << "done " << t1 - t0 << "\n";
 
             // Have to be cycling within the overlap
-            if( m_ampCircBuff.mono() - mono0 >= m_tsOverlapSize )
+            if( m_ampCircBuff.mono() - mono0 >= static_cast<uint32_t>(m_tsOverlapSize) )
             {
                 log<text_log>( "PSD calculations getting behind, skipping ahead.", logPrio::LOG_WARNING );
             }
             else
             {
-                while( m_ampCircBuff.mono() - mono0 < m_tsOverlapSize )
+                while( m_ampCircBuff.mono() - mono0 < static_cast<uint32_t>(m_tsOverlapSize)  )
                 {
                     mx::sys::microSleep( 0.2 * 1000000.0 / m_fps );
                 }
