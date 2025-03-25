@@ -702,9 +702,6 @@ void frameGrabber<derivedT>::fgThreadExec()
             if(cbSz > m_latencyCircBuffMaxLength) cbSz = m_latencyCircBuffMaxLength;
             if(cbSz < 3) cbSz = 3; //Make variance meaningful
 
-            std::cerr << "cbSz: " << cbSz << ' ' << derived().fps() << ' ' << m_latencyCircBuffMaxTime;
-            std::cerr << ' ' << m_latencyCircBuffMaxLength << '\n';
-
             m_atimes.maxEntries(cbSz);
             m_wtimes.maxEntries(cbSz);
          }
@@ -740,10 +737,6 @@ void frameGrabber<derivedT>::fgThreadExec()
          ImageStreamIO_createIm_gpu(m_imageStream, m_shmimName.c_str(), 3, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 0, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);
 
          m_imageStream->md->cnt1 = m_circBuffLength - 1;
-      }
-      else
-      {
-         std::cerr << "Not creating . . .\n";
       }
 
       //This completes the reconfiguration.

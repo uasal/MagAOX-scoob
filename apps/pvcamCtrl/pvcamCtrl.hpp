@@ -94,21 +94,21 @@ public:
     /** \name app::dev Configurations
       *@{
       */
-    static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera to expose temperature controls
+    static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera not to expose temperature controls
    
-    static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera to expose temperature
+    static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera not to expose temperature
    
     static constexpr bool c_stdCamera_readoutSpeed = true; ///< app::dev config to tell stdCamera to expose readout speed controls
    
-    static constexpr bool c_stdCamera_vShiftSpeed = false; ///< app:dev config to tell stdCamera to expose vertical shift speed control
+    static constexpr bool c_stdCamera_vShiftSpeed = false; ///< app:dev config to tell stdCamera not to expose vertical shift speed control
 
-    static constexpr bool c_stdCamera_emGain = false; ///< app::dev config to tell stdCamera to expose EM gain controls 
+    static constexpr bool c_stdCamera_emGain = false; ///< app::dev config to tell stdCamera not to expose EM gain controls 
 
     static constexpr bool c_stdCamera_exptimeCtrl = true; ///< app::dev config to tell stdCamera to expose exposure time controls
    
-    static constexpr bool c_stdCamera_fpsCtrl = true; ///< app::dev config to tell stdCamera not to expose FPS controls
+    static constexpr bool c_stdCamera_fpsCtrl = true; ///< app::dev config to tell stdCamera to expose FPS controls
 
-    static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
+    static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera to expose FPS status
    
     static constexpr bool c_stdCamera_synchro = false; ///< app::dev config to tell stdCamera to not expose synchro mode controls
    
@@ -177,6 +177,8 @@ protected:
     std::vector<port> m_ports;
 
     bool m_8bit {false};
+
+    bool m_fpsSetted {false} ;///< Flag indicating that FPS was set, not exposure time.
 
     uns32  m_circBuffBytes {0};
     uns8 * m_circBuff {nullptr};
@@ -353,12 +355,11 @@ void pvcamCtrl::setupConfig()
     //put this in camera because it is a camera interface config, not a framegrabber thing per se:
     config.add("camera.circBuffMaxBytes", "", "camera.circBuffMaxBytes", argType::Required, "camera", "circBuffMaxBytes", false, "int", "Maximum size in bytes of the circular buffer to allocate.  Default is 0.5 GB.");
 
-    stdCameraT::setupConfig(config);
+    STDCAMERA_SETUP_CONFIG(config);
 
     FRAMEGRABBER_SETUP_CONFIG(config);
 
     config.add("framegrabber.acqSleep", "", "framegrabber.acqSleep", argType::Required, "framegrabber","acqSleep", false, "int", "The acquisition pause time, in ns, when no frame is ready. Default is 5000.");
-
 
     shutterT::setupConfig(config);
     
@@ -376,7 +377,7 @@ int pvcamCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
         return -1;
     }
 
-    stdCameraT::loadConfig(_config);
+    STDCAMERA_LOAD_CONFIG(_config);
 
     m_currentROI.x = m_default_x;
     m_currentROI.y = m_default_y;
@@ -414,10 +415,8 @@ void pvcamCtrl::loadConfig()
 
 int pvcamCtrl::appStartup()
 {
-    if(stdCameraT::appStartup() < 0)
-    {
-        return log<software_critical,-1>({__FILE__,__LINE__});
-    }
+
+   STDCAMERA_APP_STARTUP;
 
     if(sem_init(&m_frSemaphore, 0, 0) < 0)
     {
@@ -455,11 +454,8 @@ int pvcamCtrl::appLogic()
         state(stateCodes::NOTCONNECTED);
     }
 
-    //run stdCamera's appLogic
-    if(stdCameraT::appLogic() < 0)
-    {
-        return log<software_error, -1>({__FILE__, __LINE__});
-    }
+    
+    STDCAMERA_APP_LOGIC;
 
     FRAMEGRABBER_APP_LOGIC;
 
@@ -503,16 +499,10 @@ int pvcamCtrl::appLogic()
             log<software_error>({__FILE__, __LINE__});
             return 0;
         }
-        
-        if(stdCameraT::updateINDI() < 0)
-        {
-            return log<software_error,0>({__FILE__,__LINE__});
-        }
+    
+        STDCAMERA_UPDATE_INDI;
       
-        if(frameGrabberT::updateINDI() < 0)
-        {
-            return log<software_error,0>({__FILE__,__LINE__});
-        }
+       FRAMEGRABBER_UPDATE_INDI;
 
         TELEMETER_APP_LOGIC;
         recordCamera();
@@ -540,6 +530,8 @@ int pvcamCtrl::appShutdown()
             log_pvcam_software_error("pl_pvcam_uninit", "continuing");
         }
     }
+
+    STDCAMERA_APP_SHUTDOWN;
 
     FRAMEGRABBER_APP_SHUTDOWN;
 
@@ -623,8 +615,6 @@ int pvcamCtrl::setExpTime()
         return -1;
     }
 
-    std::cerr << "Exposure time min: " << minExpTime << " max: " << maxExpTime << "\n";
-
     if(m_expTimeSet*1e6 < minExpTime)
     {
         m_expTimeSet = (int) (minExpTime/1e6+0.5);
@@ -645,6 +635,7 @@ int pvcamCtrl::setExpTime()
 int pvcamCtrl::setFPS()
 {
     m_expTimeSet = 1.0/m_fpsSet;
+    m_fpsSetted = true;
     return setExpTime();
 }
 
@@ -777,7 +768,6 @@ int pvcamCtrl::configureAcquisition()
     m_dataType = _DATATYPE_UINT16;
 
     //-- 3: Setup continuous acquisition
-    //std::cerr << pvROI.s1 << " " << pvROI.s2 << " " << pvROI.sbin << " " << pvROI.p1 << " " << pvROI.p2 << " " << pvROI.pbin << "\n";
     uns32 fsize;
 
     uns32 exptime = m_expTimeSet * 1e6;
@@ -819,8 +809,59 @@ int pvcamCtrl::configureAcquisition()
         log_pvcam_software_error("pl_get_param", "PARAM_POST_TRIGGER_DELAY");
     }
 
-    std::cerr << "et: " << m_expTime << ' ' << readouttime << ' ' << predelay << ' ' << postdelay << ' ' << clearing << '\n';
-    m_fps = 1.0/(m_expTime + predelay/1e9 + postdelay/1e9);
+    if(m_fpsSetted)
+    {
+        if(static_cast<long64>(m_expTime*1000000) < readouttime)
+        {
+            //This is as fast as we can go, set expTime to longest possible
+            m_expTimeSet = (readouttime-1)/1e6; //Go one usec lower, which will get cleaned up by the camera
+        }
+        else
+        {
+            m_expTimeSet = (1.0/m_fpsSet) - 2.0*postdelay/1e9;
+
+            if(static_cast<long64>(m_expTimeSet*1000000) < readouttime)
+            {
+                //again, Set expTime to longest possible
+                m_expTimeSet = (readouttime-1.0)/1e6; //Go one usec lower, which will get cleaned up by the camera
+            }
+        }
+        
+        exptime = m_expTimeSet * 1e6;
+        if(pl_exp_setup_cont(m_handle, 1, &pvROI, TIMED_MODE, exptime, &fsize, CIRC_OVERWRITE) == false)
+        {
+            log_pvcam_software_error("pl_exp_setup_cont", "");
+            m_shutdown = true;
+            return -1;
+        }
+
+        //Note: this call apparently resets exptime to 0 ....
+        if (pl_get_param(m_handle, PARAM_EXPOSURE_TIME, ATTR_CURRENT, &exptime) == false) 
+        {
+            log_pvcam_software_error("pl_get_param", "PARAM_EXPOSURE_TIME");
+        }
+
+        m_expTime = (1.0*exptime) / 1e6;
+        
+        m_expTimeSet = m_expTime;
+
+        m_fpsSetted = false;
+
+        if(pl_get_param(m_handle, PARAM_READOUT_TIME, ATTR_CURRENT, &readouttime) == false)
+        {
+            log_pvcam_software_error("pl_get_param", "PARAM_READOUT_TIME");
+        }
+    }
+
+    if(static_cast<long64>(m_expTime*1000000) < readouttime)
+    {
+        m_fps = 1.0/(readouttime/1e6 + postdelay/1e9);    
+    }
+    else
+    {
+        m_fps = 1.0/(m_expTime + 2.0*postdelay/1e9); //At some speeds there is an extra + ~250/1e9 that is needed.
+    }
+
     m_fpsSet = m_fps;
 
     //-- 4: Allocate the acq circular buffer

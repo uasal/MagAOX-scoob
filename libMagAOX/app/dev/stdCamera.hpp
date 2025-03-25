@@ -531,7 +531,7 @@ class stdCamera
         \endcode
       * with appropriate error checking.
       */
-    void setupConfig( mx::app::appConfigurator &config /**< [out] the derived classes configurator*/ );
+    int setupConfig( mx::app::appConfigurator &config /**< [out] the derived classes configurator*/ );
 
     /// load the configuration system results
     /**
@@ -541,7 +541,7 @@ class stdCamera
         \endcode
       * with appropriate error checking.
       */
-    void loadConfig( mx::app::appConfigurator &config /**< [in] the derived classes configurator*/ );
+    int loadConfig( mx::app::appConfigurator &config /**< [in] the derived classes configurator*/ );
 
   protected:
     // workers to create indi variables if needed
@@ -1053,7 +1053,7 @@ stdCamera<derivedT>::~stdCamera() noexcept
 }
 
 template <class derivedT>
-void stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
+int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
 {
     if( derivedT::c_stdCamera_tempControl )
     {
@@ -1177,10 +1177,12 @@ void stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     "int",
                     "The default ROI y binning." );
     }
+
+    return 0;
 }
 
 template <class derivedT>
-void stdCamera<derivedT>::loadConfig( mx::app::appConfigurator &config )
+int stdCamera<derivedT>::loadConfig( mx::app::appConfigurator &config )
 {
     if( derivedT::c_stdCamera_tempControl )
     {
@@ -1226,6 +1228,8 @@ void stdCamera<derivedT>::loadConfig( mx::app::appConfigurator &config )
         config( m_default_bin_x, "camera.default_bin_x" );
         config( m_default_bin_y, "camera.default_bin_y" );
     }
+
+    return 0;
 }
 
 template <class derivedT>
@@ -3206,7 +3210,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
 /**
   * \param cfig the application configurator
   */
- #define STDCAMERA_SETUP_CONFIG( cfig )                                                  \
+#define STDCAMERA_SETUP_CONFIG( cfig )                                                   \
     if(stdCameraT::setupConfig(cfig) < 0)                                                \
     {                                                                                    \
         log<software_error>({__FILE__, __LINE__, "Error from stdCameraT::setupConfig"}); \
