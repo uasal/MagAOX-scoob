@@ -56,29 +56,94 @@ struct freqShmimT
     };
 };
 
-struct gainShmimT
+struct gainFactShmimT
 {
     static std::string configSection()
     {
-        return "gainShmim";
+        return "gainFactShmim";
     };
 
     static std::string indiPrefix()
     {
-        return "gain";
+        return "gainFact";
     };
 };
 
-struct multcoShmimT
+struct multFactShmimT
 {
     static std::string configSection()
     {
-        return "multcoShmim";
+        return "multFactShmim";
     };
 
     static std::string indiPrefix()
     {
-        return "multco";
+        return "multFact";
+    };
+};
+
+struct pcGainFactShmimT
+{
+    static std::string configSection()
+    {
+        return "pcGainFactShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "pcGainFact";
+    };
+};
+
+struct pcMultFactShmimT
+{
+    static std::string configSection()
+    {
+        return "pcMultFactShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "pcMultFact";
+    };
+};
+
+struct numpccoeffShmimT
+{
+    static std::string configSection()
+    {
+        return "numpccoeffShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "numpccoeff";
+    };
+};
+
+struct acoeffShmimT
+{
+    static std::string configSection()
+    {
+        return "acoeffShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "acoeff";
+    };
+};
+
+struct bcoeffShmimT
+{
+    static std::string configSection()
+    {
+        return "bcoeffShmim";
+    };
+
+    static std::string indiPrefix()
+    {
+        return "bcoeff";
     };
 };
 
@@ -126,13 +191,18 @@ struct tauShmimT
  * \ingroup modalGainOpt
  */
 class modalGainOpt : public MagAOXApp<true>,
-                   dev::shmimMonitor<modalGainOpt, psdShmimT>,
-                   dev::shmimMonitor<modalGainOpt, freqShmimT>,
-                   dev::shmimMonitor<modalGainOpt, gainShmimT>,
-                   dev::shmimMonitor<modalGainOpt, multcoShmimT>,
-                   dev::shmimMonitor<modalGainOpt, gainCalShmimT>,
-                   dev::shmimMonitor<modalGainOpt, gainCalFactShmimT>,
-                   dev::shmimMonitor<modalGainOpt, tauShmimT>
+                     dev::shmimMonitor<modalGainOpt, psdShmimT>,
+                     dev::shmimMonitor<modalGainOpt, freqShmimT>,
+                     dev::shmimMonitor<modalGainOpt, gainFactShmimT>,
+                     dev::shmimMonitor<modalGainOpt, multFactShmimT>,
+                     dev::shmimMonitor<modalGainOpt, pcGainFactShmimT>,
+                     dev::shmimMonitor<modalGainOpt, pcMultFactShmimT>,
+                     dev::shmimMonitor<modalGainOpt, numpccoeffShmimT>,
+                     dev::shmimMonitor<modalGainOpt, acoeffShmimT>,
+                     dev::shmimMonitor<modalGainOpt, bcoeffShmimT>,
+                     dev::shmimMonitor<modalGainOpt, gainCalShmimT>,
+                     dev::shmimMonitor<modalGainOpt, gainCalFactShmimT>,
+                     dev::shmimMonitor<modalGainOpt, tauShmimT>
 {
 
     // Give the test harness access.
@@ -140,20 +210,30 @@ class modalGainOpt : public MagAOXApp<true>,
 
     friend class dev::shmimMonitor<modalGainOpt, psdShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, freqShmimT>;
-    friend class dev::shmimMonitor<modalGainOpt, gainShmimT>;
-    friend class dev::shmimMonitor<modalGainOpt, multcoShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, gainFactShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, multFactShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, pcGainFactShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, pcMultFactShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, numpccoeffShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, acoeffShmimT>;
+    friend class dev::shmimMonitor<modalGainOpt, bcoeffShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, gainCalShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, gainCalFactShmimT>;
     friend class dev::shmimMonitor<modalGainOpt, tauShmimT>;
 
   public:
-    typedef dev::shmimMonitor<modalGainOpt, psdShmimT>     psdShmimMonitorT;
-    typedef dev::shmimMonitor<modalGainOpt, freqShmimT>    freqShmimMonitorT;
-    typedef dev::shmimMonitor<modalGainOpt, gainShmimT>    gainShmimMonitorT;
-    typedef dev::shmimMonitor<modalGainOpt, multcoShmimT>  multcoShmimMonitorT;
-    typedef dev::shmimMonitor<modalGainOpt, gainCalShmimT> gainCalShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, psdShmimT>         psdShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, freqShmimT>        freqShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, gainFactShmimT>    gainFactShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, multFactShmimT>    multFactShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, pcGainFactShmimT>  pcGainFactShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, pcMultFactShmimT>  pcMultFactShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, numpccoeffShmimT>  numpccoeffShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, acoeffShmimT>      acoeffShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, bcoeffShmimT>      bcoeffShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, gainCalShmimT>     gainCalShmimMonitorT;
     typedef dev::shmimMonitor<modalGainOpt, gainCalFactShmimT> gainCalFactShmimMonitorT;
-    typedef dev::shmimMonitor<modalGainOpt, tauShmimT>     tauShmimMonitorT;
+    typedef dev::shmimMonitor<modalGainOpt, tauShmimT>         tauShmimMonitorT;
 
     typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
     typedef std::chrono::duration<double>                      durationT;
@@ -204,11 +284,25 @@ class modalGainOpt : public MagAOXApp<true>,
 
     float m_gain{ 0 };
 
-    std::vector<float> m_gains;
+    float m_mult{ 1 };
 
-    float m_mc{ 1 };
+    float m_siGain{ 0 };
 
-    std::vector<float> m_mcs;
+    float m_siMult{ 1 };
+
+    float m_pcGain{ 0 };
+
+    float m_pcMult{ 0 };
+
+    bool m_pcOn{ false };
+
+    std::vector<float> m_gainFacts;
+
+    std::vector<float> m_multFacts;
+
+    std::vector<float> m_pcGainFacts;
+
+    std::vector<float> m_pcMultFacts;
 
     std::vector<float> m_gainCals;
 
@@ -220,7 +314,7 @@ class modalGainOpt : public MagAOXApp<true>,
 
     std::string m_optGainsShmimName;
 
-    IMAGE *m_olPSDStream{ nullptr };    ///< The ImageStreamIO shared memory buffer to publish the optimal gains
+    IMAGE *m_olPSDStream{ nullptr };    ///< The ImageStreamIO shared memory buffer to publish the open loop PSDs
     IMAGE *m_optGainsStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
 
   public:
@@ -275,18 +369,53 @@ class modalGainOpt : public MagAOXApp<true>,
                       const freqShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    int allocate( const gainShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    int allocate( const gainFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    int processImage( void *curr_src,    ///< [in] pointer to the start of the current frame
-                      const gainShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    int processImage( void *curr_src,        ///< [in] pointer to the start of the current frame
+                      const gainFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    int allocate( const multcoShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    int allocate( const multFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,        ///< [in] pointer to the start of the current frame
+                      const multFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int allocate( const pcGainFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,          ///< [in] pointer to the start of the current frame
+                      const pcGainFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int allocate( const pcMultFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,          ///< [in] pointer to the start of the current frame
+                      const pcMultFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int allocate( const numpccoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,          ///< [in] pointer to the start of the current frame
+                      const numpccoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int allocate( const acoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
     int processImage( void *curr_src,      ///< [in] pointer to the start of the current frame
-                      const multcoShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+                      const acoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int allocate( const bcoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
+
+    int processImage( void *curr_src,      ///< [in] pointer to the start of the current frame
+                      const bcoeffShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
     int allocate( const gainCalShmimT & ///< [in] tag to differentiate shmimMonitor parents.
@@ -299,7 +428,7 @@ class modalGainOpt : public MagAOXApp<true>,
     int allocate( const gainCalFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    int processImage( void *curr_src,       ///< [in] pointer to the start of the current frame
+    int processImage( void *curr_src,           ///< [in] pointer to the start of the current frame
                       const gainCalFactShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
@@ -360,8 +489,11 @@ class modalGainOpt : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_psdTime;
     pcf::IndiProperty m_indiP_psdAvgTime;
     pcf::IndiProperty m_indiP_loop;
-    pcf::IndiProperty m_indiP_gain;
-    pcf::IndiProperty m_indiP_mc;
+    pcf::IndiProperty m_indiP_siGain;
+    pcf::IndiProperty m_indiP_siMult;
+    pcf::IndiProperty m_indiP_pcGain;
+    pcf::IndiProperty m_indiP_pcMult;
+    pcf::IndiProperty m_indiP_pcOn;
 
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_autoUpdate );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_updateOnce );
@@ -371,21 +503,29 @@ class modalGainOpt : public MagAOXApp<true>,
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdTime );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdAvgTime );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_loop );
-    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_gain );
-    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_mc );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_siGain );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_siMult );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcGain );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcMult );
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcOn );
 
     ///@}
 };
 
 modalGainOpt::modalGainOpt() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
-    psdShmimMonitorT::m_getExistingFirst     = true;
-    freqShmimMonitorT::m_getExistingFirst    = true;
-    gainShmimMonitorT::m_getExistingFirst    = true;
-    multcoShmimMonitorT::m_getExistingFirst  = true;
-    gainCalShmimMonitorT::m_getExistingFirst = true;
+    psdShmimMonitorT::m_getExistingFirst         = true;
+    freqShmimMonitorT::m_getExistingFirst        = true;
+    gainFactShmimMonitorT::m_getExistingFirst    = true;
+    multFactShmimMonitorT::m_getExistingFirst    = true;
+    pcGainFactShmimMonitorT::m_getExistingFirst  = true;
+    pcMultFactShmimMonitorT::m_getExistingFirst  = true;
+    numpccoeffShmimMonitorT::m_getExistingFirst  = true;
+    acoeffShmimMonitorT::m_getExistingFirst      = true;
+    bcoeffShmimMonitorT::m_getExistingFirst      = true;
+    gainCalShmimMonitorT::m_getExistingFirst     = true;
     gainCalFactShmimMonitorT::m_getExistingFirst = true;
-    tauShmimMonitorT::m_getExistingFirst     = true;
+    tauShmimMonitorT::m_getExistingFirst         = true;
 
     return;
 }
@@ -444,8 +584,13 @@ void modalGainOpt::setupConfig()
 
     SHMIMMONITORT_SETUP_CONFIG( psdShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( freqShmimMonitorT, config );
-    SHMIMMONITORT_SETUP_CONFIG( gainShmimMonitorT, config );
-    SHMIMMONITORT_SETUP_CONFIG( multcoShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( gainFactShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( multFactShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( pcGainFactShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( pcMultFactShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( numpccoeffShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( acoeffShmimMonitorT, config );
+    SHMIMMONITORT_SETUP_CONFIG( bcoeffShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( gainCalShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( gainCalFactShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( tauShmimMonitorT, config );
@@ -471,12 +616,32 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     SHMIMMONITORT_LOAD_CONFIG( freqShmimMonitorT, _config );
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainfact", m_loopNum );
-    gainShmimMonitorT::m_shmimName = shmim;
-    SHMIMMONITORT_LOAD_CONFIG( gainShmimMonitorT, _config );
+    gainFactShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( gainFactShmimMonitorT, _config );
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mmultfact", m_loopNum );
-    multcoShmimMonitorT::m_shmimName = shmim;
-    SHMIMMONITORT_LOAD_CONFIG( multcoShmimMonitorT, _config );
+    multFactShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( multFactShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_mpcgainfact", m_loopNum );
+    pcGainFactShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( pcGainFactShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_mpcmultfact", m_loopNum );
+    pcMultFactShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( pcMultFactShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_numpccoeff", m_loopNum );
+    numpccoeffShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( numpccoeffShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_acoeff", m_loopNum );
+    acoeffShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( acoeffShmimMonitorT, _config );
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_bcoeff", m_loopNum );
+    bcoeffShmimMonitorT::m_shmimName = shmim;
+    SHMIMMONITORT_LOAD_CONFIG( bcoeffShmimMonitorT, _config );
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mgaincal", m_loopNum );
     gainCalShmimMonitorT::m_shmimName = shmim;
@@ -504,8 +669,13 @@ int modalGainOpt::appStartup()
 {
     SHMIMMONITORT_APP_STARTUP( psdShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( freqShmimMonitorT );
-    SHMIMMONITORT_APP_STARTUP( gainShmimMonitorT );
-    SHMIMMONITORT_APP_STARTUP( multcoShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( gainFactShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( multFactShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( pcGainFactShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( pcMultFactShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( numpccoeffShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( acoeffShmimMonitorT );
+    SHMIMMONITORT_APP_STARTUP( bcoeffShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_STARTUP( tauShmimMonitorT );
@@ -519,8 +689,11 @@ int modalGainOpt::appStartup()
     REG_INDI_SETPROP( m_indiP_psdTime, m_psdDevice, "psdTime" );
     REG_INDI_SETPROP( m_indiP_psdAvgTime, m_psdDevice, "psdAvgTime" );
     REG_INDI_SETPROP( m_indiP_loop, m_loopName, "loop_state" );
-    REG_INDI_SETPROP( m_indiP_gain, m_loopName, "loop_gain" );
-    REG_INDI_SETPROP( m_indiP_mc, m_loopName, "loop_multcoeff" );
+    REG_INDI_SETPROP( m_indiP_siGain, m_loopName, "loop_gain" );
+    REG_INDI_SETPROP( m_indiP_siMult, m_loopName, "loop_multcoeff" );
+    REG_INDI_SETPROP( m_indiP_pcGain, m_loopName, "loop_pcgain" );
+    REG_INDI_SETPROP( m_indiP_pcMult, m_loopName, "loop_pcmultcoeff" );
+    REG_INDI_SETPROP( m_indiP_pcOn, m_loopName, "loop_pcOn" );
 
     if( sem_init( &m_goptSemaphore, 0, 0 ) < 0 )
     {
@@ -544,8 +717,13 @@ int modalGainOpt::appLogic()
 {
     SHMIMMONITORT_APP_LOGIC( psdShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( freqShmimMonitorT );
-    SHMIMMONITORT_APP_LOGIC( gainShmimMonitorT );
-    SHMIMMONITORT_APP_LOGIC( multcoShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( gainFactShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( multFactShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( pcGainFactShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( pcMultFactShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( numpccoeffShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( acoeffShmimMonitorT );
+    SHMIMMONITORT_APP_LOGIC( bcoeffShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_LOGIC( tauShmimMonitorT );
@@ -554,8 +732,13 @@ int modalGainOpt::appLogic()
 
     SHMIMMONITORT_UPDATE_INDI( psdShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( freqShmimMonitorT );
-    SHMIMMONITORT_UPDATE_INDI( gainShmimMonitorT );
-    SHMIMMONITORT_UPDATE_INDI( multcoShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( gainFactShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( multFactShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( pcGainFactShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( pcMultFactShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( numpccoeffShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( acoeffShmimMonitorT );
+    SHMIMMONITORT_UPDATE_INDI( bcoeffShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( gainCalShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( gainCalFactShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( tauShmimMonitorT );
@@ -598,8 +781,13 @@ int modalGainOpt::appShutdown()
 
     SHMIMMONITORT_APP_SHUTDOWN( psdShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( freqShmimMonitorT );
-    SHMIMMONITORT_APP_SHUTDOWN( gainShmimMonitorT );
-    SHMIMMONITORT_APP_SHUTDOWN( multcoShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( gainFactShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( multFactShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( pcGainFactShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( pcMultFactShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( numpccoeffShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( acoeffShmimMonitorT );
+    SHMIMMONITORT_APP_SHUTDOWN( bcoeffShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( gainCalShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
@@ -782,43 +970,43 @@ int modalGainOpt::processImage( void *curr_src, const freqShmimT &dummy )
     return 0;
 }
 
-int modalGainOpt::allocate( const gainShmimT &dummy )
+int modalGainOpt::allocate( const gainFactShmimT &dummy )
 {
     static_cast<void>( dummy );
 
-    return 0;
-}
-
-int modalGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
-{
-    static_cast<void>( dummy );
-
-    if( gainShmimMonitorT::m_height != 1 )
+    if( gainFactShmimMonitorT::m_height != 1 )
     {
         return log<software_error, -1>( { __FILE__, __LINE__, "got gains with height not 1" } );
     }
 
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const gainFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
     bool change = false;
 
-    uint32_t w = gainShmimMonitorT::m_width;
+    uint32_t w = gainFactShmimMonitorT::m_width;
 
     std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
 
-    if( w != m_gains.size() )
+    if( w != m_gainFacts.size() )
     {
         m_updating = true;
         lock.lock();
         m_updating = true; // Make sure it didn't get set to false by thread that had the lock
 
         change = true;
-        m_gains.resize( w );
+        m_gainFacts.resize( w );
     }
 
     float *g = static_cast<float *>( curr_src );
 
     for( uint32_t n = 0; n < w; ++n )
     {
-        if( change || m_gains[n] != g[n] )
+        if( change || m_gainFacts[n] != g[n] )
         {
             if( !change )
             {
@@ -828,7 +1016,7 @@ int modalGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
                 change     = true;
             }
 
-            m_gains[n] = g[n];
+            m_gainFacts[n] = g[n];
         }
     }
 
@@ -841,49 +1029,49 @@ int modalGainOpt::processImage( void *curr_src, const gainShmimT &dummy )
 
         m_updating = false;
         lock.unlock();
-        std::cerr << "got gains: " << m_gains.size() << "\n";
+        std::cerr << "got gains: " << m_gainFacts.size() << "\n";
     }
 
     return 0;
 }
 
-int modalGainOpt::allocate( const multcoShmimT &dummy )
+int modalGainOpt::allocate( const multFactShmimT &dummy )
 {
     static_cast<void>( dummy );
 
-    return 0;
-}
-
-int modalGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
-{
-    static_cast<void>( dummy );
-
-    if( multcoShmimMonitorT::m_height != 1 )
+    if( multFactShmimMonitorT::m_height != 1 )
     {
         return log<software_error, -1>( { __FILE__, __LINE__, "got multcoeffs with height not 1" } );
     }
 
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const multFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
     bool change = false;
 
-    uint32_t w = multcoShmimMonitorT::m_width;
+    uint32_t w = multFactShmimMonitorT::m_width;
 
     std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
 
-    if( w != m_mcs.size() )
+    if( w != m_multFacts.size() )
     {
         m_updating = true;
         lock.lock();
         m_updating = true; // Make sure it didn't get set to false by thread that had the lock
 
         change = true;
-        m_mcs.resize( w );
+        m_multFacts.resize( w );
     }
 
     float *m = static_cast<float *>( curr_src );
 
     for( uint32_t n = 0; n < w; ++n )
     {
-        if( change || m_mcs[n] != m[n] )
+        if( change || m_multFacts[n] != m[n] )
         {
             if( !change )
             {
@@ -894,7 +1082,7 @@ int modalGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
                 change = true;
             }
 
-            m_mcs[n] = m[n];
+            m_multFacts[n] = m[n];
         }
     }
 
@@ -909,8 +1097,183 @@ int modalGainOpt::processImage( void *curr_src, const multcoShmimT &dummy )
         m_goptUpdated = true;
 
         lock.unlock();
-        std::cerr << "got mcs: " << m_mcs.size() << "\n";
+        std::cerr << "got mcs: " << m_multFacts.size() << "\n";
     }
+
+    return 0;
+}
+
+int modalGainOpt::allocate( const pcGainFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    if( pcGainFactShmimMonitorT::m_height != 1 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "got pc gains with height not 1" } );
+    }
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const pcGainFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    bool change = false;
+
+    uint32_t w = pcGainFactShmimMonitorT::m_width;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    if( w != m_pcGainFacts.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+        m_pcGainFacts.resize( w );
+    }
+
+    float *g = static_cast<float *>( curr_src );
+
+    for( uint32_t n = 0; n < w; ++n )
+    {
+        if( change || m_pcGainFacts[n] != g[n] )
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+                change     = true;
+            }
+
+            m_pcGainFacts[n] = g[n];
+        }
+    }
+
+    if( change )
+    {
+        if( m_loop )
+        {
+            m_sinceChange = -1;
+        }
+
+        m_updating = false;
+        lock.unlock();
+        std::cerr << "got pc gains: " << m_pcGainFacts.size() << "\n";
+    }
+
+    return 0;
+}
+
+int modalGainOpt::allocate( const pcMultFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    if( pcMultFactShmimMonitorT::m_height != 1 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "got pcMultcoeffs with height not 1" } );
+    }
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const pcMultFactShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    bool change = false;
+
+    uint32_t w = pcMultFactShmimMonitorT::m_width;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    if( w != m_pcMultFacts.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+        m_pcMultFacts.resize( w );
+    }
+
+    float *m = static_cast<float *>( curr_src );
+
+    for( uint32_t n = 0; n < w; ++n )
+    {
+        if( change || m_pcMultFacts[n] != m[n] )
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                change = true;
+            }
+
+            m_pcMultFacts[n] = m[n];
+        }
+    }
+
+    if( change )
+    {
+        if( m_loop )
+        {
+            m_sinceChange = -1;
+        }
+
+        m_updating    = false;
+        m_goptUpdated = true;
+
+        lock.unlock();
+        std::cerr << "got mcs: " << m_multFacts.size() << "\n";
+    }
+
+    return 0;
+}
+
+int modalGainOpt::allocate( const numpccoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const numpccoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::allocate( const acoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const acoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::allocate( const bcoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
+
+    return 0;
+}
+
+int modalGainOpt::processImage( void *curr_src, const bcoeffShmimT &dummy )
+{
+    static_cast<void>( dummy );
 
     return 0;
 }
@@ -1115,6 +1478,7 @@ void modalGainOpt::goptThreadExec()
         sleep( 1 );
     }
 
+    bool logged = false;
     while( shutdown() == 0 )
     {
         timespec ts;
@@ -1126,74 +1490,119 @@ void modalGainOpt::goptThreadExec()
 
             if( (size_t)m_clPSDs.rows() == 0 || m_clPSDs.cols() == 0 ) // somehow here without any data
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs have not been updated" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs have not been updated" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( (size_t)m_clPSDs.rows() != m_freq.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs and freq size mismatch" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs and freq size mismatch" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
-            if( (size_t)m_clPSDs.cols() != m_gains.size() )
+            if( (size_t)m_clPSDs.cols() != m_gainFacts.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs and gains number of modes mismatch" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs and gains number of modes mismatch" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
-            if( (size_t)m_clPSDs.cols() != m_mcs.size() )
+            if( (size_t)m_clPSDs.cols() != m_multFacts.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs and mult coeffs number of modes mismatch" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs and mult coeffs number of modes mismatch" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( (size_t)m_clPSDs.cols() != m_gainCals.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs and gain cals number of modes mismatch" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs and gain cals number of modes mismatch" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( (size_t)m_clPSDs.cols() != m_gainCalFacts.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "PSDs and gain cal facts number of modes mismatch" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "PSDs and gain cal facts number of modes mismatch" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( (size_t)m_clPSDs.cols() != m_taus.size() )
             {
-                log<software_error>( { __FILE__, __LINE__, "Loop taus have not been set" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "Loop taus have not been set" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( m_fps <= 0 )
             {
-                log<software_error>( { __FILE__, __LINE__, "Loop fps has not been set" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "Loop fps has not been set" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
             if( m_optGainsStream == nullptr )
             {
-                log<software_error>( { __FILE__, __LINE__, "optGainsStream is not allocated" } );
+                if( !logged )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "optGainsStream is not allocated" } );
+                }
+                logged = true;
                 continue;
             }
+            logged = false;
 
-            if( m_goptUpdated || m_freqUpdated || m_gopt.size() != m_gains.size() )
+            if( m_goptUpdated || m_freqUpdated || m_gopt.size() != m_gainFacts.size() )
             {
-                if( m_gopt.size() != m_gains.size() )
+                if( m_gopt.size() != m_gainFacts.size() )
                 {
                     m_freqUpdated = true; // force freq update in this case
                 }
 
                 std::cerr << "updating gopt structures\n";
 
-                m_gopt.resize( m_gains.size() );
+                m_gopt.resize( m_gainFacts.size() );
 
                 for( size_t n = 0; n < m_gopt.size(); ++n )
                 {
                     m_gopt[n].Ti( 1.0 / m_fps );
                     m_gopt[n].tau( m_taus[n] );
-                    m_gopt[n].setLeakyIntegrator( m_mc * m_mcs[n] );
+                    m_gopt[n].setLeakyIntegrator( m_mult * m_multFacts[n] );
 
                     if( m_freqUpdated )
                     {
@@ -1218,7 +1627,7 @@ void modalGainOpt::goptThreadExec()
 
             timePointT t0 = std::chrono::steady_clock::now();
 
-#pragma omp parallel for
+#pragma omp parallel for num_threads( 10 )
             for( size_t n = 0; n < m_gopt.size(); ++n )
             {
                 if( m_updating )
@@ -1228,7 +1637,7 @@ void modalGainOpt::goptThreadExec()
 
                 for( size_t f = 1; f < m_gopt[n].f_size(); ++f )
                 {
-                    m_olPSDs[n][f] = m_clPSDs( f, n ) / m_gopt[n].clETF2( f, gain * m_gains[n] * m_gainCals[n] );
+                    m_olPSDs[n][f] = m_clPSDs( f, n ) / m_gopt[n].clETF2( f, gain * m_gainFacts[n] * m_gainCals[n] );
                     m_nPSDs[n][f]  = 1e-20;
                 }
 
@@ -1252,7 +1661,7 @@ void modalGainOpt::goptThreadExec()
             m_optGainsStream->md->write = 1;
             for( size_t n = 0; n < m_optGain.size(); ++n )
             {
-                f[n] = m_gainCalFacts[n]*m_optGain[n] / m_gainCals[n];
+                f[n] = m_gainCalFacts[n] * m_optGain[n] / m_gainCals[n];
             }
             clock_gettime( CLOCK_ISIO, &m_optGainsStream->md->writetime );
             m_optGainsStream->md->atime = m_optGainsStream->md->writetime;
@@ -1263,9 +1672,9 @@ void modalGainOpt::goptThreadExec()
 
             if( m_autoUpdate || m_updateOnce || m_dump )
             {
-                float *f = gainShmimMonitorT::m_imageStream.array.F;
+                float *f = gainFactShmimMonitorT::m_imageStream.array.F;
 
-                gainShmimMonitorT::m_imageStream.md->write = 1;
+                gainFactShmimMonitorT::m_imageStream.md->write = 1;
 
                 if( !m_loop || m_dump )
                 {
@@ -1278,15 +1687,15 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t n = 0; n < m_optGain.size(); ++n )
                     {
-                        f[n] = f[n] + m_gainGain *  (m_gainCalFacts[n] * m_optGain[n] / m_gainCals[n] - f[n] );
+                        f[n] = f[n] + m_gainGain * ( m_gainCalFacts[n] * m_optGain[n] / m_gainCals[n] - f[n] );
                     }
                 }
 
-                clock_gettime( CLOCK_ISIO, &gainShmimMonitorT::m_imageStream.md->writetime );
-                gainShmimMonitorT::m_imageStream.md->atime = gainShmimMonitorT::m_imageStream.md->writetime;
-                ++gainShmimMonitorT::m_imageStream.md->cnt0;
-                gainShmimMonitorT::m_imageStream.md->write = 0;
-                ImageStreamIO_sempost( &( gainShmimMonitorT::m_imageStream ), -1 );
+                clock_gettime( CLOCK_ISIO, &gainFactShmimMonitorT::m_imageStream.md->writetime );
+                gainFactShmimMonitorT::m_imageStream.md->atime = gainFactShmimMonitorT::m_imageStream.md->writetime;
+                ++gainFactShmimMonitorT::m_imageStream.md->cnt0;
+                gainFactShmimMonitorT::m_imageStream.md->write = 0;
+                ImageStreamIO_sempost( &( gainFactShmimMonitorT::m_imageStream ), -1 );
 
                 if( m_dump )
                 {
@@ -1496,15 +1905,15 @@ INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_loop )( const pcf::IndiProperty &ip
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_gain )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_siGain )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_gain, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_siGain, ipRecv );
 
     if( ipRecv.find( "current" ) )
     {
         float gain = ipRecv["current"].get<float>();
 
-        if( gain != m_gain )
+        if( gain != m_gain && !m_pcOn )
         {
             m_updating = true;
             std::lock_guard<std::mutex> lock( m_goptMutex );
@@ -1521,26 +1930,30 @@ INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_gain )( const pcf::IndiProperty &ip
 
             std::cerr << "Got gain: " << m_gain << '\n';
         }
+        else
+        {
+            m_gain = gain; // for the m_pcOn case
+        }
     }
 
     return 0;
 }
 
-INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_mc )( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_siMult )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_mc, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_siMult, ipRecv );
 
     if( ipRecv.find( "current" ) )
     {
         float mc = ipRecv["current"].get<float>();
 
-        if( mc != m_mc )
+        if( mc != m_mult && !m_pcOn )
         {
             m_updating = true;
             std::lock_guard<std::mutex> lock( m_goptMutex );
             m_updating = true;
 
-            m_mc = mc;
+            m_mult = mc;
 
             if( m_loop )
             {
@@ -1549,7 +1962,113 @@ INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_mc )( const pcf::IndiProperty &ipRe
 
             m_goptUpdated = true;
             m_updating    = false;
-            std::cerr << "Got mc: " << m_mc << '\n';
+            std::cerr << "Got mc: " << m_mult << '\n';
+        }
+        else
+        {
+            m_mult = mc; // for the m_pcOn case
+        }
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_pcGain )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_pcGain, ipRecv );
+
+    if( ipRecv.find( "current" ) )
+    {
+        float gain = ipRecv["current"].get<float>();
+
+        if( gain != m_pcGain && m_pcOn )
+        {
+            m_updating = true;
+            std::lock_guard<std::mutex> lock( m_goptMutex );
+            m_updating = true;
+
+            m_pcGain = gain;
+
+            if( m_loop )
+            {
+                m_sinceChange = -1;
+            }
+
+            m_updating = false;
+
+            std::cerr << "Got pc gain: " << m_pcGain << '\n';
+        }
+        else
+        {
+            m_pcGain = gain; // for the !m_pcOn case
+        }
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_pcMult )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_pcMult, ipRecv );
+
+    if( ipRecv.find( "current" ) )
+    {
+        float mc = ipRecv["current"].get<float>();
+
+        if( mc != m_pcMult && m_pcOn )
+        {
+            m_updating = true;
+            std::lock_guard<std::mutex> lock( m_goptMutex );
+            m_updating = true;
+
+            m_pcMult = mc;
+
+            if( m_loop )
+            {
+                m_sinceChange = -1;
+            }
+
+            m_goptUpdated = true;
+            m_updating    = false;
+            std::cerr << "Got pc mc: " << m_pcMult << '\n';
+        }
+        else
+        {
+            m_pcMult = mc; // for the !m_pcOn case
+        }
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_pcOn )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_pcOn, ipRecv );
+
+    if( ipRecv.find( "toggle" ) )
+    {
+        bool state;
+
+        if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+        {
+            state = true;
+        }
+        else
+        {
+            state = false;
+        }
+
+        if( state != m_pcOn )
+        {
+            m_updating = true;
+            std::lock_guard<std::mutex> lock( m_goptMutex );
+            m_updating = true;
+
+            m_pcOn = state;
+
+            m_sinceChange = -1;
+            m_updating    = false;
+            std::cerr << "Got pcOn: " << std::boolalpha << m_pcOn << '\n';
         }
     }
 
