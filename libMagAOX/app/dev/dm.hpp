@@ -540,7 +540,7 @@ public:
 public:
 
     #ifdef XWC_DMTIMINGS
-    typedef uint16_t cbIndexT;
+    typedef int32_t cbIndexT;
 
     double m_t0 {0}, m_tf {0}, m_tsat0 {0}, m_tsatf {0};
     double m_tact0 {0}, m_tact1 {0}, m_tact2 {0}, m_tact3 {0}, m_tact4 {0};
@@ -840,7 +840,7 @@ int dm<derivedT, realT>::appLogic()
         m_intervalSatTrip = false;
     }
 
-    #ifdef XWC_DMTIMINGS
+    #ifdef XWC_DMTIMINGScd 
     static uint64_t lastMono = 0;
 
     if(m_piTimes.size() >= m_piTimes.maxEntries() && m_piTimes.maxEntries() > 0 && m_piTimes.mono() != lastMono)
