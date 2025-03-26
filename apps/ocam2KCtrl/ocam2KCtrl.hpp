@@ -1153,7 +1153,11 @@ int ocam2KCtrl::setEMGain( )
    if(m_protectionReset == false)
    {
       log<text_log>("Attempt to set EM gain before protection reset", logPrio::LOG_NOTICE);
-      return 0;
+
+      if(m_emGainSet > 1) //we allow setting to 1 for safety
+      {
+         return 0;
+      }
    }
    
    unsigned emg  = m_emGainSet; //a float
