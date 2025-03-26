@@ -597,7 +597,7 @@ inline int psfFit::appLogic()
 
     if( state() == stateCodes::OPERATING && m_xcb.size() > 0 )
     {
-        if( m_xcb.size() >= m_xcb.maxEntries() )
+        if( m_xcb.maxEntries() > 2 && m_xcb.size() >= m_xcb.maxEntries() )
         {
             cbIndexT refEntry = m_xcb.earliest();
 
@@ -605,7 +605,7 @@ inline int psfFit::appLogic()
             m_xcbD.resize( m_xcb.maxEntries() - 1 );
             m_ycbD.resize( m_xcb.maxEntries() - 1 );
 
-            for( size_t n = 0; n < m_xcb.size(); ++n )
+            for( size_t n = 0; n < static_cast<size_t>(m_xcb.size()); ++n )
             {
                 m_pcbD[n] = m_pcb.at( refEntry, n );
                 m_xcbD[n] = m_xcb.at( refEntry, n );
@@ -1266,9 +1266,8 @@ INDI_SETCALLBACK_DEFN( psfFit, m_indiP_fpsSource )( const pcf::IndiProperty &ipR
     {
         m_fps = fps;
 
-        std::cerr << "got fps: " << m_fps << "\n";
-
         shmimMonitorT::m_restart = true;
+        frameGrabberT::m_reconfig = true;
     }
 
     return 0;
@@ -1298,8 +1297,6 @@ INDI_SETCALLBACK_DEFN( psfFit, m_indiP_shutter )( const pcf::IndiProperty &ipRec
     if( shutter != m_shutter )
     {
         m_shutter = shutter;
-
-        std::cerr << "got shutter: " << m_shutter << "\n";
 
         shmimMonitorT::m_restart = true;
     }

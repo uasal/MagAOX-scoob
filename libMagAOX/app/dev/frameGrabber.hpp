@@ -117,7 +117,7 @@ protected:
 
    uint32_t m_circBuffLength {1}; ///< Length of the circular buffer, in frames
 
-   cbIndexT m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
+   cbIndexT m_latencyCircBuffMaxLength {100000}; ///< Maximum length of the latency measurement circular buffers
 
    float m_latencyCircBuffMaxTime {5}; ///< Maximum time of the latency meaurement circular buffers
 
@@ -142,8 +142,6 @@ protected:
    bool m_reconfig {false}; ///< Flag to set if a camera reconfiguration requires a framegrabber reset.
 
    IMAGE * m_imageStream {nullptr}; ///< The ImageStreamIO shared memory buffer.
-
-
 
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_atimes;
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_wtimes;
@@ -479,10 +477,11 @@ int frameGrabber<derivedT>::appLogic()
       return -1;
    }
 
-   if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 )
+   if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 && derived().fps() > 0)
    {
-      if(m_atimes.size() >= m_atimes.maxEntries())
+      if(m_atimes.size() >= m_atimes.maxEntries()  )
       {
+
          cbIndexT latTime = m_latencyCircBuffMaxTime*derived().fps();
          if(latTime > m_atimes.maxEntries())
          {
@@ -551,7 +550,8 @@ int frameGrabber<derivedT>::appLogic()
 
             if(m_wtimesD[n-1] < 0)
             {
-               std::cerr << m_wtimesD[n-1] << ' ' << n << ' ' << m_atimesD.size() << ' ' << refEntry << '\n';
+               std::cerr << "negative wtime: " << m_wtimesD[n-1] << ' ' << n << ' ' << m_atimesD.size() << ' ' << refEntry << '\n';
+               return derivedT::template log<software_error,-1>({__FILE__, __LINE__, "negative write time. latency circ buff is not long enought"});
             }
          }
 
@@ -690,7 +690,7 @@ void frameGrabber<derivedT>::fgThreadExec()
          //At the end of this, must have m_width, m_height, m_dataType set, and derived()->fps must be valid.
          if(derived().configureAcquisition() < 0) continue;
 
-         if(m_latencyCircBuffMaxLength == 0 || m_latencyCircBuffMaxTime == 0)
+         if(m_latencyCircBuffMaxLength == 0 || m_latencyCircBuffMaxTime == 0 || derived().fps() <= 0)
          {
             m_atimes.maxEntries(0);
             m_wtimes.maxEntries(0);

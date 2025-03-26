@@ -1268,6 +1268,7 @@ INDI_SETCALLBACK_DEFN( shmimIntegrator, m_indiP_fpsSource )(const pcf::IndiPrope
       m_fps = fps;
       std::cout << "Got fps: " << m_fps << "\n";   
       shmimMonitorT::m_restart = true;
+      frameGrabberT::m_reconfig = true;
    }
 
    return 0;
