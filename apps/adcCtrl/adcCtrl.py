@@ -298,12 +298,8 @@ class adcCtrl(XDevice):
         self.delta_1 = 0
         self.delta_2 = 0
 
-        # if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
-        #     self._center_wavelength = 762E-9
-        # elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
-        #     self._center_wavelength = 908E-9
-        # else: self._center_wavelength = 656E-9
-        # self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
+        self.set_command(0,0)
+        self.send_command()
 
         self.update_wavelength()
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
@@ -422,7 +418,7 @@ class adcCtrl(XDevice):
             error = self.ADC.calculate_command(pair_angles)
             self._command = self._command + self._gain * error
             
-            if np.all(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
+            if np.all(np.abs(self._command)) < 2: #setting a threshold so the prisms don't do anything crazy     
                 self.set_command(np.squeeze(self._command),0) 
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
@@ -442,7 +438,7 @@ class adcCtrl(XDevice):
 
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
-            if np.all(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+            if np.all(np.abs(self._command)) < 5: #setting a threshold so the prisms don't do anything crazy     
                 self.set_command(np.squeeze(self._command),0)
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
@@ -455,7 +451,7 @@ class adcCtrl(XDevice):
             diff_pointing_pairs = np.zeros((len(sweep_angles),2)) 
 
             for i, orientation in enumerate(sweep_angles):
-                self.log.info(f'Step {i:d}')
+                self.log.debug(f'Step {i:d}')
                 self.set_command(orientation, 0)
                 self.send_command()
 
