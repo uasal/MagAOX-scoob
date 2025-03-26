@@ -418,7 +418,7 @@ class adcCtrl(XDevice):
             error = self.ADC.calculate_command(pair_angles)
             self._command = self._command + self._gain * error
             
-            if np.all(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
+            if np.all(np.abs(self._command)) < 2: #setting a threshold so the prisms don't do anything crazy     
                 self.set_command(np.squeeze(self._command),0) 
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
@@ -438,7 +438,7 @@ class adcCtrl(XDevice):
 
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
-            if np.all(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+            if np.all(np.abs(self._command)) < 5: #setting a threshold so the prisms don't do anything crazy     
                 self.set_command(np.squeeze(self._command),0)
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
