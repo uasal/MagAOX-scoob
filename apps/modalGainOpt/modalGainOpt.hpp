@@ -304,6 +304,18 @@ class modalGainOpt : public MagAOXApp<true>,
 
     std::vector<float> m_pcMultFacts;
 
+    std::vector<int> m_Na;
+
+    std::vector<int> m_NaCurrent;
+
+    std::vector<int> m_Nb;
+
+    std::vector<int> m_NbCurrent;
+
+    eigenImage<float> m_as;
+
+    eigenImage<float> m_bs;
+
     std::vector<float> m_gainCals;
 
     std::vector<float> m_gainCalFacts;
@@ -1240,6 +1252,11 @@ int modalGainOpt::allocate( const numpccoeffShmimT &dummy )
 {
     static_cast<void>( dummy );
 
+    if( numpccoeffShmimMonitorT::m_height != 2 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "got numpccoeff's with height not 2" } );
+    }
+
     return 0;
 }
 
@@ -1247,6 +1264,58 @@ int modalGainOpt::processImage( void *curr_src, const numpccoeffShmimT &dummy )
 {
     static_cast<void>( dummy );
 
+    bool change = false;
+
+    uint32_t w = numpccoeffShmimMonitorT::m_width;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    if( w != m_Na.size() || w != m_Nb.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+        m_Na.resize( w );
+        m_Nb.resize( w );
+    }
+
+    mx::improc::eigenMap<int> Npc( reinterpret_cast<int *>( curr_src ), w, 2 );
+
+    for( uint32_t n = 0; n < w; ++n )
+    {
+        if( change || m_Na[n] != Npc( n, 0 ) || m_Nb[n] != Npc( n, 1 ) )
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                change = true;
+            }
+
+            m_Na[n] = Npc( n, 0 );
+            m_Nb[n] = Npc( n, 1 );
+        }
+    }
+
+    if( change )
+    {
+        if( m_loop )
+        {
+            m_sinceChange = -1;
+        }
+
+        m_updating    = false;
+        m_goptUpdated = true;
+
+        lock.unlock();
+        std::cerr << "got num pc coeffs: " << m_Na.size() << "\n";
+    }
+
+    return 0;
     return 0;
 }
 
@@ -1260,6 +1329,76 @@ int modalGainOpt::allocate( const acoeffShmimT &dummy )
 int modalGainOpt::processImage( void *curr_src, const acoeffShmimT &dummy )
 {
     static_cast<void>( dummy );
+
+    bool change = false;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    uint32_t w = acoeffShmimMonitorT::m_width;
+    uint32_t h = acoeffShmimMonitorT::m_height;
+
+    // If there's a size change we lock
+    if( w - 1 != m_as.rows() || h != m_as.cols() || h != m_NaCurrent.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+
+        m_NaCurrent.resize( h );
+        m_as.resize( w - 1, h );
+    }
+
+    eigenMap<float> ac( reinterpret_cast<float *>( curr_src ), w, h );
+
+    for( uint32_t cc = 0; cc < h; ++cc )
+    {
+        if(change || m_NaCurrent[cc] != ac( 0, cc ))
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                change = true;
+            }
+
+            m_NaCurrent[cc] = ac( 0, cc );
+        }
+
+        for( uint32_t rr = 1; rr < w; ++rr )
+        {
+            if(change || m_as( rr - 1, cc ) != ac( rr, cc ))
+            {
+                if( !change )
+                {
+                    m_updating = true;
+                    lock.lock();
+                    m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                    change = true;
+                }
+
+                m_as( rr - 1, cc ) = ac( rr, cc );
+            }
+        }
+
+        if( change )
+        {
+            if( m_loop && m_pcOn)
+            {
+                m_sinceChange = -1;
+            }
+
+            m_updating    = false;
+            m_goptUpdated = true;
+
+            lock.unlock();
+            std::cerr << "got a coeffs: " << m_NaCurrent.size() << "\n";
+        }
+    }
 
     return 0;
 }
@@ -1275,6 +1414,75 @@ int modalGainOpt::processImage( void *curr_src, const bcoeffShmimT &dummy )
 {
     static_cast<void>( dummy );
 
+    bool change = false;
+
+    std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
+
+    uint32_t w = bcoeffShmimMonitorT::m_width;
+    uint32_t h = bcoeffShmimMonitorT::m_height;
+
+    // If there's a size change we lock
+    if( w - 1 != m_bs.rows() || h != m_bs.cols() || h != m_NbCurrent.size() )
+    {
+        m_updating = true;
+        lock.lock();
+        m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+        change = true;
+
+        m_NbCurrent.resize( h );
+        m_bs.resize( w - 1, h );
+    }
+
+    eigenMap<float> bc( reinterpret_cast<float *>( curr_src ), w, h );
+
+    for( uint32_t cc = 0; cc < h; ++cc )
+    {
+        if(change || m_NbCurrent[cc] != bc( 0, cc ))
+        {
+            if( !change )
+            {
+                m_updating = true;
+                lock.lock();
+                m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                change = true;
+            }
+
+            m_NbCurrent[cc] = bc( 0, cc );
+        }
+
+        for( uint32_t rr = 1; rr < w; ++rr )
+        {
+            if(change || m_bs( rr - 1, cc ) != bc( rr, cc ))
+            {
+                if( !change )
+                {
+                    m_updating = true;
+                    lock.lock();
+                    m_updating = true; // Make sure it didn't get set to false by thread that had the lock
+
+                    change = true;
+                }
+
+                m_bs( rr - 1, cc ) = bc( rr, cc );
+            }
+        }
+
+        if( change )
+        {
+            if( m_loop && m_pcOn)
+            {
+                m_sinceChange = -1;
+            }
+
+            m_updating    = false;
+            m_goptUpdated = true;
+
+            lock.unlock();
+            std::cerr << "got b coeffs: " << m_NbCurrent.size() << "\n";
+        }
+    }
     return 0;
 }
 
