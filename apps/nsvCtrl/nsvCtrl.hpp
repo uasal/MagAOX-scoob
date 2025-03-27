@@ -525,14 +525,6 @@ int nsvCtrl::appLogic()
 
       //but don't wait for it, just go back around.
       if(!lock.owns_lock()) return 0;
-
-      /*
-      if(getTemp() < 0)
-      {
-         state(stateCodes::ERROR);
-         return 0;
-      }
-      */
    
       if(m_powerState == 0) return 0;
 
@@ -549,7 +541,8 @@ int nsvCtrl::appLogic()
         getEMGain() < 0 ||
         getBlacklevel() < 0 || // currently returning 1 hard-coded when value not found in camera... so return val is not useful
         getExpTime() < 0 ||
-        uses_vCrop ? getVCrop() < 0 : 0 )
+        uses_vCrop ? getVCrop() < 0 : 0 ||
+        c_stdCamera_temp ? getTemp() < 0 : 0)
       {   
          if(m_powerState == 0) return 0;
 
@@ -1315,8 +1308,8 @@ int nsvCtrl::configureAcquisition()
    m_width = m_currentROI.w/m_currentROI.bin_x; //m_default_w
    m_height = m_currentROI.h/m_currentROI.bin_y; //m_default_h
    //m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output. assume 16-bit 
-   m_dataType = IMAGESTRUCT_UINT16;
-   m_typeSize = imageStructDataType<IMAGESTRUCT_UINT16>::size;
+   m_dataType = _DATATYPE_UINT16;
+   //m_typeSize = imageStructDataType<IMAGESTRUCT_UINT16>::size;
 
    recordCamera(true);
 
@@ -1376,6 +1369,10 @@ int nsvCtrl::acquireAndCheckValid()
       // get timing information stored for the camera frame that was just dequeued
       m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
       m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
+
+      // add reporting out timestamp from camera for frame start.  Relate camera frame to PC frame?
+      // generate statistics for mean frame time.
+      // allocate an array of these - timespec m_currImageTimestamp {0,0};
 
    }
 
