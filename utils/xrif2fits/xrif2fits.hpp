@@ -683,9 +683,9 @@ int xrif2fits::execute()
 
          fh.append("FRAMENO", cnt0);
          fh.append("ACQSEC", atime.tv_sec);
-         fh.append("ACQNSEC", format_nano(atime.tv_nsec));
+         fh.append("ACQNSEC", atime.tv_nsec);
          fh.append("WRTSEC", wtime.tv_sec);
-         fh.append("WRTNSEC", format_nano(wtime.tv_nsec));
+         fh.append("WRTNSEC", wtime.tv_nsec);
 
 
          if(!m_noMeta) metaOut << "\n";
@@ -809,9 +809,9 @@ int xrif2fits::writeFloat( int n,
          
          fh.append("FRAMENO", cnt0);
          fh.append("ACQSEC", atime.tv_sec);
-         fh.append("ACQNSEC", format_nano(atime.tv_nsec));
+         fh.append("ACQNSEC", atime.tv_nsec);
          fh.append("WRTSEC", wtime.tv_sec);
-         fh.append("WRTNSEC", format_nano(wtime.tv_nsec));
+         fh.append("WRTNSEC", wtime.tv_nsec);
 
 
          mx::improc::eigenImage<float> im = tmpc.image(q);
