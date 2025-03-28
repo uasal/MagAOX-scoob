@@ -381,6 +381,7 @@ class adcCtrl(XDevice):
         self._command = 0
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
         self.properties['state']['adcLoop'] = constants.SwitchState.OFF
+        self.properties['state']['calibrate'] = constants.SwitchState.OFF
         self.properties['state']['idle'] = constants.SwitchState.ON
         self.update_property(self.properties['state'])
         self._state = States.IDLE    
@@ -481,9 +482,9 @@ class adcCtrl(XDevice):
             self.ADC.set_control_mtx(self._control_mtx)
             self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
 
-            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0]
-            self.properties['ctrl_mtx']['m01'] = self._control_mtx[1]
-            self.update_property(self.properties['ctrl_mtx'])
+            # self.properties['ctrl_mtx']['m00'] = self._control_mtx[0][0]
+            # self.properties['ctrl_mtx']['m01'] = self._control_mtx[0][1]
+            # self.update_property(self.properties['ctrl_mtx'])
             
             self.transition_to_idle()
 
