@@ -477,7 +477,7 @@ class adcCtrl(XDevice):
             response = np.matrix([b1])
             new_control_mtx = np.linalg.pinv(response)
 
-            self._control_mtx = new_control_mtx
+            self._control_mtx = new_control_mtx.T
             self.ADC.set_control_mtx(self._control_mtx)
             self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
 
