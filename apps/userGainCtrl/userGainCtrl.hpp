@@ -939,11 +939,25 @@ int userGainCtrl::setBlockGain( int n,
    m_gainsTarget = m_gainsCurrent;
 
    //Apply a delta to each mode in the block
-   //to preserve intra-block differences
-   for(int m =0; m < m_modeBlockN[n]; ++m)
+   //to preserve intra-block differences, unless g is 0
+   if(g > 0)
    {
-      if(m_modeBlockStart[n] + m > m_gainsTarget.rows() -1) break;
-      m_gainsTarget(m_modeBlockStart[n] + m,0) = m_gainsCurrent(m_modeBlockStart[n] + m,0) + (g - m_modeBlockGains[n]);
+      for(int m =0; m < m_modeBlockN[n]; ++m)
+      {
+         if(m_modeBlockStart[n] + m > m_gainsTarget.rows() -1) break;
+         float newg = m_gainsCurrent(m_modeBlockStart[n] + m,0) + (g - m_modeBlockGains[n]);
+         if(newg < 0) newg = 0;
+         m_gainsTarget(m_modeBlockStart[n] + m,0) = newg;
+      }
+   }
+   else
+   {
+      for(int m =0; m < m_modeBlockN[n]; ++m)
+      {
+         if(m_modeBlockStart[n] + m > m_gainsTarget.rows() -1) break;
+      
+         m_gainsTarget(m_modeBlockStart[n] + m,0) = 0;
+      }
    }
    //lock.unlock();
    recordBlockGains(true);

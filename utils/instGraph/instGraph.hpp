@@ -176,13 +176,11 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
 
         std::cerr << "found node " << sections[i] << ": " << type << "\n";
 
-<<<<<<< Updated upstream
-        if( type == "pwrOnOff" )
-=======
+
         xigNode * xn = nullptr;
 
+
         if(type == "indiProp")
->>>>>>> Stashed changes
         {
             indiPropNode *ip = nullptr;
             try
@@ -251,15 +249,12 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
                 throw std::runtime_error(msg);
             }
 
-<<<<<<< Updated upstream
-=======
             xn = nn;
         }
         else if( type == "fsm" )
         {
             fsmNode *nn = nullptr;
 
->>>>>>> Stashed changes
             try
             {
                 nn = new fsmNode(sections[i], &m_graph);
@@ -326,6 +321,30 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
                 throw std::runtime_error(msg);
             }
 
+            xn = nn;
+        }
+        else if(type == "static")
+        {
+            staticNode *nn = nullptr;
+
+            try
+            {
+                 nn = new staticNode(sections[i], &m_graph);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            if(nn == nullptr)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
+                throw std::runtime_error(msg);
+            }
+
 <<<<<<< Updated upstream
 =======
             xn = nn;
@@ -372,7 +391,25 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
 >>>>>>> Stashed changes
             try
             {
-                m_nodes.insert( { nn->node()->name(), nn } );
+                nn->loadConfig(_config);
+            }
+            catch(const std::exception& e)
+            {
+                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
+                msg += ": ";
+                msg += e.what();
+                throw std::runtime_error(msg);
+            }
+
+            xn = nn;
+        }
+
+
+        if(xn != nullptr)
+        {
+            try
+            {
+                m_nodes.insert( { xn->node()->name(), xn } );
             }
             catch(const std::exception& e)
             {
@@ -385,6 +422,9 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
         }
     }
 
+
+    m_graph.hideLinks();
+    m_graph.hidePuts();
     return 0;
 }
 

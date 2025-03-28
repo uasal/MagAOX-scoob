@@ -37,14 +37,14 @@ for enx in $enxs; do
     echo $cpu > /proc/irq/$enx/smp_affinity_list
 done
 
-kitxs=$(grep pvcamPCIE_0 /proc/interrupts | awk '{print $1}' | sed 's/.$//')
+kitxs=$(grep pvcamPCIE_1 /proc/interrupts | awk '{print $1}' | sed 's/.$//')
 cpu=$(cat $CGROUPS1_CPUSET_MOUNTPOINT/camflowfs/cpuset.cpus)
 for kitx in $kitxs; do
     echo "camflowfs pvcam: " $kitx " to " $cpu 
     echo $cpu > /proc/irq/$kitx/smp_affinity_list
 done
 
-kitxs=$(grep pvcamPCIE_1 /proc/interrupts | awk '{print $1}' | sed 's/.$//')
+kitxs=$(grep pvcamPCIE_0 /proc/interrupts | awk '{print $1}' | sed 's/.$//')
 cpu=$(cat $CGROUPS1_CPUSET_MOUNTPOINT/camllowfs/cpuset.cpus)
 for kitx in $kitxs; do
     echo "camllowfs pvcam: " $kitx " to " $cpu 

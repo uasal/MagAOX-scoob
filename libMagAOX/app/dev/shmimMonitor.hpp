@@ -46,6 +46,11 @@ struct shmimT
   *       friend class dev::shmimMonitor<derivedT, specificT>; //specificT may not need to be included
   *   \endcode
   * 
+  * * - Must contain the following typedef:
+  *   \code
+  *       typedef dev::shmimMonitor<derivedT, specificT> shmimMonitorT; //specificT may not need to be included
+  *   \endcode
+  * 
   * - Must provide the following interfaces:
   *   \code
   *
@@ -61,7 +66,7 @@ struct shmimT
   *   \endcode
   *   Each of the above functions should return 0 on success, and -1 on an error.
   *
-  * - Calls to this class's `setupConfig`, `loadConfig`, `appStartup`, `appLogic` and `appShutdown`
+  * - Calls to this class's `setupConfig`, `loadConfig`, `appStartup`, `appLogic`, `updateINDI` and `appShutdown`
   *   functions must be placed in the derived class's functions of the same name. For convenience the 
   *   following macros are defined to provide error checking:
   *   \code  

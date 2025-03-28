@@ -23,13 +23,6 @@
 #include <iterator>
 #include <bitset>
 
-struct smc100ccCtrl_simulator
-{
-    int getCtrlState( std::string &state )
-    {
-    }
-};
-
 namespace MagAOX
 {
 namespace app
@@ -60,13 +53,9 @@ protected:
      *@{
      */
    double m_homingOffset {0};
-<<<<<<< Updated upstream
-   
-=======
 
    double m_opDelta {0}; ///< The threshold for switching to OPERATING
 
->>>>>>> Stashed changes
    ///@}
 
 
@@ -82,6 +71,7 @@ protected:
 
    bool m_powerOnHomed{false};
 
+   bool m_moveOp {true}; ///< Flag indicating that OPERATING should not be set for a move, because it's less than m_opDelta.
 public:
 
    INDI_NEWCALLBACK_DECL(smc100ccCtrl, m_indiP_position);
@@ -201,7 +191,8 @@ inline smc100ccCtrl::smc100ccCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO
 void smc100ccCtrl::setupConfig()
 {
    config.add("stage.homingOffset", "", "stage.homingOffset", argType::Required, "stage", "homingOffset", false, "float", "Homing offset, a.k.a. default starting position.");
-   
+   config.add("stage.opDelta", "", "stage.opDelta", argType::Required, "stage", "opDelta", false, "float", "Threshold move size for switching to OPERATING.");
+
    tty::usbDevice::setupConfig(config);
    dev::ioDevice::setupConfig(config);
    dev::stdMotionStage<smc100ccCtrl>::setupConfig(config);
@@ -212,12 +203,8 @@ void smc100ccCtrl::loadConfig()
 {
 
    config(m_homingOffset, "stage.homingOffset");
-<<<<<<< Updated upstream
-   
-=======
-   config(m_opDelta, "stage.opDelta");
 
->>>>>>> Stashed changes
+   config(m_opDelta, "stage.opDelta");
    this->m_baudRate = B57600; //default for SMC100CC controller.  Will be overridden by any config setting.
 
    int rv = tty::usbDevice::loadConfig(config);
@@ -524,7 +511,10 @@ int smc100ccCtrl::appLogic()
    else if (axState[0] == '2')
    {
       m_moving = 1;
-      state(stateCodes::OPERATING);
+      if(m_moveOp)
+      {
+         state(stateCodes::OPERATING);
+      }
    }
    else if (axState[0] == '3' && isdigit(axState[1]))
    {
@@ -538,6 +528,7 @@ int smc100ccCtrl::appLogic()
       {
          m_moving = 0;
          state(stateCodes::READY);
+         m_moveOp = true;
       }
    }
    else if (axState[0] == '3')
@@ -1091,6 +1082,15 @@ int smc100ccCtrl::moveTo(double position)
    recordStage(true);
    recordPosition(true);
 
+   if(fabs(position-m_position) > m_opDelta)
+   {
+      m_moveOp = true;
+   }
+   else
+   {
+      m_moveOp = false;
+   }
+
    std::string buffer{"1PA"};
    buffer = buffer + std::to_string(position) + "\r\n";
 
@@ -1106,7 +1106,10 @@ int smc100ccCtrl::moveTo(double position)
    std::string errorString;
    if (getLastError(errorString) == 0)
    {
-      state(stateCodes::OPERATING);
+      if(m_moveOp)
+      {
+         state(stateCodes::OPERATING);
+      }
       updateIfChanged(m_indiP_position, "target", position);
       return 0;
    }

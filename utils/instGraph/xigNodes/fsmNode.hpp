@@ -9,8 +9,6 @@
 
 #include "xigNode.hpp"
 
-<<<<<<< Updated upstream
-=======
 enum class fsmNodeActionT
 {
     passive,   /**< Only monitor and report FSM state, don't change puts*/
@@ -66,26 +64,100 @@ fsmNodeActionT fsmNodeActionTFromString( const std::string &action )
  * Whether it impacts ioput status depends on the `action` specified.
  *
  */
->>>>>>> Stashed changes
+
 class fsmNode : public xigNode
 {
 
     typedef MagAOX::app::stateCodes::stateCodeT stateCodeT;
 
   protected:
-    std::string m_device;
-    std::string m_fsmKey;
+    std::string m_device; ///< The INDI device name. Defaults to the node name set on construction.
+    std::string m_fsmKey; ///< The unique INDI key, `<device>.fsm`, for the FSM state INDI property.
 
-<<<<<<< Updated upstream
-    MagAOX::app::stateCodes::stateCodeT m_state{ -999 };
-    std::string m_stateStr;
+    fsmNodeActionT m_fsmAction{ fsmNodeActionT::passive };
+
+    std::vector<stateCodeT> m_targetStates;
+
+    stateCodeT  m_state{ -999 }; ///< The numerical code of the current state.
+    std::string m_stateStr;      ///< The string name of the current state.
+
+    bool m_stateOnTarget{ false }; ///< Flag indicating if the current state matches any of the target states.
 
   public:
-    fsmNode( const std::string &name, ingr::instGraphXML *parentGraph );
+    /// Constructor.
+    /**
+     * Default c'tor is deleted in base classs.  Must supply both node name and a parentGraph with a node with the same
+     * name in it.
+     */
+    fsmNode( const std::string  &name,       /**< [in] the name of the node */
+             ingr::instGraphXML *parentGraph /**< [in] the parent instGraph */
+    );
 
-    virtual void device( const std::string &dev );
+    /// Set the device name
+    /**
+     * Derived classes may implement this to add extra logic.  The device name defaults
+     * to the node name on construction.
+     */
+    virtual void device( const std::string &dev /**< [in] the new device name */ );
 
-    virtual void handleSetProperty( const pcf::IndiProperty &ipRecv );
+    /// Get the device name
+    /**
+     * \return the current value of m_device
+     */
+    const std::string &device() const;
+
+    /// Get the FSM unique key
+    /**
+     * \return the current value of m_fsmKey
+     */
+    const std::string &fsmKey() const;
+
+    /// Get the action
+    /**
+     * \return the current value of m_fsmAction
+     */
+    fsmNodeActionT fsmAction() const;
+
+    /// Set the action
+    void fsmAction(fsmNodeActionT act);
+
+    /// Get the target states
+    /**
+     * \return the current value of m_targetStates
+     */
+    const std::vector<stateCodeT> &targetStates() const;
+
+    /// Load this specific node's settings from an application configuration
+    /**
+     * Verifies that the named node is an fsmNode.
+     *
+     * \throws std::runtime_error if m_parentGraph is nullptr or the config is not for an fsmNode.
+     */
+    void loadConfig( mx::app::appConfigurator &config /**< [in] the application configurator
+                                                                loaded with this node's options*/ );
+
+protected:
+    /// Load this specific node's settings from an application configuration of a derived class
+    /**
+     * Does not cerifies that the named node is an fsmNode.
+     *
+     */
+    void loadConfigDerived( mx::app::appConfigurator &config /**< [in] the application configurator
+                                                                loaded with this node's options*/ );
+
+public:
+    /// INDI SetProperty callback
+    virtual void handleSetProperty( const pcf::IndiProperty &ipRecv /**< [in] the received INDI property to handle*/ );
+
+    /// INDI SetProperty callback with indication if action was taken
+    /** The possible actions are determined by m_fsmAction.  If the action was taken then the caller
+     *  should return without further processing.
+     *
+     */
+    virtual void handleSetProperty( bool &actionTaken, /** < [out] indicates if action taken (true). */
+                                    const pcf::IndiProperty &ipRecv /**< [in] the received INDI property to handle*/ );
+  public:
+
 
 =======
     fsmNodeActionT m_fsmAction{ fsmNodeActionT::passive };
@@ -183,7 +255,7 @@ inline void fsmNode::device( const std::string &dev )
 {
     if( m_device != "" && dev != m_device )
     {
-        std::string msg = "attempt to change device name from " + m_device + " to " + dev;
+        std::string msg = "fsmNode::device attempt to change device name from " + m_device + " to " + dev;
         msg += " at ";
         msg += __FILE__;
         msg += " " + std::to_string( __LINE__ );
@@ -196,8 +268,6 @@ inline void fsmNode::device( const std::string &dev )
     key( m_fsmKey );
 }
 
-<<<<<<< Updated upstream
-=======
 inline const std::string &fsmNode::device() const
 {
     return m_device;
@@ -276,7 +346,6 @@ inline void fsmNode::loadConfigDerived( mx::app::appConfigurator &config )
 
 }
 
->>>>>>> Stashed changes
 inline void fsmNode::handleSetProperty( const pcf::IndiProperty &ipRecv )
 {
     bool actionTaken;

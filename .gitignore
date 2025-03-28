@@ -78,6 +78,7 @@ gui/rtimv/plugins/cameraStatus/makefile.cameraStatus
 gui/rtimv/plugins/indiDictionary/makefile.indiDictionary
 gui/rtimv/plugins/pwfsAlignment/makefile.pwfsAlignment
 gui/rtimv/plugins/dmStatus/makefile.dmStatus
+gui/rtimv/plugins/acquisition/makefile.acquisition
 
 #h
 apps/hoPredCtrl/hoPredCtrl
@@ -97,11 +98,12 @@ apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
 #m
+apps/mcp3008Ctrl/mcp3008Ctrl
+apps/modalGainOpt/modalGainOpt
+apps/modalPSDs/modalPSDs
 apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
-
 apps/mzmqClient/mzmqClient
-apps/modalPSDs/modalPSDs
 
 #o
 apps/observerCtrl/observerCtrl
@@ -113,6 +115,7 @@ apps/pi335Ctrl/pi335Ctrl
 apps/picamCtrl/picamCtrl
 apps/picoMotorCtrl/picoMotorCtrl
 apps/psfFit/psfFit
+apps/psfAcq/psfAcq
 apps/pupilAlign/pupilAlign
 apps/pupilFit/pupilFit
 apps/pvcamCtrl/pvcamCtrl
@@ -176,6 +179,7 @@ utils/logdump/logdump
 utils/logsurgeon/logsurgeon
 utils/cursesINDI/cursesINDI
 utils/logstream/logstream
+utils/shmimPlot/shmimPlot
 utils/xrif2shmim/xrif2shmim
 utils/xrif2fits/xrif2fits
 
@@ -211,3 +215,10 @@ setup/qhyccd_container/sdk_linux64_22.02.17.tgz
 # Python caches, etc
 *.egg-info
 __pycache__
+libMagAOX/doc/diag/Makefile
+libMagAOX/doc/diag/xwcapp_fsm.drawio
+libMagAOX/doc/diag/xwcapp.drawio
+libMagAOX/doc/diag/xwcapps_connections.drawio
+libMagAOX/doc/diag/png/xwcapp_fsm.png
+libMagAOX/doc/diag/png/xwcapp.png
+libMagAOX/doc/diag/png/xwcapps_connections.png

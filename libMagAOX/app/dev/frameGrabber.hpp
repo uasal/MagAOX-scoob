@@ -10,7 +10,7 @@
 #define frameGrabber_hpp
 
 #include <sys/syscall.h>
-       
+
 #include <mx/sigproc/circularBuffer.hpp>
 #include <mx/math/vectorUtils.hpp>
 #include <mx/improc/imageUtils.hpp>
@@ -25,56 +25,56 @@ namespace MagAOX
 {
 namespace app
 {
-namespace dev 
+namespace dev
 {
-   
+
 
 
 
 /** MagAO-X generic frame grabber
   *
-  * 
+  *
   * The derived class `derivedT` has the following requirements:
-  * 
+  *
   * - Must be derived from MagAOXApp<true>
-  * 
+  *
   * - Must contain the following friend declaration:
   *   \code
   *       friend class dev::frameGrabber<derivedT>; //replace derivedT
   *   \endcode
-  * 
+  *
   * - Must declare the following typedef:
   *   \code
   *       typedef dev::frameGrabber<derivedT> frameGrabberT; //replace derivedT
   *   \endcode
-  * 
+  *
   * - must expose the following interface
-  * \code 
+  * \code
     //Configures the camera for acquistion, must also set m_width, m_height, and m_dataType
     //so that the shared memory can be allocated
     int derivedT::configureAcquisition();
 
-    //Gets the frames-per-second readout rate 
+    //Gets the frames-per-second readout rate
     //used for the latency statistics
     float derivedT::fps();
-    
+
     //Start acquisition.
     int derivedT::startAcquisition();
-    
+
     //Acquires the data, and checks if it is valid.
     //This should set m_currImageTimestamp to the image timestamp.
     // returns 0 if valid, < 0 on error, > 0 on no data.
     int derivedT::acquireAndCheckValid()
-    
+
     //Loads the acquired image into the stream, copying it to the appropriate member of m_imageStream->array.
     //This could simply be a memcpy.
     int derivedT::loadImageIntoStream(void * dest);
-    
+
     //Take any actions needed to reconfigure the system.  Called if m_reconfig is set to true.
     int derivedT::reconfig()
-  * \endcode  
-  * Each of the above functions should return 0 on success, and -1 on an error (except fps). 
-  * For `acquireAndCheckValid` >0 will indicate no data but not an error.  In most cases, 
+  * \endcode
+  * Each of the above functions should return 0 on success, and -1 on an error (except fps).
+  * For `acquireAndCheckValid` >0 will indicate no data but not an error.  In most cases,
   * an appropriate state code, such as NOTCONNECTED, should be set as well.
   *
   * A static configuration variable must be defined in derivedT as
@@ -84,9 +84,9 @@ namespace dev
   * which determines whether or not the images can be flipped programatically.
   *
   * Calls to this class's `setupConfig`, `loadConfig`, `appStartup`, `appLogic`, `updateINDI`, and `appShutdown`
-  * functions must be placed in the derived class's functions of the same name. For convenience the 
+  * functions must be placed in the derived class's functions of the same name. For convenience the
   *   following macros are defined to provide error checking:
-  *   \code  
+  *   \code
   *       FRAMEGRABBER_SETUP_CONFIG( cfig )
   *       FRAMEGRABBER_LOAD_CONFIG( cfig )
   *       FRAMEGRABBER_APP_STARTUP
@@ -98,73 +98,78 @@ namespace dev
   * \ingroup appdev
   */
 template<class derivedT>
-class frameGrabber 
+class frameGrabber
 {
 public:
    enum fgFlip { fgFlipNone, fgFlipUD, fgFlipLR, fgFlipUDLR };
-   
+
+   typedef int32_t cbIndexT;
+
 protected:
 
    /** \name Configurable Parameters
     * @{
     */
    std::string m_shmimName {""}; ///< The name of the shared memory image, is used in `/tmp/<shmimName>.im.shm`. Derived classes should set a default.
-      
+
    int m_fgThreadPrio {2}; ///< Priority of the framegrabber thread, should normally be > 00.
    std::string m_fgCpuset; ///< The cpuset to assign the framegrabber thread to.  Not used if empty, the default.
 
    uint32_t m_circBuffLength {1}; ///< Length of the circular buffer, in frames
-       
-   uint16_t m_latencyCircBuffMaxLength {3600}; ///< Maximum length of the latency measurement circular buffers
+
+   cbIndexT m_latencyCircBuffMaxLength {100000}; ///< Maximum length of the latency measurement circular buffers
+
    float m_latencyCircBuffMaxTime {5}; ///< Maximum time of the latency meaurement circular buffers
-   
+
    int m_defaultFlip {fgFlipNone};
-   
+
    ///@}
-   
+
    int m_currentFlip {fgFlipNone};
-   
+
    uint32_t m_width {0}; ///< The width of the image, once deinterlaced etc.
    uint32_t m_height {0}; ///< The height of the image, once deinterlaced etc.
-   
+
    uint8_t m_dataType{0}; ///< The ImageStreamIO type code.
    size_t m_typeSize {0}; ///< The size of the type, in bytes.  Result of sizeof.
-   
+
    int m_xbinning {0}; ///< The x-binning according to the framegrabber
    int m_ybinning {0}; ///< The y-binning according to the framegrabber
-   
-          
+
+
    timespec m_currImageTimestamp {0,0}; ///< The timestamp of the current image.
-   
+
    bool m_reconfig {false}; ///< Flag to set if a camera reconfiguration requires a framegrabber reset.
-   
+
    IMAGE * m_imageStream {nullptr}; ///< The ImageStreamIO shared memory buffer.
-   
-   typedef uint16_t cbIndexT;
-   
+
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_atimes;
    mx::sigproc::circularBufferIndex<timespec, cbIndexT> m_wtimes;
-   
+
    std::vector<double> m_atimesD;
    std::vector<double> m_wtimesD;
    std::vector<double> m_watimesD;
-   
+
    timespec m_dummy_ts {0,0};
    uint64_t m_dummy_cnt {0};
    char m_dummy_c {0};
-   
+
    double m_mna;
-   double m_vara;  
-         
-   double m_mnw;   
-   double m_varw;  
-         
-   double m_mnwa;  
-   double m_varwa; 
-   
-   
-   
-   
+   double m_vara;
+   double m_mina;
+   double m_maxa;
+
+   double m_mnw;
+   double m_varw;
+   double m_minw;
+   double m_maxw;
+
+   double m_mnwa;
+   double m_varwa;
+
+
+
+
 public:
 
    /// Setup the configuration system
@@ -194,7 +199,7 @@ public:
        framegrabber<derivedT>::appStartup();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
@@ -206,7 +211,7 @@ public:
        framegrabber<derivedT>::appLogic();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
@@ -218,38 +223,38 @@ public:
        framegrabber<derivedT>::onPowerOff();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
    int onPowerOff();
-   
+
    /// Shuts down the framegrabber thread
    /** This should be called in `derivedT::appShutdown` as
      * \code
        framegrabber<derivedT>::appShutdown();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
    int appShutdown();
-   
+
 protected:
-   
+
 
    /** \name Framegrabber Thread
      * This thread actually manages the framegrabbing hardware
      * @{
      */
-   
+
    bool m_fgThreadInit {true}; ///< Synchronizer for thread startup, to allow priority setting to finish.
-   
+
    pid_t m_fgThreadID {0}; ///< The ID of the framegrabber thread.
-   
+
    pcf::IndiProperty m_fgThreadProp; ///< The property to hold the f.g. thread details.
-   
+
    std::thread m_fgThread; ///< A separate thread for the actual framegrabbings
 
    ///Thread starter, called by MagAOXApp::threadStart on thread construction.  Calls fgThreadExec.
@@ -258,26 +263,26 @@ protected:
    /// Execute framegrabbing.
    void fgThreadExec();
 
-   
+
    ///@}
-  
+
    void * loadImageIntoStreamCopy( void * dest,
                                    void * src,
                                    size_t width,
                                    size_t height,
                                    size_t szof
                                  );
-    
-   
-    /** \name INDI 
+
+
+    /** \name INDI
       *
       *@{
-      */ 
+      */
 protected:
    //declare our properties
-   
+
    pcf::IndiProperty m_indiP_shmimName; ///< Property used to report the shmim buffer name
-   
+
    pcf::IndiProperty m_indiP_frameSize; ///< Property used to report the current frame size
 
    pcf::IndiProperty m_indiP_timing;
@@ -293,8 +298,8 @@ public:
    int updateINDI();
 
    ///@}
-   
-   /** \name Telemeter Interface 
+
+   /** \name Telemeter Interface
      * @{
      */
 
@@ -317,7 +322,7 @@ int frameGrabber<derivedT>::setupConfig(mx::app::appConfigurator & config)
    config.add("framegrabber.cpuset", "", "framegrabber.cpuset", argType::Required, "framegrabber", "cpuset", false, "string", "The cpuset to assign the framegrabber thread to.");
 
    config.add("framegrabber.shmimName", "", "framegrabber.shmimName", argType::Required, "framegrabber", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /milk/shm/<shmimName>.im.shm.");
-   
+
    config.add("framegrabber.circBuffLength", "", "framegrabber.circBuffLength", argType::Required, "framegrabber", "circBuffLength", false, "size_t", "The length of the circular buffer. Sets m_circBuffLength, default is 1.");
 
    config.add("framegrabber.latencyTime", "", "framegrabber.latencyTime", argType::Required, "framegrabber", "latencyTime", false, "float", "The maximum length of time to measure latency timings. Sets  m_latencyCircBuffMaxTime, default is 5.");
@@ -340,7 +345,7 @@ int frameGrabber<derivedT>::loadConfig(mx::app::appConfigurator & config)
    config(m_fgCpuset, "framegrabber.cpuset");
    if(m_shmimName == "") m_shmimName = derived().configName();
    config(m_shmimName, "framegrabber.shmimName");
-  
+
    config(m_circBuffLength, "framegrabber.circBuffLength");
 
    if(m_circBuffLength < 1)
@@ -348,7 +353,7 @@ int frameGrabber<derivedT>::loadConfig(mx::app::appConfigurator & config)
       m_circBuffLength = 1;
       derivedT::template log<text_log>("circBuffLength set to 1");
    }
-   
+
    config(m_latencyCircBuffMaxTime, "framegrabber.latencyTime");
    if(m_latencyCircBuffMaxTime < 0)
    {
@@ -357,7 +362,7 @@ int frameGrabber<derivedT>::loadConfig(mx::app::appConfigurator & config)
    }
 
    config(m_latencyCircBuffMaxLength, "framegrabber.latencySize");
-   
+
 
    if(derivedT::c_frameGrabber_flippable)
    {
@@ -388,7 +393,7 @@ int frameGrabber<derivedT>::loadConfig(mx::app::appConfigurator & config)
 
    return 0;
 }
-   
+
 
 template<class derivedT>
 int frameGrabber<derivedT>::appStartup()
@@ -401,7 +406,7 @@ int frameGrabber<derivedT>::appStartup()
    m_indiP_shmimName.setState(pcf::IndiProperty::Idle);
    m_indiP_shmimName.add(pcf::IndiElement("name"));
    m_indiP_shmimName["name"] = m_shmimName;
-   
+
    if( derived().registerIndiPropertyNew( m_indiP_shmimName, nullptr) < 0)
    {
       #ifndef FRAMEGRABBER_TEST_NOLOG
@@ -409,7 +414,7 @@ int frameGrabber<derivedT>::appStartup()
       #endif
       return -1;
    }
-   
+
    //Register the frameSize INDI property
    m_indiP_frameSize = pcf::IndiProperty(pcf::IndiProperty::Number);
    m_indiP_frameSize.setDevice(derived().configName());
@@ -420,7 +425,7 @@ int frameGrabber<derivedT>::appStartup()
    m_indiP_frameSize["width"] = 0;
    m_indiP_frameSize.add(pcf::IndiElement("height"));
    m_indiP_frameSize["height"] = 0;
-   
+
    if( derived().registerIndiPropertyNew( m_indiP_frameSize, nullptr) < 0)
    {
       #ifndef FRAMEGRABBER_TEST_NOLOG
@@ -428,12 +433,16 @@ int frameGrabber<derivedT>::appStartup()
       #endif
       return -1;
    }
-   
+
    //Register the timing INDI property
    derived().createROIndiNumber( m_indiP_timing, "fg_timing");
    m_indiP_timing.add(pcf::IndiElement("acq_fps"));
+   m_indiP_timing.add(pcf::IndiElement("acq_min"));
+   m_indiP_timing.add(pcf::IndiElement("acq_max"));
    m_indiP_timing.add(pcf::IndiElement("acq_jitter"));
    m_indiP_timing.add(pcf::IndiElement("write_fps"));
+   m_indiP_timing.add(pcf::IndiElement("write_min"));
+   m_indiP_timing.add(pcf::IndiElement("write_max"));
    m_indiP_timing.add(pcf::IndiElement("write_jitter"));
    m_indiP_timing.add(pcf::IndiElement("delta_aw"));
    m_indiP_timing.add(pcf::IndiElement("delta_aw_jitter"));
@@ -452,7 +461,7 @@ int frameGrabber<derivedT>::appStartup()
       derivedT::template log<software_error, -1>({__FILE__, __LINE__});
       return -1;
    }
-   
+
    return 0;
 
 }
@@ -464,50 +473,113 @@ int frameGrabber<derivedT>::appLogic()
    if(pthread_tryjoin_np(m_fgThread.native_handle(),0) == 0)
    {
       derivedT::template log<software_error>({__FILE__, __LINE__, "framegrabber thread has exited"});
-      
+
       return -1;
    }
-   
-   if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 )
+
+   if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 && derived().fps() > 0)
    {
-      if(m_atimes.size() >= m_atimes.maxEntries())
+      if(m_atimes.size() >= m_atimes.maxEntries()  )
       {
-         cbIndexT refEntry = m_atimes.earliest();
-         
-         m_atimesD.resize(m_atimes.maxEntries()-1);
-         m_wtimesD.resize(m_wtimes.maxEntries()-1);
-         m_watimesD.resize(m_wtimes.maxEntries()-1);
-         
-         double a0 = m_atimes.at(refEntry, 0).tv_sec + ((double) m_atimes.at(refEntry, 0).tv_nsec)/1e9;
-         double w0 = m_wtimes.at(refEntry, 0).tv_sec + ((double) m_wtimes.at(refEntry, 0).tv_nsec)/1e9;
+
+         cbIndexT latTime = m_latencyCircBuffMaxTime*derived().fps();
+         if(latTime > m_atimes.maxEntries())
+         {
+            latTime = m_atimes.maxEntries();
+         }
+
+         m_atimesD.resize(latTime-1);
+         m_wtimesD.resize(latTime-1);
+         m_watimesD.resize(latTime-1);
+
+         cbIndexT refEntry = m_atimes.latest();
+
+         if(refEntry >= latTime)
+         {
+            refEntry -= latTime;
+         }
+         else
+         {
+            refEntry = m_atimes.maxEntries() + refEntry - latTime;
+         }
+
+         timespec ts = m_atimes.at(refEntry, 0);
+         double a0 = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+         ts = m_wtimes.at(refEntry, 0);
+         double w0 = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+         double mina = 1e9;
+         double maxa = -1e9;
+         double minw = 1e9;
+         double maxw = -1e9;
+
          for(size_t n=1; n <= m_atimesD.size(); ++n)
          {
-            double a = m_atimes.at(refEntry, n).tv_sec + ((double) m_atimes.at(refEntry, n).tv_nsec)/1e9;
-            double w = m_wtimes.at(refEntry, n).tv_sec + ((double) m_wtimes.at(refEntry, n).tv_nsec)/1e9;
+            ts = m_atimes.at(refEntry, n);
+            double a = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
+            ts = m_wtimes.at(refEntry, n);
+            double w = ts.tv_sec + ((double) ts.tv_nsec)/1e9;
+
             m_atimesD[n-1] = a - a0;
             m_wtimesD[n-1] = w - w0;
             m_watimesD[n-1] = w - a;
             a0 = a;
             w0 = w;
+
+            if(m_atimesD[n-1] < mina)
+            {
+               mina = m_atimesD[n-1];
+            }
+
+            if(m_atimesD[n-1] > maxa)
+            {
+               maxa = m_atimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] < minw)
+            {
+               minw = m_wtimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] > maxw)
+            {
+               maxw = m_wtimesD[n-1];
+            }
+
+            if(m_wtimesD[n-1] < 0)
+            {
+               std::cerr << "negative wtime: " << m_wtimesD[n-1] << ' ' << n << ' ' << m_atimesD.size() << ' ' << refEntry << '\n';
+               return derivedT::template log<software_error,-1>({__FILE__, __LINE__, "negative write time. latency circ buff is not long enought"});
+            }
          }
-         
+
          m_mna = mx::math::vectorMean(m_atimesD);
          m_vara = mx::math::vectorVariance(m_atimesD, m_mna);
-         
+         m_mina = mina;
+         m_maxa = maxa;
+
          m_mnw = mx::math::vectorMean(m_wtimesD);
          m_varw = mx::math::vectorVariance(m_wtimesD, m_mnw);
-         
+         m_minw = minw;
+         m_maxw = maxw;
+
          m_mnwa = mx::math::vectorMean(m_watimesD);
          m_varwa = mx::math::vectorVariance(m_watimesD, m_mnwa);
-         
+
          recordFGTimings();
       }
       else
       {
          m_mna = 0;
          m_vara = 0;
+         m_mina = 0;
+         m_maxa = 0;
          m_mnw = 0;
          m_varw = 0;
+         m_minw = 0;
+         m_maxw = 0;
          m_mnwa = 0;
          m_varwa = 0;
       }
@@ -516,8 +588,12 @@ int frameGrabber<derivedT>::appLogic()
    {
       m_mna = 0;
       m_vara = 0;
+      m_mina = 0;
+      m_maxa = 0;
       m_mnw = 0;
       m_varw = 0;
+      m_minw = 0;
+      m_maxw = 0;
       m_mnwa = 0;
       m_varwa = 0;
    }
@@ -528,11 +604,15 @@ int frameGrabber<derivedT>::appLogic()
 
 template<class derivedT>
 int frameGrabber<derivedT>::onPowerOff()
-{ 
+{
    m_mna = 0;
    m_vara = 0;
-   m_mnw = 0;  
+   m_mina = 0;
+         m_maxa = 0;
+   m_mnw = 0;
    m_varw = 0;
+   m_minw = 0;
+         m_maxw = 0;
    m_mnwa = 0;
    m_varwa = 0;
 
@@ -540,13 +620,13 @@ int frameGrabber<derivedT>::onPowerOff()
    m_height = 0;
 
    updateINDI();
-   
+
    m_reconfig = true;
 
 
    return 0;
 }
-   
+
 
 template<class derivedT>
 int frameGrabber<derivedT>::appShutdown()
@@ -561,9 +641,9 @@ int frameGrabber<derivedT>::appShutdown()
       {
       }
    }
-   
-   
-   
+
+
+
    return 0;
 }
 
@@ -581,18 +661,18 @@ void frameGrabber<derivedT>::fgThreadExec()
 {
    //Get the thread PID immediately so the caller can return.
    m_fgThreadID = syscall(SYS_gettid);
-   
-   timespec writestart;
-   
+
+   //timespec writestart;
+
    //Wait fpr the thread starter to finish initializing this thread.
    while(m_fgThreadInit == true && derived().shutdown() == 0)
    {
        sleep(1);
    }
-   
+
    uint32_t imsize[3] = {0,0,0};
    std::string shmimName;
-   
+
    while(derived().shutdown() == 0)
    {
       ///\todo this ought to wait until OPERATING, using READY as a sign of "not integrating"
@@ -600,30 +680,34 @@ void frameGrabber<derivedT>::fgThreadExec()
       {
          sleep(1);
       }
-      
-      if(derived().shutdown()) continue;
-      else 
+
+      if(derived().shutdown())
+      {
+         continue;
+      }
+      else
       {
          //At the end of this, must have m_width, m_height, m_dataType set, and derived()->fps must be valid.
-         if(derived().configureAcquisition() < 0) continue;        
-         
-         if(m_latencyCircBuffMaxLength == 0 || m_latencyCircBuffMaxTime == 0)
+         if(derived().configureAcquisition() < 0) continue;
+
+         if(m_latencyCircBuffMaxLength == 0 || m_latencyCircBuffMaxTime == 0 || derived().fps() <= 0)
          {
             m_atimes.maxEntries(0);
             m_wtimes.maxEntries(0);
          }
-         else 
+         else
          {
             //Set up the latency circ. buffs
-            cbIndexT cbSz = m_latencyCircBuffMaxTime * derived().fps();
+            cbIndexT cbSz = 2*m_latencyCircBuffMaxTime * derived().fps();
             if(cbSz > m_latencyCircBuffMaxLength) cbSz = m_latencyCircBuffMaxLength;
             if(cbSz < 3) cbSz = 3; //Make variance meaningful
+
             m_atimes.maxEntries(cbSz);
             m_wtimes.maxEntries(cbSz);
          }
-            
+
          m_typeSize = ImageStreamIO_typesize(m_dataType);
-         
+
 
          //Here we resolve currentFlip somehow.
          m_currentFlip = m_defaultFlip;
@@ -633,49 +717,45 @@ void frameGrabber<derivedT>::fgThreadExec()
        */
       if(m_shmimName == "") m_shmimName = derived().configName();
 
-      if(m_width != imsize[0] || m_height != imsize[1] || m_circBuffLength != imsize[2] || m_shmimName != shmimName || m_imageStream == nullptr)
+      if(m_width != imsize[0] || m_height != imsize[1] || static_cast<uint32_t>(m_circBuffLength) != imsize[2] || m_shmimName != shmimName || m_imageStream == nullptr)
       {
          if(m_imageStream != nullptr)
          {
             ImageStreamIO_destroyIm(m_imageStream);
             free(m_imageStream);
          }
-         
-         m_imageStream = (IMAGE *) malloc(sizeof(IMAGE));
-         
-         imsize[0] = m_width; 
+
+         m_imageStream = reinterpret_cast<IMAGE *>(malloc(sizeof(IMAGE)));
+
+         imsize[0] = m_width;
          imsize[1] = m_height;
          imsize[2] = m_circBuffLength;
          shmimName = m_shmimName;
-      
+
          std::cerr << "Creating: " << m_shmimName << " " << m_width << " " << m_height << " " << m_circBuffLength << "\n";
-      
+
          ImageStreamIO_createIm_gpu(m_imageStream, m_shmimName.c_str(), 3, imsize, m_dataType, -1, 1, IMAGE_NB_SEMAPHORE, 0, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0);
 
          m_imageStream->md->cnt1 = m_circBuffLength - 1;
       }
-      else
-      {
-         std::cerr << "Not creating . . .\n";
-      }
-     
+
       //This completes the reconfiguration.
       m_reconfig = false;
-                  
-      if(derived().startAcquisition() < 0) continue;       
-         
-      uint64_t next_cnt1 = 0; 
-      char * next_dest = (char *) m_imageStream->array.raw;
+
+      if(derived().startAcquisition() < 0) continue;
+
+      uint64_t next_cnt1 = 0;
+      char * next_dest = reinterpret_cast<char *>(m_imageStream->array.raw);
       timespec * next_wtimearr = &m_imageStream->writetimearray[0];
       timespec * next_atimearr = &m_imageStream->atimearray[0];
       uint64_t * next_cntarr = &m_imageStream->cntarray[0];
-      
-      //This is the main image grabbing loop.      
+
+      //This is the main image grabbing loop.
       while(!derived().shutdown() && !m_reconfig && derived().powerState() > 0)
       {
          //==================
          //Get next image, process validity.
-         //====================         
+         //====================
          int isValid = derived().acquireAndCheckValid();
          if(isValid != 0)
          {
@@ -683,7 +763,7 @@ void frameGrabber<derivedT>::fgThreadExec()
             {
                break;
             }
-            else if( isValid > 0)
+            else
             {
                continue;
             }
@@ -691,57 +771,61 @@ void frameGrabber<derivedT>::fgThreadExec()
 
          //Ok, no timeout, so we process the image and publish it.
          m_imageStream->md->write=1;
-         
+
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &writestart);
-         
-         if(derived().loadImageIntoStream(next_dest) < 0) 
+         //clock_gettime(CLOCK_REALTIME, &writestart);
+
+         if(derived().loadImageIntoStream(next_dest) < 0)
          {
             break;
          }
 
          //Set the time of last write
-         clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime);
+         //clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime);
+         if(clock_gettime(CLOCK_REALTIME, &m_imageStream->md->writetime) < 0)
+         {
+            derivedT::template log<software_critical>({__FILE__, __LINE__, errno, 0, "clock_gettime"});
+         }
 
          //Set the image acquisition timestamp
          m_imageStream->md->atime = m_currImageTimestamp;
-         
+
          //Update cnt1
          m_imageStream->md->cnt1 = next_cnt1;
-          
+
          //Update cnt0
          m_imageStream->md->cnt0++;
-         
+
          *next_wtimearr = m_imageStream->md->writetime;
          *next_atimearr = m_currImageTimestamp;
          *next_cntarr = m_imageStream->md->cnt0;
-         
+
          //And post
          m_imageStream->md->write=0;
          ImageStreamIO_sempost(m_imageStream,-1);
- 
+
          //Update the latency circ. buffs
          if(m_atimes.maxEntries()  >  0)
          {
             m_atimes.nextEntry(m_imageStream->md->atime);
             m_wtimes.nextEntry(m_imageStream->md->writetime);
          }
-         
+
          //Now we increment pointers outside the time-critical part of the loop.
          next_cnt1 = m_imageStream->md->cnt1+1;
          if(next_cnt1 >= m_circBuffLength) next_cnt1 = 0;
-         
-         next_dest = (char *) m_imageStream->array.raw + next_cnt1*m_width*m_height*m_typeSize;
+
+         next_dest = reinterpret_cast<char *>(m_imageStream->array.raw) + next_cnt1*m_width*m_height*m_typeSize;
          next_wtimearr = &m_imageStream->writetimearray[next_cnt1];
          next_atimearr = &m_imageStream->atimearray[next_cnt1];
          next_cntarr = &m_imageStream->cntarray[next_cnt1];
-         
+
          //Touch them to make sure we move
          m_dummy_c = next_dest[0];
          m_dummy_ts.tv_sec = next_wtimearr[0].tv_sec + next_atimearr[0].tv_sec;
          m_dummy_cnt = next_cntarr[0];
       }
-    
+
       if(m_reconfig && !derived().shutdown())
       {
          derived().reconfig();
@@ -778,7 +862,7 @@ void * frameGrabber<derivedT>::loadImageIntoStreamCopy( void * dest,
          case fgFlipUD:
             return mx::improc::imcpy_flipUD(dest, src, width, height, szof);
          case fgFlipLR:
-            return mx::improc::imcpy_flipLR(dest, src, width, height, szof);  
+            return mx::improc::imcpy_flipLR(dest, src, width, height, szof);
          case fgFlipUDLR:
             return mx::improc::imcpy_flipUDLR(dest, src, width, height, szof);
          default:
@@ -793,8 +877,8 @@ template<class derivedT>
 int frameGrabber<derivedT>::updateINDI()
 {
    if( !derived().m_indiDriver ) return 0;
-   
-   indi::updateIfChanged(m_indiP_shmimName, "name", m_shmimName, derived().m_indiDriver);                     
+
+   indi::updateIfChanged(m_indiP_shmimName, "name", m_shmimName, derived().m_indiDriver);
    indi::updateIfChanged(m_indiP_frameSize, "width", m_width, derived().m_indiDriver);
    indi::updateIfChanged(m_indiP_frameSize, "height", m_height, derived().m_indiDriver);
 
@@ -803,9 +887,9 @@ int frameGrabber<derivedT>::updateINDI()
    if(m_mna != 0 ) fpsa = 1.0/m_mna;
    if(m_mnw != 0 ) fpsw = 1.0/m_mnw;
 
-   indi::updateIfChanged<double>(m_indiP_timing, {"acq_fps","acq_jitter","write_fps","write_jitter","delta_aw","delta_aw_jitter"}, 
-                        {fpsa, sqrt(m_vara), fpsw, sqrt(m_varw), m_mnwa, sqrt(m_varwa)},derived().m_indiDriver);
-   
+   indi::updateIfChanged<double>(m_indiP_timing, {"acq_fps","acq_min", "acq_max", "acq_jitter","write_fps","write_min", "write_max","write_jitter","delta_aw","delta_aw_jitter"},
+                        {fpsa, m_mina, m_maxa, sqrt(m_vara), fpsw, m_minw, m_maxw, sqrt(m_varw), m_mnwa, sqrt(m_varwa)},derived().m_indiDriver);
+
    return 0;
 }
 
@@ -817,7 +901,7 @@ int frameGrabber<derivedT>::recordFGTimings( bool force )
 
    static double last_mnw = 0;
    static double last_varw = 0;
-   
+
    static double last_mnwa = 0;
    static double last_varwa = 0;
 
@@ -841,7 +925,7 @@ int frameGrabber<derivedT>::recordFGTimings( bool force )
 
 /// Call frameGrabberT::setupConfig with error checking for frameGrabber
 /**
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define FRAMEGRABBER_SETUP_CONFIG( cfig )                                                   \
     if(frameGrabberT::setupConfig(cfig) < 0)                                                \
@@ -853,7 +937,7 @@ int frameGrabber<derivedT>::recordFGTimings( bool force )
 
 /// Call frameGrabberT::loadConfig with error checking for frameGrabber
 /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define FRAMEGRABBER_LOAD_CONFIG( cfig )                                                             \
     if(frameGrabberT::loadConfig(cfig) < 0)                                                          \
