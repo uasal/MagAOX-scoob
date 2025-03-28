@@ -17,7 +17,7 @@ import hcipy as hp
 from scipy.optimize import minimize
 
 class AdcFitter:
-    def __init__(self,wavelength=656E-9,bandwidth=100E-9,grating_angle=28,grating_freq=47):
+    def __init__(self,wavelength=656E-9,bandwidth=100E-9,grating_angle=-28,grating_freq=47):
         self.wavelength = wavelength
         self.bandwidth = bandwidth
         self.grating_angle = grating_angle
