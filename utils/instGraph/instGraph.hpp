@@ -345,50 +345,6 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
                 throw std::runtime_error(msg);
             }
 
-<<<<<<< Updated upstream
-=======
-            xn = nn;
-        }
-        else if(type == "static")
-        {
-            staticNode *nn = nullptr;
-
-            try
-            {
-                 nn = new staticNode(sections[i], &m_graph);
-            }
-            catch(const std::exception& e)
-            {
-                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
-                msg += ": ";
-                msg += e.what();
-                throw std::runtime_error(msg);
-            }
-
-            if(nn == nullptr)
-            {
-                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "failed to allocate node");
-                throw std::runtime_error(msg);
-            }
-
-            try
-            {
-                nn->loadConfig(_config);
-            }
-            catch(const std::exception& e)
-            {
-                std::string msg = XIGN_EXCEPTION("indiGraph::loadConfigImpl", "exception caught");
-                msg += ": ";
-                msg += e.what();
-                throw std::runtime_error(msg);
-            }
-
-            xn = nn;
-        }
-
-        if(xn != nullptr)
-        {
->>>>>>> Stashed changes
             try
             {
                 nn->loadConfig(_config);
