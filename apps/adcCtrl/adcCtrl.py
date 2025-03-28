@@ -298,8 +298,9 @@ class adcCtrl(XDevice):
         self.delta_1 = 0
         self.delta_2 = 0
 
-        self.set_command(0,0)
-        self.send_command()
+        if self.client['adctrack.deltaADC1.current'] != 0:
+            self.set_command(0,0)
+            self.send_command()
 
         self.update_wavelength()
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
