@@ -409,6 +409,8 @@ class adcCtrl(XDevice):
     def loop(self):
         if self._state == States.CLOSED_LOOP:
             img = self.camera.grab_stack(self._n_avg)
+            transpose = img.shaped.T 
+            img = transpose.ravel()
             img = self.ADC.filter_image(img)
             img = self.ADC.crop_image(img,self._extent)
             self.ADC.set_psf(img)
@@ -428,9 +430,19 @@ class adcCtrl(XDevice):
 
         elif self._state == States.ONESHOT:
             img = self.camera.grab_stack(self._n_avg)
-            img = self.ADC.filter_image(img)
+            transpose = img.shaped.T 
+            img = transpose.ravel()
+            #img = self.ADC.filter_image(img)
             img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
+
+            self.log.info(f'image intensity:{np.sum(img):.2f}')
+            self.log.info(f'min intensity: {np.min(img):.2f}')
+            self.log.info(f'max intensity: {np.max(img):.2f}')
+            just_speckle = self.ADC.find_speckle(img,3)
+            self.log.info(f'speckle 3 intensity: {np.sum(just_speckle):.6f}')
+            center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
+            self.log.info(f'center of intensity: {center_of_intensity}')
             
             angles = self.ADC.find_speckle_angles2()
             pair_angles = self.ADC.speckle_pairs(angles)
@@ -458,7 +470,9 @@ class adcCtrl(XDevice):
                 self.send_command()
 
                 img = self.camera.grab_stack(self._n_avg)
-                img = self.ADC.filter_image(img)
+                transpose = img.shaped.T 
+                img = transpose.ravel()
+                #img = self.ADC.filter_image(img)
                 img = self.ADC.crop_image(img,extent=self._extent)
                 self.ADC.set_psf(img)
                 
