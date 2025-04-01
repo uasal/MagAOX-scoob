@@ -280,7 +280,11 @@ class modalGainOpt : public MagAOXApp<true>,
 
     std::vector<float> m_freq;
 
-    mx::improc::eigenImage<float>   m_clPSDs;
+    mx::improc::eigenImage<float> m_clPSDs;
+    mx::improc::eigenImage<float> m_clXferCurrent;
+    mx::improc::eigenImage<float> m_clXferSI;
+    mx::improc::eigenImage<float> m_clXferLP;
+
     std::vector<std::vector<float>> m_olPSDs;
     std::vector<std::vector<float>> m_nPSDs;
 
@@ -326,6 +330,14 @@ class modalGainOpt : public MagAOXApp<true>,
 
     eigenImage<float> m_bs;
 
+    std::vector<float> m_gmaxLP; ///< The previously calculated maximum gains for LP
+
+    int m_nRegCycles{ 60 }; ///< How often to regularize each mode
+
+    std::vector<int> m_regCounter; ///< Counters to track when this mode was last regularized
+
+    std::vector<float> m_regScale; ///< The regularizatio scale factors for each mode
+
     std::vector<float> m_gainCals;
 
     std::vector<float> m_gainCalFacts;
@@ -335,23 +347,22 @@ class modalGainOpt : public MagAOXApp<true>,
     int m_sinceChange{ -1 };
 
     std::string m_olPSDShmimName;
+    std::string m_clXferCurrentShmimName;
     std::string m_clXferSIShmimName;
     std::string m_clXferLPShmimName;
 
-    std::string m_optGainsShmimName;
+    std::string m_optGainShmimName;
     std::string m_optGainSIShmimName;
     std::string m_optGainLPShmimName;
 
-    IMAGE *m_olPSDStream{ nullptr };    ///< The ImageStreamIO shared memory buffer to publish the open loop PSDs
-    IMAGE *m_clXferSIStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI ETF
-    IMAGE *m_clXferLPStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the LP ETF
+    IMAGE *m_olPSDStream{ nullptr };         ///< The ImageStreamIO shared memory buffer to publish the open loop PSDs
+    IMAGE *m_clXferCurrentStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI ETF
+    IMAGE *m_clXferSIStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the SI ETF
+    IMAGE *m_clXferLPStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the LP ETF
 
-
-    IMAGE *m_optGainsStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the optimal gains
+    IMAGE *m_optGainStream{ nullptr };  ///< The ImageStreamIO shared memory buffer to publish the optimal gains
     IMAGE *m_optGainSIStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI optimal gains
     IMAGE *m_optGainLPStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the LP optimal gains
-
-    
 
   public:
     /// Default c'tor.
@@ -693,7 +704,10 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
 
     snprintf( shmim, sizeof( shmim ), "aol%d_olpsds", m_loopNum );
     m_olPSDShmimName = shmim;
-    
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_clxferCurrent", m_loopNum );
+    m_clXferCurrentShmimName = shmim;
+
     snprintf( shmim, sizeof( shmim ), "aol%d_clxferSI", m_loopNum );
     m_clXferSIShmimName = shmim;
 
@@ -701,14 +715,14 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     m_clXferLPShmimName = shmim;
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimal", m_loopNum );
-    m_optGainsShmimName = shmim;
-    
+    m_optGainShmimName = shmim;
+
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalSI", m_loopNum );
     m_optGainSIShmimName = shmim;
-    
+
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalLP", m_loopNum );
     m_optGainLPShmimName = shmim;
-    
+
     return 0;
 }
 
@@ -844,11 +858,15 @@ int modalGainOpt::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
 
-    if( m_olPSDStream != nullptr)
+    if( m_olPSDStream != nullptr )
     {
         ImageStreamIO_destroyIm( m_olPSDStream );
         free( m_olPSDStream );
         m_olPSDStream = nullptr;
+
+        ImageStreamIO_destroyIm( m_clXferCurrentStream );
+        free( m_clXferCurrentStream );
+        m_clXferCurrentStream = nullptr;
 
         ImageStreamIO_destroyIm( m_clXferSIStream );
         free( m_clXferSIStream );
@@ -859,11 +877,11 @@ int modalGainOpt::appShutdown()
         m_clXferLPStream = nullptr;
     }
 
-    if( m_optGainsStream != nullptr )
+    if( m_optGainStream != nullptr )
     {
-        ImageStreamIO_destroyIm( m_optGainsStream );
-        free( m_optGainsStream );
-        m_optGainsStream = nullptr;
+        ImageStreamIO_destroyIm( m_optGainStream );
+        free( m_optGainStream );
+        m_optGainStream = nullptr;
 
         ImageStreamIO_destroyIm( m_optGainSIStream );
         free( m_optGainSIStream );
@@ -886,6 +904,10 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
     m_updating = true;
 
     m_clPSDs.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+    m_clXferCurrent.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+    m_clXferSI.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+    m_clXferLP.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+
     m_olPSDs.resize( psdShmimMonitorT::m_height );
     m_nPSDs.resize( psdShmimMonitorT::m_height );
 
@@ -901,11 +923,16 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
     m_optGainLP.resize( psdShmimMonitorT::m_height );
     m_modeVarLP.resize( psdShmimMonitorT::m_height );
 
-    if( m_olPSDStream != nullptr && (m_olPSDStream->md->size[0] != psdShmimMonitorT::m_width || m_olPSDStream->md->size[1] != psdShmimMonitorT::m_height))
+    if( m_olPSDStream != nullptr && ( m_olPSDStream->md->size[0] != psdShmimMonitorT::m_width ||
+                                      m_olPSDStream->md->size[1] != psdShmimMonitorT::m_height ) )
     {
         ImageStreamIO_destroyIm( m_olPSDStream );
         free( m_olPSDStream );
         m_olPSDStream = nullptr;
+
+        ImageStreamIO_destroyIm( m_clXferCurrentStream );
+        free( m_clXferCurrentStream );
+        m_clXferCurrentStream = nullptr;
 
         ImageStreamIO_destroyIm( m_clXferSIStream );
         free( m_clXferSIStream );
@@ -938,6 +965,23 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_olPSDStream->md->cnt0 = 0;
         m_olPSDStream->md->cnt1 = 0;
+
+        m_clXferCurrentStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+
+        ImageStreamIO_createIm_gpu( m_clXferCurrentStream,
+                                    m_clXferCurrentShmimName.c_str(),
+                                    3,
+                                    imsize,
+                                    psdShmimMonitorT::m_dataType,
+                                    -1,
+                                    1,
+                                    IMAGE_NB_SEMAPHORE,
+                                    0,
+                                    CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
+                                    0 );
+
+        m_clXferCurrentStream->md->cnt0 = 0;
+        m_clXferCurrentStream->md->cnt1 = 0;
 
         m_clXferSIStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
@@ -972,16 +1016,14 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_clXferLPStream->md->cnt0 = 0;
         m_clXferLPStream->md->cnt1 = 0;
-
-
     }
 
-    if( m_optGainsStream != nullptr &&
-        ( m_optGainsStream->md->size[0] != psdShmimMonitorT::m_height || m_optGainsStream->md->size[1] != 1 ) )
+    if( m_optGainStream != nullptr &&
+        ( m_optGainStream->md->size[0] != psdShmimMonitorT::m_height || m_optGainStream->md->size[1] != 1 ) )
     {
-        ImageStreamIO_destroyIm( m_optGainsStream );
-        free( m_optGainsStream );
-        m_optGainsStream = nullptr;
+        ImageStreamIO_destroyIm( m_optGainStream );
+        free( m_optGainStream );
+        m_optGainStream = nullptr;
 
         ImageStreamIO_destroyIm( m_optGainSIStream );
         free( m_optGainSIStream );
@@ -992,16 +1034,16 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
         m_optGainSIStream = nullptr;
     }
 
-    if( m_optGainsStream == nullptr )
+    if( m_optGainStream == nullptr )
     {
-        m_optGainsStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+        m_optGainStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
         uint32_t imsize[3];
 
         imsize[0] = psdShmimMonitorT::m_height;
         imsize[1] = 1;
         imsize[2] = 1;
-        ImageStreamIO_createIm_gpu( m_optGainsStream,
-                                    m_optGainsShmimName.c_str(),
+        ImageStreamIO_createIm_gpu( m_optGainStream,
+                                    m_optGainShmimName.c_str(),
                                     3,
                                     imsize,
                                     psdShmimMonitorT::m_dataType,
@@ -1012,8 +1054,8 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
                                     CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
                                     0 );
 
-        m_optGainsStream->md->cnt0 = 0;
-        m_optGainsStream->md->cnt1 = 0;
+        m_optGainStream->md->cnt0 = 0;
+        m_optGainStream->md->cnt1 = 0;
 
         m_optGainSIStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
@@ -1453,7 +1495,7 @@ int modalGainOpt::processImage( void *curr_src, const numpccoeffShmimT &dummy )
 
     std::unique_lock<std::mutex> lock( m_goptMutex, std::defer_lock );
 
-    if( w != m_Na.size() || w != m_Nb.size() )
+    if( w != m_Na.size() || w != m_Nb.size() || w != m_regCounter.size() || w != m_regScale.size() )
     {
         m_updating = true;
         lock.lock();
@@ -1462,6 +1504,25 @@ int modalGainOpt::processImage( void *curr_src, const numpccoeffShmimT &dummy )
         change = true;
         m_Na.resize( w );
         m_Nb.resize( w );
+
+        m_regCounter.resize( w );
+
+        // Initialize the regCounter
+        int nc = 0;
+
+        for( size_t n = 0; n < m_regCounter.size(); ++n )
+        {
+            m_regCounter[n] = nc;
+            ++nc;
+
+            if( nc >= m_nRegCycles )
+            {
+                nc = 0;
+            }
+        }
+
+        m_regScale.resize( w, -999 );
+        m_gmaxLP.resize( w, 0 );
     }
 
     mx::improc::eigenMap<int> Npc( reinterpret_cast<int *>( curr_src ), w, 2 );
@@ -1869,7 +1930,8 @@ void modalGainOpt::goptThreadExec()
         sleep( 1 );
     }
 
-    bool logged = false;
+    std::vector<bool> logged( 50, false );
+
     while( shutdown() == 0 )
     {
         timespec ts;
@@ -1879,158 +1941,253 @@ void modalGainOpt::goptThreadExec()
         {
             std::lock_guard<std::mutex> lock( m_goptMutex );
 
+            int L = 0;
             if( (size_t)m_clPSDs.rows() == 0 || m_clPSDs.cols() == 0 ) // somehow here without any data
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs have not been updated" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.rows() != m_freq.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs and freq size mismatch" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.cols() != m_gainFacts.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs and gains number of modes mismatch" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.cols() != m_multFacts.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs and mult coeffs number of modes mismatch" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.cols() != m_gainCals.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs and gain cals number of modes mismatch" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.cols() != m_gainCalFacts.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "PSDs and gain cal facts number of modes mismatch" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( (size_t)m_clPSDs.cols() != m_taus.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "Loop taus have not been set" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( m_fps <= 0 )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "Loop fps has not been set" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
-            
+            logged[L++] = false;
 
             if( m_olPSDStream == nullptr )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "m_olPSDStream is not allocated" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
+
+            if( m_clXferCurrentStream == nullptr )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "m_clXferCurrentStream is not allocated" } );
+                }
+                logged[L] = true;
+                continue;
+            }
+            logged[L++] = false;
 
             if( m_clXferSIStream == nullptr )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "m_clXferSIStream is not allocated" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
+            logged[L++] = false;
 
-            if( m_clXferLPStream == nullptr )
+            if( m_optGainStream == nullptr )
             {
-                if( !logged )
-                {
-                    log<software_error>( { __FILE__, __LINE__, "m_clXferLPStream is not allocated" } );
-                }
-                logged = true;
-                continue;
-            }
-
-            if( m_optGainsStream == nullptr )
-            {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "optGainsStream is not allocated" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
             if( m_optGainSIStream == nullptr )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
                     log<software_error>( { __FILE__, __LINE__, "optGainsStream SI is not allocated" } );
                 }
-                logged = true;
+                logged[L] = true;
                 continue;
             }
-            logged = false;
+            logged[L++] = false;
 
-            if( m_optGainLPStream == nullptr )
+            bool doPCCalcs = true;
+
+            if( (size_t)m_clPSDs.cols() != m_Na.size() )
             {
-                if( !logged )
+                if( !logged[L] )
                 {
-                    log<software_error>( { __FILE__, __LINE__, "optGainsStream LP is not allocated" } );
+                    log<software_error>( { __FILE__, __LINE__, "Na is not allocated" } );
                 }
-                logged = true;
-                continue;
+                logged[L] = true;
+                doPCCalcs = false;
             }
-            logged = false;
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( (size_t)m_clPSDs.cols() != m_NaCurrent.size() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "NaCurrent is not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( m_clPSDs.cols() != m_as.cols() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "a coefficients are not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( (size_t)m_clPSDs.cols() != m_Nb.size() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "Nb is not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( (size_t)m_clPSDs.cols() != m_NbCurrent.size() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "NbCurrent is not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( m_clPSDs.cols() != m_bs.cols() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "b coefficients are not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            else
+            {
+                logged[L] = false;
+            }
+            ++L;
+
+            if( m_clXferLPStream == nullptr || m_optGainLPStream == nullptr ||
+                (size_t)m_clPSDs.cols() != m_optGainLP.size() || (size_t)m_clPSDs.cols() != m_goptLP.size() )
+            {
+                if( !logged[L] )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "LP is not allocated" } );
+                }
+                logged[L] = true;
+                doPCCalcs = false;
+            }
+            logged[L++] = false;
 
             if( m_goptUpdated || m_pcgoptUpdated || m_freqUpdated || m_goptCurrent.size() != m_gainFacts.size() )
             {
@@ -2063,18 +2220,24 @@ void modalGainOpt::goptThreadExec()
                     }
                     else
                     {
-                        m_goptCurrent[n].a( m_as );
-                        m_goptCurrent[n].b( m_as );
+                        std::vector<float> ta( m_as.rows() );
+                        for( size_t m = 0; m < ta.size(); ++m )
+                        {
+                            ta[m] = m_as( m, n );
+                        }
+                        m_goptCurrent[n].a( ta );
+
+                        std::vector<float> tb( m_bs.rows() );
+                        for( size_t m = 0; m < tb.size(); ++m )
+                        {
+                            tb[m] = m_bs( m, n );
+                        }
+                        m_goptCurrent[n].b( tb );
+
                         m_goptCurrent[n].remember( m_pcMult * m_pcMultFacts[n] );
                     }
 
                     m_goptSI[n].setLeakyIntegrator( m_mult * m_multFacts[n] );
-
-                    //m_goptLP[n].a( m_as );
-                    //m_goptLP[n].b( m_bs );
-                    //m_goptLP[n].remember( m_mult * m_multFacts[n] );
-
-                    m_goptLP[n].setLeakyIntegrator( m_mult * m_multFacts[n] );
 
                     if( m_freqUpdated )
                     {
@@ -2089,7 +2252,6 @@ void modalGainOpt::goptThreadExec()
                 m_freqUpdated   = false;
 
                 std::cerr << "done\n";
-
             }
 
             if( m_updating )
@@ -2099,12 +2261,28 @@ void modalGainOpt::goptThreadExec()
 
             timePointT t0 = std::chrono::steady_clock::now();
 
-            #pragma omp parallel for num_threads(10)
+#pragma omp parallel for num_threads( 15 )
             for( size_t n = 0; n < m_goptCurrent.size(); ++n )
             {
-                if( m_updating || m_shutdown)
+                if( m_updating || m_shutdown )
                 {
                     continue; // don't break b/c of omp
+                }
+
+                if( !m_pcOn )
+                {
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_clXferCurrent( f, n ) = m_goptCurrent[n].clETF2( f, m_gain * m_gainFacts[n] * m_gainCals[n] );
+                    }
+                }
+                else
+                {
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_clXferCurrent( f, n ) =
+                            m_goptCurrent[n].clETF2( f, m_pcGain * m_pcGainFacts[n] * m_gainCals[n] );
+                    }
                 }
 
                 // Calculate the OL PSD with the current gopt (PC or SI)
@@ -2116,22 +2294,12 @@ void modalGainOpt::goptThreadExec()
                         m_nPSDs[n][f]  = 1e-20;
                     }
                 }
-                else if( !m_pcOn )
-                {
-                    for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
-                    {
-                        m_olPSDs[n][f] =
-                            m_clPSDs( f, n ) / m_goptCurrent[n].clETF2( f, m_gain * m_gainFacts[n] * m_gainCals[n] );
-                        m_nPSDs[n][f] = 1e-20;
-                    }
-                }
                 else
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_olPSDs[n][f] = m_clPSDs( f, n ) /
-                                         m_goptCurrent[n].clETF2( f, m_pcGain * m_pcGainFacts[n] * m_gainCals[n] );
-                        m_nPSDs[n][f] = 1e-20;
+                        m_olPSDs[n][f] = m_clPSDs( f, n ) / m_clXferCurrent( f, n );
+                        m_nPSDs[n][f]  = 1e-20;
                     }
                 }
 
@@ -2140,10 +2308,72 @@ void modalGainOpt::goptThreadExec()
 
                 m_optGainSI[n] = m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], false );
 
-                float min_sc;
-                float gmax_lp;
-                m_linPred[n].regularizeCoefficients(
-                    gmax_lp, m_optGainLP[n], m_modeVarLP[n], min_sc, m_goptLP[n], m_olPSDs[n], m_nPSDs[n], m_Na[n] );
+                for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                {
+                    m_clXferSI( f, n ) = m_goptSI[n].clETF2( f, m_optGainSI[n] );
+                }
+
+                if( doPCCalcs )
+                {
+
+                    if( m_regScale[n] == -999 || m_regCounter[n] >= m_nRegCycles )
+                    {
+                        float min_sc;
+                        float gmax_lp = 0;
+
+                        m_linPred[n].regularizeCoefficients( gmax_lp,
+                                                             m_optGainLP[n],
+                                                             m_modeVarLP[n],
+                                                             min_sc,
+                                                             m_goptLP[n],
+                                                             m_olPSDs[n],
+                                                             m_nPSDs[n],
+                                                             m_Na[n] );
+
+                        if( m_regScale[n] == -999 )
+                        {
+                            m_regCounter[n] = n % m_nRegCycles;
+                        }
+                        else
+                        {
+                            m_regCounter[n] = 0;
+                        }
+
+                        m_regScale[n] = min_sc;
+                        m_gmaxLP[n]   = gmax_lp;
+                        // save max-stable gain m_maxLPGain[n]
+                    }
+                    else
+                    {
+                        // use new pre-regularized version
+                        float psdReg = m_olPSDs[n][0];
+                        if( m_linPred[n].calcCoefficients(
+                                m_olPSDs[n], m_nPSDs[n], psdReg * pow( 10, -m_regScale[n] / 10 ), m_Na[n] ) < 0 )
+                        {
+                            log<software_error>( { __FILE__, __LINE__, "error calculating coefficients" } );
+                        }
+
+                        m_goptLP[n].a( m_linPred[n].m_lp.m_c );
+                        m_goptLP[n].b( m_linPred[n].m_lp.m_c );
+
+                        m_optGainLP[n] =
+                            m_goptLP[n].optGainOpenLoop( m_modeVarLP[n], m_olPSDs[n], m_nPSDs[n], m_gmaxLP[n], false );
+
+                        ++m_regCounter[n];
+                    }
+
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_clXferLP( f, n ) = m_goptLP[n].clETF2( f, m_optGainLP[n] );
+                    }
+                }
+                else
+                {
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_clXferLP( f, n ) = 1;
+                    }
+                }
             }
 
             timePointT t1 = std::chrono::steady_clock::now();
@@ -2155,19 +2385,41 @@ void modalGainOpt::goptThreadExec()
 
             std::cerr << "Optimization took " << dt.count() << " seconds\n";
 
-            float *f = m_optGainsStream->array.F;
+            float *f = m_optGainStream->array.F;
+            float *fLP = m_optGainLPStream->array.F;
+            float *fSI = m_optGainSIStream->array.F;
 
-            m_optGainsStream->md->write = 1;
+            m_optGainStream->md->write = 1;
+            m_optGainSIStream->md->write = 1;
+            m_optGainLPStream->md->write = 1;
+
             for( size_t n = 0; n < m_optGainSI.size(); ++n )
             {
                 f[n] = m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n];
+                fSI[n] = f[n];
+                fLP[n] = m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n];
             }
-            clock_gettime( CLOCK_ISIO, &m_optGainsStream->md->writetime );
-            m_optGainsStream->md->atime = m_optGainsStream->md->writetime;
 
-            ++m_optGainsStream->md->cnt0;
-            m_optGainsStream->md->write = 0;
-            ImageStreamIO_sempost( m_optGainsStream, -1 );
+            clock_gettime( CLOCK_ISIO, &m_optGainStream->md->writetime );
+            m_optGainStream->md->atime = m_optGainStream->md->writetime;
+
+            m_optGainSIStream->md->writetime = m_optGainStream->md->writetime;
+            m_optGainSIStream->md->atime = m_optGainStream->md->writetime;
+            
+            m_optGainLPStream->md->writetime = m_optGainStream->md->writetime;
+            m_optGainLPStream->md->atime = m_optGainStream->md->writetime;
+
+            ++m_optGainStream->md->cnt0;
+            m_optGainStream->md->write = 0;
+            ImageStreamIO_sempost( m_optGainStream, -1 );
+
+            ++m_optGainSIStream->md->cnt0;
+            m_optGainSIStream->md->write = 0;
+            ImageStreamIO_sempost( m_optGainSIStream, -1 );
+
+            ++m_optGainLPStream->md->cnt0;
+            m_optGainLPStream->md->write = 0;
+            ImageStreamIO_sempost( m_optGainLPStream, -1 );
 
             if( m_autoUpdate || m_updateOnce || m_dump )
             {
@@ -2213,6 +2465,38 @@ void modalGainOpt::goptThreadExec()
             {
                 m_sinceChange = -1;
             }
+
+            // Update Transfer Functions
+            m_clXferCurrentStream->md->write = 1;
+            m_clXferSIStream->md->write      = 1;
+            m_clXferLPStream->md->write      = 1;
+
+            memcpy( m_clXferCurrentStream->array.F,
+                    m_clXferCurrent.data(),
+                    m_clXferCurrent.rows() * m_clXferCurrent.cols() );
+            memcpy( m_clXferSIStream->array.F, m_clXferSI.data(), m_clXferSI.rows() * m_clXferSI.cols() );
+            memcpy( m_clXferLPStream->array.F, m_clXferLP.data(), m_clXferLP.rows() * m_clXferLP.cols() );
+
+            clock_gettime( CLOCK_ISIO, &m_clXferCurrentStream->md->writetime );
+            m_clXferCurrentStream->md->atime = m_clXferCurrentStream->md->writetime;
+
+            clock_gettime( CLOCK_ISIO, &m_clXferSIStream->md->writetime );
+            m_clXferSIStream->md->atime = m_clXferSIStream->md->writetime;
+
+            clock_gettime( CLOCK_ISIO, &m_clXferLPStream->md->writetime );
+            m_clXferLPStream->md->atime = m_clXferLPStream->md->writetime;
+
+            ++m_clXferCurrentStream->md->cnt0;
+            m_clXferCurrentStream->md->write = 0;
+            ImageStreamIO_sempost( m_clXferCurrentStream, -1 );
+
+            ++m_clXferSIStream->md->cnt0;
+            m_clXferSIStream->md->write = 0;
+            ImageStreamIO_sempost( m_clXferSIStream, -1 );
+
+            ++m_clXferLPStream->md->cnt0;
+            m_clXferLPStream->md->write = 0;
+            ImageStreamIO_sempost( m_clXferLPStream, -1 );
         }
         else
         {
