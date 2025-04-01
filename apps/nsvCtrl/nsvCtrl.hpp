@@ -129,6 +129,18 @@ protected:
    bool uses_vCrop = false; 
    bool uses_fpgaPower = false;
 
+   struct TimeSpec {
+      long tv_sec;
+      long tv_nsec;
+  };
+
+   // timing info for extra camera statistics
+   TimeSpec prev_timestamp = {0,0};
+   double running_mean = 0.0;
+   int frame_count = 0;
+   int buffer_discard = 0;
+   bool has_prev = false;
+
 public:
 
    nsvCtrl();
@@ -202,6 +214,8 @@ public:
 
    int resizeROIbufs();
 
+   void reset_cam_statistics();
+
    //int getBitDepth(); //12, 14, 16
 
    int writeConfig();
@@ -259,6 +273,9 @@ protected:
 
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
+   pcf::IndiProperty m_indiP_frame_timestamp_s;
+   pcf::IndiProperty m_indiP_frame_timestamp_ns;
+   pcf::IndiProperty m_indiP_mean_frame_time;
    pcf::IndiProperty m_indiP_power;
    pcf::IndiProperty m_indiP_power_status;
 
@@ -438,6 +455,24 @@ int nsvCtrl::appStartup()
    m_indiP_power_status["on_duration"] = m_poweredOnDuration;
    m_indiP_power_status["power_cycles"] = std::to_string(m_powerCycles);
    registerIndiPropertyReadOnly(m_indiP_power_status);
+
+   createROIndiNumber( m_indiP_frame_timestamp_s, "frame_timestamp_s", "Frame Timestamp (s)");
+   indi::addNumberElement<uint>( m_indiP_frame_timestamp_s, "value", 0, std::numeric_limits<uint>::max(), 0,  "%d", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_frame_timestamp_s );
+
+   createROIndiNumber( m_indiP_frame_timestamp_ns, "frame_timestamp_ns", "Frame Timestamp (ns)");
+   indi::addNumberElement<uint>( m_indiP_frame_timestamp_ns, "value", 0, std::numeric_limits<uint>::max(), 0,  "%d", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_frame_timestamp_ns );
+
+   createROIndiNumber( m_indiP_mean_frame_time, "m_indiP_mean_frame_time", "Mean Frame Time (s)");
+   indi::addNumberElement<float>( m_indiP_mean_frame_time, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%f", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_mean_frame_time );
+
+   /*
+   createStandardIndiNumber<int>(m_indiP_frame_timestamp_s, "frame_timestamp_s", 0, 2147483647, 1, "%d");
+   m_indiP_frame_timestamp_s["current"] = prev_timestamp.tv_sec;
+   registerIndiPropertyReadOnly(m_indiP_frame_timestamp_s, INDI_NEWCALLBACK(m_indiP_frame_timestamp_s));
+   */
 
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
@@ -724,6 +759,8 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   reset_cam_statistics();
+
    m_current_frame = 0; 
    m_oldest_frame = 0;
 
@@ -929,7 +966,7 @@ int nsvCtrl::getTemp()
       //m_powerState = 1;
       return PARAM_NOT_FOUND;
    }
-   m_ccdTemp = res;
+   m_ccdTemp = res / 1000.0;
    return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get fpga temperature"}) : m_ccdTemp;
 }
 
@@ -978,6 +1015,9 @@ int nsvCtrl::setFPS()
    if(m_fpsSet > m_maxFPS || m_fpsSet < m_minFPS)
       log<text_log>(std::to_string(m_fpsSet) + " fps out of bounds", logPrio::LOG_WARNING);
    int ret = writeSingleControlVal("frame_rate", int(m_fpsSet * 1000000));
+   // need to dump camera buffers here when changing framerate otherwise screws up statistics...
+
+   reset_cam_statistics();
    if(ret == PARAM_NOT_FOUND){ 
       return 1;
    }
@@ -1003,6 +1043,7 @@ int nsvCtrl::setExpTime()
    if(ret == PARAM_NOT_FOUND){ 
       return 1;
    }
+   reset_cam_statistics();
    return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_expTimeSet)}) : log<text_log,1>({"set exposure: " + std::to_string(m_expTimeSet)});
 }
 
@@ -1144,6 +1185,19 @@ int nsvCtrl::set_preferred_stride(int stride)
       return PARAM_NOT_FOUND;
    }
    return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to set stride to" + std::to_string(stride)}) : log<text_log,1>({"set preferred_stride to: " + std::to_string(res)});
+}
+
+inline
+void nsvCtrl::reset_cam_statistics()
+{
+   prev_timestamp = {0,0};
+   running_mean = 0.0;
+   frame_count = 0;
+   buffer_discard = 0;
+   has_prev = false;
+   updateIfChanged( m_indiP_frame_timestamp_s, "value", prev_timestamp.tv_sec, INDI_OK); 
+   updateIfChanged( m_indiP_frame_timestamp_ns, "value", prev_timestamp.tv_nsec, INDI_OK);
+   updateIfChanged( m_indiP_mean_frame_time, "value", running_mean, INDI_OK); 
 }
 
 inline 
@@ -1370,10 +1424,25 @@ int nsvCtrl::acquireAndCheckValid()
       m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
       m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
 
-      // add reporting out timestamp from camera for frame start.  Relate camera frame to PC frame?
-      // generate statistics for mean frame time.
-      // allocate an array of these - timespec m_currImageTimestamp {0,0};
+      if (has_prev && buffer_discard == bufferCount) { // make sure we cycle through the buffer at least once before computing statistics.
+         int64_t sec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_sec) - static_cast<int64_t>(prev_timestamp.tv_sec);
+         int64_t nsec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_nsec) - static_cast<int64_t>(prev_timestamp.tv_nsec);
+         int64_t total_nsec = sec_diff * 1'000'000'000 + nsec_diff;
+         double delta_t = static_cast<double>(total_nsec) / 1e9;
 
+         frame_count++;
+         running_mean = ((frame_count - 1) * running_mean + delta_t) / (double)frame_count;
+
+         updateIfChanged( m_indiP_frame_timestamp_s, "value", prev_timestamp.tv_sec, INDI_OK); 
+         updateIfChanged( m_indiP_frame_timestamp_ns, "value", prev_timestamp.tv_nsec, INDI_OK);
+         updateIfChanged( m_indiP_mean_frame_time, "value", running_mean, INDI_OK); 
+     } else {
+         has_prev = true;
+     }
+     prev_timestamp.tv_sec = m_currImageTimestamp.tv_sec;
+     prev_timestamp.tv_nsec = m_currImageTimestamp.tv_nsec;
+     if(buffer_discard < bufferCount)
+        buffer_discard++;
    }
 
    return 0;
@@ -1571,7 +1640,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_bitDepth)(const pcf::IndiProperty &ipRecv
 
    return 0;
 }
-
 
 INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
 {
