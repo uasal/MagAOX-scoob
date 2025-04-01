@@ -53,7 +53,8 @@ apps_rtc = \
 	w2tcsOffloader \
 	pwfsSlopeCalc \
     kcubeCtrl \
-	dmPokeXCorr
+	dmPokeXCorr \
+	psfAcq
 
 apps_icc = \
 	dmPokeCenter \
