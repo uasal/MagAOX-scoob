@@ -566,6 +566,22 @@ function find_device_hexbeat_pipe {
          ) \
       && break
 
+    done | \grep . && return 0  ### Returns failure if nothing was found
+
+    ### lsof failed; try ps x
+    ### PID TTY STAT  TIME COMMAND
+    ### 5431 ?   Sl    3:29 /opt/MagAOX/bin/xindiserver -n isworkstation
+    ### 5435 ?   Sl    2:19 /opt/MagAOX/bin/timeSeriesSimulator -n tSS
+    ps x | grep " -n " \
+    | while read pid tty stat time arg0 hyphenn devname balance ; do
+      [ "x$balance" == "x" ] \
+      && [ "$hyphenn" == "-n" ] \
+      && [ "$devname" ] \
+      && [ "$devname" == "$1" ] \
+      && ( [ "$2" == "pid" ] && echo "$pid probably" \
+        || ( [ ! "$2" ] && echo "$path" ) \
+         ) \
+      && break
     done | \grep .              ### Returns failure if nothing was found
 }
 

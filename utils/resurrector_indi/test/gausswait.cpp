@@ -38,6 +38,7 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/prctl.h>
 
 extern "C" {
 #include "strcat_varargs.c"
@@ -64,6 +65,10 @@ static char* myname = (char*) unknown;   // Process name after -n parsed
 static struct timeval static_timeout;    // Keep track of last timeout
 static int broken_pipes = 0;             // Count of successive SIGPIPEs
 static int mypid = -1;                   // PID of this process
+
+static uid_t ruid = -1;
+static uid_t euid = -1;
+static uid_t suid = -1;
 
 /// Signal handler:  exit on any signal caught
 void
@@ -178,6 +183,47 @@ send_hexbeat(int fdfifo, int offset)
 int
 main(int argc, char** argv)
 {
+    // Restore dumpable attribute
+    std::cerr
+    << prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) << "=prctl(PR_GET_DUMPABLE,...) before"
+    << std::endl;
+
+    std::cerr
+    << prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) << "=prctl(PR_SET_DUMPABLE,1{dumpable},...)"
+    << std::endl;
+
+    std::cerr
+    << prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) << "=prctl(PR_GET_DUMPABLE,...) after"
+    << std::endl;
+
+    // Get real (process), effective (possibly root), and saved UIDs
+    int gru = getresuid(&ruid, &euid, &suid);
+    std::cerr
+    << gru << "=getresuid(...); "
+    << ruid << "=ruid; "
+    << euid << "=euid; "
+    << suid << "=suid"
+    << std::endl;
+
+    // Restore UID to real; it may have been effective
+    int seu = seteuid(ruid);
+    std::cerr
+    << seu << "=seteuid(" << ruid << ")"
+    << std::endl;
+
+    // Restore dumpable attribute
+    std::cerr
+    << prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) << "=prctl(PR_GET_DUMPABLE,...) before"
+    << std::endl;
+
+    std::cerr
+    << prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) << "=prctl(PR_SET_DUMPABLE,1{dumpable},...)"
+    << std::endl;
+
+    std::cerr
+    << prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) << "=prctl(PR_GET_DUMPABLE,...) after"
+    << std::endl;
+
     // Parse name, save to static memory
     assert(argc == 3);
     assert(std::string("-n") == std::string(argv[1]));

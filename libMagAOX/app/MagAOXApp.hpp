@@ -1303,6 +1303,24 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
     config.parseCommandLine( argc, argv, "name" );
     config( m_configName, "name" );
 
+    // Special case check for --mkfifo-hexbeat
+    config.add("mkfifo-hexbeat", "", "mkfifo-hexbeat", argType::None
+              , "", "", false, "bool"
+              , "Create Hexbeat FIFO via mkfifo(2) and exit"
+              );
+
+    for (auto pparg = argv+1; pparg < (argv+argc); ++pparg)
+    {
+        if(::strcmp(*pparg, "--mkfifo-hexbeat")) { continue; }
+        std::cerr
+        << "Creating Hexbeat FIFO ["
+       << m_configName
+       << ".hb] and exiting ..."
+        << std::endl;
+        if( m_configName.empty() ) { exit( -1 ); }
+        exit( createResurrecteeFIFO() );
+    }
+
     if( m_configName == "" )
     {
         m_configName = mx::ioutils::pathStem( invokedName );
@@ -3039,6 +3057,9 @@ int MagAOXApp<_useINDI>::createResurrecteeFIFO()
     driverFIFOPath += MAGAOX_driverFIFORelPath;
 
     m_resurrecteeFifoName = driverFIFOPath + "/" + configName() + ".hb";
+
+    // Get max permissions
+    elevatedPrivileges elPriv( this );
 
     mode_t prev = umask( 0 );
 
