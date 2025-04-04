@@ -296,6 +296,8 @@ class modalGainOpt : public MagAOXApp<true>,
 
     bool m_loop{ false };
 
+    float m_opticalGain{ 1 };
+
     float m_gain{ 0 };
 
     float m_mult{ 1 };
@@ -359,8 +361,7 @@ class modalGainOpt : public MagAOXApp<true>,
     IMAGE *m_clXferCurrentStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI ETF
     IMAGE *m_clXferSIStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the SI ETF
     IMAGE *m_clXferLPStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the LP ETF
-
-    IMAGE *m_optGainStream{ nullptr };  ///< The ImageStreamIO shared memory buffer to publish the optimal gains
+    IMAGE *m_optGainStream{ nullptr };   ///< The ImageStreamIO shared memory buffer to publish the optimal gains
     IMAGE *m_optGainSIStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI optimal gains
     IMAGE *m_optGainLPStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the LP optimal gains
 
@@ -530,6 +531,8 @@ class modalGainOpt : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_updateOnce;
     pcf::IndiProperty m_indiP_dump;
 
+    pcf::IndiProperty m_indiP_opticalGain;
+
     pcf::IndiProperty m_indiP_gainGain;
 
     pcf::IndiProperty m_indiP_fps;
@@ -545,6 +548,7 @@ class modalGainOpt : public MagAOXApp<true>,
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_autoUpdate );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_updateOnce );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_dump );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_opticalGain );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_gainGain );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_fps );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdTime );
@@ -720,8 +724,10 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalSI", m_loopNum );
     m_optGainSIShmimName = shmim;
 
+
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalLP", m_loopNum );
     m_optGainLPShmimName = shmim;
+
 
     return 0;
 }
@@ -750,6 +756,7 @@ int modalGainOpt::appStartup()
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_updateOnce, "update_once" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dump, "update_dump" );
 
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_opticalGain, "opticalGain", 0, 1, 0.01, "%0.01f", "Optical Gain", "Gain Opt." );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_gainGain, "gainGain", 0, 1, 0.01, "%0.01f", "Gain Gain", "Gain Opt." );
 
     REG_INDI_SETPROP( m_indiP_psdTime, m_psdDevice, "psdTime" );
@@ -836,6 +843,8 @@ int modalGainOpt::appLogic()
         updateSwitchIfChanged( m_indiP_dump, "request", pcf::IndiElement::Off, INDI_IDLE );
     }
 
+    updatesIfChanged<float>( m_indiP_opticalGain, { "current", "target" }, { m_opticalGain, m_opticalGain } );
+
     updatesIfChanged<float>( m_indiP_gainGain, { "current", "target" }, { m_gainGain, m_gainGain } );
 
     return 0;
@@ -858,6 +867,7 @@ int modalGainOpt::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( gainCalFactShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( tauShmimMonitorT );
 
+    if( m_olPSDStream != nullptr )
     if( m_olPSDStream != nullptr )
     {
         ImageStreamIO_destroyIm( m_olPSDStream );
@@ -923,6 +933,8 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
     m_optGainLP.resize( psdShmimMonitorT::m_height );
     m_modeVarLP.resize( psdShmimMonitorT::m_height );
 
+    if( m_olPSDStream != nullptr && ( m_olPSDStream->md->size[0] != psdShmimMonitorT::m_width ||
+                                      m_olPSDStream->md->size[1] != psdShmimMonitorT::m_height ) )
     if( m_olPSDStream != nullptr && ( m_olPSDStream->md->size[0] != psdShmimMonitorT::m_width ||
                                       m_olPSDStream->md->size[1] != psdShmimMonitorT::m_height ) )
     {
@@ -2265,6 +2277,7 @@ void modalGainOpt::goptThreadExec()
             for( size_t n = 0; n < m_goptCurrent.size(); ++n )
             {
                 if( m_updating || m_shutdown )
+                if( m_updating || m_shutdown )
                 {
                     continue; // don't break b/c of omp
                 }
@@ -2273,7 +2286,7 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_clXferCurrent( f, n ) = m_goptCurrent[n].clETF2( f, m_gain * m_gainFacts[n] * m_gainCals[n] );
+                        m_clXferCurrent( f, n ) = m_goptCurrent[n].clETF2( f, m_gain * m_gainFacts[n] * m_gainCals[n] * m_opticalGain );
                     }
                 }
                 else
@@ -2281,7 +2294,7 @@ void modalGainOpt::goptThreadExec()
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_clXferCurrent( f, n ) =
-                            m_goptCurrent[n].clETF2( f, m_pcGain * m_pcGainFacts[n] * m_gainCals[n] );
+                            m_goptCurrent[n].clETF2( f, m_pcGain * m_pcGainFacts[n] * m_gainCals[n] * m_opticalGain );
                     }
                 }
 
@@ -2290,7 +2303,7 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_olPSDs[n][f] = m_clPSDs( f, n );
+                        m_olPSDs[n][f] = m_clPSDs( f, n ) / m_opticalGain;
                         m_nPSDs[n][f]  = 1e-20;
                     }
                 }
@@ -2298,7 +2311,7 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_olPSDs[n][f] = m_clPSDs( f, n ) / m_clXferCurrent( f, n );
+                        m_olPSDs[n][f] = (m_clPSDs( f, n ) / m_opticalGain) / m_clXferCurrent( f, n );
                         m_nPSDs[n][f]  = 1e-20;
                     }
                 }
@@ -2395,9 +2408,9 @@ void modalGainOpt::goptThreadExec()
 
             for( size_t n = 0; n < m_optGainSI.size(); ++n )
             {
-                f[n] = m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n];
+                f[n] = (m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n])/m_opticalGain;
                 fSI[n] = f[n];
-                fLP[n] = m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n];
+                fLP[n] = (m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n])/m_opticalGain;
             }
 
             clock_gettime( CLOCK_ISIO, &m_optGainStream->md->writetime );
@@ -2405,7 +2418,7 @@ void modalGainOpt::goptThreadExec()
 
             m_optGainSIStream->md->writetime = m_optGainStream->md->writetime;
             m_optGainSIStream->md->atime = m_optGainStream->md->writetime;
-            
+
             m_optGainLPStream->md->writetime = m_optGainStream->md->writetime;
             m_optGainLPStream->md->atime = m_optGainStream->md->writetime;
 
@@ -2427,18 +2440,18 @@ void modalGainOpt::goptThreadExec()
 
                 gainFactShmimMonitorT::m_imageStream.md->write = 1;
 
-                if( !m_loop || m_dump )
+                if( m_dump )
                 {
                     for( size_t n = 0; n < m_optGainSI.size(); ++n )
                     {
-                        f[n] = m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n];
+                        f[n] = (m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n])/m_opticalGain;
                     }
                 }
                 else
                 {
                     for( size_t n = 0; n < m_optGainSI.size(); ++n )
                     {
-                        f[n] = f[n] + m_gainGain * ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] - f[n] );
+                        f[n] = f[n] + m_gainGain * ( (m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n])/m_opticalGain - f[n] );
                     }
                 }
 
@@ -2583,6 +2596,22 @@ INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_dump )( const pcf::IndiProperty &ip
             m_dump = false;
         }
     }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_opticalGain )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_opticalGain, ipRecv );
+
+    float target;
+    if( indiTargetUpdate( m_indiP_opticalGain, target, ipRecv, true ) < 0 )
+    {
+        log<software_error>( { __FILE__, __LINE__ } );
+        return -1;
+    }
+
+    m_opticalGain = target;
 
     return 0;
 }
