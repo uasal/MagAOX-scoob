@@ -5,7 +5,7 @@
 #define MACRO_FD_SETSIZE FD_SETSIZE
 #endif
 
-template <int HBR_FD_SETSIZE = MACRO_FD_SETSIZE>
+template <bool _HBM_SIGCHLD_HNDLR = true, int HBR_FD_SETSIZE = MACRO_FD_SETSIZE>
 class resurrectorT
 {
 private:
@@ -19,7 +19,7 @@ private:
 
     std::set<int> m_fds; ///< FDs of all opened hexbeaters in m_hbmarr
 
-    std::vector<HexbeatMonitor> m_hbmarr{std::vector<HexbeatMonitor>(HBR_FD_SETSIZE)}; ///< vector of hexbeat monitors, active or not
+    std::vector<HexbeatMonitor<_HBM_SIGCHLD_HNDLR>> m_hbmarr{std::vector<HexbeatMonitor<_HBM_SIGCHLD_HNDLR>>(HBR_FD_SETSIZE)}; ///< vector of hexbeat monitors, active or not
 
 public:
     /// Constructor
@@ -29,7 +29,7 @@ public:
     resurrectorT(void (*output_redirect)(std::string)=nullptr) : m_nfds(0), m_fds({})
     {
         FD_ZERO(&m_fdset_cpy);
-        for (std::vector<HexbeatMonitor>::iterator it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
+        for (auto it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
         {
             it->output_redirect_set(output_redirect);
         }
@@ -39,7 +39,7 @@ public:
     void
     pending_close_all_set(const bool tf)
     {
-        for (std::vector<HexbeatMonitor>::iterator it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
+        for (auto it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
         {
             it->pending_close_set(tf);
         }
@@ -49,7 +49,7 @@ public:
     void
     pending_close_all_set_on_match(const bool tf, std::string& argv0, std::string& hbname)
     {
-        for (std::vector<HexbeatMonitor>::iterator it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
+        for (auto it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
         {
             if (it->match(argv0, hbname)) { it->pending_close_set(tf); }
         }
@@ -59,7 +59,7 @@ public:
     void
     pending_close_all_close()
     {
-        for (std::vector<HexbeatMonitor>::iterator it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
+        for (auto it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
         {
             if (it->pending_close_get())
             {
@@ -111,7 +111,7 @@ public:
         }
 
         // Loop on the active FDs, each representing an active hexbeater
-        for (std::vector<HexbeatMonitor>::iterator it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
+        for (auto it = m_hbmarr.begin(); it != m_hbmarr.end(); ++it)
         {
             // Read any hexbeat data from the hexbeater FIFO, compare
             // the local hexbeat (hbnow, above) to the latest received
@@ -176,7 +176,7 @@ public:
 
         // Initialize varargs; open new FIFO; clean up varargs
         va_list ap; va_start(ap, hbname);
-        int newfd = HexbeatMonitor::open_hexbeater(
+        int newfd = HexbeatMonitor<_HBM_SIGCHLD_HNDLR>::open_hexbeater(
                     argv0, hbname, m_fdset_cpy, m_nfds, m_hbmarr
                     , init_delay
                     , ap);

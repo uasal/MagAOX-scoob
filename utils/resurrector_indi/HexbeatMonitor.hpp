@@ -135,14 +135,26 @@ static inline std::string time_to_hb(int delay)
 // /////////////////////////////////////////////////////////////////////
 // /////////////////////////////////////////////////////////////////////
 
+template <bool _SIGCHLD_HNDLR = true>
 class HexbeatMonitor
 {
 public: // interfaces
 
+    constexpr static bool m_SIGCHLD_HNDLR{_SIGCHLD_HNDLR};
     /// Constructor
     /** Ensure SIGCHLD signal handler is installed, but only once
       */
-    HexbeatMonitor() { HexbeatMonitor::install_sigchld_handler(); }
+    HexbeatMonitor() {
+        static bool first{true};
+        if (m_SIGCHLD_HNDLR && first)
+        {
+            std::cerr
+            << "Installing default SIGCHLD handler for HexbeatMonitor"
+            << std::endl;
+            HexbeatMonitor<_SIGCHLD_HNDLR>::install_sigchld_handler();
+            first = false;
+        }
+    }
 
     /// Check for opened or active HexbeatMonitor that matches both
     //  a given command and a given HexbeatMonitor name
@@ -187,7 +199,10 @@ public: // interfaces
       *         is known, the FD is used as an index into the vhexbeats
       *         vector argument to locate the target HexbeatMonitor
       *         instance
-      * \returns FD (file descriptor) of file opened
+      * \returns FD (file descriptor; value >= 0) of FIFO file opened
+      * \returns -2 if FIFO not opened and do_mkfifo is false
+      * \returns -1 if FIFO not opened and do_mkfifo is true
+      *
       * \arg \c argv0 is the path to the hexbeater executable
       * \arg \c hbname is the hexbeater name (command-line option -n)
       * \arg \c fd_set_cpy is an [fd_set] object that contains bits of
@@ -196,6 +211,7 @@ public: // interfaces
       * \arg \c vhexbeats is a vector of HexbeatMonitor's
       * \arg ... => varargs are (char*) directory components of the FIFO
       *             path, ending with a NULL
+      * \arg \c do_mkfifo - Whether to try to create FIFO if not opened
       * N.B. there is no corresponding close_fifo; the FIFO FD (md_fd)
       *      will be closed automatically when the m_fd is reset to -1
       *      via routine update_status(...)
@@ -207,12 +223,13 @@ public: // interfaces
                   , std::vector<HexbeatMonitor>& vhexbeats
                   , int init_delay
                   , va_list ap
+                  , bool do_mkfifo = true
                   )
     {
         // Build the FIFO path, open the FIFO, return on failure
-        std::string fifo_name = HexbeatMonitor::build_fifo_path(hbname, ap);
-        int fd = HexbeatMonitor::open_hexbeater_fifo(fifo_name, vhexbeats);
-        if (fd < 0) { return -1; }
+        std::string fifo_name = HexbeatMonitor<_SIGCHLD_HNDLR>::build_fifo_path(hbname, ap);
+        int fd = HexbeatMonitor<_SIGCHLD_HNDLR>::open_hexbeater_fifo(fifo_name, vhexbeats, do_mkfifo);
+        if (fd < 0) { return fd; }
 
         // Initialize the instance to the [opened] operational state
         vhexbeats[fd].init_on_open(argv0, hbname, fd_set_cpy, nfds
@@ -427,7 +444,7 @@ public: // interfaces
             {
                 if (hexbeater_args.size()==0)
                 {
-                    if (HexbeatMonitor::matches(p,"python"))
+                    if (HexbeatMonitor<_SIGCHLD_HNDLR>::matches(p,"python"))
                     {
                         p += strlen(p) + 1;
                         continue;
@@ -441,7 +458,7 @@ public: // interfaces
                 // If argv[1] is not -n, then it's not a hexbeater
                 if (hexbeater_args.size()==2 && hexbeater_args[1]!="-n") { break; }
                 // If argv[0] is some form of "indiserver" then break after 3 arguments
-                if (hexbeater_args.size()==3 && HexbeatMonitor::is_is(argv0)) { break; }
+                if (hexbeater_args.size()==3 && HexbeatMonitor<_SIGCHLD_HNDLR>::is_is(argv0)) { break; }
             }
 
             // Eliminate non-hexbeaters
@@ -476,7 +493,8 @@ public: // interfaces
     }
     // /////////////////////////////////////////////////////////////////
 
-    friend std::ostream& operator<<(std::ostream&, const HexbeatMonitor&);
+    template <bool TPARM>
+    friend std::ostream& operator<<(std::ostream&, const HexbeatMonitor<TPARM>&);
 
 private: // Internal attributes and interfaces
 
@@ -640,19 +658,19 @@ private: // Internal attributes and interfaces
     static void
     install_sigchld_handler()
     {
-        static int singleton{0};
-        if (singleton) { return; }
+        static bool first{true};
+        if (!first) { return; }
 
         struct sigaction sa;
-        sa.sa_handler = &HexbeatMonitor::hbm_sigchld_handler;
+        sa.sa_handler = &HexbeatMonitor<_SIGCHLD_HNDLR>::hbm_sigchld_handler;
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = SA_RESTART | SA_NOCLDSTOP | SA_NOCLDWAIT;
         if (sigaction(SIGCHLD, &sa, 0) == -1)
         {
-            perror("Error in HexbeatMonitor:: SIGCHLD handler install");
+            perror("Error in HexbeatMonitor<_SIGCHLD_HNDLR>:: SIGCHLD handler install");
             exit(1);
         }
-        singleton = 1;
+        first = false;
     }
     // ////////////////////////////////////////////////////////////////
 
@@ -710,8 +728,34 @@ private: // Internal attributes and interfaces
     // ////////////////////////////////////////////////////////////////
     // ////////////////////////////////////////////////////////////////
     static int
+    mkfifo_hexbeater(const std::string& fifo_name)
+    {
+        // Make Hexbeater FIFO
+        mode_t prev_mode;
+        errno = 0;
+        prev_mode = umask(0);
+        int istat{0};
+        istat = mkfifo(fifo_name.c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
+        prev_mode = umask(prev_mode);
+        return istat;
+    }
+    // ////////////////////////////////////////////////////////////////
+
+    // ////////////////////////////////////////////////////////////////
+    // ////////////////////////////////////////////////////////////////
+    /// Open hexbeater FIFO; optionally create if it does not exist
+    /** \returns Opened file descriptor (value >= 0) on success
+      * \returns -2 if FIFO file does not exist and do_mkfifo is false
+      * \returns -1 if FIFO file does not exist and could not be created
+      *
+      * \arg \c fifo_name - full FIFO filepath
+      * \arg \c vhexbeats - vector of Hexbeaters by FIFO file descr
+      * \arg \c do_mkfifo - Whether to try to create FIFO if not opened
+      */
+    static int
     open_hexbeater_fifo(const std::string& fifo_name
                        , std::vector<HexbeatMonitor>& vhexbeats
+                       , bool do_mkfifo = true
                        )
     {
         // Open FIFO read-write and non-blocking; create FIFO if needed
@@ -721,13 +765,14 @@ private: // Internal attributes and interfaces
 
         if (fd < 0 && errno == ENOENT)
         {
+            // FIFO file does not exist and argument prevents making one
+            if (!do_mkfifo){ return -2; }
+
             // File does not exist:  create FIFO; re-attempt open
-            mode_t prev_mode;
-            errno = 0;
-            prev_mode = umask(0);
-            istat = mkfifo(fifo_name.c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP);
-            prev_mode = umask(prev_mode);
-            if (istat < 0) { return -1; }
+            if (HexbeatMonitor::mkfifo_hexbeater(fifo_name) < 0)
+            {
+              return -1;
+            }
             fd = open(fifo_name.c_str(),O_RDWR|O_NONBLOCK|O_CLOEXEC);
         }
         if (fd < 0) { return -1; }
@@ -751,14 +796,14 @@ private: // Internal attributes and interfaces
     // ////////////////////////////////////////////////////////////////
     // ////////////////////////////////////////////////////////////////
     /// Find this instance's hexbeater PID by argv[0] and hexbeater name
-    /** Use the static HexbeatMonitor::find_hexbeater_pid below
+    /** Use the static HexbeatMonitor<_SIGCHLD_HNDLR>::find_hexbeater_pid below
       * \returns PID of matching process from /proc/ filesystem
       */
     int
     find_hexbeater_pid()
     {
          if (m_fd < 0) { return 0; }
-         return HexbeatMonitor::find_hexbeater_pid(m_argv0, m_hbname);
+         return HexbeatMonitor<_SIGCHLD_HNDLR>::find_hexbeater_pid(m_argv0, m_hbname);
     }
     // ////////////////////////////////////////////////////////////////
 
@@ -877,7 +922,7 @@ private: // Internal attributes and interfaces
 
         // Find locations in buffer of start of heartbeat and/or of '\n'
         std::size_t inl;
-        std::size_t hex9 = HexbeatMonitor::hex9_nlterminated(m_buffer, inl);
+        std::size_t hex9 = HexbeatMonitor<_SIGCHLD_HNDLR>::hex9_nlterminated(m_buffer, inl);
 
         // Valid hexbeat found:  store it; erase data through newline
         if (hex9!=std::string::npos)
@@ -919,7 +964,7 @@ private: // Internal attributes and interfaces
     static bool
     is_is(const std::string& argv0)
     {
-        return HexbeatMonitor::matches(argv0, "indiserver");
+        return HexbeatMonitor<_SIGCHLD_HNDLR>::matches(argv0, "indiserver");
     }
     // ////////////////////////////////////////////////////////////////
 
@@ -974,7 +1019,9 @@ private: // Internal attributes and interfaces
     }
     // ////////////////////////////////////////////////////////////////
 };
-std::ostream& operator<<(std::ostream& os, const HexbeatMonitor& hbm)
+
+template <bool TPARM>
+std::ostream& operator<<(std::ostream& os, const HexbeatMonitor<TPARM>& hbm)
 {
     os
     << "<HexbeatMonitor \""

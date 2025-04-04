@@ -1314,8 +1314,8 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
         if(::strcmp(*pparg, "--mkfifo-hexbeat")) { continue; }
         std::cerr
         << "Creating Hexbeat FIFO ["
-       << m_configName
-       << ".hb] and exiting ..."
+        << m_configName
+        << ".hb] and exiting ..."
         << std::endl;
         if( m_configName.empty() ) { exit( -1 ); }
         exit( createResurrecteeFIFO() );
