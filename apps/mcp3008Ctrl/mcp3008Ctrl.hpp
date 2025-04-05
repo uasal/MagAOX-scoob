@@ -213,13 +213,20 @@ int mcp3008Ctrl::appStartup()
     FRAMEGRABBER_APP_STARTUP;
     TELEMETER_APP_STARTUP;
 
-    m_adc.connect();
 
     // INDI prop for user to set fps 
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_fps, "fps", 0, 10000, 1, "%d", "", "" );
     m_indiP_fps["current"].setValue( m_fps );
     m_indiP_fps["target"].setValue( m_fps );
 
+    {
+        // Get the maximum privileges available
+        elevatedPrivileges elPriv( this );
+    
+        m_adc.connect();
+    }
+    
+        
     return 0;
 }
 
