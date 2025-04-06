@@ -10,6 +10,7 @@ import os.path
 import pprint
 import re
 import xconf
+from xconf.contrib import DirectoryConfig
 from purepyindi2 import device, properties, constants, messages
 from purepyindi2.messages import DefNumber, DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
@@ -27,7 +28,7 @@ def drop_xml_tags(raw_xml):
 @xconf.config
 class AudibleAlertsConfig(BaseConfig):
     random_utterance_interval_sec : Union[float, int] = xconf.field(default=15 * 60, help="Seconds since last (real or random) utterance before a random utterance should play")
-    cache : xconf.DirectoryConfig = xconf.field(default=xconf.DirectoryConfig(path="/tmp/audibleAlerts_cache"))
+    cache : DirectoryConfig = xconf.field(default=DirectoryConfig(path="/tmp/audibleAlerts_cache"))
 
 def contains_substitutions(text):
     return '{' in text or '}' in text
