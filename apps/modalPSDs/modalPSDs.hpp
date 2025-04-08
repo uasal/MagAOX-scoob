@@ -890,8 +890,8 @@ INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdAvgTime )( const pcf::IndiProperty 
 
         m_psdAvgTime = target;
 
-        updateIfChanged( m_indiP_psdTime, "current", m_psdAvgTime, INDI_IDLE );
-        updateIfChanged( m_indiP_psdTime, "target", m_psdAvgTime, INDI_IDLE );
+        updateIfChanged( m_indiP_psdAvgTime, "current", m_psdAvgTime, INDI_IDLE );
+        updateIfChanged( m_indiP_psdAvgTime, "target", m_psdAvgTime, INDI_IDLE );
 
         log<text_log>( "set psdAvgTime to " + std::to_string( m_psdAvgTime ), logPrio::LOG_NOTICE );
     }
