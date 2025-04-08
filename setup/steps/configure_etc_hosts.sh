@@ -3,10 +3,8 @@ sudo tee /etc/hosts <<'HERE'
 127.0.0.1      localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1            localhost localhost.localdomain localhost6 localhost6.localdomain6
 
-
-############################
 # Instrument LAN
-############################
+# note: 192.168.0.240--192.168.0.254 reserved for DHCP
 192.168.0.10   exao1 aoc
 192.168.0.12   exao2 rtc
 192.168.0.22   kvmrtc
@@ -23,6 +21,7 @@ sudo tee /etc/hosts <<'HERE'
 192.168.0.170  moxadio1
 192.168.0.230  fxgenmodwfs
 
-#note: 192.168.0.240--192.168.0.254 reserved for DHCP
-
+# Point-to-point links
+192.168.2.3   icc-from-rtc
+192.168.2.2   rtc-from-icc
 HERE
