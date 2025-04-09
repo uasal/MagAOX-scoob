@@ -186,6 +186,12 @@ function verb_status {
 }
 
 ########################################################################
+function verb_lstatus {
+  hide lstatus
+  USElsof=yes verb_status
+}
+
+########################################################################
 ### Verb to show, or not, the resurrector_indi file found
 function verb_ripath {
 
@@ -249,7 +255,7 @@ function parse_commands {
     case "$arg" in
 
     ### Verbs
-    startup|shutdown|restart|start|stop|defib|peek|status|ripath|reset)
+    startup|shutdown|restart|start|stop|defib|peek|status|lstatus|ripath|reset)
 
       ### If a second verb is found, add it as procname to procnames var
       [ "$verb" ] \
@@ -543,7 +549,9 @@ function find_device_hexbeat_pipe {
   ri="resurrector_indi"
 
   ### List all processes that have that pipe open; skip resurrector_indi
-  lsof -lnw "$hbpath" \
+  [ "$USElsof" ] && [ "$VERBOSE" ] \
+  && echo "Using [lsof] for [$hbpath]" 1>&2 || true
+  ( [ "$USElsof" ] && lsof -lnw "$hbpath" || true ) \
   | while read cmd pid user fd type dev sizeoff mode path cruft ; do
 
       ### ripid=... => retrieves the PID of the resurrector_indi process
@@ -637,8 +645,10 @@ Usage:
     resuctrl peek --all|PROCNAME [PROCNAME ...]
         - show status and last few log lines (via logdump) for each process
 
-    resuctrl status --all|PROCNAME [PROCNAME ...]
+    resuctrl status|lstatus --all|PROCNAME [PROCNAME ...]
         - show status for each process
+        - status:  skip lsof, and only use [ps x], to check processes
+        - lstatus:  try lsof first, and then [ps x] , to check processes
 
     resuctrl defib --all|PROCNAME[ [PROCNAME ...]]
         - declare to resurrector that PROCNAME processes have expired,
@@ -681,6 +691,7 @@ return 1
 }
 
 ########################################################################
+### Debug output
 function hide {
   ( [ "$VERBOSE" ] && cat || cat > /dev/null ) << EoFhide
 In verb_{$1}:
