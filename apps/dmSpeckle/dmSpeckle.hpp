@@ -739,7 +739,11 @@ inline void dmSpeckle::modThreadExec()
         if( m_modulating && !m_shutdown )
         {
             m_restartSp = false;
-            generateSpeckles();
+            if(generateSpeckles() < 0)
+            {
+                m_modulating = false;
+                continue;
+            }
 
             int64_t freqNsec = ( 1.0 / m_frequency ) * 1e9;
             int64_t dnsec;
