@@ -535,100 +535,116 @@ int frameGrabber<derivedT>::appLogic()
         return -1;
     }
 
-    if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 && derived().fps() > 0 )
+    try
     {
-        if( m_atimes.size() >= m_atimes.maxEntries() )
+        if( derived().state() == stateCodes::OPERATING && m_atimes.size() > 0 && derived().fps() > 0 )
         {
-
-            cbIndexT latTime = m_latencyCircBuffMaxTime * m_cbFPS;
-            if( latTime > m_atimes.maxEntries() )
+            if( m_atimes.size() >= m_atimes.maxEntries() )
             {
-                latTime = m_atimes.maxEntries();
-            }
 
-            m_atimesD.resize( latTime - 1 );
-            m_wtimesD.resize( latTime - 1 );
-            m_watimesD.resize( latTime - 1 );
+                cbIndexT latTime = m_latencyCircBuffMaxTime * m_cbFPS;
+                if( latTime >= m_atimes.maxEntries() )
+                {
+                    latTime = m_atimes.maxEntries() - 1;
+                }
 
-            cbIndexT refEntry = m_atimes.latest();
+                m_atimesD.resize( latTime - 1 );
+                m_wtimesD.resize( latTime - 1 );
+                m_watimesD.resize( latTime - 1 );
 
-            if( refEntry >= latTime )
-            {
-                refEntry -= latTime;
+                cbIndexT refEntry = m_atimes.latest();
+
+                if( refEntry >= latTime )
+                {
+                    refEntry -= latTime;
+                }
+                else
+                {
+                    refEntry = m_atimes.maxEntries() + refEntry - latTime;
+                }
+
+                timespec ts = m_atimes.at( refEntry, 0 );
+                double   a0 = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
+
+                ts        = m_wtimes.at( refEntry, 0 );
+                double w0 = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
+
+                double mina = 1e9;
+                double maxa = -1e9;
+                double minw = 1e9;
+                double maxw = -1e9;
+
+                for( size_t n = 1; n <= m_atimesD.size(); ++n )
+                {
+                    ts       = m_atimes.at( refEntry, n );
+                    double a = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
+
+                    ts       = m_wtimes.at( refEntry, n );
+                    double w = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
+
+                    m_atimesD[n - 1]  = a - a0;
+                    m_wtimesD[n - 1]  = w - w0;
+                    m_watimesD[n - 1] = w - a;
+                    a0                = a;
+                    w0                = w;
+
+                    if( m_atimesD[n - 1] < mina )
+                    {
+                        mina = m_atimesD[n - 1];
+                    }
+
+                    if( m_atimesD[n - 1] > maxa )
+                    {
+                        maxa = m_atimesD[n - 1];
+                    }
+
+                    if( m_wtimesD[n - 1] < minw )
+                    {
+                        minw = m_wtimesD[n - 1];
+                    }
+
+                    if( m_wtimesD[n - 1] > maxw )
+                    {
+                        maxw = m_wtimesD[n - 1];
+                    }
+
+                    if( m_wtimesD[n - 1] < 0 )
+                    {
+                        std::cerr << "negative wtime: " << m_wtimesD[n - 1] << ' ' << n << ' ' << m_atimesD.size()
+                                  << ' ' << refEntry << ' ' << m_atimes.maxEntries() << ' ' << latTime << '\n';
+                        return derivedT::template log<software_error, 0>(
+                            { __FILE__, __LINE__, "negative write time. latency circ buff is not long enought" } );
+                    }
+                }
+
+                m_mna  = mx::math::vectorMean( m_atimesD );
+                m_vara = mx::math::vectorVariance( m_atimesD, m_mna );
+                m_mina = mina;
+                m_maxa = maxa;
+
+                m_mnw  = mx::math::vectorMean( m_wtimesD );
+                m_varw = mx::math::vectorVariance( m_wtimesD, m_mnw );
+                m_minw = minw;
+                m_maxw = maxw;
+
+                m_mnwa  = mx::math::vectorMean( m_watimesD );
+                m_varwa = mx::math::vectorVariance( m_watimesD, m_mnwa );
+
+                recordFGTimings();
             }
             else
             {
-                refEntry = m_atimes.maxEntries() + refEntry - latTime;
+                m_mna   = 0;
+                m_vara  = 0;
+                m_mina  = 0;
+                m_maxa  = 0;
+                m_mnw   = 0;
+                m_varw  = 0;
+                m_minw  = 0;
+                m_maxw  = 0;
+                m_mnwa  = 0;
+                m_varwa = 0;
             }
-
-            timespec ts = m_atimes.at( refEntry, 0 );
-            double   a0 = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
-
-            ts        = m_wtimes.at( refEntry, 0 );
-            double w0 = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
-
-            double mina = 1e9;
-            double maxa = -1e9;
-            double minw = 1e9;
-            double maxw = -1e9;
-
-            for( size_t n = 1; n <= m_atimesD.size(); ++n )
-            {
-                ts       = m_atimes.at( refEntry, n );
-                double a = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
-
-                ts       = m_wtimes.at( refEntry, n );
-                double w = ts.tv_sec + ( (double)ts.tv_nsec ) / 1e9;
-
-                m_atimesD[n - 1]  = a - a0;
-                m_wtimesD[n - 1]  = w - w0;
-                m_watimesD[n - 1] = w - a;
-                a0                = a;
-                w0                = w;
-
-                if( m_atimesD[n - 1] < mina )
-                {
-                    mina = m_atimesD[n - 1];
-                }
-
-                if( m_atimesD[n - 1] > maxa )
-                {
-                    maxa = m_atimesD[n - 1];
-                }
-
-                if( m_wtimesD[n - 1] < minw )
-                {
-                    minw = m_wtimesD[n - 1];
-                }
-
-                if( m_wtimesD[n - 1] > maxw )
-                {
-                    maxw = m_wtimesD[n - 1];
-                }
-
-                if( m_wtimesD[n - 1] < 0 )
-                {
-                    std::cerr << "negative wtime: " << m_wtimesD[n - 1] << ' ' << n << ' ' << m_atimesD.size() << ' '
-                              << refEntry << ' ' << m_atimes.maxEntries() << ' ' << latTime << '\n';
-                    return derivedT::template log<software_error, 0>(
-                        { __FILE__, __LINE__, "negative write time. latency circ buff is not long enought" } );
-                }
-            }
-
-            m_mna  = mx::math::vectorMean( m_atimesD );
-            m_vara = mx::math::vectorVariance( m_atimesD, m_mna );
-            m_mina = mina;
-            m_maxa = maxa;
-
-            m_mnw  = mx::math::vectorMean( m_wtimesD );
-            m_varw = mx::math::vectorVariance( m_wtimesD, m_mnw );
-            m_minw = minw;
-            m_maxw = maxw;
-
-            m_mnwa  = mx::math::vectorMean( m_watimesD );
-            m_varwa = mx::math::vectorVariance( m_watimesD, m_mnwa );
-
-            recordFGTimings();
         }
         else
         {
@@ -644,18 +660,9 @@ int frameGrabber<derivedT>::appLogic()
             m_varwa = 0;
         }
     }
-    else
+    catch( const std::exception &e )
     {
-        m_mna   = 0;
-        m_vara  = 0;
-        m_mina  = 0;
-        m_maxa  = 0;
-        m_mnw   = 0;
-        m_varw  = 0;
-        m_minw  = 0;
-        m_maxw  = 0;
-        m_mnwa  = 0;
-        m_varwa = 0;
+        std::cerr << e.what() << '\n';
     }
 
     return 0;
