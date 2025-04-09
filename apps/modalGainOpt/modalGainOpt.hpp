@@ -626,7 +626,6 @@ class modalGainOpt : public MagAOXApp<true>,
 
     pcf::IndiProperty m_indiP_gainGain;
 
-    pcf::IndiProperty m_indiP_fps;
     pcf::IndiProperty m_indiP_emg;
     pcf::IndiProperty m_indiP_psdTime;
     pcf::IndiProperty m_indiP_psdAvgTime;
@@ -642,7 +641,6 @@ class modalGainOpt : public MagAOXApp<true>,
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_dump );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_opticalGain );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_gainGain );
-    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_fps );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_emg );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdTime );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_psdAvgTime );
