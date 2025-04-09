@@ -66,14 +66,15 @@ class mcp3008Ctrl : public MagAOXApp<true>, public dev::frameGrabber<mcp3008Ctrl
     float m_fps{ 2000 }; ///< The target FPS
 
     /** \todo @PARKER make this changed as needed */
-    float m_trigger{ 1e6 / m_fps }; ///< The trigger time to readout.  Adjusts to match desired FPS.
+    float m_trigger{ 1e9 / m_fps }; ///< The trigger time to readout.  Adjusts to match desired FPS.
     float m_gain { .1 }; // Gain used to adjust trigger to keep at correct fps
+    float nano_sec_target{ 1e9 / m_fps };
 
     MCP3008Lib::MCP3008 adc; 
 
     std::chrono::time_point<std::chrono::high_resolution_clock> m_time_start;
 
-    std::vector<float> m_values; ///< The values read out from the chip
+    std::vector<uint16_t> m_values; ///< The values read out from the chip
 
   public:
     /// Default c'tor.
@@ -197,7 +198,7 @@ int mcp3008Ctrl::loadConfigImpl( mx::app::appConfigurator &_config )
     FRAMEGRABBER_LOAD_CONFIG( _config );
     TELEMETER_LOAD_CONFIG( _config);
 
-    _config( m_numChannels, "fitter.fpsSource" ); // making number of mcp3008 channels we read out configurable
+    _config( m_numChannels, "accel.numChannels" ); // making number of mcp3008 channels we read out configurable
 
     return 0;
 }
@@ -226,7 +227,7 @@ int mcp3008Ctrl::appStartup()
         m_adc.connect();
     }
     
-        
+    state(stateCodes::OPERATING);    
     return 0;
 }
 
@@ -235,6 +236,7 @@ int mcp3008Ctrl::appLogic()
     FRAMEGRABBER_APP_LOGIC;
     TELEMETER_APP_LOGIC;
 
+    FRAMEGRABBER_UPDATE_INDI;
     return 0;
 }
 
@@ -254,7 +256,7 @@ int mcp3008Ctrl::configureAcquisition()
 
     m_width    = m_numChannels;
     m_height   = 1;
-    m_dataType = _DATATYPE_FLOAT;
+    m_dataType = _DATATYPE_UINT16;
 
     return 0;
 }
@@ -282,7 +284,7 @@ int mcp3008Ctrl::acquireAndCheckValid()
     {
         // Get current time
         auto now     = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>( now - m_time_start );
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>( now - m_time_start );
 
         // Read every 500 microseconds
         if( elapsed.count() >= m_trigger ) /** \todo @PARKER make m_trigger adjust */
@@ -294,9 +296,12 @@ int mcp3008Ctrl::acquireAndCheckValid()
                 m_values[i] = m_adc.read( i ); /** \todo @PARKER*/
             }
 
-            m_trigger = m_trigger - m_gain * (elapsed.count() - 500);
+            m_trigger = m_trigger - m_gain * (elapsed.count() - nano_sec_target);
 
             return 0;
+        }
+        else{
+            mx::sys::nanoSleep(10000);
         }
     }
 
@@ -305,7 +310,7 @@ int mcp3008Ctrl::acquireAndCheckValid()
 
 int mcp3008Ctrl::loadImageIntoStream( void *dest )
 {
-    memcpy( dest, m_values.data(), m_values.size() * sizeof( float ) );
+    memcpy( dest, m_values.data(), m_values.size() * sizeof( uint16_t ) );
     return 0;
 }
 
@@ -342,7 +347,8 @@ INDI_NEWCALLBACK_DEFN( mcp3008Ctrl, m_indiP_fps )( const pcf::IndiProperty &ipRe
     }
 
     m_fps = target;
-    m_trigger =  m_fps; // Update trigger value based off new fps 
+    m_trigger =  1e9 / m_fps; // Update trigger value based off new fps
+    nano_sec_target = 1e9 / m_fps; 
 
     log<text_log>( "set fps = " + std::to_string( m_fps ), logPrio::LOG_NOTICE );
     return 0;
