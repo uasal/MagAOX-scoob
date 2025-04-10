@@ -91,11 +91,22 @@ function verb_start {
   || resu_failure "Writable process list file not found; exiting ..." \
   || return 1
 
+  ### sed in-place editing tries to create a temporary file in the same
+  ### directory as the target file, but xsup user is not allowed to
+  ### write to MagAOX configuration directory (/opt/MagAOX/config/),
+  ### so create a temporary file, write proclist file contents to
+  ### that file, sed that file in-place, and write edited contents back
+  ### to configuration proclist file
+  proclist_bn="$(basename "$proclist_txt")"
+  proclist_tmp="$(mktemp -t "$proclist_bn.XXXXXXXXXX")"
+  cat "$proclist_txt" > "$proclist_tmp"
   for procname in ${procnames//${delim}/ } ; do
     ### Remove any leading whitespace+# for proclist file procname entry
     ### also any prefixes:  "-" or "py:" or "nhb:"
-    sed -E -i -e "/^$ws0#$wsh0(-|[^: 	]*:)?${procname}$ws1$notws1$ws0\$/s/^$wsh1//" "$proclist_txt"
+    sed -E -i -e "/^$ws0#$wsh0(-|[^: 	]*:)?${procname}$ws1$notws1$ws0\$/s/^$wsh1//" "$proclist_tmp"
   done
+  cat "$proclist_tmp" > "$proclist_txt"
+  rm -f "$proclist_tmp"
 
   ripid=$(resurrector_indi_pid) \
   || resu_failure "resurrector_indi is not running; exiting ..." \
@@ -125,10 +136,16 @@ function verb_stop {
   || resu_failure "Writable process list file not found; exiting ..." \
   || return 1
 
+  ### See comments in function verb_start{} regarding in-place editing
+  proclist_bn="$(basename "$proclist_txt")"
+  proclist_tmp="$(mktemp -t "$proclist_bn.XXXXXXXXXX")"
+  cat "$proclist_txt" > "$proclist_tmp"
   for procname in ${procnames//${delim}/ } ; do
     ### Replace leading whitespace with # in proclist file procname line
-    sed -E -i -e "/^$ws0(-|[^:# 	]*:)?${procname}$ws1$notws1$ws0\$/s/^$ws0/#/" "$proclist_txt"
+    sed -E -i -e "/^$ws0(-|[^:# 	]*:)?${procname}$ws1$notws1$ws0\$/s/^$ws0/#/" "$proclist_tmp"
   done
+  cat "$proclist_tmp" > "$proclist_txt"
+  rm -f "$proclist_tmp"
 
   ripid=$(resurrector_indi_pid) \
   || resu_failure "resurrector_indi is not running; exiting ..." \
