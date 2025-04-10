@@ -29,6 +29,8 @@ allow 200.28.147.0/24
 allow 10.8.10.0/24
 # icc over 1-to-1
 allow 192.168.2.3
+# acc000 over 1-to-1
+allow 192.168.20.5
 driftfile /var/lib/chrony/drift
 makestep 1.0 3
 rtcsync

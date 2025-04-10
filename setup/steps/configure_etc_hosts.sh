@@ -24,4 +24,6 @@ sudo tee /etc/hosts <<'HERE'
 # Point-to-point links
 192.168.2.3   icc-from-rtc
 192.168.2.2   rtc-from-icc
+192.168.20.5  acc000-from-rtc
+192.168.20.2  rtc-from-acc000
 HERE
