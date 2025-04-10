@@ -70,7 +70,7 @@
   </react-to>
   <react-to indi-id="observers.obs_on.toggle">
     <transition value="On">
-      <speak>Saving data for {observers.current_observer.pfoa}.</speak>
+      <speak>Saving data for {observers.current_observer.pronunciation}.</speak>
     </transition>
     <transition value="Off">
       <speak>Data saving stopped.</speak>

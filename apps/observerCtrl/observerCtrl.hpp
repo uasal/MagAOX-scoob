@@ -46,7 +46,9 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     typedef dev::telemeter<observerCtrl> telemeterT;
 
     typedef std::chrono::time_point<std::chrono::steady_clock> timePointT;
+    typedef std::string timeStampT;
     typedef std::chrono::duration<double> durationT;
+    std::string timeStampAsISO8601(const std::chrono::time_point<std::chrono::system_clock>& tp);
 
   protected:
     /** \name Configurable Parameters
@@ -116,13 +118,19 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     /// The start time of the current observation
     timePointT m_obsStartTime;
 
+    /// The UTC start time of the current observation
+    timeStampT m_obsStartTimeStamp;
+
     /// The parallactic angle at the start of the observation
     double m_obsStartParang{ 0 };
 
     /// The start time of the current target
     timePointT m_tgtStartTime;
 
-    /// Teh parallactic angle at the start of observing the current target
+    /// The UTC start time of the current target
+    timeStampT m_tgtStartTimeStamp;
+
+    /// The parallactic angle at the start of observing the current target
     double m_tgtStartParang{ 0 };
 
     /// The current parallactic angle
@@ -188,9 +196,10 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
                                                 purpose of the observation*/
     pcf::IndiProperty m_indiP_observing;   ///< Toggle switch to trigger observation
     pcf::IndiProperty m_indiP_obsDuration; ///< Number to set the desired duration of observation
+    pcf::IndiProperty m_indiP_obsStart;    ///< String timestamp indicating the start for target/observation
     pcf::IndiProperty m_indiP_obsTime;     ///< Number tracking the elapsed time
     pcf::IndiProperty m_indiP_obsAngle;    ///< Number tracking the change in angle
-    pcf::IndiProperty m_indiP_sws;         ///< Selection to switch to define which stream writers are enabled
+    pcf::IndiProperty m_indiP_sws;         ///< Selection to switch which stream writers are enabled
     pcf::IndiProperty m_indiP_userlog;     ///< Text to enter a user log
 
     pcf::IndiProperty m_indiP_resetTarget; ///< Reset the target statistics
@@ -207,6 +216,7 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
 
   public:
+
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_observers );
 
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_obsName );
@@ -389,6 +399,10 @@ int observerCtrl::appStartup()
     indi::addNumberElement<double>( m_indiP_obsTime, "observation", 0, 14400, 0.1, "%0.1f", "Current Obs" );
     indi::addNumberElement<double>( m_indiP_obsTime, "target", 0, 14400, 0.1, "%0.1f", "Target" );
 
+    REG_INDI_NEWPROP_NOCB( m_indiP_obsStart, "obs_start", pcf::IndiProperty::Text );
+    indi::addTextElement( m_indiP_obsStart, "observation" );
+    indi::addTextElement( m_indiP_obsStart, "target" );
+
     CREATE_REG_INDI_RO_NUMBER( m_indiP_obsAngle, "obs_delta_parang", "Change in Par. Ang.", "Observer" );
     indi::addNumberElement<double>( m_indiP_obsAngle, "observation", 0, 360, 0.1, "%0.1f", "Current Obs" );
     indi::addNumberElement<double>( m_indiP_obsAngle, "target", 0, 360, 0.1, "%0.1f", "Target" );
@@ -490,6 +504,7 @@ int observerCtrl::appLogic()
                 m_indiP_obsTime, { "observation", "target" }, { obstime.count(), m_tgtTime.count() } );
 
             updatesIfChanged<double>( m_indiP_obsAngle, { "observation", "target" }, { obsang, m_tgtAng } );
+            updatesIfChanged<std::string>( m_indiP_obsStart, { "observation", "target" }, { m_obsStartTimeStamp, m_tgtStartTimeStamp } );
 
             if( m_obsDuration > 0.0 && obstime.count() > m_obsDuration )
             {
@@ -499,6 +514,7 @@ int observerCtrl::appLogic()
         else
         {
             updateSwitchIfChanged( m_indiP_observing, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+            updatesIfChanged<std::string>( m_indiP_obsStart, { "observation", "target" }, { "", m_tgtStartTimeStamp } );
             updatesIfChanged<double>( m_indiP_obsTime, { "observation", "target" }, { 0.0, m_tgtTime.count() } );
             updatesIfChanged<double>( m_indiP_obsAngle, { "observation", "target" }, { 0.0, m_tgtAng } );
         }
@@ -536,11 +552,13 @@ void observerCtrl::startObserving()
     mx::sys::sleep( 1 );
 
     m_obsStartTime   = std::chrono::steady_clock::now();
+    m_obsStartTimeStamp = timeStampAsISO8601(std::chrono::system_clock::now());
     m_obsStartParang = m_parang;
 
     if( m_newTargetBlock || m_labMode ) //We always reset if in lab mode
     {
         m_tgtStartTime   = m_obsStartTime;
+        m_tgtStartTimeStamp   = m_obsStartTimeStamp;
         m_tgtStartParang = m_obsStartParang;
         m_newTargetBlock = false;
     }
@@ -624,6 +642,24 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_observers )( const pcf::IndiPropert
                              m_currentObserver.m_institution } );
 
     return 0;
+}
+
+std::string observerCtrl::timeStampAsISO8601(const std::chrono::time_point<std::chrono::system_clock>& tp) {
+    // Convert to time_t for whole seconds
+    std::time_t t = std::chrono::system_clock::to_time_t(tp);
+    std::tm tm = *std::gmtime(&t);
+
+    // Get nanoseconds
+    auto duration = tp.time_since_epoch();
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+    auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - seconds).count();
+
+    // Format ISO 8601 with nanoseconds
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    ss << '.' << std::setw(9) << std::setfill('0') << nanos << "Z"; // Z for UTC
+
+    return ss.str();
 }
 
 INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_obsName )( const pcf::IndiProperty &ipRecv )
