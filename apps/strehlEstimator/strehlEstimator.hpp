@@ -8,6 +8,7 @@
 #define strehlEstimator_hpp
 
 #include <mx/ao/analysis/aoSystem.hpp>
+using namespace mx::math;
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
@@ -88,7 +89,8 @@ protected:
      std::string m_stagebsDevice {"stagebs"};
 
      float m_again{28.547};
-     float m_qe {0.39};
+
+     float m_qe {0.53};
 
      float m_F0_6535 {4.2e10};
 
@@ -107,6 +109,12 @@ protected:
    float m_F0 {m_F0_6535};
 
    float m_lam0 {m_lam0_6535};
+
+   float m_seeing {0.64};
+
+   float m_r0 {0.16};
+
+   float m_elevation {90};
 
    int m_npix;
 
@@ -191,14 +199,19 @@ public:
 
     pcf::IndiProperty m_indiP_stage;
 
-    pcf::IndiProperty m_indiP_seeing_tcsi;
+    pcf::IndiProperty m_indiP_tcsi_seeing;
+    pcf::IndiProperty m_indiP_tcsi_telpos;
     pcf::IndiProperty m_indiP_seeing_magaox;
 
     pcf::IndiProperty m_indiP_mag;
+    pcf::IndiProperty m_indiP_strehl;
+    pcf::IndiProperty m_indiP_wfe;
 
     INDI_SETCALLBACK_DECL( strehlEstimator, m_indiP_fps );
     INDI_SETCALLBACK_DECL( strehlEstimator, m_indiP_emg );
     INDI_SETCALLBACK_DECL( strehlEstimator, m_indiP_stage );
+    INDI_SETCALLBACK_DECL( strehlEstimator, m_indiP_tcsi_seeing );
+    INDI_SETCALLBACK_DECL( strehlEstimator, m_indiP_tcsi_telpos );
 
     ///@}
 };
@@ -208,6 +221,7 @@ strehlEstimator::strehlEstimator() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_
 
     wfsavgShmimMonitorT::m_getExistingFirst      = true;
     wfsmaskShmimMonitorT::m_getExistingFirst     = true;
+
    return;
 }
 
@@ -264,8 +278,22 @@ int strehlEstimator::appStartup()
 
     REG_INDI_SETPROP( m_indiP_stage, m_stagebsDevice, "presetName" );
 
+    REG_INDI_SETPROP( m_indiP_tcsi_seeing, "tcsi", "seeing" );
+    REG_INDI_SETPROP( m_indiP_tcsi_telpos, "tcsi", "telpos" );
+
     CREATE_REG_INDI_RO_NUMBER(m_indiP_mag, "star_mag", "Star Magnitude", "Error Budget");
     m_indiP_mag.add(pcf::IndiElement("current",0));
+
+    CREATE_REG_INDI_RO_NUMBER(m_indiP_strehl, "strehl_optimal", "Strehl", "Error Budget");
+    m_indiP_strehl.add(pcf::IndiElement("pyramid",0));
+
+    CREATE_REG_INDI_RO_NUMBER(m_indiP_wfe, "wfe_predicted", "WFE", "Error Budget");
+    m_indiP_wfe.add(pcf::IndiElement("total",0));
+    m_indiP_wfe.add(pcf::IndiElement("measurement",0));
+    m_indiP_wfe.add(pcf::IndiElement("time_delay",0));
+    m_indiP_wfe.add(pcf::IndiElement("fitting",0));
+
+    state(stateCodes::OPERATING);
 
    return 0;
 }
@@ -277,6 +305,23 @@ int strehlEstimator::appLogic()
 
     SHMIMMONITORT_UPDATE_INDI( wfsavgShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( wfsmaskShmimMonitorT );
+
+    m_aosys.starMag(m_mag);
+    m_aosys.F0(m_qe*m_F0);
+    m_aosys.lam_wfs(m_lam0*1e-6);
+    m_aosys.lam_sci(m_lam0*1e-6);
+    m_aosys.ron_wfs(std::vector<float>({245.0f/m_emg}));
+    m_aosys.npix_wfs(std::vector<float>({1.0f*m_npix}));
+    m_aosys.minTauWFS(std::vector<float>({1.0f/m_fps}));
+    m_aosys.tauWFS(1./m_fps);
+    m_aosys.atm.r_0(m_r0, 0.5e-6);
+    m_aosys.zeta( (90.-m_elevation)*3.14159/180.);
+
+    updateIfChanged(m_indiP_strehl, "pyramid", m_aosys.strehl());
+    updatesIfChanged<double>(m_indiP_wfe, {"total","measurement", "time_delay", "fitting"},
+                     {sqrt(m_aosys.wfeVar())*(1000*m_lam0/two_pi<float>()),sqrt(m_aosys.measurementErrorTotal())*(1000*m_lam0/two_pi<float>()),
+                        sqrt(m_aosys.timeDelayErrorTotal())*(1000*m_lam0/two_pi<float>()),
+                         sqrt(m_aosys.fittingErrorTotal())*(1000*m_lam0/two_pi<float>())});
    return 0;
 }
 
@@ -390,9 +435,9 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_emg )( const pcf::IndiProperty &
 
 INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_stage )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_emg, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_stage, ipRecv );
 
-    if( ipRecv.find( "presetName" ) )
+    //if( ipRecv.find( "presetName" ) )
     {
         std::string preset = "none";
 
@@ -421,6 +466,42 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_stage )( const pcf::IndiProperty
         calcMag();
     }
 
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_tcsi_seeing )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_tcsi_seeing, ipRecv );
+
+    if( ipRecv.find( "dimm_fwhm" ) )
+    {
+        float seeing = ipRecv["dimm_fwhm"].get<float>();
+
+        if( seeing != m_seeing )
+        {
+            m_seeing = seeing;
+            std::cerr << "Got seeing: " << m_seeing << '\n';
+
+            m_r0 = 0.2063*0.5/m_seeing;
+        }
+    }
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_tcsi_telpos )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_tcsi_telpos, ipRecv );
+
+    if( ipRecv.find( "el" ) )
+    {
+        float elevation = ipRecv["el"].get<float>();
+
+        if( elevation != m_elevation )
+        {
+            m_elevation = elevation;
+            std::cerr << "Got elevation: " << m_elevation << '\n';
+        }
+    }
     return 0;
 }
 
