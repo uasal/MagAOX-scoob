@@ -299,7 +299,7 @@ class modalGainOpt : public MagAOXApp<true>,
 
     std::string m_wfsDevice{ "camwfs" };
 
-    std::string m_psdDevice; /**< The INDI device name of the PSD calculator.  Defaults to aolN_modevalPSDs
+    std::string m_psdDevice {"hopsds"}; /**< The INDI device name of the PSD calculator.  Defaults to aolN_modevalPSDs
                                   where N is m_loopNum.*/
 
     bool m_autoUpdate{ false }; ///< Flag controlling whether gains are automatically updated
@@ -342,9 +342,11 @@ class modalGainOpt : public MagAOXApp<true>,
     std::vector<float> m_modeVarOL;
 
     std::vector<float> m_optGainSI;
+    std::vector<float> m_gmaxSI; ///< The previously calculated maximum gains for LP
     std::vector<float> m_modeVarSI;
 
     std::vector<float> m_optGainLP;
+    std::vector<float> m_gmaxLP; ///< The previously calculated maximum gains for LP
     std::vector<float> m_modeVarLP;
 
     bool m_loop{ false };
@@ -385,8 +387,6 @@ class modalGainOpt : public MagAOXApp<true>,
 
     eigenImage<float> m_bs;
 
-    std::vector<float> m_gmaxLP; ///< The previously calculated maximum gains for LP
-
     int m_nRegCycles{ 60 }; ///< How often to regularize each mode
 
     std::vector<int> m_regCounter; ///< Counters to track when this mode was last regularized
@@ -417,19 +417,23 @@ class modalGainOpt : public MagAOXApp<true>,
 
     std::string m_optGainShmimName;
     std::string m_optGainSIShmimName;
+    std::string m_maxGainSIShmimName;
     std::string m_optGainLPShmimName;
+    std::string m_maxGainLPShmimName;
 
     std::string m_modevarShmimName;
 
     IMAGE *m_olPSDStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the open loop PSDs
     IMAGE *m_noisePSDStream{
-        nullptr }; ///< The ImageStreamIO shared memory buffer to publish the noise PSDs (single value)
+        nullptr }; ///< The ImageStreamIO shared memory buffer to publish the noise PSDs (single value per mode)
     IMAGE *m_clXferCurrentStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the SI ETF
     IMAGE *m_clXferSIStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the SI ETF
     IMAGE *m_clXferLPStream{ nullptr };      ///< The ImageStreamIO shared memory buffer to publish the LP ETF
     IMAGE *m_optGainStream{ nullptr };       ///< The ImageStreamIO shared memory buffer to publish the optimal gains
     IMAGE *m_optGainSIStream{ nullptr };     ///< The ImageStreamIO shared memory buffer to publish the SI optimal gains
+    IMAGE *m_maxGainSIStream{ nullptr };     ///< The ImageStreamIO shared memory buffer to publish the SI max gains
     IMAGE *m_optGainLPStream{ nullptr };     ///< The ImageStreamIO shared memory buffer to publish the LP optimal gains
+    IMAGE *m_maxGainLPStream{ nullptr };     ///< The ImageStreamIO shared memory buffer to publish the LP max gains
 
     IMAGE *m_modevarStream{ nullptr }; ///< The ImageStreamIO shared memory buffer to publish the LP optimal gains
 
@@ -753,14 +757,14 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
 
     char shmim[1024];
 
-    snprintf( shmim, sizeof( shmim ), "aol%d_modevalPSDs", m_loopNum );
-    m_psdDevice = shmim;
     _config( m_psdDevice, "loop.psdDev" );
 
-    psdShmimMonitorT::m_shmimName = m_psdDevice + "_psds";
+    snprintf( shmim, sizeof( shmim ), "aol%d_clpsds", m_loopNum );
+    psdShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( psdShmimMonitorT, _config );
 
-    freqShmimMonitorT::m_shmimName = m_psdDevice + "_freq";
+    snprintf( shmim, sizeof( shmim ), "aol%d_freq", m_loopNum );
+    freqShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( freqShmimMonitorT, _config );
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainfact", m_loopNum );
@@ -836,8 +840,14 @@ int modalGainOpt::loadConfigImpl( mx::app::appConfigurator &_config )
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalSI", m_loopNum );
     m_optGainSIShmimName = shmim;
 
+    snprintf( shmim, sizeof( shmim ), "aol%d_mgainmaxSI", m_loopNum );
+    m_maxGainSIShmimName = shmim;
+
     snprintf( shmim, sizeof( shmim ), "aol%d_mgainoptimalLP", m_loopNum );
     m_optGainLPShmimName = shmim;
+
+    snprintf( shmim, sizeof( shmim ), "aol%d_mgainmaxLP", m_loopNum );
+    m_maxGainLPShmimName = shmim;
 
     snprintf( shmim, sizeof( shmim ), "aol%d_mmodevar", m_loopNum );
     m_modevarShmimName = shmim;
@@ -1027,9 +1037,17 @@ int modalGainOpt::appShutdown()
         free( m_optGainSIStream );
         m_optGainSIStream = nullptr;
 
+        ImageStreamIO_destroyIm( m_maxGainSIStream );
+        free( m_maxGainSIStream );
+        m_maxGainSIStream = nullptr;
+
         ImageStreamIO_destroyIm( m_optGainLPStream );
         free( m_optGainLPStream );
         m_optGainLPStream = nullptr;
+
+        ImageStreamIO_destroyIm( m_maxGainLPStream );
+        free( m_maxGainLPStream );
+        m_maxGainLPStream = nullptr;
 
         ImageStreamIO_destroyIm( m_modevarStream );
         free( m_modevarStream );
@@ -1064,6 +1082,7 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
     m_modeVarOL.resize( psdShmimMonitorT::m_height );
 
     m_optGainSI.resize( psdShmimMonitorT::m_height );
+    m_gmaxSI.resize( psdShmimMonitorT::m_height );
     m_modeVarSI.resize( psdShmimMonitorT::m_height );
 
     m_optGainLP.resize( psdShmimMonitorT::m_height );
@@ -1202,9 +1221,17 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
         free( m_optGainSIStream );
         m_optGainSIStream = nullptr;
 
-        ImageStreamIO_destroyIm( m_optGainSIStream );
-        free( m_optGainSIStream );
-        m_optGainSIStream = nullptr;
+        ImageStreamIO_destroyIm( m_maxGainSIStream );
+        free( m_maxGainSIStream );
+        m_maxGainSIStream = nullptr;
+
+        ImageStreamIO_destroyIm( m_optGainLPStream );
+        free( m_optGainLPStream );
+        m_optGainLPStream = nullptr;
+
+        ImageStreamIO_destroyIm( m_maxGainLPStream );
+        free( m_maxGainLPStream );
+        m_maxGainLPStream = nullptr;
     }
 
     if( m_optGainStream == nullptr )
@@ -1247,6 +1274,23 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
         m_optGainSIStream->md->cnt0 = 0;
         m_optGainSIStream->md->cnt1 = 0;
 
+        m_maxGainSIStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+
+        ImageStreamIO_createIm_gpu( m_maxGainSIStream,
+                                    m_maxGainSIShmimName.c_str(),
+                                    3,
+                                    imsize,
+                                    psdShmimMonitorT::m_dataType,
+                                    -1,
+                                    1,
+                                    IMAGE_NB_SEMAPHORE,
+                                    0,
+                                    CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
+                                    0 );
+
+        m_maxGainSIStream->md->cnt0 = 0;
+        m_maxGainSIStream->md->cnt1 = 0;
+
         m_optGainLPStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
         ImageStreamIO_createIm_gpu( m_optGainLPStream,
@@ -1263,6 +1307,23 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_optGainLPStream->md->cnt0 = 0;
         m_optGainLPStream->md->cnt1 = 0;
+
+        m_maxGainLPStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+
+        ImageStreamIO_createIm_gpu( m_maxGainLPStream,
+                                    m_maxGainLPShmimName.c_str(),
+                                    3,
+                                    imsize,
+                                    psdShmimMonitorT::m_dataType,
+                                    -1,
+                                    1,
+                                    IMAGE_NB_SEMAPHORE,
+                                    0,
+                                    CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
+                                    0 );
+
+        m_maxGainLPStream->md->cnt0 = 0;
+        m_maxGainLPStream->md->cnt1 = 0;
 
         m_modevarStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
@@ -2573,9 +2634,11 @@ void modalGainOpt::goptThreadExec()
                         m_goptCurrent[n].b( tb );
 
                         m_goptCurrent[n].remember( m_pcMult * m_pcMultFacts[n] );
+
                     }
 
                     m_goptSI[n].setLeakyIntegrator( m_mult * m_multFacts[n] );
+                    
 
                     if( m_freqUpdated )
                     {
@@ -2583,6 +2646,8 @@ void modalGainOpt::goptThreadExec()
                         m_goptSI[n].f( m_freq );
                         m_goptLP[n].f( m_freq );
                     }
+
+                    m_gmaxSI[n] = m_goptSI[n].maxStableGain();
                 }
 
                 m_goptUpdated   = false;
@@ -2641,7 +2706,7 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_nPSDs[n][f]  = npsd;
+                        m_nPSDs[n][f]  = npsd/og2;
                         m_olPSDs[n][f] = m_clPSDs( f, n ) / og2;
                     }
                 }
@@ -2649,7 +2714,7 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_nPSDs[n][f]  = npsd;
+                        m_nPSDs[n][f]  = npsd/og2;
                         m_olPSDs[n][f] = ( m_clPSDs( f, n ) / og2 ) / m_clXferCurrent( f, n );
                     }
                 }
@@ -2659,7 +2724,7 @@ void modalGainOpt::goptThreadExec()
 
                 m_modeVarOL[n] = mx::sigproc::psdVar( m_freq, m_olPSDs[n] );
 
-                m_optGainSI[n] = m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], false );
+                m_optGainSI[n] = m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], m_gmaxSI[n], false );
 
                 if( fabs( ( m_modeVarOL[n] - m_modeVarSI[n] ) / m_modeVarOL[n] ) < 0.01 )
                 {
@@ -2763,20 +2828,26 @@ void modalGainOpt::goptThreadExec()
 
             float *f   = m_optGainStream->array.F;
             float *fSI = m_optGainSIStream->array.F;
+            float *fmaxSI = m_maxGainSIStream->array.F;
             float *fLP = m_optGainLPStream->array.F;
+            float *fmaxLP = m_optGainLPStream->array.F;
 
             mx::improc::eigenMap<float> mvs( m_modevarStream->array.F, 3, m_modeVarSI.size() );
 
             m_optGainStream->md->write   = 1;
             m_optGainSIStream->md->write = 1;
+            m_maxGainSIStream->md->write = 1;
             m_optGainLPStream->md->write = 1;
+            m_maxGainLPStream->md->write = 1;
             m_modevarStream->md->write   = 1;
 
             for( size_t n = 0; n < m_optGainSI.size(); ++n )
             {
                 f[n]   = ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain;
                 fSI[n] = f[n];
+                fmaxSI[n] = ( m_gainCalFacts[n] * m_gmaxSI[n] / m_gainCals[n] ) / m_opticalGain;
                 fLP[n] = ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain;
+                fmaxLP[n] = ( m_gainCalFacts[n] * m_gmaxLP[n] / m_gainCals[n] ) / m_opticalGain;
 
                 mvs( 0, n ) = m_modeVarOL[n];
                 mvs( 1, n ) = m_modeVarSI[n];
@@ -2789,8 +2860,14 @@ void modalGainOpt::goptThreadExec()
             m_optGainSIStream->md->writetime = m_optGainStream->md->writetime;
             m_optGainSIStream->md->atime     = m_optGainStream->md->writetime;
 
+            m_maxGainSIStream->md->writetime = m_optGainStream->md->writetime;
+            m_maxGainSIStream->md->atime     = m_optGainStream->md->writetime;
+
             m_optGainLPStream->md->writetime = m_optGainStream->md->writetime;
             m_optGainLPStream->md->atime     = m_optGainStream->md->writetime;
+
+            m_maxGainLPStream->md->writetime = m_optGainStream->md->writetime;
+            m_maxGainLPStream->md->atime     = m_optGainStream->md->writetime;
 
             m_modevarStream->md->writetime = m_optGainStream->md->writetime;
             m_modevarStream->md->atime     = m_optGainStream->md->writetime;
@@ -2803,9 +2880,17 @@ void modalGainOpt::goptThreadExec()
             m_optGainSIStream->md->write = 0;
             ImageStreamIO_sempost( m_optGainSIStream, -1 );
 
+            ++m_maxGainSIStream->md->cnt0;
+            m_maxGainSIStream->md->write = 0;
+            ImageStreamIO_sempost( m_maxGainSIStream, -1 );
+
             ++m_optGainLPStream->md->cnt0;
             m_optGainLPStream->md->write = 0;
             ImageStreamIO_sempost( m_optGainLPStream, -1 );
+
+            ++m_maxGainLPStream->md->cnt0;
+            m_maxGainLPStream->md->write = 0;
+            ImageStreamIO_sempost( m_maxGainLPStream, -1 );
 
             ++m_modevarStream->md->cnt0;
             m_modevarStream->md->write = 0;

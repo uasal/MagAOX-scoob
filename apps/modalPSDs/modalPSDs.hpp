@@ -63,6 +63,8 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
      *@{
      */
 
+     int m_loopNumber {1};
+
     std::string m_fpsDevice;               ///< Device name for getting fps to set circular buffer length.
     std::string m_fpsProperty{ "fps" };    ///< Property name for getting fps to set circular buffer length.
     std::string m_fpsElement{ "current" }; ///< Element name for getting fps to set circular buffer length.
@@ -220,6 +222,16 @@ void modalPSDs::setupConfig()
 {
     SHMIMMONITOR_SETUP_CONFIG( config );
 
+    config.add( "loop.number",
+        "",
+        "loop.number",
+        argType::Required,
+        "loop",
+        "number",
+        false,
+        "string",
+        "Loop number, as in aolN" );
+
     config.add( "circBuff.fpsDevice",
                 "",
                 "circBuff.fpsDevice",
@@ -279,6 +291,8 @@ void modalPSDs::setupConfig()
 int modalPSDs::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     SHMIMMONITOR_LOAD_CONFIG( _config );
+
+    _config( m_loopNumber, "loop.number");
 
     _config( m_fpsDevice, "circBuff.fpsDevice" );
     _config( m_fpsProperty, "circBuff.fpsProperty" );
@@ -511,7 +525,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
     m_freqStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
     ImageStreamIO_createIm_gpu( m_freqStream,
-                                ( m_configName + "_freq" ).c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + + "_freq" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
@@ -563,7 +577,7 @@ int modalPSDs::allocatePSDStreams()
     m_rawpsdStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
     ImageStreamIO_createIm_gpu( m_rawpsdStream,
-                                ( m_configName + "_rawpsds" ).c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + + "_rawclpsds" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
@@ -586,7 +600,7 @@ int modalPSDs::allocatePSDStreams()
 
     m_avgpsdStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
     ImageStreamIO_createIm_gpu( m_avgpsdStream,
-                                ( m_configName + "_psds" ).c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + "_clpsds" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
