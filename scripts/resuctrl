@@ -239,6 +239,7 @@ function verb_reset {
   && return 1
 
   cp -v "$proclist_base" "$proclist_cached"
+  chmod -v o+w "$proclist_cached"
 
 }
 
