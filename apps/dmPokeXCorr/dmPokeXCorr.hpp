@@ -206,6 +206,8 @@ protected:
 
 dmPokeXCorr::dmPokeXCorr() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
+    darkShmimMonitorT::m_getExistingFirst = true;
+    zrespShmimMonitorT::m_getExistingFirst = true;
     return;
 }
 
@@ -332,7 +334,12 @@ int dmPokeXCorr::processImage( void * curr_src,
 
     m_refIm = refIm;
     
-    m_xcorr.refIm(m_refIm());
+    m_xcorr.peakMethod(xcorrPeakMethod::mftOversamp);
+    m_xcorr.normalize(false);
+    m_xcorr.maxLag(10);
+    m_xcorr.tol(0.01);
+
+    m_xcorr.refIm(m_refIm(),1);
 
     return 0;
 }
@@ -358,15 +365,25 @@ int dmPokeXCorr::runSensor(bool firstRun)
 
 int dmPokeXCorr::analyzeSensor()
 {
-    if(m_xcorr.refIm().rows() != m_pokeImage().rows() || m_xcorr.refIm().rows() != m_pokeImage().cols() )
+    if(m_xcorr.refIm().rows() != m_pokeImage().rows() || m_xcorr.refIm().cols() != m_pokeImage().cols() )
     {
-        return 0;
+        std::cerr << "refIm:  " << m_xcorr.refIm().rows() << " x " << m_xcorr.refIm().cols() << '\n';
+        std::cerr << "pokeIm: " << m_pokeImage().rows() << " x " << m_pokeImage().cols() << '\n';
+        return log<software_error,-1>({__FILE__, __LINE__, "reference is not valid"});
     }
 
     float xs, ys;
 
-    m_xcorr(xs, ys, m_pokeImage());
+    try 
+    {
+        m_xcorr(xs, ys, m_pokeImage());
+    }
+    catch(const std::exception & e)
+    {
+        return log<software_error,-1>({__FILE__,__LINE__, std::string("exception caught: \n") + e.what()});
+    }
 
+    std::cerr.precision(5);
     std::cerr << "dmPokeXCorr::analyzeSensor: " << xs << " " << ys << "\n";
     
     if(updateMeasurement(xs, ys) < 0)
