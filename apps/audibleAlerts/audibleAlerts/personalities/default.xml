@@ -111,6 +111,11 @@
       <speak>This is embarrassing</speak>
     </transition>
   </react-to>
+  <react-to indi-id="tcsi.teldata.dome_stat">
+    <transition op="eq" value="-1">
+      <file name="bad_fox.wav" />
+    </transition>
+  </react-to>
   <react-to indi-id="tcsi.catalog.object">
     <transition>
       <speak>Target updated.</speak>
