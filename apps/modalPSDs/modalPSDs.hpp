@@ -63,13 +63,7 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
      *@{
      */
 
-    int m_loopNumber{ 1 }; ///< The control loop number, used for default output stream names
-
-    std::string m_shmimBaseName; /**< The base name for output shmims.  If empty (default) it is
-                                     aolN where N is m_loopNumber.*/
-
-    std::string m_shmimPsdDescrip{ "clpsds" }; /**< The description used at the end of the output shmim name.
-                                                   E.g. clpsds creates aol1_clpsds (the default configuration).*/
+     int m_loopNumber {1};
 
     std::string m_fpsDevice;               ///< Device name for getting fps to set circular buffer length.
     std::string m_fpsProperty{ "fps" };    ///< Property name for getting fps to set circular buffer length.
@@ -88,10 +82,6 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
     int m_nPSDHistory{ 100 }; //
 
     ///@}
-
-    std::string m_shmimNameFreqs;
-    std::string m_shmimNameRawPSDs;
-    std::string m_shmimNamePSDs;
 
     size_t m_nModes{ 0 }; ///< the number of modes to calculate PSDs for.
 
@@ -115,14 +105,12 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
     size_t m_tsWorkSize{ 0 };
 
     std::complex<realT> *m_fftWork{ nullptr };
-
-    size_t m_fftWorkSize{ 0 };
+    size_t               m_fftWorkSize{ 0 };
 
     std::vector<realT> m_psd;
 
     mx::math::ft::fftT<realT, std::complex<realT>, 1, 0> m_fft;
-
-    mx::math::ft::fftwEnvironment<realT> m_fftEnv;
+    mx::math::ft::fftwEnvironment<realT>                 m_fftEnv;
 
     /** \name PSD Calculation Thread
      * Handling of offloads from the average woofer shape
@@ -139,8 +127,8 @@ class modalPSDs : public MagAOXApp<true>, public dev::shmimMonitor<modalPSDs>
     bool m_psdRestarting{ true }; /**< Synchronization flag.  This will only become false
                                        after a successful call to allocate.*/
 
-    bool m_psdWaiting{ false }; /**< Synchronization flag.  This is set to true when the PSD thread 
-                                     is safely waiting for allocation to complete.*/
+    bool m_psdWaiting{ false }; ///< Synchronization flag.  This is set to true when the PSD thread is safely waiting
+                                ///< for allocation to complete.
 
     pid_t m_psdThreadID{ 0 }; ///< PSD Calculation thread PID.
 
@@ -235,35 +223,14 @@ void modalPSDs::setupConfig()
     SHMIMMONITOR_SETUP_CONFIG( config );
 
     config.add( "loop.number",
-                "",
-                "loop.number",
-                argType::Required,
-                "loop",
-                "number",
-                false,
-                "string",
-                "Loop number, as in aolN" );
-
-    config.add( "psds",
-                "basename",
-                "psds.basename",
-                argType::Required,
-                "psds",
-                "basename",
-                false,
-                "string",
-                "The base name for output shmims.  If empty (default) it is aolN where N is m_loopNumber." );
-
-    config.add( "psds",
-                "descrip",
-                "psds.descrip",
-                argType::Required,
-                "psds",
-                "descrip",
-                false,
-                "string",
-                "The description used at the end of the output shmim name. E.g. clpsds creates aol1_clpsds (the "
-                "default configuration" );
+        "",
+        "loop.number",
+        argType::Required,
+        "loop",
+        "number",
+        false,
+        "string",
+        "Loop number, as in aolN" );
 
     config.add( "circBuff.fpsDevice",
                 "",
@@ -274,7 +241,6 @@ void modalPSDs::setupConfig()
                 false,
                 "string",
                 "Device name for getting fps to set circular buffer length." );
-
     config.add( "circBuff.fpsProperty",
                 "",
                 "circBuff.fpsProperty",
@@ -284,7 +250,6 @@ void modalPSDs::setupConfig()
                 false,
                 "string",
                 "Property name for getting fps to set circular buffer length. Default is 'fps'." );
-
     config.add( "circBuff.fpsElement",
                 "",
                 "circBuff.fpsElement",
@@ -294,7 +259,6 @@ void modalPSDs::setupConfig()
                 false,
                 "string",
                 "Property name for getting fps to set circular buffer length. Default is 'current'." );
-
     config.add( "circBuff.fpsTol",
                 "",
                 "circBuff.fpsTol",
@@ -304,7 +268,6 @@ void modalPSDs::setupConfig()
                 false,
                 "float",
                 "Tolerance for detecting a change in FPS.  Default is 0." );
-
     config.add( "circBuff.defaultFPS",
                 "",
                 "circBuff.defaultFPS",
@@ -314,7 +277,6 @@ void modalPSDs::setupConfig()
                 false,
                 "realT",
                 "Default FPS at startup, will enable changing average length with psdTime before INDI available." );
-
     config.add( "circBuff.psdTime",
                 "",
                 "circBuff.psdTime",
@@ -330,16 +292,7 @@ int modalPSDs::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     SHMIMMONITOR_LOAD_CONFIG( _config );
 
-    _config( m_loopNumber, "loop.number" );
-
-    m_shmimBaseName = "aol" + std::to_string(m_loopNumber);
-    _config(m_shmimBaseName, "psds.basename");
-
-    _config(m_shmimPsdDescrip, "psds.descrip");
-
-    m_shmimNameFreqs = m_shmimBaseName + "_freq";
-    m_shmimNameRawPSDs = m_shmimBaseName + "_raw_" + m_shmimPsdDescrip;
-    m_shmimNamePSDs = m_shmimBaseName + "_" + m_shmimPsdDescrip;
+    _config( m_loopNumber, "loop.number");
 
     _config( m_fpsDevice, "circBuff.fpsDevice" );
     _config( m_fpsProperty, "circBuff.fpsProperty" );
@@ -491,8 +444,8 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
         return -1;
     }
 
-    /*std::cerr << "connected to " << shmimMonitorT::m_shmimName << " " << shmimMonitorT::m_width << " "
-              << shmimMonitorT::m_height << " " << shmimMonitorT::m_depth << "\n";*/
+    std::cerr << "connected to " << shmimMonitorT::m_shmimName << " " << shmimMonitorT::m_width << " "
+              << shmimMonitorT::m_height << " " << shmimMonitorT::m_depth << "\n";
 
     m_nModes = shmimMonitorT::m_width * shmimMonitorT::m_height;
 
@@ -515,7 +468,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     m_meanSize = m_fps * m_psdAvgTime;
 
-    if( static_cast<uint32_t>( m_meanSize ) > shmimMonitorT::m_depth )
+    if( static_cast<uint32_t>(m_meanSize) > shmimMonitorT::m_depth )
     {
         log<software_error>( { __FILE__, __LINE__, "input circ buff is not long enough for psd avg. time" } );
         m_meanSize = shmimMonitorT::m_depth;
@@ -523,7 +476,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
     // Size the circ buff
     // we really want 2*m_meanSize but might not be able to
-    if( 2 * static_cast<uint32_t>( m_meanSize ) > shmimMonitorT::m_depth )
+    if( 2 * static_cast<uint32_t>(m_meanSize) > shmimMonitorT::m_depth )
     {
         m_ampCircBuff.maxEntries( shmimMonitorT::m_depth );
     }
@@ -572,7 +525,7 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
     m_freqStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
     ImageStreamIO_createIm_gpu( m_freqStream,
-                                m_shmimNameFreqs.c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + + "_freq" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
@@ -610,20 +563,21 @@ int modalPSDs::allocate( const dev::shmimT &dummy )
 
 int modalPSDs::allocatePSDStreams()
 {
-    uint32_t imsize[3];
-    imsize[0] = m_psd.size();
-    imsize[1] = m_nModes;
-    imsize[2] = m_nPSDHistory;
-
     if( m_rawpsdStream )
     {
         ImageStreamIO_destroyIm( m_rawpsdStream );
         free( m_rawpsdStream );
     }
+
+    uint32_t imsize[3];
+    imsize[0] = m_psd.size();
+    imsize[1] = m_nModes;
+    imsize[2] = m_nPSDHistory;
+
     m_rawpsdStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
     ImageStreamIO_createIm_gpu( m_rawpsdStream,
-                                m_shmimNameRawPSDs.c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + + "_rawclpsds" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
@@ -646,7 +600,7 @@ int modalPSDs::allocatePSDStreams()
 
     m_avgpsdStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
     ImageStreamIO_createIm_gpu( m_avgpsdStream,
-                                m_shmimNamePSDs.c_str(),
+                                ( "aol" + std::to_string(m_loopNumber) + "_clpsds" ).c_str(),
                                 3,
                                 imsize,
                                 IMAGESTRUCT_FLOAT,
@@ -687,7 +641,7 @@ void modalPSDs::psdThreadExec()
         sleep( 1 );
     }
 
-    while( shutdown() == false )
+    while( shutdown() == 0 )
     {
         if( m_psdRestarting == true || m_ampCircBuff.maxEntries() == 0 )
         {
@@ -712,7 +666,7 @@ void modalPSDs::psdThreadExec()
             return;
         }
 
-        //std::cerr << "waiting to grow\n";
+        // std::cerr << "waiting to grow\n";
         while( m_ampCircBuff.size() < m_ampCircBuff.maxEntries() && m_psdRestarting == false && !shutdown() )
         {
             // shrinking sleep
@@ -720,7 +674,7 @@ void modalPSDs::psdThreadExec()
             mx::sys::nanoSleep( stime );
         }
 
-        //std::cerr << "all grown.  starting to calculate\n";
+        // std::cerr << "all grown.  starting to calculate\n";
 
         ampCircBuffT::indexT ne0;
         ampCircBuffT::indexT mne0;
@@ -735,7 +689,7 @@ void modalPSDs::psdThreadExec()
         }
         // std::cerr << __LINE__ << " " << ne1 << " " << m_tsSize << " " << m_ampCircBuff.size() << '\n';
 
-        while( m_psdRestarting == false && shutdown() == false)
+        while( m_psdRestarting == false && !shutdown() )
         {
             // Used to check if we are getting too behind
             uint64_t mono0 = m_ampCircBuff.mono();
@@ -829,7 +783,7 @@ void modalPSDs::psdThreadExec()
             {
                 nPSDAverage = 1;
             }
-            else if( static_cast<uint64_t>( nPSDAverage ) > m_rawpsdStream->md->size[2] )
+            else if( static_cast<uint64_t>(nPSDAverage) > m_rawpsdStream->md->size[2] )
             {
                 nPSDAverage = m_rawpsdStream->md->size[2];
             }
@@ -878,21 +832,16 @@ void modalPSDs::psdThreadExec()
             // std::cerr << "done " << t1 - t0 << "\n";
 
             // Have to be cycling within the overlap
-            if( m_ampCircBuff.mono() - mono0 >= static_cast<uint32_t>( m_tsOverlapSize ) )
+            if( m_ampCircBuff.mono() - mono0 >= static_cast<uint32_t>(m_tsOverlapSize) )
             {
                 log<text_log>( "PSD calculations getting behind, skipping ahead.", logPrio::LOG_WARNING );
             }
             else
             {
-                while( (m_ampCircBuff.mono() - mono0 < static_cast<uint32_t>( m_tsOverlapSize )) && !m_psdRestarting )
+                while( m_ampCircBuff.mono() - mono0 < static_cast<uint32_t>(m_tsOverlapSize)  )
                 {
                     mx::sys::microSleep( 0.2 * 1000000.0 / m_fps );
                 }
-            }
-
-            if(m_psdRestarting)
-            {
-                break;
             }
 
             ne1 = m_ampCircBuff.latest();
@@ -904,8 +853,8 @@ void modalPSDs::psdThreadExec()
             {
                 ne1 = m_ampCircBuff.size() + ne1 - m_tsSize;
             }
-        } // while( m_psdRestarting == false && !shutdown() )
-    } // while( shutdown() == 0 )
+        }
+    }
 }
 
 INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdTime )( const pcf::IndiProperty &ipRecv )
@@ -931,7 +880,7 @@ INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdTime )( const pcf::IndiProperty &ip
 
         shmimMonitorT::m_restart = true;
 
-        log<text_log>( "set psdTime to " + std::to_string( m_psdTime ));
+        log<text_log>( "set psdTime to " + std::to_string( m_psdTime ), logPrio::LOG_NOTICE );
     }
 
     return 0;
@@ -958,9 +907,7 @@ INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdAvgTime )( const pcf::IndiProperty 
         updateIfChanged( m_indiP_psdAvgTime, "current", m_psdAvgTime, INDI_IDLE );
         updateIfChanged( m_indiP_psdAvgTime, "target", m_psdAvgTime, INDI_IDLE );
 
-        shmimMonitorT::m_restart = true;
-
-        log<text_log>( "set psdAvgTime to " + std::to_string( m_psdAvgTime ));
+        log<text_log>( "set psdAvgTime to " + std::to_string( m_psdAvgTime ), logPrio::LOG_NOTICE );
     }
 
     return 0;
@@ -983,9 +930,8 @@ INDI_SETCALLBACK_DEFN( modalPSDs, m_indiP_fpsSource )( const pcf::IndiProperty &
     if( fabs( fps - m_fps ) > m_fpsTol )
     {
         m_fps = fps;
-        log<text_log>( "set fps to " + std::to_string( m_fps ) );
+        log<text_log>( "set fps to " + std::to_string( m_fps ), logPrio::LOG_NOTICE );
         updateIfChanged( m_indiP_fps, "current", m_fps, INDI_IDLE );
-
         shmimMonitorT::m_restart = true;
     }
 
