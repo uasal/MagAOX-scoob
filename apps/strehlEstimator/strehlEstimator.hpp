@@ -1,8 +1,8 @@
 /** \file strehlEstimator.hpp
-  * \brief The MagAO-X XXXXXX header file
-  *
-  * \ingroup strehlEstimator_files
-  */
+ * \brief The MagAO-X XXXXXX header file
+ *
+ * \ingroup strehlEstimator_files
+ */
 
 #ifndef strehlEstimator_hpp
 #define strehlEstimator_hpp
@@ -14,24 +14,24 @@ using namespace mx::math;
 #include "../../magaox_git_version.h"
 
 /** \defgroup strehlEstimator
-  * \brief The XXXXXX application to do YYYYYYY
-  *
-  * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
-  *
-  * \ingroup apps
-  *
-  */
+ * \brief The XXXXXX application to do YYYYYYY
+ *
+ * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
+ *
+ * \ingroup apps
+ *
+ */
 
 /** \defgroup strehlEstimator_files
-  * \ingroup strehlEstimator
-  */
+ * \ingroup strehlEstimator
+ */
 
 namespace MagAOX
 {
 namespace app
 {
 
-    struct wfsavgShmimT
+struct wfsavgShmimT
 {
     static std::string configSection()
     {
@@ -59,140 +59,143 @@ struct wfsmaskShmimT
 
 /// The MagAO-X xxxxxxxx
 /**
-  * \ingroup strehlEstimator
-  */
+ * \ingroup strehlEstimator
+ */
 class strehlEstimator : public MagAOXApp<true>,
-dev::shmimMonitor<strehlEstimator, wfsavgShmimT>,
-                     dev::shmimMonitor<strehlEstimator, wfsmaskShmimT>
+                        dev::shmimMonitor<strehlEstimator, wfsavgShmimT>,
+                        dev::shmimMonitor<strehlEstimator, wfsmaskShmimT>
 {
 
-   //Give the test harness access.
-   friend class strehlEstimator_test;
+    // Give the test harness access.
+    friend class strehlEstimator_test;
 
-   friend class dev::shmimMonitor<strehlEstimator, wfsavgShmimT>;
+    friend class dev::shmimMonitor<strehlEstimator, wfsavgShmimT>;
     friend class dev::shmimMonitor<strehlEstimator, wfsmaskShmimT>;
 
-public:
-typedef dev::shmimMonitor<strehlEstimator, wfsavgShmimT>      wfsavgShmimMonitorT;
-    typedef dev::shmimMonitor<strehlEstimator, wfsmaskShmimT>     wfsmaskShmimMonitorT;
+  public:
+    typedef dev::shmimMonitor<strehlEstimator, wfsavgShmimT>  wfsavgShmimMonitorT;
+    typedef dev::shmimMonitor<strehlEstimator, wfsmaskShmimT> wfsmaskShmimMonitorT;
 
-protected:
-
-   /** \name Configurable Parameters
+  protected:
+    /** \name Configurable Parameters
      *@{
      */
 
-     int m_loopNum{ 1 }; ///< The number of the loop. Used to set shmim names, as in aolN_wfsmask.
+    int m_loopNum{ 1 }; ///< The number of the loop. Used to set shmim names, as in aolN_wfsmask.
 
-     std::string m_wfsDevice{ "camwfs" };
+    std::string m_wfsDevice{ "camwfs" };
 
-     std::string m_stagebsDevice {"stagebs"};
+    std::string m_stagebsDevice{ "stagebs" };
 
-     float m_again{28.547};
+    float m_again{ 28.547 };
 
-     float m_qe {0.53};
+    float m_qe{ 0.53 };
 
-     float m_F0_6535 {4.2e10};
+    float m_F0_6535{ 4.2e10 };
 
-     float m_F0_HaIR {5.3e10};
+    float m_F0_HaIR{ 5.3e10 };
 
-     float m_lam0_6535 {0.791};
+    float m_lam0_6535{ 0.791 };
 
-     float m_lam0_HaIR {0.837};
+    float m_lam0_HaIR{ 0.837 };
 
-   ///@}
+    float m_qe_6535{ 0.53 };
 
-   float m_fps {2000};
+    float m_qe_HaIR{ 0.53 };
 
-   float m_emg {1};
+    ///@}
 
-   float m_F0 {m_F0_6535};
+    float m_fps{ 2000 };
 
-   float m_lam0 {m_lam0_6535};
+    float m_emg{ 1 };
 
-   float m_seeing {0.64};
+    float m_F0{ m_F0_6535 };
 
-   float m_r0 {0.16};
+    float m_lam0{ m_lam0_6535 };
 
-   float m_elevation {90};
+    float m_seeing{ 0.64 };
 
-   int m_npix;
+    float m_r0{ 0.16 };
 
-   float m_counts {0};
+    float m_elevation{ 90 };
 
-   float m_mag {0};
+    int m_npix;
 
-   mx::improc::eigenImage<float> m_wfsmask;
-   mx::improc::eigenImage<float> m_wfsavg;
+    float m_counts{ 0 };
 
-   mx::AO::analysis::aoSystem<float, mx::AO::analysis::vonKarmanSpectrum<float>> m_aosys;
+    float m_mag{ 0 };
 
-   double m_dimm_fwhm_corr {0}; ///< DIMM elevation corrected FWHM
-   int m_dimm_time {0};         ///< Seconds since midnight of DIMM measurement.
+    mx::improc::eigenImage<float> m_wfsmask;
+    mx::improc::eigenImage<float> m_wfsavg;
 
-   double m_mag1_fwhm_corr {0}; ///< MAG1 elevation corrected FWHM
-   int m_mag1_time {0};         ///< Seconds since midnight of MAG1 measurement.
+    mx::AO::analysis::aoSystem<float, mx::AO::analysis::vonKarmanSpectrum<float>> m_aosys;
 
-   double m_mag2_fwhm_corr {0}; ///< MAG2 elevation corrected FWHM
-   int m_mag2_time {0};         ///< Seconds since midnight of MAG2 measurement.
+    double m_dimm_fwhm_corr{ 0 }; ///< DIMM elevation corrected FWHM
+    int    m_dimm_time{ 0 };      ///< Seconds since midnight of DIMM measurement.
 
+    double m_mag1_fwhm_corr{ 0 }; ///< MAG1 elevation corrected FWHM
+    int    m_mag1_time{ 0 };      ///< Seconds since midnight of MAG1 measurement.
 
-public:
-   /// Default c'tor.
-   strehlEstimator();
+    double m_mag2_fwhm_corr{ 0 }; ///< MAG2 elevation corrected FWHM
+    int    m_mag2_time{ 0 };      ///< Seconds since midnight of MAG2 measurement.
 
-   /// D'tor, declared and defined for noexcept.
-   ~strehlEstimator() noexcept
-   {}
+  public:
+    /// Default c'tor.
+    strehlEstimator();
 
-   virtual void setupConfig();
+    /// D'tor, declared and defined for noexcept.
+    ~strehlEstimator() noexcept
+    {
+    }
 
-   /// Implementation of loadConfig logic, separated for testing.
-   /** This is called by loadConfig().
+    virtual void setupConfig();
+
+    /// Implementation of loadConfig logic, separated for testing.
+    /** This is called by loadConfig().
      */
-   int loadConfigImpl( mx::app::appConfigurator & _config /**< [in] an application configuration from which to load values*/);
+    int loadConfigImpl(
+        mx::app::appConfigurator &_config /**< [in] an application configuration from which to load values*/ );
 
-   virtual void loadConfig();
+    virtual void loadConfig();
 
-   /// Startup function
-   /**
+    /// Startup function
+    /**
      *
      */
-   virtual int appStartup();
+    virtual int appStartup();
 
-   /// Implementation of the FSM for strehlEstimator.
-   /**
+    /// Implementation of the FSM for strehlEstimator.
+    /**
      * \returns 0 on no critical error
      * \returns -1 on an error requiring shutdown
      */
-   virtual int appLogic();
+    virtual int appLogic();
 
-   /// Shutdown the app.
-   /**
+    /// Shutdown the app.
+    /**
      *
      */
-   virtual int appShutdown();
+    virtual int appShutdown();
 
+    int allocate( const wfsavgShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
 
-   int allocate( const wfsavgShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-   );
+    int processImage( void *curr_src,      ///< [in] pointer to the start of the current frame
+                      const wfsavgShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
 
-   int processImage( void *curr_src,      ///< [in] pointer to the start of the current frame
-                     const wfsavgShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-   );
+    int allocate( const wfsmaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
 
-   int allocate( const wfsmaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-   );
+    int processImage( void *curr_src,       ///< [in] pointer to the start of the current frame
+                      const wfsmaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    );
 
-   int processImage( void *curr_src,       ///< [in] pointer to the start of the current frame
-                     const wfsmaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-   );
+    void calcMag();
 
-   void calcMag();
-
-   /** INDI
-    * @{
-    */
+    /** INDI
+     * @{
+     */
 
     pcf::IndiProperty m_indiP_fps;
     pcf::IndiProperty m_indiP_emg;
@@ -216,13 +219,13 @@ public:
     ///@}
 };
 
-strehlEstimator::strehlEstimator() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
+strehlEstimator::strehlEstimator() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
 
-    wfsavgShmimMonitorT::m_getExistingFirst      = true;
-    wfsmaskShmimMonitorT::m_getExistingFirst     = true;
+    wfsavgShmimMonitorT::m_getExistingFirst  = true;
+    wfsmaskShmimMonitorT::m_getExistingFirst = true;
 
-   return;
+    return;
 }
 
 void strehlEstimator::setupConfig()
@@ -230,24 +233,46 @@ void strehlEstimator::setupConfig()
     m_aosys.loadMagAOX();
 
     config.add( "loop.number",
-        "",
-        "loop.number",
-        argType::Required,
-        "loop",
-        "number",
-        false,
-        "int",
-        "The number of the loop. Used to set shmim names, as in aolN_mgainfact." );
+                "",
+                "loop.number",
+                argType::Required,
+                "loop",
+                "number",
+                false,
+                "int",
+                "The number of the loop. Used to set shmim names, as in aolN_mgainfact." );
 
+    config.add( "phot.qe_6535",
+                "",
+                "phot.qe_6535",
+                argType::Required,
+                "phot",
+                "qe_6535",
+                false,
+                "float",
+                "The WFS QE in the 65-35 B/S." );
+
+    config.add( "phot.qe_HaIR",
+                "",
+                "phot.qe_HaIR",
+                argType::Required,
+                "phot",
+                "qe_HaIR",
+                false,
+                "float",
+                "The WFS QE in the Ha-IR B/S." );
 
     SHMIMMONITORT_SETUP_CONFIG( wfsavgShmimMonitorT, config );
     SHMIMMONITORT_SETUP_CONFIG( wfsmaskShmimMonitorT, config );
 }
 
-int strehlEstimator::loadConfigImpl( mx::app::appConfigurator & _config )
+int strehlEstimator::loadConfigImpl( mx::app::appConfigurator &_config )
 {
 
     _config( m_loopNum, "loop.number" );
+
+    _config( m_qe_6535, "phot.qe_6535" );
+    _config( m_qe_HaIR, "phot.qe_HaIR" );
 
     char shmim[1024];
     snprintf( shmim, sizeof( shmim ), "aol%d_wfsavg", m_loopNum );
@@ -258,12 +283,12 @@ int strehlEstimator::loadConfigImpl( mx::app::appConfigurator & _config )
     wfsmaskShmimMonitorT::m_shmimName = shmim;
     SHMIMMONITORT_LOAD_CONFIG( wfsmaskShmimMonitorT, _config );
 
-   return 0;
+    return 0;
 }
 
 void strehlEstimator::loadConfig()
 {
-   loadConfigImpl(config);
+    loadConfigImpl( config );
 }
 
 int strehlEstimator::appStartup()
@@ -281,21 +306,21 @@ int strehlEstimator::appStartup()
     REG_INDI_SETPROP( m_indiP_tcsi_seeing, "tcsi", "seeing" );
     REG_INDI_SETPROP( m_indiP_tcsi_telpos, "tcsi", "telpos" );
 
-    CREATE_REG_INDI_RO_NUMBER(m_indiP_mag, "star_mag", "Star Magnitude", "Error Budget");
-    m_indiP_mag.add(pcf::IndiElement("current",0));
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_mag, "star_mag", "Star Magnitude", "Error Budget" );
+    m_indiP_mag.add( pcf::IndiElement( "current", 0 ) );
 
-    CREATE_REG_INDI_RO_NUMBER(m_indiP_strehl, "strehl_optimal", "Strehl", "Error Budget");
-    m_indiP_strehl.add(pcf::IndiElement("pyramid",0));
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_strehl, "strehl_optimal", "Strehl", "Error Budget" );
+    m_indiP_strehl.add( pcf::IndiElement( "pyramid", 0 ) );
 
-    CREATE_REG_INDI_RO_NUMBER(m_indiP_wfe, "wfe_predicted", "WFE", "Error Budget");
-    m_indiP_wfe.add(pcf::IndiElement("total",0));
-    m_indiP_wfe.add(pcf::IndiElement("measurement",0));
-    m_indiP_wfe.add(pcf::IndiElement("time_delay",0));
-    m_indiP_wfe.add(pcf::IndiElement("fitting",0));
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_wfe, "wfe_predicted", "WFE", "Error Budget" );
+    m_indiP_wfe.add( pcf::IndiElement( "total", 0 ) );
+    m_indiP_wfe.add( pcf::IndiElement( "measurement", 0 ) );
+    m_indiP_wfe.add( pcf::IndiElement( "time_delay", 0 ) );
+    m_indiP_wfe.add( pcf::IndiElement( "fitting", 0 ) );
 
-    state(stateCodes::OPERATING);
+    state( stateCodes::OPERATING );
 
-   return 0;
+    return 0;
 }
 
 int strehlEstimator::appLogic()
@@ -306,23 +331,25 @@ int strehlEstimator::appLogic()
     SHMIMMONITORT_UPDATE_INDI( wfsavgShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( wfsmaskShmimMonitorT );
 
-    m_aosys.starMag(m_mag);
-    m_aosys.F0(m_qe*m_F0);
-    m_aosys.lam_wfs(m_lam0*1e-6);
-    m_aosys.lam_sci(m_lam0*1e-6);
-    m_aosys.ron_wfs(std::vector<float>({245.0f/m_emg}));
-    m_aosys.npix_wfs(std::vector<float>({1.0f*m_npix}));
-    m_aosys.minTauWFS(std::vector<float>({1.0f/m_fps}));
-    m_aosys.tauWFS(1./m_fps);
-    m_aosys.atm.r_0(m_r0, 0.5e-6);
-    m_aosys.zeta( (90.-m_elevation)*3.14159/180.);
+    m_aosys.starMag( m_mag );
+    m_aosys.F0( m_qe * m_F0 );
+    m_aosys.lam_wfs( m_lam0 * 1e-6 );
+    m_aosys.lam_sci( m_lam0 * 1e-6 );
+    m_aosys.ron_wfs( std::vector<float>( { 245.0f / m_emg } ) );
+    m_aosys.npix_wfs( std::vector<float>( { 1.0f * m_npix } ) );
+    m_aosys.minTauWFS( std::vector<float>( { 1.0f / m_fps } ) );
+    m_aosys.tauWFS( 1. / m_fps );
+    m_aosys.atm.r_0( m_r0, 0.5e-6 );
+    m_aosys.zeta( ( 90. - m_elevation ) * 3.14159 / 180. );
 
-    updateIfChanged(m_indiP_strehl, "pyramid", m_aosys.strehl());
-    updatesIfChanged<double>(m_indiP_wfe, {"total","measurement", "time_delay", "fitting"},
-                     {sqrt(m_aosys.wfeVar())*(1000*m_lam0/two_pi<float>()),sqrt(m_aosys.measurementErrorTotal())*(1000*m_lam0/two_pi<float>()),
-                        sqrt(m_aosys.timeDelayErrorTotal())*(1000*m_lam0/two_pi<float>()),
-                         sqrt(m_aosys.fittingErrorTotal())*(1000*m_lam0/two_pi<float>())});
-   return 0;
+    updateIfChanged( m_indiP_strehl, "pyramid", m_aosys.strehl() );
+    updatesIfChanged<double>( m_indiP_wfe,
+                              { "total", "measurement", "time_delay", "fitting" },
+                              { sqrt( m_aosys.wfeVar() ) * ( 1000 * m_lam0 / two_pi<float>() ),
+                                sqrt( m_aosys.measurementErrorTotal() ) * ( 1000 * m_lam0 / two_pi<float>() ),
+                                sqrt( m_aosys.timeDelayErrorTotal() ) * ( 1000 * m_lam0 / two_pi<float>() ),
+                                sqrt( m_aosys.fittingErrorTotal() ) * ( 1000 * m_lam0 / two_pi<float>() ) } );
+    return 0;
 }
 
 int strehlEstimator::appShutdown()
@@ -330,7 +357,7 @@ int strehlEstimator::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( wfsavgShmimMonitorT );
     SHMIMMONITORT_APP_SHUTDOWN( wfsmaskShmimMonitorT );
 
-   return 0;
+    return 0;
 }
 
 int strehlEstimator::allocate( const wfsavgShmimT &dummy )
@@ -379,7 +406,7 @@ int strehlEstimator::processImage( void *curr_src, const wfsmaskShmimT &dummy )
 
     if( m_wfsavg.rows() == m_wfsmask.rows() && m_wfsavg.cols() == m_wfsmask.cols() )
     {
-        //update counts because we might have been waiting on this.
+        // update counts because we might have been waiting on this.
         m_counts = ( m_wfsavg * m_wfsmask ).sum();
 
         calcMag();
@@ -390,9 +417,12 @@ int strehlEstimator::processImage( void *curr_src, const wfsmaskShmimT &dummy )
 
 void strehlEstimator::calcMag()
 {
-    m_mag = -2.5*log10(m_counts*m_again/m_emg*m_fps/(m_qe*m_F0));
+    std::cerr << "calcMag: " << m_counts << ' ' << m_again << ' ' << ' ' << m_emg << ' ' << m_fps << ' ' << m_qe << ' '
+              << m_F0 << '\n';
 
-    updateIfChanged(m_indiP_mag, "current", m_mag);
+    m_mag = -2.5 * log10( m_counts * m_again / m_emg * m_fps / ( m_qe * m_F0 ) );
+
+    updateIfChanged( m_indiP_mag, "current", m_mag );
 }
 
 INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_fps )( const pcf::IndiProperty &ipRecv )
@@ -437,13 +467,13 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_stage )( const pcf::IndiProperty
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_stage, ipRecv );
 
-    //if( ipRecv.find( "presetName" ) )
+    // if( ipRecv.find( "presetName" ) )
     {
         std::string preset = "none";
 
-        for(auto && el : ipRecv.getElements() )
+        for( auto &&el : ipRecv.getElements() )
         {
-            if(el.second.getSwitchState() == pcf::IndiElement::On)
+            if( el.second.getSwitchState() == pcf::IndiElement::On )
             {
                 preset = el.first;
                 break;
@@ -452,15 +482,17 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_stage )( const pcf::IndiProperty
 
         std::cerr << "Got stage bs: " << preset << '\n';
 
-        if(preset == "ha-ir")
+        if( preset == "ha-ir" )
         {
-            m_F0 = m_F0_HaIR;
+            m_F0   = m_F0_HaIR;
             m_lam0 = m_lam0_HaIR;
+            m_qe   = m_qe_HaIR;
         }
         else
         {
-            m_F0 = m_F0_6535;
+            m_F0   = m_F0_6535;
             m_lam0 = m_lam0_6535;
+            m_qe   = m_qe_6535;
         }
 
         calcMag();
@@ -482,7 +514,7 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_tcsi_seeing )( const pcf::IndiPr
             m_seeing = seeing;
             std::cerr << "Got seeing: " << m_seeing << '\n';
 
-            m_r0 = 0.2063*0.5/m_seeing;
+            m_r0 = 0.2063 * 0.5 / m_seeing;
         }
     }
     return 0;
@@ -505,7 +537,7 @@ INDI_SETCALLBACK_DEFN( strehlEstimator, m_indiP_tcsi_telpos )( const pcf::IndiPr
     return 0;
 }
 
-} //namespace app
-} //namespace MagAOX
+} // namespace app
+} // namespace MagAOX
 
-#endif //strehlEstimator_hpp
+#endif // strehlEstimator_hpp
