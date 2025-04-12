@@ -268,13 +268,21 @@ class adcCtrl(XDevice):
         nv = properties.NumberVector(name='ctrl_mtx')
         nv.add_element(DefNumber( #first element
             name='m00', label='m00', format='%.4f',
-            min=-10.00, max=10.00, step=0.0001, _value=-0.2231 #default from matrix calc in november
+            min=-10.00, max=10.00, step=0.0001, _value=0.3
         ))
         nv.add_element(DefNumber( 
             name='m01', label='m01', format='%.4f',
-            min=-10.00, max=10.00, step=0.0001, _value=-0.2298 #default from matrix calc in november
+            min=-10.00, max=10.00, step=0.0001, _value=0.3 
         ))
         self.add_property(nv, callback=self.handle_ctrl_mtx) 
+
+        sv = properties.SwitchVector(
+            name='labmode',
+            rule=constants.SwitchRule.ONE_OF_MANY,
+            perm=constants.PropertyPerm.READ_WRITE,
+        )
+        sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_labmode) 
 
         self.client.get_properties('adctrack')
         self.client.get_properties('fwsci1')
@@ -293,10 +301,11 @@ class adcCtrl(XDevice):
         self._n_avg = 1
         self._gain = 0.5
         self._command = 0
-        self._control_mtx = np.array([-0.22312707, -0.22983197])
+        self._control_mtx = np.array([0.3, 0.3])
         self._extent = 400
         self.delta_1 = 0
         self.delta_2 = 0
+        self._lab = False
 
         if self.client['adctrack.deltaADC1.current'] != 0:
             self.set_command(0,0)
@@ -346,6 +355,19 @@ class adcCtrl(XDevice):
             self.update_property(existing_property)
             self.update_property(self.properties['fsm'])
 
+    def handle_labmode(self,existing_property, new_message):
+        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.ON:
+            self.log.debug('changing to lab mode')
+            existing_property['toggle'] = constants.SwitchState.ON
+            self._lab = True
+
+        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.OFF:
+            self.log.debug('changing to onsky mode')
+            existing_property['toggle'] = constants.SwitchState.OFF
+            self._lab = False
+
+        self.update_property(existing_property)
+
     def handle_n_avg(self, existing_property, new_message):
         if 'target' in new_message and new_message['target'] != existing_property['current']: 
             existing_property['current'] = new_message['target']
@@ -363,8 +385,15 @@ class adcCtrl(XDevice):
         self.update_property(existing_property)
 
     def handle_ctrl_mtx(self, existing_property, new_message):
-        pass
-
+        if new_message['m00'] != existing_property['m00']:
+            existing_property['m00'] = new_message['m00']
+            self._control_mtx[0] = float(new_message['m00'])
+        elif new_message['m01'] != existing_property['m01']:
+            existing_property['m01'] = float(new_message['m01'])
+            self._control_mtx[1] = new_message['m01']
+        self.log.debug(f'control matrix changed via INDI to {self._control_mtx}')
+        self.update_property(existing_property)
+        
     def update_wavelength(self):
         if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
             self._center_wavelength = 762E-9
@@ -411,7 +440,10 @@ class adcCtrl(XDevice):
             img = self.camera.grab_stack(self._n_avg)
             transpose = img.shaped.T 
             img = transpose.ravel()
-            img = self.ADC.filter_image(img)
+
+            if self._lab == False:
+                img = self.ADC.filter_image(img)
+
             img = self.ADC.crop_image(img,self._extent)
             self.ADC.set_psf(img)
             
@@ -420,10 +452,10 @@ class adcCtrl(XDevice):
             self.log.debug(f'angle offsets: {angles}')
 
             error = self.ADC.calculate_command(pair_angles)
-            self._command = self._command + self._gain * error
+            self._command = np.squeeze(self._command + self._gain * error)
             
-            if np.all(np.abs(self._command)) < 2: #setting a threshold so the prisms don't do anything crazy     
-                self.set_command(np.squeeze(self._command),0) 
+            if np.abs(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
+                self.set_command(self._command,0) 
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
@@ -432,15 +464,12 @@ class adcCtrl(XDevice):
             img = self.camera.grab_stack(self._n_avg)
             transpose = img.shaped.T 
             img = transpose.ravel()
-            #img = self.ADC.filter_image(img)
+
+            if self._lab == False:
+                img = self.ADC.filter_image(img)
+
             img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
-
-            self.log.info(f'image intensity:{np.sum(img):.2f}')
-            self.log.info(f'min intensity: {np.min(img):.2f}')
-            self.log.info(f'max intensity: {np.max(img):.2f}')
-            just_speckle = self.ADC.find_speckle(img,3)
-            self.log.info(f'speckle 3 intensity: {np.sum(just_speckle):.6f}')
             center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
             self.log.info(f'center of intensity: {center_of_intensity}')
             
@@ -448,12 +477,12 @@ class adcCtrl(XDevice):
             pair_angles = self.ADC.speckle_pairs(angles)
             self.log.debug(f'angle offsets: {angles}')
 
-            self._command = self.ADC.calculate_command(pair_angles)
+            self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
 
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
-            if np.all(np.abs(self._command)) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.set_command(np.squeeze(self._command),0)
+            if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+                self.set_command(self._command,0)
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
@@ -472,7 +501,10 @@ class adcCtrl(XDevice):
                 img = self.camera.grab_stack(self._n_avg)
                 transpose = img.shaped.T 
                 img = transpose.ravel()
-                #img = self.ADC.filter_image(img)
+
+                if self._lab == False:
+                    img = self.ADC.filter_image(img)
+
                 img = self.ADC.crop_image(img,extent=self._extent)
                 self.ADC.set_psf(img)
                 
@@ -496,9 +528,9 @@ class adcCtrl(XDevice):
             self.ADC.set_control_mtx(self._control_mtx)
             self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
 
-            # self.properties['ctrl_mtx']['m00'] = self._control_mtx[0][0]
-            # self.properties['ctrl_mtx']['m01'] = self._control_mtx[0][1]
-            # self.update_property(self.properties['ctrl_mtx'])
+            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
+            self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
+            self.update_property(self.properties['ctrl_mtx'])
             
             self.transition_to_idle()
 
