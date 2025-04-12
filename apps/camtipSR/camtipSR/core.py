@@ -16,7 +16,7 @@ from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 import hcipy as hp
 from scipy.optimize import minimize
 
-from utils import *
+from camtipSR.utils import *
 
 @xconf.config
 class CameraConfig:
@@ -30,8 +30,8 @@ class CameraConfig:
 class camtipSRConfig(BaseConfig):
     """ Active ADC control 
     """
+    # if want default need to be a cam config obj
     camera : CameraConfig = xconf.field(help="Camera to use")
-    sleep_interval_sec : float = xconf.field(default=0.25, help="Sleep interval between loop() calls")
 
 class States(Enum):
     IDLE = 0

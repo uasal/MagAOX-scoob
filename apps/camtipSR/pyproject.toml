@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "camtipSR"
-description = "Instantaneous Strehl Ratio estimate from camTIP"
+description = "Instantaneous Strehl Ratio estimate from camtip"
 version = "2025.04.09"
 
 authors = [
@@ -12,4 +12,4 @@ authors = [
 ]
 
 [project.scripts]
-camtipSR = "camtipSR:camtipSR.console_app"
+camtipSR = "camtipSR:core.camtipSR.console_app"
