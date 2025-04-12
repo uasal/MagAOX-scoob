@@ -37,8 +37,8 @@
     <button name="ChickenNugget">
       <speak>Chicken nugget</speak>
     </button>
-    <button name="Avalon">
-      <speak>beep boop bop</speak>
+    <button name="WeProudlyPresent">
+      <file name="bad_fox.wav" />
     </button>
     <button name="Proposals">
       <file name="lkca15.wav" />
