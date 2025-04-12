@@ -28,7 +28,7 @@ for remote in icc rtc; do
     done
 done
 
-rsyncWithOptions="rsync --exclude='/data/obs/**' --exclude='**/*_2022*' --exclude='**/*_2023*' --exclude='**/*_202403*' --exclude='**/*_202405*' -a --info=progress2"
+rsyncWithOptions="rsync --exclude=obs --exclude='*_2022*' --exclude='*_2023*' --exclude='*_2024*' -a --info=progress2"
 
 mkdir -p $dest/aoc/
 $rsyncWithOptions /data/ $dest/aoc/
