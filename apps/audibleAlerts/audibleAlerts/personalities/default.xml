@@ -52,6 +52,12 @@
     <button name="Diggy">
       <file name="diggy_short.wav" />
     </button>
+    <button name="PleaseClap">
+      <file name="please_clap.wav" />
+    </button>
+    <button name="VizzyAO">
+      <file name="blue.wav" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
@@ -109,6 +115,13 @@
       <speak>Nothing is working. Good.</speak>
       <speak>That is a block too far, I am afraid.</speak>
       <speak>This is embarrassing</speak>
+      
+    </transition>
+  </react-to>
+  <react-to indi-id="tcsi.teldata.dome_stat">
+    <transition op="eq" value="-1">
+      <file name="bad_fox.wav" />
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tcsi.catalog.object">
@@ -144,6 +157,7 @@
   <react-to indi-id="tcsi.environment.wind">
     <transition op="gt" value="35.1">
       <speak>The last wind measurement exceeded the shutdown threshold</speak>
+      <file name="that_escalated.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tcsi.seeing.dimm_fwhm">
@@ -184,6 +198,31 @@
       <speak>Low fiss off</speak>
     </transition>
   </react-to>
+  <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
+    <transition value="On">
+      <file name="allstar.wav" />
+    </transition>
+  </react-to>
+  <react-to indi-id="observers.observers.lapearce-at-umich-dot-edu">
+    <transition value="On">
+      <file name="skibidi.wav" />
+    </transition>
+  </react-to>
+  <react-to indi-id="observers.observers.jrmales-at-arizona-dot-edu">
+    <transition value="On">
+      <file name="blue.wav" />
+    </transition>
+  </react-to>
+  <react-to indi-id="observers.observers.jlong-at-flatironinstitute-dot-org">
+    <transition value="On">
+      <file name="seven_nation.wav" />
+    </transition>
+  </react-to>
+  <react-to indi-id="observers.observers.jliberman-at-arizona-dot-edu">
+    <transition value="On">
+      <file name="lipgloss.wav" />
+    </transition>
+  </react-to>
   <react-to indi-id="camvisx.current_exposure.remaining_pct">
     <transition value="90" op="gt">
       <speak>
@@ -205,6 +244,7 @@
       <speak>Exposuring complete</speak>
       <speak>Done visex ing</speak>
       <speak>Sixty megapixels for you</speak>
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tweeterSpeck.modulating.toggle">
