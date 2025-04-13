@@ -52,6 +52,9 @@
     <button name="Diggy">
       <file name="diggy_short.wav" />
     </button>
+    <button name="PleaseClap">
+      <file name="please_clap.wav" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
@@ -114,6 +117,7 @@
   <react-to indi-id="tcsi.teldata.dome_stat">
     <transition op="eq" value="-1">
       <file name="bad_fox.wav" />
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tcsi.catalog.object">
@@ -210,6 +214,7 @@
       <speak>Exposuring complete</speak>
       <speak>Done visex ing</speak>
       <speak>Sixty megapixels for you</speak>
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tweeterSpeck.modulating.toggle">
