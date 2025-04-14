@@ -666,7 +666,7 @@ void modalPSDs::psdThreadExec()
             return;
         }
 
-        // std::cerr << "waiting to grow\n";
+        std::cerr << "waiting to grow\n";
         while( m_ampCircBuff.size() < m_ampCircBuff.maxEntries() && m_psdRestarting == false && !shutdown() )
         {
             // shrinking sleep
@@ -674,7 +674,7 @@ void modalPSDs::psdThreadExec()
             mx::sys::nanoSleep( stime );
         }
 
-        // std::cerr << "all grown.  starting to calculate\n";
+        std::cerr << "all grown.  starting to calculate\n";
 
         ampCircBuffT::indexT ne0;
         ampCircBuffT::indexT mne0;
