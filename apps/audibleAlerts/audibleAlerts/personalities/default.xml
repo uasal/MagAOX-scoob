@@ -24,6 +24,61 @@
       <voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice>
     </speak>
   </random-utterances>
+  <walk-ups>
+    <walk-up email="jlong@flatironinstitute.org">
+      <file name="seven_nation.wav" />
+    </walk-up>
+    <walk-up email="lclose@as.arizona.edu">
+      <file name="allstar.wav" />
+    </walk-up>
+    <walk-up email="lapearce@umich.edu">
+      <file name="skibidi.wav" />
+    </walk-up>
+    <walk-up email="jrmales@arizona.edu">
+      <file name="aenema.wav" />
+      <file name="blue.wav" />
+    </walk-up>
+    <walk-up email="jliberman@arizona.edu">
+      <file name="lipgloss.wav" />
+    </walk-up>
+    <walk-up email="twitchell@arizona.edu">
+      <file name="katie.wav" />
+    </walk-up>
+    <walk-up email="tonucci@strw.leidenuniv.nl">
+      <file name="elena.wav" />
+    </walk-up>
+    <walk-up email="edenmcewen@arizona.edu">
+      <file name="eden.wav" />
+    </walk-up>
+    <walk-up email="haffert@strw.leidenuniv.nl">
+      <file name="sebastiaan.wav" />
+    </walk-up>
+    <!-- <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
+      <transition value="On">
+        <file name="allstar.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.lapearce-at-umich-dot-edu">
+      <transition value="On">
+        <file name="skibidi.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jrmales-at-arizona-dot-edu">
+      <transition value="On">
+        <file name="aenema.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jlong-at-flatironinstitute-dot-org">
+      <transition value="On">
+        <file name="seven_nation.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jliberman-at-arizona-dot-edu">
+      <transition value="On">
+        <file name="lipgloss.wav" />
+      </transition>
+    </react-to> -->
+  </walk-ups>
   <soundboard>
     <button name="NotJared">
       <file name="not_jared.wav" />
@@ -198,31 +253,7 @@
       <speak>Low fiss off</speak>
     </transition>
   </react-to>
-  <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
-    <transition value="On">
-      <file name="allstar.wav" />
-    </transition>
-  </react-to>
-  <react-to indi-id="observers.observers.lapearce-at-umich-dot-edu">
-    <transition value="On">
-      <file name="skibidi.wav" />
-    </transition>
-  </react-to>
-  <react-to indi-id="observers.observers.jrmales-at-arizona-dot-edu">
-    <transition value="On">
-      <file name="aenema.wav" />
-    </transition>
-  </react-to>
-  <react-to indi-id="observers.observers.jlong-at-flatironinstitute-dot-org">
-    <transition value="On">
-      <file name="seven_nation.wav" />
-    </transition>
-  </react-to>
-  <react-to indi-id="observers.observers.jliberman-at-arizona-dot-edu">
-    <transition value="On">
-      <file name="lipgloss.wav" />
-    </transition>
-  </react-to>
+
   <react-to indi-id="camvisx.current_exposure.remaining_pct">
     <transition value="90" op="gt">
       <speak>
