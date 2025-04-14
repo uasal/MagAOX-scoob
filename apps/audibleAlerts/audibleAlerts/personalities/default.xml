@@ -36,7 +36,6 @@
     </walk-up>
     <walk-up email="jrmales@arizona.edu">
       <file name="aenema.wav" />
-      <file name="blue.wav" />
     </walk-up>
     <walk-up email="jliberman@arizona.edu">
       <file name="lipgloss.wav" />
@@ -293,6 +292,9 @@
       <file name="top_gun_need.wav" />
       <file name="ricky_go_fast.wav" />
       <file name="pull_over.wav" />
+      <speak>the captain has turned on the seatbelt sign. please return to your seats</speak>
+      <speak>better keep an eye on gee pee you temperature</speak>
+      <speak>I'm worried we we're gonna go plaid</speak>
     </transition>
   </react-to>
 

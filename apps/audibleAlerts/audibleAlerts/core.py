@@ -86,24 +86,23 @@ class AudibleAlerts(XDevice):
         existing_property['toggle'] = new_message['toggle']
         self.mute = new_message['toggle'] is constants.SwitchState.ON
         if self.mute:
-            log.debug("Muted")
+            self.log.info("Muted")
         else:
-            log.debug("Unmuted")
+            self.log.info("Unmuted")
         self.update_property(existing_property)
         self.telem("mute_toggle", {"mute": self.mute})
 
     def walkup_handler(self, new_message):
-        self.log.info(f"Walkup handler {new_message=}")
         which_updated = new_message.name
         for element_name in new_message:
             value = new_message[element_name]
             if value == constants.SwitchState.ON:
                 if element_name == self.last_walkup[which_updated]:
-                    self.log.info(f"Already did {self.last_walkup[which_updated]}")
+                    self.log.debug(f"Already did {self.last_walkup[which_updated]}")
                     return
                 if element_name in self.personality.walkups:
                     utterance = choice(self.personality.walkups[element_name])
-                    self.log.info(f"Enqueueing {utterance=}")
+                    self.log.info(f"Queueing walk-up {utterance} for {element_name}")
                     self.last_walkup_ts = time.time()
                     self.last_walkup[which_updated] = element_name
                     self.enqueue_speech_request(utterance)
@@ -114,10 +113,12 @@ class AudibleAlerts(XDevice):
         if element_name not in new_message:
             return
         value = new_message[element_name]
-        self.log.debug(f"Judging reaction for {element_name} change to {repr(value)} using {transition}")
-        self.log.debug(f"before check {self.latch_transitions=}")
+        if new_message.device == 'labrules':
+            self.log.debug(f"Judging reaction for {element_name} change to {repr(value)} using {transition}")
+            self.log.debug(f"before check {self.latch_transitions=}")
         last_value = self.latch_transitions.get(transition)
-        self.log.debug(f"{new_message}\n{transition.compare(value)=}, last value was {last_value}, {value != last_value=} {(not transition.compare(last_value))=}")
+        if new_message.device == 'labrules':
+            self.log.debug(f"{new_message}\n{transition.compare(value)=}, last value was {last_value}, {value != last_value=} {(not transition.compare(last_value))=}")
         if transition.compare(value) and (
             # if there's no operation, we fire on any change,
             # but make sure it's actually a change
@@ -126,8 +127,9 @@ class AudibleAlerts(XDevice):
             (not transition.compare(last_value))
         ):
             self.latch_transitions[transition] = value
-            self.log.debug(f"after update {self.latch_transitions=}")
-            self.log.debug(f"latched {transition=} with {value=}")
+            if new_message.device == 'labrules':
+                self.log.debug(f"after update {self.latch_transitions=}")
+                self.log.debug(f"latched {transition=} with {value=}")
             last_transition_ts = self.per_transition_cooldown_ts.get(transition, 0)
             sec_since_trigger = time.time() - last_transition_ts
             debounce_expired = sec_since_trigger > transition.debounce_sec
@@ -139,12 +141,15 @@ class AudibleAlerts(XDevice):
             else:
                 self.log.debug(f"Would have spoken, but it's only been {sec_since_trigger=}")
         elif transition.compare(last_value) and not transition.compare(value):
-            self.log.debug(f"un-latch {transition}, so next time we change to a value that compares True we trigger again. ({last_value=} {value=})")
-            self.log.debug(f"before {self.latch_transitions=}")
+            if new_message.device == 'labrules':
+                self.log.debug(f"un-latch {transition}, so next time we change to a value that compares True we trigger again. ({last_value=} {value=})")
+                self.log.debug(f"before {self.latch_transitions=}")
             del self.latch_transitions[transition]
-            self.log.debug(f"after {self.latch_transitions=}")
+            if new_message.device == 'labrules':
+                self.log.debug(f"after {self.latch_transitions=}")
         else:
-            self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
+            if new_message.device == 'labrules':
+                self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
 
     def preprocess(self, speech):
         if isinstance(speech, Recording):

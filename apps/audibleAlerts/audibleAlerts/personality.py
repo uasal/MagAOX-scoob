@@ -46,6 +46,8 @@ class Operation(Enum):
 
 @dataclass(eq=True, frozen=True)
 class Transition:
+    # id duplicated here from Reaction because Transition is used as a dict key and we need uniqueness:
+    indi_id : str  
     value : Optional[purepyindi2.AnyIndiValue]
     value_2 : Optional[purepyindi2.AnyIndiValue]
     debounce_sec : float = DEFAULT_DEBOUNCE_SEC
@@ -143,7 +145,7 @@ class Personality:
                     debounce_sec = float(transition.attrib['debounce_sec'])
                 else:
                     debounce_sec = DEFAULT_DEBOUNCE_SEC
-                trans = Transition(op=operation, value=value, value_2=value_2, debounce_sec=debounce_sec)
+                trans = Transition(indi_id=indi_id, op=operation, value=value, value_2=value_2, debounce_sec=debounce_sec)
                 if trans in transitions:
                     raise RuntimeError(f"Multiply defined for {indi_id} {operation=} {value=}")
                 transitions[trans] = []
