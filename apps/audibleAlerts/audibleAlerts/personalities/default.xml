@@ -286,4 +286,14 @@
       <speak>You needed more speckles?</speak>
     </transition>
   </react-to>
+
+  <react-to indi-id="labrules.info.loop-closed-above-2kHz">
+    <transition value="On">
+      <file name="doc_brown_shit.wav" />
+      <file name="top_gun_need.wav" />
+      <file name="ricky_go_fast.wav" />
+      <file name="pull_over.wav" />
+    </transition>
+  </react-to>
+
 </personality>
