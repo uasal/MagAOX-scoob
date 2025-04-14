@@ -522,17 +522,23 @@ class adcCtrl(XDevice):
                 b1[j] , a1[j] = np.polyfit(sweep_angles,diff_pointing_pairs[:,j],deg=1)
 
             response = np.matrix([b1])
-            new_control_mtx = np.linalg.pinv(response)
-
-            self._control_mtx = new_control_mtx.T
-            self.ADC.set_control_mtx(self._control_mtx)
-            self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
-
-            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
-            self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
-            self.update_property(self.properties['ctrl_mtx'])
+            self.log.debug(f'response matrix: {response}')
             
-            self.transition_to_idle()
+            if np.isnan(np.sum(response)):
+                self.log.info(f'calibration failed, response is NaN')
+                self.transition_to_idle()
+            else:
+                new_control_mtx = np.linalg.pinv(response)
+
+                self._control_mtx = new_control_mtx.T
+                self.ADC.set_control_mtx(self._control_mtx)
+                self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
+
+                self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
+                self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
+                self.update_property(self.properties['ctrl_mtx'])
+                
+                self.transition_to_idle()
 
 
 

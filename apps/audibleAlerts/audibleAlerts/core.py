@@ -48,6 +48,10 @@ class AudibleAlerts(XDevice):
     per_transition_cooldown_ts : dict[Transition, float]
     last_utterance_ts : float = 0
     last_utterance_chosen : Optional[str] = None
+    observers_device : str = 'observers'
+    last_walkup : Optional[dict[str,str]] = None
+    last_walkup_ts : float = 0
+    walkup_double_trigger_timeout_sec : float = 30
 
     def enqueue_speech_request(self, sr):
         if any(sr == x for x in self._speech_requests):
@@ -87,6 +91,22 @@ class AudibleAlerts(XDevice):
             log.debug("Unmuted")
         self.update_property(existing_property)
         self.telem("mute_toggle", {"mute": self.mute})
+
+    def walkup_handler(self, new_message):
+        self.log.info(f"Walkup handler {new_message=}")
+        which_updated = new_message.name
+        for element_name in new_message:
+            value = new_message[element_name]
+            if value == constants.SwitchState.ON:
+                if element_name == self.last_walkup[which_updated]:
+                    self.log.info(f"Already did {self.last_walkup[which_updated]}")
+                    return
+                if element_name in self.personality.walkups:
+                    utterance = choice(self.personality.walkups[element_name])
+                    self.log.info(f"Enqueueing {utterance=}")
+                    self.last_walkup_ts = time.time()
+                    self.last_walkup[which_updated] = element_name
+                    self.enqueue_speech_request(utterance)
 
     def reaction_handler(self, new_message, element_name, transition, utterance_choices):
         if not isinstance(new_message, messages.IndiSetMessage):
@@ -218,6 +238,10 @@ class AudibleAlerts(XDevice):
                             self.log.debug(f"Caching synthesis to {result}")
                         else:
                             self.log.debug(f"Cannot pre-cache because there are substitutions to be made")
+        if self.walkup_handler not in self.client.callbacks[self.observers_device]['operators']:
+            self.client.register_callback(self.walkup_handler, self.observers_device, 'operators')
+        if self.walkup_handler not in self.client.callbacks[self.observers_device]['observers']:
+            self.client.register_callback(self.walkup_handler, self.observers_device, 'observers')
         self.active_personality = personality_name
         self.telem("load_personality", {'name': personality_name})
         self.send_all_properties()
@@ -228,6 +252,7 @@ class AudibleAlerts(XDevice):
         self.per_transition_cooldown_ts = {}
         self._cb_handles = set()
         self._speech_requests = []
+        self.last_walkup = {'observers': '', 'operators': ''}
 
         while self.client.status is not constants.ConnectionStatus.CONNECTED:
             self.log.info("Waiting for connection...")

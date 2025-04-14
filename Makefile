@@ -186,7 +186,8 @@ scripts_to_install = \
 	xlog \
 	hoblockleaks \
 	inventory_files \
-	list_xfiles_by_semester
+	list_xfiles_by_semester \
+	loop_instrument_backup_sync
 
 all: indi_all libs_all flatlogs apps_all guis_all utils_all
 
