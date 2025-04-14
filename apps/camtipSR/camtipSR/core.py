@@ -13,7 +13,9 @@ from magaox.constants import StateCodes
 from purepyindi2 import device, properties, constants
 from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
+import os
 import hcipy as hp
+from astropy.io import fits
 from scipy.optimize import minimize
 
 from camtipSR.utils import *
@@ -28,8 +30,7 @@ class CameraConfig:
 
 @xconf.config
 class camtipSRConfig(BaseConfig):
-    """ Active ADC control 
-    """
+    """ Configure  """
     # if want default need to be a cam config obj
     camera : CameraConfig = xconf.field(help="Camera to use")
 
@@ -70,8 +71,7 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv, callback=self.handle_n_avg)
 
-        # init INDI PROPERTY: SR_est
-        # a property that updates every recaculation, can't be set
+        # init INDI PROPERTY: SR_est (fixed)
         nv = properties.NumberVector(name='SR_est')
         nv.add_element(DefNumber(
             name='current', label='SR_est', format='%i',
@@ -80,9 +80,11 @@ class camtipSR(XDevice):
         self.add_property(nv)
 
         # get INDI PROPERTIES
-        #TODO: get modulator status
-        self.client.get_properties_and_wait(['modwfs', 'fxngenmodwfs', 'fxngensync'])
-        self.client['modwfs.modRadius.current']
+
+        #TODO: Get camwfs to not crash - hiding for now
+        # Modulator for determining lab calibration file
+        #self.client.get_properties_and_wait(['modwfs'])
+        #self.modRadius = self.client['modwfs.modRadius.current']
 
         # find the camera
         self.log.info("Found camera: {:s}".format(self.config.camera.shmim))
@@ -132,12 +134,12 @@ class camtipSR(XDevice):
                         self.log.debug('State changed to idle')                    
                     elif key == 'SRLoop':
                         self._state = States.CLOSED_LOOP
-                        self.update_wavelength()
+                        #self.modRadius = self.client['modwfs.modRadius.current'] # TODO: uncomment when modwfs is correct
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to continuous')
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
-                        self.update_wavelength()
+                        #self.modRadius = self.client['modwfs.modRadius.current'] # TODO: uncomment when modwfs is correct
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to oneshot')
 
@@ -166,33 +168,49 @@ class camtipSR(XDevice):
             self.transition_to_idle()
 
         # TODO: check if the frame looks bad...
-        self.log.info(f'image intensity:{np.sum(img):.2f}')
-        self.log.info(f'min intensity: {np.min(img):.2f}')
-        self.log.info(f'max intensity: {np.max(img):.2f}')
 
         # Set the data in the camtipFitter
         self.camFit.set_data(img) # background subtracted here
+        self.log.info(f"Image has been set. ")
 
         # Fit the data
-        self.fit_data()
+        self.camFit.fit_data()
+        self.log.info(f"Image has been fit.")
 
         # Calculate the SR
         self._SR_est = self.camFit.calc_SR()
+        self.log.info(f"SR estimate: {self._SR_est}.")
 
-        # set the SR
+        # Set the SR
         self.properties['SR_est']['current'] = self._SR_est
+        self.update_property(self.properties['SR_est'])
+        self.log.info(f"SR  has been set.")
         
         return
 
+    def save_ex_img(self, img, name='test'):
+        #TODO: need to make this directory if it doesn't already exist?
+        save_dir = '/opt/MagAOX/rawimages/camtipSR/'
+        file_save_path = save_dir + name + ".fits"
 
+        if os.path.isdir(save_dir):
+            # save to fits
+            hdu = fits.PrimaryHDU(data=img)
+            hdul = fits.HDUList([hdu])
+            hdul.writeto(file_save_path, overwrite=True)
+            self.log.info(f"File has been saved to {file_save_path}")
+            
+        return 
+    
     def loop(self):
         if self._state == States.CLOSED_LOOP:
             # grab stack gives average of that stack 
             img = self.camera.grab_stack(self._n_avg) # stack is already averaged
             transpose = img.shaped.T # vs. how it would be in a jupyter notebook
-            #TODO: check to see if this is the expected orientation (matters for BG subtraction)
             
+            ## CALL FIT FUNCTION
             self.fit_one_img(transpose)
+
             # will then continue to loop
 
         elif self._state == States.ONESHOT:
@@ -201,6 +219,9 @@ class camtipSR(XDevice):
 
             ## CALL FIT FUNCTION
             self.fit_one_img(transpose)
+
+            #TODO: check to see if this is the expected orientation (matters for BG subtraction)
+            self.save_ex_img(img)
 
             # will now exit out
             self.transition_to_idle()
