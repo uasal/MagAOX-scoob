@@ -14,6 +14,7 @@ from purepyindi2 import device, properties, constants
 from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
 import os
+import datetime
 import hcipy as hp
 from astropy.io import fits
 from scipy.optimize import minimize
@@ -79,6 +80,14 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv)
 
+        # init INDI PROPERTY: SR_dumb for dummies
+        nv = properties.NumberVector(name='SR_dumb')
+        nv.add_element(DefNumber(
+            name='current', label='SR_dumb', format='%i',
+            min=0, max=1, step=0.01, _value=1
+        ))
+        self.add_property(nv)
+
         # get INDI PROPERTIES
 
         #TODO: Get camwfs to not crash - hiding for now
@@ -99,6 +108,7 @@ class camtipSR(XDevice):
         self._state = States.IDLE
         self._n_avg = 1
         self._SR_est = 0.0 
+        self.data_directory = '/opt/MagAOX/rawimages/camtipSR/'
 
         #SETUP: for the camtip fitter
         self.camFit = camtipFitter()
@@ -155,19 +165,26 @@ class camtipSR(XDevice):
     
     def transition_to_idle(self):
         self._command = 0
+        self.log.info(f"Transitioning IDLE")
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
         self.properties['state']['SRLoop'] = constants.SwitchState.OFF
         self.properties['state']['idle'] = constants.SwitchState.ON
         self.update_property(self.properties['state'])
         self._state = States.IDLE    
 
-    def fit_one_img(self, img):
-        # size check: will only work if image is desired size
+
+    def fit_SR_gauss(self, img):
+        # TODO: check if the frame looks bad...
+
+        if img.shape == (512, 672):
+            self.log.info(f"Image size is {img.shape}, cropping...")
+            cx, cy =  244, 414
+            m = 64
+            img = img[cx-m:cx+m, cy-m:cy+m]
         if img.shape != (128, 128): # TODO: check if this works
             self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
             self.transition_to_idle()
-
-        # TODO: check if the frame looks bad...
+            return
 
         # Set the data in the camtipFitter
         self.camFit.set_data(img) # background subtracted here
@@ -187,44 +204,80 @@ class camtipSR(XDevice):
         self.log.info(f"SR  has been set.")
         
         return
+    
+    def fit_SR_dumb(self, img):
+        # just do a sum or something idk
 
-    def save_ex_img(self, img, name='test'):
+        if img.shape == (512, 672):
+            self.log.info(f"Image size is {img.shape}, cropping...")
+            cx, cy =  244, 414
+            m = 64
+            img = img[cx-m:cx+m, cy-m:cy+m]
+        if img.shape != (128, 128): # TODO: check if this works
+            self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
+            self.transition_to_idle()
+            return
+        
+        # Set the data in the camtipFitter
+        self.camFit.set_data(img) # background subtracted here
+        self.log.info(f"Image has been set. ")
+        
+        # Calculate the SR
+        self._SR_dumb = self.camFit.calc_SR_dumb()
+        self.log.info(f"DUMB SR estimate: {self._SR_dumb}.")
+
+        # Set the SR
+        self.properties['SR_dumb']['current'] = self._SR_dumb
+        self.update_property(self.properties['SR_dumb'])
+        self.log.info(f"SR dumb has been set.")
+
+        return
+        
+    def save_ex_img(self, img, name='testframe'):
         #TODO: need to make this directory if it doesn't already exist?
-        save_dir = '/opt/MagAOX/rawimages/camtipSR/'
-        file_save_path = save_dir + name + ".fits"
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+        self.last_image_filename = f"camtipSR_{name}_{timestamp}.fits"
 
-        if os.path.isdir(save_dir):
-            # save to fits
+        outpath = f"{self.data_directory}/{self.last_image_filename}"
+        self.log.info(f"Saving to {outpath}")
+
+        try:
             hdu = fits.PrimaryHDU(data=img)
             hdul = fits.HDUList([hdu])
-            hdul.writeto(file_save_path, overwrite=True)
-            self.log.info(f"File has been saved to {file_save_path}")
+            hdul.writeto(outpath, overwrite=True)
+            self.log.info(f"File has been saved to {outpath}")
+        except Exception:
+            self.log.exception(f"Unable to save frame!")
             
         return 
     
     def loop(self):
+
         if self._state == States.CLOSED_LOOP:
             # grab stack gives average of that stack 
-            img = self.camera.grab_stack(self._n_avg) # stack is already averaged
-            transpose = img.shaped.T # vs. how it would be in a jupyter notebook
+            img = self.camera.grab_stack(self._n_avg, subtract_dark=False) # stack is already averaged
+            transpose = img.shaped # vs. how it would be in a jupyter notebook
             
             ## CALL FIT FUNCTION
-            self.fit_one_img(transpose)
+            self.fit_SR_gauss(transpose)
+            self.fit_SR_dumb(transpose)
 
             # will then continue to loop
 
         elif self._state == States.ONESHOT:
-            img = self.camera.grab_stack(self._n_avg)
-            transpose = img.shaped.T 
-
+            img = self.camera.grab_stack(self._n_avg, subtract_dark=False)
+            transpose = img.shaped
+            
             ## CALL FIT FUNCTION
-            self.fit_one_img(transpose)
+            self.fit_SR_gauss(transpose)
+            self.fit_SR_dumb(transpose)
 
-            #TODO: check to see if this is the expected orientation (matters for BG subtraction)
-            self.save_ex_img(img)
+            # check to see the image
+            self.save_ex_img(self.camFit.data_bg_sub)
 
             # will now exit out
             self.transition_to_idle()
+            return
 
 
 
