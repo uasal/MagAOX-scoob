@@ -268,7 +268,7 @@ int mcp3008Ctrl::appStartup()
     m_indiP_fps["current"].setValue( m_fps );
     m_indiP_fps["target"].setValue( m_fps );
 
-    if( m_fpsDevice == "" )
+    if( m_fpsDevice != "" )
     {
         REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsDevice, m_fpsProperty );
     }
