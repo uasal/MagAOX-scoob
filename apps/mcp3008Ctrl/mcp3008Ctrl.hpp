@@ -237,6 +237,10 @@ int mcp3008Ctrl::appLogic()
     TELEMETER_APP_LOGIC;
 
     FRAMEGRABBER_UPDATE_INDI;
+
+
+    updatesIfChanged<float>(m_indiP_fps, {"current","target"}, {m_fps, m_fps});
+
     return 0;
 }
 
