@@ -295,7 +295,18 @@
       <file name="pull_over.wav" />
       <speak>the captain has turned on the seatbelt sign. please return to your seats</speak>
       <speak>better keep an eye on gee pee you temperature</speak>
-      <speak>I'm worried we we're gonna go plaid</speak>
+      <speak>I'm worried we're gonna go plaid</speak>
+    </transition>
+  </react-to>
+
+  <react-to indi-id="labrules.info.loop-closed-below-1kHz">
+    <transition value="On">
+      <file name="close_down.wav" />
+      <file name="help_push.wav" />
+      <file name="shit_man.wav" />
+      <speak>we don't even need gee pee yous for this</speak>
+      <speak>someone doesn't have enough photons</speak>
+      <speak>can anyone spare a photon or two?</speak>
     </transition>
   </react-to>
 

@@ -208,6 +208,8 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
 
     pcf::IndiProperty m_indiP_target; ///< The target name, which can be overridden by the user
 
+    pcf::IndiProperty m_indiP_tcsTarget; ///< Set the target to match TCS catObj
+
     pcf::IndiProperty m_indiP_catalog; ///< Catalog text data
     pcf::IndiProperty m_indiP_catdata; ///< Catalog numeric data
     pcf::IndiProperty m_indiP_teldata; ///< Telescope data (for parang)
@@ -232,6 +234,8 @@ class observerCtrl : public MagAOXApp<true>, public dev::telemeter<observerCtrl>
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_resetTarget );
 
     INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_target );
+
+    INDI_NEWCALLBACK_DECL( observerCtrl, m_indiP_tcsTarget );
 
     INDI_SETCALLBACK_DECL( observerCtrl, m_indiP_catalog );
 
@@ -445,7 +449,6 @@ int observerCtrl::appStartup()
     indi::addTextElement( m_indiP_operator, "pronunciation" );
     indi::addTextElement( m_indiP_operator, "institution" );
 
-
     m_indiP_sws = pcf::IndiProperty( pcf::IndiProperty::Switch );
     m_indiP_sws.setDevice( configName() );
     m_indiP_sws.setName( "writers" );
@@ -475,6 +478,8 @@ int observerCtrl::appStartup()
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_resetTarget, "target_reset" );
 
     CREATE_REG_INDI_NEW_TEXT( m_indiP_target, "target", "Target", "Observer" );
+
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_tcsTarget, "target_load_from_tcs" );
 
     REG_INDI_SETPROP( m_indiP_catalog, m_tcsDev, m_catalogProp );
     REG_INDI_SETPROP( m_indiP_catdata, m_tcsDev, m_catdataProp );
@@ -752,9 +757,9 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_operators )( const pcf::IndiPropert
     }
 
     log<logger::ao_operator>( { m_currentOperator.m_fullName,
-                             m_currentOperator.m_pfoa,
-                             m_currentOperator.m_email,
-                             m_currentOperator.m_institution } );
+                                m_currentOperator.m_pfoa,
+                                m_currentOperator.m_email,
+                                m_currentOperator.m_institution } );
 
     return 0;
 }
@@ -942,6 +947,16 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_target )( const pcf::IndiProperty &
 
     if( target != m_target )
     {
+        if( m_observing )
+        {
+            m_tgtStartTime   = m_obsStartTime;
+            m_tgtStartParang = m_obsStartParang;
+        }
+        else
+        {
+            m_newTargetBlock = true;
+        }
+
         m_target    = target;
         m_newTarget = true;
 
@@ -949,6 +964,40 @@ INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_target )( const pcf::IndiProperty &
 
         std::unique_lock<std::mutex> lock( m_indiMutex );
         updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
+    }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( observerCtrl, m_indiP_tcsTarget )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_tcsTarget, ipRecv );
+
+    if( !ipRecv.find( "request" ) )
+    {
+        return 0;
+    }
+
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        if( m_target != m_catObj )
+        {
+            if( m_observing )
+            {
+                m_tgtStartTime   = m_obsStartTime;
+                m_tgtStartParang = m_obsStartParang;
+            }
+            else
+            {
+                m_newTargetBlock = true;
+            }
+
+            m_target    = m_catObj;
+            m_newTarget = true;
+
+            log<text_log>( "Target updated by observer to TCS target: " + m_target, logPrio::LOG_NOTICE );
+            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
+        }
     }
 
     return 0;
@@ -968,14 +1017,14 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catalog )( const pcf::IndiProperty 
     if( object != m_catObj )
     {
         m_catObj    = object;
-        m_target    = object;
-        m_newTarget = true;
+        //m_target    = object;
+        //m_newTarget = true;
 
         // Always log change in name (different from RA and DEC)
-        log<text_log>( "Target updated by TCS to " + m_target, logPrio::LOG_NOTICE );
+        log<text_log>( "TCS target updated to " + m_catObj, logPrio::LOG_NOTICE );
 
-        std::unique_lock<std::mutex> lock( m_indiMutex );
-        updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
+        //std::unique_lock<std::mutex> lock( m_indiMutex );
+        //updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
     }
 
     return 0;
@@ -993,7 +1042,7 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty 
         if( ra != m_catRA )
         {
             m_catRA  = ra;
-            m_target = m_catObj;
+            //m_target = m_catObj;
 
             if( !m_newTarget ) // Only log if not already new
             {
@@ -1001,8 +1050,8 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty 
                 m_newTarget = true;
             }
 
-            std::unique_lock<std::mutex> lock( m_indiMutex );
-            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
+            /*std::unique_lock<std::mutex> lock( m_indiMutex );
+            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );*/
         }
     }
 
@@ -1013,7 +1062,7 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty 
         if( dec != m_catDec )
         {
             m_catDec = dec;
-            m_target = m_catObj;
+            //m_target = m_catObj;
 
             if( !m_newTarget ) // Only log if not already new
             {
@@ -1021,14 +1070,14 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_catdata )( const pcf::IndiProperty 
                 m_newTarget = true;
             }
 
-            std::unique_lock<std::mutex> lock( m_indiMutex );
-            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );
+            /*std::unique_lock<std::mutex> lock( m_indiMutex );
+            updatesIfChanged<std::string>( m_indiP_target, { "current", "target" }, { m_target, m_target } );*/
         }
     }
 
     if( change ) // Only log if not already new
     {
-        log<text_log>( "Target updated by TCS", logPrio::LOG_NOTICE );
+        log<text_log>( "Pointing change.  Probable target change.", logPrio::LOG_NOTICE );
     }
 
     return 0;
@@ -1112,7 +1161,8 @@ inline int observerCtrl::recordObserver( bool force )
     if( last_email != m_currentObserver.m_email || last_obsName != m_obsName || last_observing != m_observing ||
         last_target != m_target || last_operator != m_currentOperator.m_email || force )
     {
-        telem<telem_observer>( { m_currentObserver.m_email, m_obsName, m_observing, m_target, m_currentOperator.m_email } );
+        telem<telem_observer>(
+            { m_currentObserver.m_email, m_obsName, m_observing, m_target, m_currentOperator.m_email } );
 
         last_email     = m_currentObserver.m_email;
         last_obsName   = m_obsName;
