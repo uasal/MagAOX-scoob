@@ -2348,7 +2348,7 @@ int modalGainOpt::processImage( void *curr_src, const wfsavgShmimT &dummy )
     {
         m_counts = ( m_wfsavg * m_wfsmask ).sum();
 
-        std::cerr << "counts: " << m_counts << '\n';
+        //std::cerr << "counts: " << m_counts << '\n';
     }
 
     return 0;
@@ -2885,7 +2885,7 @@ void modalGainOpt::goptThreadExec()
             timePointT t1 = std::chrono::steady_clock::now();
             durationT  dt = t1 - t0;
 
-            std::cerr << "Optimization took " << dt.count() << " seconds\n";
+            //std::cerr << "Optimization took " << dt.count() << " seconds\n";
 
             float totVar = 0;
             for( size_t n = 0; n < m_modeVarSI.size(); ++n )
@@ -2893,7 +2893,7 @@ void modalGainOpt::goptThreadExec()
                 totVar += m_modeVarSI[n];
             }
 
-            std::cerr << "total variance: " << totVar << '\n';
+            //std::cerr << "total variance: " << totVar << '\n';
 
             float *f      = m_optGainStream->array.F;
             float *fSI    = m_optGainSIStream->array.F;

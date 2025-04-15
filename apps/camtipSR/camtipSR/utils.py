@@ -52,7 +52,7 @@ class camtipFitter:
     
     def fit_data(self):
         # partial fit
-        data_fit = fit_img_gauss(self.data, self.lab_rad, self.grid)
+        data_fit = fit_img_gauss(self.data_bg_sub, self.lab_rad, self.grid)
         self.data_fit = data_fit
 
     def calc_SR(self):
@@ -63,7 +63,18 @@ class camtipFitter:
         sky_sigma = self.data_fit[0]
         self.SR = lab_sigma / sky_sigma
 
+        # check quality of this fit, if invalid, not going to list. 
+        # if self.SR > 1 or self.SR < 0:
+            #self.SR = 0
+
         return self.SR
+    
+    def calc_SR_dumb(self, m=64):
+        img = self.data_bg_sub
+        avg_max = np.average([np.max(img[m,:m]), np.max(img[m,m:]), np.max(img[:m,m]), np.max(img[m:,m])])
+        normed_peak = avg_max / np.sum(img)
+        self.SR_dumb = normed_peak
+        return normed_peak
     
 ####### Helper funcitons ########
 
