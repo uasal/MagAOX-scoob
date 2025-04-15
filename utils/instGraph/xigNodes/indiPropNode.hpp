@@ -216,9 +216,9 @@ inline void indiPropNode::firstSetProperty( const pcf::IndiProperty &ipRecv )
             {
                 m_propValSw = pcf::IndiElement::SwitchStateType::On;
             }
-            else if( m_propValStr == "OFF" )
+            else if( ustr == "OFF" )
             {
-                ustr = pcf::IndiElement::SwitchStateType::Off;
+                m_propValSw = pcf::IndiElement::SwitchStateType::Off;
             }
             else
             {
