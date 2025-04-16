@@ -265,14 +265,25 @@ class adcCtrl(XDevice):
         ))
         self.add_property(nv, callback=self.handle_gain)
 
+        nv = properties.NumberVector(name='offset')
+        nv.add_element(DefNumber(
+            name='current', label='offset', format='%.2f',
+            min=-45, max=45, step=0.01, _value=0.0
+        ))
+        nv.add_element(DefNumber(
+            name='target', label='offset', format='%.2f',
+            min=-45, max=45, step=0.01, _value=0.0
+        ))
+        self.add_property(nv, callback=self.handle_offset)
+
         nv = properties.NumberVector(name='ctrl_mtx')
         nv.add_element(DefNumber( #first element
             name='m00', label='m00', format='%.4f',
-            min=-10.00, max=10.00, step=0.0001, _value=0.3
+            min=-10.00, max=10.00, step=0.0001, _value=0.21178766
         ))
         nv.add_element(DefNumber( 
             name='m01', label='m01', format='%.4f',
-            min=-10.00, max=10.00, step=0.0001, _value=0.3 
+            min=-10.00, max=10.00, step=0.0001, _value=0.19275196 
         ))
         self.add_property(nv, callback=self.handle_ctrl_mtx) 
 
@@ -284,6 +295,14 @@ class adcCtrl(XDevice):
         sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_labmode) 
 
+        sv = properties.SwitchVector(
+            name='reset_deltaADCs',
+            rule=constants.SwitchRule.ONE_OF_MANY,
+            perm=constants.PropertyPerm.READ_WRITE,
+        )
+        sv.add_element(DefSwitch(name="request", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_reset) 
+
         self.client.get_properties('adctrack')
         self.client.get_properties('fwsci1')
 
@@ -292,7 +311,7 @@ class adcCtrl(XDevice):
             self.config.camera.shmim,
             pixel_size=6.0/21.0,
             use_hcipy=True,
-            indi_client=self.client,
+            indi_client=self.client
         )
         
         self._state = States.IDLE
@@ -301,10 +320,11 @@ class adcCtrl(XDevice):
         self._n_avg = 1
         self._gain = 0.5
         self._command = 0
-        self._control_mtx = np.array([0.3, 0.3])
+        self._control_mtx = np.array([0.21178766, 0.19275196])
         self._extent = 400
         self.delta_1 = 0
         self.delta_2 = 0
+        self._offset = 0
         self._lab = False
 
         if self.client['adctrack.deltaADC1.current'] != 0:
@@ -334,7 +354,7 @@ class adcCtrl(XDevice):
                     if key == 'idle': 
                         self._state = States.IDLE
                         self.properties['fsm']['state'] = StateCodes.READY.name
-                        self._command = 0
+                        #self._command = 0
                         self.log.debug('State changed to idle')                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
@@ -360,11 +380,20 @@ class adcCtrl(XDevice):
             self.log.debug('changing to lab mode')
             existing_property['toggle'] = constants.SwitchState.ON
             self._lab = True
-
-        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.OFF:
+        else:
             self.log.debug('changing to onsky mode')
             existing_property['toggle'] = constants.SwitchState.OFF
             self._lab = False
+
+        self.update_property(existing_property)
+
+    def handle_reset(self,existing_property, new_message):
+        if 'request' in new_message and new_message['request'] is constants.SwitchState.ON:
+            self.log.debug('resetting deltaADC properties')
+            existing_property['request'] = constants.SwitchState.OFF
+            self.set_command(0,0)
+            self.send_command()
+            self._command = 0
 
         self.update_property(existing_property)
 
@@ -384,14 +413,26 @@ class adcCtrl(XDevice):
             self.log.debug(f'loop gain changed to {self._gain}')
         self.update_property(existing_property)
 
+    def handle_offset(self, existing_property, new_message):
+        if 'target' in new_message and new_message['target'] != existing_property['current']: 
+            existing_property['current'] = new_message['target'] 
+            existing_property['target'] = new_message['target'] 
+            self._offset = float(new_message['target'])
+            self.log.debug(f'offset changed to {self._offset}')
+            self.send_command()
+        self.update_property(existing_property)
+
     def handle_ctrl_mtx(self, existing_property, new_message):
-        if new_message['m00'] != existing_property['m00']:
+        old_matrix = self._control_mtx
+        if 'm00' in new_message and new_message['m00'] != existing_property['m00']:
             existing_property['m00'] = new_message['m00']
             self._control_mtx[0] = float(new_message['m00'])
-        elif new_message['m01'] != existing_property['m01']:
+        
+        if 'm01' in new_message and new_message['m01'] != existing_property['m01']:
             existing_property['m01'] = float(new_message['m01'])
             self._control_mtx[1] = new_message['m01']
-        self.log.debug(f'control matrix changed via INDI to {self._control_mtx}')
+        
+        self.log.debug(f'control matrix changed to {self._control_mtx}')
         self.update_property(existing_property)
         
     def update_wavelength(self):
@@ -407,7 +448,7 @@ class adcCtrl(XDevice):
         self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
 
     def transition_to_idle(self):
-        self._command = 0
+        #self._command = 0
         self.properties['state']['oneshot'] = constants.SwitchState.OFF
         self.properties['state']['adcLoop'] = constants.SwitchState.OFF
         self.properties['state']['calibrate'] = constants.SwitchState.OFF
@@ -418,10 +459,14 @@ class adcCtrl(XDevice):
     def set_command(self, d1, d2):
         self.delta_1 = d1 
         self.delta_2 = d2 
+
+    def add_command(self, d1,d2):
+        self.delta_1 += d1
+        self.delta_2 += d2
     
     def send_command(self):
-        self.client['adctrack.deltaADC1.target'] = self.delta_1 + self.delta_2
-        self.client['adctrack.deltaADC2.target'] = self.delta_1 - self.delta_2
+        self.client['adctrack.deltaADC1.target'] = self.delta_1 + self.delta_2 + self._offset
+        self.client['adctrack.deltaADC2.target'] = self.delta_1 - self.delta_2 + self._offset
         
         do_check = True
         tolerance = 0.05
@@ -430,7 +475,7 @@ class adcCtrl(XDevice):
             current_1 = self.client['adctrack.deltaADC1.current']
             current_2 = self.client['adctrack.deltaADC2.current']
             
-            if abs(current_1 - self.delta_1 - self.delta_2) < tolerance and abs(current_2 - self.delta_1 + self.delta_2) < tolerance:
+            if abs(current_1 - self.delta_1 - self.delta_2 - self._offset) < tolerance and abs(current_2 - self.delta_1 + self.delta_2 - self._offset) < tolerance:
                 do_check = False
                 
             time.sleep(0.05)
@@ -444,7 +489,7 @@ class adcCtrl(XDevice):
             if self._lab == False:
                 img = self.ADC.filter_image(img)
 
-            img = self.ADC.crop_image(img,self._extent)
+            img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
             
             angles = self.ADC.find_speckle_angles2()
@@ -452,10 +497,11 @@ class adcCtrl(XDevice):
             self.log.debug(f'angle offsets: {angles}')
 
             error = self.ADC.calculate_command(pair_angles)
-            self._command = np.squeeze(self._command + self._gain * error)
+            self.log.debug(f'measured error: {error}')
+            #self._command = np.squeeze(self._command + -self._gain * error)
             
-            if np.abs(self._command) < 2: #setting a threshold so the prisms don't do anything crazy     
-                self.set_command(self._command,0) 
+            if np.abs(self._command) < 10: #setting a threshold so the prisms don't do anything crazy     
+                self.add_command(error * self._gain,0)
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
@@ -478,16 +524,19 @@ class adcCtrl(XDevice):
             self.log.debug(f'angle offsets: {angles}')
 
             self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
-
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
             if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.set_command(self._command,0)
+                self.add_command(self._command,0)
                 self.send_command()
                 self.log.debug(f'ADC command sent: {self._command}')
-            else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
+            else: 
+                self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
+            self.log.info('transitioning to idle')
             self.transition_to_idle()
+            self._command = 0
+            self.log.info('successfully transitioned to idle')
 
         elif self._state == States.CALIB:
             sweep_angles = np.linspace(-3,3,26)
@@ -525,7 +574,7 @@ class adcCtrl(XDevice):
             self.log.debug(f'response matrix: {response}')
             
             if np.isnan(np.sum(response)):
-                self.log.info(f'calibration failed, response is NaN')
+                self.log.info(f'calibration failed, measured response is NaN')
                 self.transition_to_idle()
             else:
                 new_control_mtx = np.linalg.pinv(response)
