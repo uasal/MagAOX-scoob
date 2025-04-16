@@ -756,7 +756,9 @@ void modalPSDs::psdThreadExec()
                 {
                     mn += ( m_ampCircBuff.at( mne0, n ) )[m];
                 }
-                mn /= m_ampCircBuff.size();
+                mn /= m_meanSize;
+
+                
 
                 double var = 0;
 
