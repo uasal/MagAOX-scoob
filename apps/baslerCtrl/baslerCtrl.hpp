@@ -103,7 +103,7 @@ class baslerCtrl : public MagAOXApp<>,
         false; ///< app:dev config to tell stdCamera to expose shutter controls
 
     static constexpr bool c_stdCamera_usesStateString =
-        false; ///< app::dev confg to tell stdCamera to expose the state string property
+        true; ///< app::dev confg to tell stdCamera to expose the state string property
 
     static constexpr bool c_frameGrabber_flippable =
         true; ///< app:dev config to tell framegrabber that this camera can be flipped
@@ -242,6 +242,10 @@ class baslerCtrl : public MagAOXApp<>,
      * \returns 0 always
      */
     int setNextROI();
+
+    std::string stateString();
+   
+    bool stateStringValid();
 
     ///@}
 
@@ -1226,6 +1230,25 @@ inline int baslerCtrl::setNextROI()
     updateSwitchIfChanged( m_indiP_roi_default, "request", pcf::IndiElement::Off, INDI_IDLE );
     return 0;
 }
+
+std::string baslerCtrl::stateString()
+{
+    std::string ss;
+
+    ss += std::to_string(m_currentROI.x) + "_" + std::to_string(m_currentROI.y) + "_";
+    ss += std::to_string(m_currentROI.w) + "x" + std::to_string(m_currentROI.h) + "_";
+    ss += std::to_string(m_currentROI.bin_x) + "x" + std::to_string(m_currentROI.bin_y) + "_";
+    ss += std::to_string(m_expTime) + "_";
+    ss += std::to_string(floor(m_ccdTemp + 0.5));
+
+    return ss;
+}
+   
+bool baslerCtrl::stateStringValid()
+{
+    return true;
+}
+
 
 inline int baslerCtrl::checkRecordTimes()
 {
