@@ -143,6 +143,8 @@ class baslerCtrl : public MagAOXApp<>,
     CBaslerUsbInstantCamera *m_camera{ nullptr }; ///< The library camera handle
     CGrabResultPtr           ptrGrabResult;       ///< The result of an attempt to grab an image
 
+    mx::sigproc::circularBufferIndex<float, int32_t> m_tempHist;
+
   public:
     /// Default c'tor
     baslerCtrl();
@@ -335,6 +337,8 @@ inline int baslerCtrl::appStartup()
     {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
+
+    m_tempHist.maxEntries(30);
 
     state( stateCodes::NOTCONNECTED );
 
@@ -930,7 +934,17 @@ inline int baslerCtrl::getTemp()
 
     try
     {
-        m_ccdTemp = (float)m_camera->DeviceTemperature.GetValue();
+        float temp = m_camera->DeviceTemperature.GetValue();
+        m_tempHist.nextEntry(temp);
+
+        temp = 0;
+        int32_t N = m_tempHist.size();
+        for(int32_t n = 0; n < N; ++n)
+        {
+            temp += m_tempHist[n];
+        }
+        temp /= N;
+        m_ccdTemp = temp;
         recordCamera();
     }
     catch( ... )
