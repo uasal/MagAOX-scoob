@@ -246,7 +246,7 @@ class baslerCtrl : public MagAOXApp<>,
     int setNextROI();
 
     std::string stateString();
-   
+
     bool stateStringValid();
 
     ///@}
@@ -338,7 +338,7 @@ inline int baslerCtrl::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
-    m_tempHist.maxEntries(30);
+    m_tempHist.maxEntries( 30 );
 
     state( stateCodes::NOTCONNECTED );
 
@@ -935,11 +935,11 @@ inline int baslerCtrl::getTemp()
     try
     {
         float temp = m_camera->DeviceTemperature.GetValue();
-        m_tempHist.nextEntry(temp);
+        m_tempHist.nextEntry( temp );
 
-        temp = 0;
+        temp      = 0;
         int32_t N = m_tempHist.size();
-        for(int32_t n = 0; n < N; ++n)
+        for( int32_t n = 0; n < N; ++n )
         {
             temp += m_tempHist[n];
         }
@@ -1249,20 +1249,19 @@ std::string baslerCtrl::stateString()
 {
     std::string ss;
 
-    ss += std::to_string(m_currentROI.x) + "_" + std::to_string(m_currentROI.y) + "_";
-    ss += std::to_string(m_currentROI.w) + "x" + std::to_string(m_currentROI.h) + "_";
-    ss += std::to_string(m_currentROI.bin_x) + "x" + std::to_string(m_currentROI.bin_y) + "_";
-    ss += std::to_string(m_expTime) + "_";
-    ss += std::to_string(floor(m_ccdTemp + 0.5));
+    ss += std::to_string( m_currentROI.x ) + "_" + std::to_string( m_currentROI.y ) + "_";
+    ss += std::to_string( m_currentROI.w ) + "x" + std::to_string( m_currentROI.h ) + "_";
+    ss += std::to_string( m_currentROI.bin_x ) + "x" + std::to_string( m_currentROI.bin_y ) + "_";
+    ss += std::to_string( m_expTime ) + "_";
+    ss += std::to_string( floor( m_ccdTemp + 0.5 ) );
 
     return ss;
 }
-   
+
 bool baslerCtrl::stateStringValid()
 {
     return true;
 }
-
 
 inline int baslerCtrl::checkRecordTimes()
 {
