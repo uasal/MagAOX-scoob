@@ -125,11 +125,11 @@ class shmimPlot : public mx::app::application
                 {
                     if( m_rows.size() > 0 )
                     {
-                        tit += " width " + std::to_string( m_rows[n] );
+                        tit += " " + std::to_string( m_rows[n] );
                     }
                     else
                     {
-                        tit += " column " + std::to_string( m_cols[n] );
+                        tit += " " + std::to_string( m_cols[n] );
                     }
                 }
 
@@ -304,7 +304,7 @@ inline void shmimPlot::loadConfig()
     // m_gp.command( "set term qt font \"Arial,14\" title \"" + m_shmimName + "\" noraise" );
     m_gp.command( "set object 1 rectangle from screen 0,0 to screen 1,1 fillcolor rgb \"#23262a\" behind" );
     m_gp.command( "set border lc rgb \"#eff0f1\"" );
-    m_gp.command( "set key font \"Arial,14\" textcolor \"#eff0f1\"" );
+    m_gp.command( "set key font \"Arial,14\" textcolor \"#eff0f1\" noenhanced" );
 }
 
 inline int shmimPlot::execute()
