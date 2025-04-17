@@ -2,6 +2,7 @@ import numpy as np
 import hcipy as hp
 import scipy
 from scipy.optimize import minimize
+from astropy.io import fits
 import time
 
 # TODO: should I throw this in utils?
@@ -37,23 +38,60 @@ class camtipFitter:
 
     def clear(self):
         self.data = None
+ 
+    def setup_lab(self, lab_dir, file):
+        self.lab_dir = lab_dir
+        self.lab_file = file
+        self.set_lab_data(lab_dir, file)
+        self.fit_lab(self.lab_data)
+        self.gen_fit_img()
+        self.set_lab_EE()
+        return 
+    
+    def set_lab_data(self, lab_dir, file):
+        #TODO: logic to choose the lab directory
+        lab_file_path = lab_dir + file
+        lab_avg = fits.open(lab_file_path)[0].data
+        #TODO: logic to choose lab flat
+        self.lab_data = lab_avg
+        return
 
+    def fit_lab(self, lab_data):
+        theta_opt = lab_fit_params(lab_data, self.grid)
+        self.set_lab(theta_opt['x'])
+        return
+     
     def set_lab(self, lab_fit):
         '''Take a lab fit to compare for with SR'''
         self.lab_fit = lab_fit # ideally would have radius
         self.lab_sig = lab_fit[0] 
         self.lab_amp = lab_fit[1]
         self.lab_rad = lab_fit[2]
-
-    # TODO: could I set a lab set of information here?
-    def fitLab(self, lab_file):
-        # TODO: need to decide best way to get lab file in
+        return 
+    
+    def gen_fit_img(self):
+        #create an image of the optimal fit, but centered
+        ft = self.lab_fit
+        opt_fit = [ft[0], ft[1], ft[2], 0, 0]
+        # this optimum lab image can be used 
+        self.lab_fit_img = make_rad_gaus_model(opt_fit, self.grid)
+        return
+    
+    def set_lab_EE(self, w_in=2, w_out=10):
+        x0, y0 = self.lab_fit[3], self.lab_fit[4]
+        data = self.lab_data 
+        self.lab_EE = calc_EE(self, data, 
+                              x0, y0, 
+                              grid=self.grid, 
+                              rad=self.lab_rad, 
+                              w_in=2, w_out=18)
         return
     
     def fit_data(self):
         # partial fit
         data_fit = fit_img_gauss(self.data_bg_sub, self.lab_rad, self.grid)
         self.data_fit = data_fit
+        return
 
     def calc_SR(self):
         """
@@ -65,7 +103,7 @@ class camtipFitter:
 
         # check quality of this fit, if invalid, not going to list. 
         # if self.SR > 1 or self.SR < 0:
-            #self.SR = 0
+            # self.SR = 0
 
         return self.SR
     
@@ -76,7 +114,27 @@ class camtipFitter:
         self.SR_dumb = normed_peak
         return normed_peak
     
+    def calc_SR_EE(self):
+        # use the lab image to determine shift
+
+        # send shift into the calc SR EE image
+
+        # divide by the saved lab EE value
+        
+        return 0.0
+    
 ####### Helper funcitons ########
+
+def calc_EE(self, data, x0, y0, grid, rad, w_in=2, w_out=18):
+        R_mask_lab = make_R_filter(x0, y0, grid, rad, w=w_in)
+        R_mask_norm = make_R_filter(x0, y0, grid, rad, w=w_out)
+        R_EE = np.sum(data*R_mask_lab.shaped) / np.sum(data*R_mask_norm.shaped)
+        return R_EE
+
+def make_R_filter(x0, y0, grid, rad, w=2):
+    R = grid.shifted([-x0, -y0]).as_("polar").r
+    R_mask = hp.Field(np.where((R>rad-w) & (R<rad+w), 1, 0), grid)
+    return R_mask
 
 # specifically for smaller images
 def sub_bg_img(img):
@@ -126,7 +184,6 @@ def lab_fit_params(data, grid):
     # optimizing the fit
     theta_opt = scipy.optimize.minimize(rad_gaus_fn, theta0)
     #creating an image from an optimized fit
-    fit_img = make_rad_gaus_model(theta_opt['x'], grid)
     return theta_opt
 
 # "SKY" fits are partial, radius is known

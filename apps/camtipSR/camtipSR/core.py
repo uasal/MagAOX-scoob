@@ -72,7 +72,7 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv, callback=self.handle_n_avg)
 
-        # init INDI PROPERTY: SR_est (fixed)
+        # init INDI PROPERTY: SR_est gaussian width method
         nv = properties.NumberVector(name='SR_est')
         nv.add_element(DefNumber(
             name='current', label='SR_est', format='%i',
@@ -80,10 +80,10 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv)
 
-        # init INDI PROPERTY: SR_dumb for dummies
-        nv = properties.NumberVector(name='SR_dumb')
+        # init INDI PROPERTY: SR_EE encircled energy method
+        nv = properties.NumberVector(name='SR_EE')
         nv.add_element(DefNumber(
-            name='current', label='SR_dumb', format='%i',
+            name='current', label='SR_EE', format='%i',
             min=0, max=1, step=0.01, _value=1
         ))
         self.add_property(nv)
@@ -93,7 +93,10 @@ class camtipSR(XDevice):
         #TODO: Get camwfs to not crash - hiding for now
         # Modulator for determining lab calibration file
         #self.client.get_properties_and_wait(['modwfs'])
-        #self.modRadius = self.client['modwfs.modRadius.current']
+        self.client.get_properties(['modwfs'])
+        time.sleep(10.0) # this takes a long time to load
+        self.modRadius = self.client['modwfs.modRadius.current']
+        self.log.info(f"Mod radius is {self.modRadius}")
 
         # find the camera
         self.log.info("Found camera: {:s}".format(self.config.camera.shmim))
@@ -108,18 +111,29 @@ class camtipSR(XDevice):
         self._state = States.IDLE
         self._n_avg = 1
         self._SR_est = 0.0 
+        self._SR_EE = 0.0 
         self.data_directory = '/opt/MagAOX/rawimages/camtipSR/'
+        self.lab_directory = '/opt/MagAOX/calib/camtipSR/'
+        self.dark_directory = '/opt/MagAOX/calib/camtip-dark/'
 
-        #SETUP: for the camtip fitter
+        # SETUP: for the camtip fitter
         self.camFit = camtipFitter()
 
-        #SETTING UP LAB
-        # TODO: get some calibration working
-        # self.camFit.fitLab(lab_path)
-        # I'm gonna hardcode this and learn a lesson -> not sure best way to do this
-        # this only works when they're running at mod 3
-        lab_fit = [6.776e+00, 3.333e+01, 2.870e+00, -4.846e-01, 4.571e+00]
-        self.camFit.set_lab(lab_fit) #TODO: get the lab_fit from some kind of conf?
+        # SETTING UP LAB
+        # TODO: pick the correct lab file, rn it's on vibes
+        if self.modRadius == 3:
+            self.labf = 'lab_2000_3ld_ND2.fits'
+        elif self.modRadius == 2:
+            self.labf = 'lab_3000_2ld_ND2.fits'
+        else:
+            self.log.exception("Not a calibrated mod radius, applying a bogus lab file!")
+            self.labf = 'lab_2000_3ld_ND2.fits'
+        self.camFit.setup_lab(self.lab_directory, self.labf)
+        self.log.info(self.camFit.lab_fit)
+        self.log.info(self.camFit.)
+
+        #lab_fit = [6.776e+00, 3.333e+01, 2.870e+00, -4.846e-01, 4.571e+00]
+        #self.camFit.set_lab(lab_fit)
 
         self.properties['fsm']['state'] = StateCodes.READY.name
         self.update_property(self.properties['fsm'])
@@ -172,7 +186,6 @@ class camtipSR(XDevice):
         self.update_property(self.properties['state'])
         self._state = States.IDLE    
 
-
     def fit_SR_gauss(self, img):
         # TODO: check if the frame looks bad...
 
@@ -205,7 +218,7 @@ class camtipSR(XDevice):
         
         return
     
-    def fit_SR_dumb(self, img):
+    def fit_SR_EE(self, img):
         # just do a sum or something idk
 
         if img.shape == (512, 672):
@@ -223,13 +236,13 @@ class camtipSR(XDevice):
         self.log.info(f"Image has been set. ")
         
         # Calculate the SR
-        self._SR_dumb = self.camFit.calc_SR_dumb()
-        self.log.info(f"DUMB SR estimate: {self._SR_dumb}.")
+        self._SR_EE = self.camFit.calc_SR_EE()
+        self.log.info(f"Ring SR estimate: {self._SR_EE}.")
 
         # Set the SR
-        self.properties['SR_dumb']['current'] = self._SR_dumb
-        self.update_property(self.properties['SR_dumb'])
-        self.log.info(f"SR dumb has been set.")
+        self.properties['SR_EE']['current'] = self._SR_EE
+        self.update_property(self.properties['SR_EE'])
+        self.log.info(f"SR EE has been set.")
 
         return
         
@@ -251,30 +264,34 @@ class camtipSR(XDevice):
             
         return 
     
-    def loop(self):
-
-        if self._state == States.CLOSED_LOOP:
-            # grab stack gives average of that stack 
+    def grab_img(self):
+        # start of any loop will look for files
+        try:
+            img = self.camera.grab_stack(self._n_avg, subtract_dark=True) # stack is already averaged
+            self.dark = True
+        except:
+            self.log.info("Error finidng files, likely the dark.")
             img = self.camera.grab_stack(self._n_avg, subtract_dark=False) # stack is already averaged
-            transpose = img.shaped # vs. how it would be in a jupyter notebook
-            
-            ## CALL FIT FUNCTION
-            self.fit_SR_gauss(transpose)
-            self.fit_SR_dumb(transpose)
+            self.dark = False
+        transpose = img.shaped # vs. how it would be in a jupyter notebook
+        return transpose
 
+    def loop(self):
+    
+        if self._state == States.CLOSED_LOOP:
+            img = self.grab_img()
+            ## CALL FIT FUNCTION
+            self.fit_SR_gauss(img)
+            self.fit_SR_EE(img)
             # will then continue to loop
 
         elif self._state == States.ONESHOT:
-            img = self.camera.grab_stack(self._n_avg, subtract_dark=False)
-            transpose = img.shaped
-            
+            img = self.grab_img()
             ## CALL FIT FUNCTION
-            self.fit_SR_gauss(transpose)
-            self.fit_SR_dumb(transpose)
-
+            self.fit_SR_gauss(img)
+            self.fit_SR_EE(img)
             # check to see the image
             self.save_ex_img(self.camFit.data_bg_sub)
-
             # will now exit out
             self.transition_to_idle()
             return
