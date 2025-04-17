@@ -264,6 +264,12 @@ else
             cd $destdir
             # ensure upstream is set somewhere that isn't on the fs to avoid possibly pushing
             # things and not having them go where we expect
+            ### - IFF $DIR not under $HOME/githubalt/MagAOX & branch dev
+            (
+            [[ "$DIR" == "${DIR##$HOME/githubalt/MagAOX}" ]] \
+            && git rev-parse --abbrev-ref --symbolic-full-name HEAD \
+               | grep -q '^dev$' \
+            || exit 0
             stat /opt/MagAOX/source/MagAOX/.git
             git remote remove origin
             git remote add origin https://github.com/magao-x/MagAOX.git
@@ -271,6 +277,7 @@ else
             git branch -u origin/dev dev
             log_success "In the future, you can re-run this script from /opt/MagAOX/source/MagAOX/setup"
             log_info "(In fact, maybe delete $(dirname $DIR)?)"
+            )
         else
             cd /opt/MagAOX/source/MagAOX
             git fetch
