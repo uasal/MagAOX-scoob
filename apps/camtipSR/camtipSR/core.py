@@ -126,11 +126,9 @@ class camtipSR(XDevice):
         elif self.modRadius == 2:
             self.labf = 'lab_3000_2ld_ND2.fits'
         else:
-            self.log.exception("Not a calibrated mod radius, applying a bogus lab file!")
+            self.log.exception(" Not a calibrated mod radius, applying a bogus lab file!")
             self.labf = 'lab_2000_3ld_ND2.fits'
         self.camFit.setup_lab(self.lab_directory, self.labf)
-        self.log.info(self.camFit.lab_fit)
-        self.log.info(self.camFit.)
 
         #lab_fit = [6.776e+00, 3.333e+01, 2.870e+00, -4.846e-01, 4.571e+00]
         #self.camFit.set_lab(lab_fit)
@@ -190,31 +188,31 @@ class camtipSR(XDevice):
         # TODO: check if the frame looks bad...
 
         if img.shape == (512, 672):
-            self.log.info(f"Image size is {img.shape}, cropping...")
+            #self.log.info(f"Image size is {img.shape}, cropping...")
             cx, cy =  244, 414
             m = 64
             img = img[cx-m:cx+m, cy-m:cy+m]
         if img.shape != (128, 128): # TODO: check if this works
-            self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
+            self.log.error(f" Image size is {img.shape}, expected (128, 128), set proper ROI")
             self.transition_to_idle()
             return
 
         # Set the data in the camtipFitter
         self.camFit.set_data(img) # background subtracted here
-        self.log.info(f"Image has been set. ")
+        #self.log.info(f"Image has been set. ")
 
         # Fit the data
         self.camFit.fit_data()
-        self.log.info(f"Image has been fit.")
+        #self.log.info(f"Image has been fit.")
 
         # Calculate the SR
         self._SR_est = self.camFit.calc_SR()
-        self.log.info(f"SR estimate: {self._SR_est}.")
+        #self.log.info(f"SR estimate: {self._SR_est}.")
 
         # Set the SR
         self.properties['SR_est']['current'] = self._SR_est
         self.update_property(self.properties['SR_est'])
-        self.log.info(f"SR  has been set.")
+        #self.log.info(f"SR  has been set.")
         
         return
     
@@ -222,27 +220,27 @@ class camtipSR(XDevice):
         # just do a sum or something idk
 
         if img.shape == (512, 672):
-            self.log.info(f"Image size is {img.shape}, cropping...")
+            #self.log.info(f"Image size is {img.shape}, cropping...")
             cx, cy =  244, 414
             m = 64
             img = img[cx-m:cx+m, cy-m:cy+m]
         if img.shape != (128, 128): # TODO: check if this works
-            self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
+            #self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
             self.transition_to_idle()
             return
         
         # Set the data in the camtipFitter
         self.camFit.set_data(img) # background subtracted here
-        self.log.info(f"Image has been set. ")
+        #self.log.info(f"Image has been set. ")
         
         # Calculate the SR
         self._SR_EE = self.camFit.calc_SR_EE()
-        self.log.info(f"Ring SR estimate: {self._SR_EE}.")
+        #self.log.info(f"Ring SR estimate: {self._SR_EE}.")
 
         # Set the SR
         self.properties['SR_EE']['current'] = self._SR_EE
         self.update_property(self.properties['SR_EE'])
-        self.log.info(f"SR EE has been set.")
+        #self.log.info(f"SR EE has been set.")
 
         return
         
@@ -252,15 +250,15 @@ class camtipSR(XDevice):
         self.last_image_filename = f"camtipSR_{name}_{timestamp}.fits"
 
         outpath = f"{self.data_directory}/{self.last_image_filename}"
-        self.log.info(f"Saving to {outpath}")
+        #self.log.info(f"Saving to {outpath}")
 
         try:
             hdu = fits.PrimaryHDU(data=img)
             hdul = fits.HDUList([hdu])
             hdul.writeto(outpath, overwrite=True)
-            self.log.info(f"File has been saved to {outpath}")
+            self.log.info(f" File has been saved to {outpath}")
         except Exception:
-            self.log.exception(f"Unable to save frame!")
+            self.log.exception(f" Unable to save frame!")
             
         return 
     

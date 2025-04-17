@@ -13,13 +13,15 @@ class camtipFitter:
     wavelength = 800e-9 # m
     conv_rad_to_mas = 206264806 # rad / mas
     """ This class holds the variable necessary to establish a fit to a camtip image """
-    def __init__(self, mod_r=3.0):
+    def __init__(self, w_in=2, w_out=20, mod_r=3.0):
         self.mod_r = mod_r
         self.mod_r_px = self.calc_R_to_px(mod_r)
         self.lab_fit = None  # could use to compare against above value
         self.data = None
         self.data_bg_sub = None
         self.data_fit = None
+        self.w_in = w_in
+        self.w_out = w_out
         # I hardcode size before passing in data
         self.size = 128
         self.grid = hp.make_uniform_grid((self.size, self.size), (self.size,self.size)) # used in fitting
@@ -65,8 +67,8 @@ class camtipFitter:
         '''Take a lab fit to compare for with SR'''
         self.lab_fit = lab_fit # ideally would have radius
         self.lab_sig = lab_fit[0] 
-        self.lab_amp = lab_fit[1]
-        self.lab_rad = lab_fit[2]
+        self.lab_rad = lab_fit[1]
+        self.lab_amp = lab_fit[2]
         return 
     
     def gen_fit_img(self):
@@ -77,14 +79,10 @@ class camtipFitter:
         self.lab_fit_img = make_rad_gaus_model(opt_fit, self.grid)
         return
     
-    def set_lab_EE(self, w_in=2, w_out=10):
+    def set_lab_EE(self):
         x0, y0 = self.lab_fit[3], self.lab_fit[4]
         data = self.lab_data 
-        self.lab_EE = calc_EE(self, data, 
-                              x0, y0, 
-                              grid=self.grid, 
-                              rad=self.lab_rad, 
-                              w_in=2, w_out=18)
+        self.lab_EE = calc_EE(data, x0, y0, self.grid, self.lab_rad, w_in=self.w_in, w_out = self.w_out)
         return
     
     def fit_data(self):
@@ -115,21 +113,31 @@ class camtipFitter:
         return normed_peak
     
     def calc_SR_EE(self):
+        img = self.data_bg_sub
         # use the lab image to determine shift
-
+        y0, x0 = calc_idx_shift(img, self.lab_fit_img, self.size)
         # send shift into the calc SR EE image
-
+        self.sky_EE = calc_EE(img, x0, y0, self.grid, self.lab_rad, w_in=self.w_in, w_out=self.w_out)
         # divide by the saved lab EE value
+        self.SR_EE  = self.sky_EE / self.lab_EE 
         
-        return 0.0
+        return self.SR_EE
     
 ####### Helper funcitons ########
 
-def calc_EE(self, data, x0, y0, grid, rad, w_in=2, w_out=18):
-        R_mask_lab = make_R_filter(x0, y0, grid, rad, w=w_in)
-        R_mask_norm = make_R_filter(x0, y0, grid, rad, w=w_out)
-        R_EE = np.sum(data*R_mask_lab.shaped) / np.sum(data*R_mask_norm.shaped)
-        return R_EE
+def calc_idx_shift(data, kernel, width):
+    data_fft = np.fft.fft2(data)
+    kernel_fft = np.fft.fft2(kernel.shaped)
+    data_corr = np.fft.ifft2(data_fft*np.conj(kernel_fft))
+    idx_shift_raw = np.array(np.unravel_index(np.argmax(data_corr), data_corr.shape))
+    idx_shift = ((idx_shift_raw + width//2) % width) - width//2
+    return idx_shift
+
+def calc_EE(data, x0, y0, grid, rad, w_in=2, w_out=18):
+    R_mask_lab = make_R_filter(x0, y0, grid, rad, w=w_in)
+    R_mask_norm = make_R_filter(x0, y0, grid, rad, w=w_out)
+    R_EE = np.sum(data*R_mask_lab.shaped) / np.sum(data*R_mask_norm.shaped)
+    return R_EE
 
 def make_R_filter(x0, y0, grid, rad, w=2):
     R = grid.shifted([-x0, -y0]).as_("polar").r
