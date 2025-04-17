@@ -976,7 +976,7 @@ INDI_SETCALLBACK_DEFN( modalPSDs, m_indiP_fpsSource )( const pcf::IndiProperty &
 
     realT fps = ipRecv[m_fpsElement].get<realT>();
 
-    if( fabs( fps - m_fps ) > m_fpsTol )
+    if( fabs( fps - m_fps ) > m_fpsTol + .0001)
     {
         m_fps = fps;
         log<text_log>( "set fps to " + std::to_string( m_fps ), logPrio::LOG_NOTICE );
