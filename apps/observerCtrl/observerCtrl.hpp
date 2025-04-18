@@ -620,7 +620,8 @@ void observerCtrl::startObserving()
         m_tgtStartTime      = m_obsStartTime;
         m_tgtStartTimeStamp = m_obsStartTimeStamp;
         m_tgtStartParang    = m_obsStartParang;
-        m_newTargetBlock    = false;
+
+        m_newTargetBlock = false;
     }
 
     m_observing = true;
@@ -1107,11 +1108,11 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_labMode )( const pcf::IndiProperty 
         }
         else
         {
-            m_newTargetBlock = true;
             m_labMode        = false;
         }
     }
 
+    std::cerr << "got labmode: " << m_labMode << '\n';
     return 0;
 }
 
@@ -1123,11 +1124,13 @@ INDI_SETCALLBACK_DEFN( observerCtrl, m_indiP_loop )( const pcf::IndiProperty &ip
     {
         if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
         {
-            if( m_newTarget == true && !m_loop )
+            //Now that we're manually synch-ing the target name, we don't need loop closed logic
+            //i.e. the target block starts when the observation starts after setting the name.
+            /*if( m_newTarget == true && !m_loop )
             {
                 m_newTargetBlock = true;
                 m_newTarget      = false;
-            }
+            }*/
 
             m_loop = true;
         }
