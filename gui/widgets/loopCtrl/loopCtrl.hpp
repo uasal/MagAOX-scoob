@@ -106,8 +106,6 @@ loopCtrl::loopCtrl( std::string & procName,
 
     m_procName = procName + "loop";
 
-
-
     setWindowTitle(QString(m_procName.c_str()));
     ui.label_loop_state->setProperty("isStatus", true);
 
@@ -126,8 +124,10 @@ loopCtrl::loopCtrl( std::string & procName,
     ui.slider_autogain->setup(m_goptName, "update_auto", "toggle", "");
     ui.slider_autogain->setStretch(0,0,10, true, true);
 
-    ui.opticalGain->setup(m_goptName, "opticalGain", statusEntry::FLOAT, "Optical G.", "");
-    ui.gainGain->setup(m_goptName, "gainGain", statusEntry::FLOAT, "Gain Gain", "");
+    ui.slider_trackog->setup(m_goptName, "track_optical_gain", "toggle", "");
+    ui.slider_trackog->setStretch(0,0,10, true, true);
+
+    ui.opticalGain->setup(m_goptName, "opticalGain", statusEntry::FLOAT, "", "");
 
 
     setXwFont(ui.label_LoopName);
@@ -136,6 +136,7 @@ loopCtrl::loopCtrl( std::string & procName,
     setXwFont(ui.button_LoopZero);
 
     setXwFont(ui.label_autogain);
+    setXwFont(ui.label_trackog);
     setXwFont(ui.button_autoGainDump);
 
     setXwFont(ui.button_zeroall);
@@ -171,9 +172,9 @@ void loopCtrl::subscribe()
    m_parent->addSubscriberProperty(this, m_procName, "loop_state");
 
    m_parent->addSubscriber(ui.slider_autogain);
+   m_parent->addSubscriber(ui.slider_trackog);
 
    m_parent->addSubscriber(ui.opticalGain);
-   m_parent->addSubscriber(ui.gainGain);
 
    m_parent->addSubscriberProperty(this, m_gainCtrl, "modes");
 
@@ -197,9 +198,9 @@ void loopCtrl::onConnect()
 
     ui.slider_loop->onConnect();
     ui.slider_autogain->onConnect();
+    ui.slider_trackog->onConnect();
 
     ui.opticalGain->onConnect();
-    ui.gainGain->onConnect();
 
    //xWidget::onConnect();
    ui.gainCtrl->onConnect();
@@ -221,9 +222,9 @@ void loopCtrl::onDisconnect()
 
     ui.slider_loop->onDisconnect();
     ui.slider_autogain->onDisconnect();
+    ui.slider_trackog->onDisconnect();
 
     ui.opticalGain->onDisconnect();
-    ui.gainGain->onDisconnect();
 
    setEnableDisable(false);
 
@@ -368,9 +369,9 @@ void loopCtrl::setEnableDisable( bool tf,
    ui.mcCtrl->setEnabled(tf);
 
    ui.slider_autogain->setEnabled(tf);
+   ui.slider_trackog->setEnabled(tf);
 
    ui.opticalGain->setEnabled(tf);
-   ui.gainGain->setEnabled(tf);
 
 
    std::lock_guard<std::mutex> lock(m_blockMutex);
