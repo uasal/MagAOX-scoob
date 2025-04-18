@@ -31,6 +31,10 @@ namespace MagAOX
 namespace app
 {
 
+#define MGO_BREADCRUMB
+
+// #define MGO_BREADCRUMB  std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
+
 struct psdShmimT
 {
     static std::string configSection()
@@ -302,7 +306,12 @@ class modalGainOpt : public MagAOXApp<true>,
     std::string m_psdDevice{ "hopsds" }; /**< The INDI device name of the PSD calculator.  Defaults to aolN_modevalPSDs
                                    where N is m_loopNum.*/
 
+    std::string m_opticalGainDevice {"strehl"};
+    std::string m_opticalGainProperty {"strehl_optimal"};
+    std::string m_opticalGainElement {"pyramid"};
+
     bool m_autoUpdate{ false }; ///< Flag controlling whether gains are automatically updated
+    bool m_opticalGainUpdate {false}; ///< Flag controlling whether optical gain is automatically updated;
 
     float m_gainGain{ 0.1 }; ///< The gain to use for closed-loop gain updates.  Default is 0.1.
 
@@ -310,8 +319,11 @@ class modalGainOpt : public MagAOXApp<true>,
 
     uint32_t m_defaultNCoeff{ 25 };
 
+    int m_extrapOL {0}; ///< Which extrapolation method to use for the OL PSD.  0 is none.  The only other option is 1.
+
     ///@}
 
+    uint32_t m_nFreq{ 0 };
     uint32_t m_nModes{ 0 };
 
     bool m_updateOnce{ false }; ///< Flag to trigger a single update with gain.
@@ -345,19 +357,28 @@ class modalGainOpt : public MagAOXApp<true>,
     std::vector<std::vector<float>> m_olPSDs;
     std::vector<std::vector<float>> m_nPSDs;
 
+    std::vector<float> m_modeVarCL;
     std::vector<float> m_modeVarOL;
+
+    int m_modesOn;
 
     std::vector<float> m_optGainSI;
     std::vector<float> m_gmaxSI; ///< The previously calculated maximum gains for LP
     std::vector<float> m_modeVarSI;
+    std::vector<int>   m_timesOnSI;
+    int   m_modesOnSI;
 
     std::vector<float> m_optGainLP;
     std::vector<float> m_gmaxLP; ///< The previously calculated maximum gains for LP
     std::vector<float> m_modeVarLP;
+    std::vector<int>   m_timesOnLP;
+    int m_modesOnLP;
 
     bool m_loop{ false };
 
     float m_opticalGain{ 1 };
+
+    float m_opticalGainSource {1};
 
     float m_gain{ 0 };
 
@@ -657,6 +678,14 @@ class modalGainOpt : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_pcMult;
     pcf::IndiProperty m_indiP_pcOn;
 
+    pcf::IndiProperty m_indiP_extrapOL;
+
+    pcf::IndiProperty m_indiP_modesOn;
+
+    pcf::IndiProperty m_indiP_opticalGainSource;
+    pcf::IndiProperty m_indiP_opticalGainUpdate;
+
+
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_autoUpdate );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_updateOnce );
     INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_dump );
@@ -671,6 +700,11 @@ class modalGainOpt : public MagAOXApp<true>,
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcGain );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcMult );
     INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_pcOn );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_extrapOL );
+
+    INDI_SETCALLBACK_DECL( modalGainOpt, m_indiP_opticalGainSource );
+    INDI_NEWCALLBACK_DECL( modalGainOpt, m_indiP_opticalGainUpdate);
+
 
     ///@}
 };
@@ -913,6 +947,17 @@ int modalGainOpt::appStartup()
     REG_INDI_SETPROP( m_indiP_pcMult, m_loopName, "loop_pcmultcoeff" );
     REG_INDI_SETPROP( m_indiP_pcOn, m_loopName, "loop_pcOn" );
 
+    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_extrapOL, "extrapOL" );
+
+    CREATE_REG_INDI_RO_NUMBER(m_indiP_modesOn, "num_modes", "number of modes", "Gain Opt.");
+    indi::addNumberElement(m_indiP_modesOn, "current", 0, 2400, 1, "%d", "Applied Modes");
+    indi::addNumberElement(m_indiP_modesOn, "integrator", 0, 2400, 1, "%d", "SI optimal");
+    indi::addNumberElement(m_indiP_modesOn, "predictor", 0, 2400, 1, "%d", "LP optimal");
+
+    REG_INDI_SETPROP( m_indiP_opticalGainSource, m_opticalGainDevice, m_opticalGainProperty );
+
+    CREATE_REG_INDI_NEW_TOGGLESWITCH(m_indiP_opticalGainUpdate, "track_optical_gain");
+
     if( sem_init( &m_goptSemaphore, 0, 0 ) < 0 )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "Initializing gopt semaphore" } );
@@ -994,9 +1039,30 @@ int modalGainOpt::appLogic()
         updateSwitchIfChanged( m_indiP_dump, "request", pcf::IndiElement::Off, INDI_IDLE );
     }
 
+    if( m_opticalGainUpdate )
+    {
+        updateSwitchIfChanged( m_indiP_opticalGainUpdate, "toggle", pcf::IndiElement::On, INDI_OK );
+    }
+    else
+    {
+        updateSwitchIfChanged( m_indiP_opticalGainUpdate, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+    }
+
     updatesIfChanged<float>( m_indiP_opticalGain, { "current", "target" }, { m_opticalGain, m_opticalGain } );
 
     updatesIfChanged<float>( m_indiP_gainGain, { "current", "target" }, { m_gainGain, m_gainGain } );
+
+    if(m_extrapOL == 0)
+    {
+        updateSwitchIfChanged(m_indiP_extrapOL, "toggle", pcf::IndiElement::Off);
+    }
+    else
+    {
+        updateSwitchIfChanged(m_indiP_extrapOL, "toggle", pcf::IndiElement::On);
+    }
+
+    updatesIfChanged<int>(m_indiP_modesOn, {"current","integrator","predictor"}, {m_modesOn, m_modesOnSI, m_modesOnLP});
+
 
     return 0;
 }
@@ -1081,18 +1147,15 @@ int modalGainOpt::allocatePCShmims()
     if( numpccoeffShmimMonitorT::m_smState != dev::shmimMonitorState::connected ||
         numpccoeffShmimMonitorT::m_width != m_nModes || numpccoeffShmimMonitorT::m_height != 2 )
     {
-        if( numpccoeffShmimMonitorT::create( 2, m_nModes, 1, _DATATYPE_UINT32 ) != 0 )
+        mx::improc::eigenImage<uint32_t> Npc( m_nModes, 2 );
+        Npc.setConstant( m_defaultNCoeff );
+
+        if( numpccoeffShmimMonitorT::create( m_nModes, 2, 1, _DATATYPE_UINT32, Npc.data() ) != 0 )
         {
             return log<software_error, -1>( { __FILE__, __LINE__, "error creating numpccoeffShmim" } );
         }
 
-        mx::improc::eigenMap<uint32_t> Npc( numpccoeffShmimMonitorT::m_imageStream.array.UI32, m_nModes, 2 );
-
-        for( uint32_t n = 0; n < m_nModes; ++n )
-        {
-            Npc( n, 0 ) = m_defaultNCoeff;
-            Npc( n, 1 ) = m_defaultNCoeff;
-        }
+        MGO_BREADCRUMB;
 
         std::cerr << "created numppccoeff shmim\n";
     }
@@ -1153,34 +1216,38 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
     m_updating = true;
 
-    m_clPSDs.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+    m_nFreq  = psdShmimMonitorT::m_width;
+    m_nModes = psdShmimMonitorT::m_height;
 
-    m_nModes = m_clPSDs.cols();
+    m_clPSDs.resize( m_nFreq, m_nModes );
 
-    m_clXferCurrent.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
-    m_clXferSI.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
-    m_clXferLP.resize( psdShmimMonitorT::m_width, psdShmimMonitorT::m_height );
+    m_clXferCurrent.resize( m_nFreq, m_nModes );
+    m_clXferSI.resize( m_nFreq, m_nModes );
+    m_clXferLP.resize( m_nFreq, m_nModes );
 
-    m_olPSDs.resize( psdShmimMonitorT::m_height );
-    m_nPSDs.resize( psdShmimMonitorT::m_height );
+    m_olPSDs.resize( m_nModes );
+    m_nPSDs.resize( m_nModes );
 
     for( size_t n = 0; n < m_olPSDs.size(); ++n )
     {
-        m_olPSDs[n].resize( psdShmimMonitorT::m_width );
-        m_nPSDs[n].resize( psdShmimMonitorT::m_width );
+        m_olPSDs[n].resize( m_nFreq );
+        m_nPSDs[n].resize( m_nFreq );
     }
 
-    m_modeVarOL.resize( psdShmimMonitorT::m_height );
+    m_modeVarOL.resize( m_nModes );
 
-    m_optGainSI.resize( psdShmimMonitorT::m_height );
-    m_gmaxSI.resize( psdShmimMonitorT::m_height );
-    m_modeVarSI.resize( psdShmimMonitorT::m_height );
+    m_optGainSI.resize( m_nModes );
+    m_gmaxSI.resize( m_nModes );
+    m_modeVarSI.resize( m_nModes );
+    m_timesOnSI.resize( m_nModes, 5 );
+    
 
-    m_optGainLP.resize( psdShmimMonitorT::m_height );
-    m_modeVarLP.resize( psdShmimMonitorT::m_height );
-
-    if( m_olPSDStream != nullptr && ( m_olPSDStream->md->size[0] != psdShmimMonitorT::m_width ||
-                                      m_olPSDStream->md->size[1] != psdShmimMonitorT::m_height ) )
+    m_optGainLP.resize( m_nModes );
+    m_modeVarLP.resize( m_nModes );
+    m_timesOnLP.resize( m_nModes, 5 );
+    
+    if( m_olPSDStream != nullptr &&
+        ( m_olPSDStream->md->size[0] != m_nFreq || m_olPSDStream->md->size[1] != m_nModes ) )
     {
         ImageStreamIO_destroyIm( m_olPSDStream );
         free( m_olPSDStream );
@@ -1208,8 +1275,8 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
         m_olPSDStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
         uint32_t imsize[3];
 
-        imsize[0] = psdShmimMonitorT::m_width;
-        imsize[1] = psdShmimMonitorT::m_height;
+        imsize[0] = m_nFreq;
+        imsize[1] = m_nModes;
         imsize[2] = 1;
         ImageStreamIO_createIm_gpu( m_olPSDStream,
                                     m_olPSDShmimName.c_str(),
@@ -1228,9 +1295,6 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_noisePSDStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
-        // imsize[0] = 1;
-        // imsize[1] = psdShmimMonitorT::m_height;
-        // imsize[2] = 1;
         ImageStreamIO_createIm_gpu( m_noisePSDStream,
                                     m_noisePSDShmimName.c_str(),
                                     3,
@@ -1248,9 +1312,6 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_clXferCurrentStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
-        imsize[0] = psdShmimMonitorT::m_width;
-        imsize[1] = psdShmimMonitorT::m_height;
-        imsize[2] = 1;
         ImageStreamIO_createIm_gpu( m_clXferCurrentStream,
                                     m_clXferCurrentShmimName.c_str(),
                                     3,
@@ -1330,7 +1391,7 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
         m_optGainStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
         uint32_t imsize[3];
 
-        imsize[0] = psdShmimMonitorT::m_height;
+        imsize[0] = m_nModes;
         imsize[1] = 1;
         imsize[2] = 1;
         ImageStreamIO_createIm_gpu( m_optGainStream,
@@ -1611,6 +1672,22 @@ int modalGainOpt::processImage( void *curr_src, const gainFactShmimT &dummy )
             m_sinceChange = -1;
         }
 
+        if(!m_pcOn)
+        {
+            int modesOn = 0;
+
+            for(size_t n = 0; n < m_gainFacts.size(); ++n)
+            {
+                if(m_gainFacts[n] > 0)
+                {
+                    ++modesOn;
+                }
+            }
+
+            m_modesOn = modesOn;
+        }
+            
+
         m_updating = false;
         std::cerr << "got gains: " << m_gainFacts.size() << "\n";
 
@@ -1681,7 +1758,7 @@ int modalGainOpt::processImage( void *curr_src, const multFactShmimT &dummy )
         m_updating    = false;
         m_goptUpdated = true;
 
-        std::cerr << "got mcs: " << m_multFacts.size() << "\n";
+        std::cerr << "got mcs: " << m_multFacts.size() << " " << w << "\n";
         lock.unlock();
     }
 
@@ -1743,6 +1820,21 @@ int modalGainOpt::processImage( void *curr_src, const pcGainFactShmimT &dummy )
         if( m_loop )
         {
             m_sinceChange = -1;
+        }
+
+        if(m_pcOn)
+        {
+            int modesOn = 0;
+
+            for(size_t n = 0; n < m_pcGainFacts.size(); ++n)
+            {
+                if(m_gainFacts[n] > 0)
+                {
+                    ++modesOn;
+                }
+            }
+
+            m_modesOn = modesOn;
         }
 
         m_updating = false;
@@ -1831,6 +1923,7 @@ int modalGainOpt::allocate( const numpccoeffShmimT &dummy )
         return log<software_error, -1>( { __FILE__, __LINE__, "got numpccoeff's with height not 2" } );
     }
 
+    std::cerr << "numpccoeffShmimMonitorT::allocate\n";
     return 0;
 }
 
@@ -2461,7 +2554,7 @@ int modalGainOpt::checkSizes()
     }
     logged[L++] = false;
 
-    if( m_clPSDs.cols() != m_noiseParams.cols() || m_noiseParams.rows() != 3 )
+    /*if( m_clPSDs.cols() != m_noiseParams.cols() || m_noiseParams.rows() != 3 )
     {
         if( !logged[L] )
         {
@@ -2470,7 +2563,7 @@ int modalGainOpt::checkSizes()
         logged[L] = true;
         return -1;
     }
-    logged[L++] = false;
+    logged[L++] = false;*/
 
     if( m_fps <= 0 )
     {
@@ -2657,6 +2750,8 @@ void modalGainOpt::goptThreadExec()
                 continue; // we just wait
             }
 
+            // m_doPCCalcs = false;
+
             if( m_goptUpdated || m_pcgoptUpdated || m_freqUpdated || m_goptCurrent.size() != m_gainFacts.size() )
             {
                 if( m_goptCurrent.size() != m_gainFacts.size() )
@@ -2721,15 +2816,21 @@ void modalGainOpt::goptThreadExec()
                 m_pcgoptUpdated = false;
                 m_freqUpdated   = false;
 
-                std::cerr << "done\n";
+                std::cerr << "done.\n";
             }
 
+            MGO_BREADCRUMB;
             if( m_updating )
             {
                 continue;
             }
 
             timePointT t0 = std::chrono::steady_clock::now();
+
+            MGO_BREADCRUMB;
+
+            int off = 0;
+            int offLP = 0;
 
 #pragma omp parallel for num_threads( 15 )
             for( size_t n = 0; n < m_goptCurrent.size(); ++n )
@@ -2741,6 +2842,8 @@ void modalGainOpt::goptThreadExec()
 
                 if( !m_pcOn )
                 {
+                    MGO_BREADCRUMB;
+
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_clXferCurrent( f, n ) =
@@ -2756,10 +2859,12 @@ void modalGainOpt::goptThreadExec()
                     }
                 }
 
+                MGO_BREADCRUMB;
                 // Calculate the OL PSD with the current gopt (PC or SI)
                 float og2 = m_opticalGain * m_opticalGain;
                 if( !m_loop )
                 {
+                    MGO_BREADCRUMB;
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_olPSDs[n][f] = m_clPSDs( f, n ) / og2;
@@ -2767,33 +2872,22 @@ void modalGainOpt::goptThreadExec()
                 }
                 else
                 {
+                    MGO_BREADCRUMB;
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_olPSDs[n][f] = ( m_clPSDs( f, n ) / og2 ) / m_clXferCurrent( f, n );
                     }
                 }
 
+                MGO_BREADCRUMB;
+
                 m_olPSDs[n][0] = m_olPSDs[n][1];
 
-                // Calculate the Noise PSD
-                /*float npsd = 1; // noisePSD(n);
-                int   nnp  = 0;
-                for( size_t f = 0.5 * m_goptCurrent[n].f_size(); f < m_goptCurrent[n].f_size(); ++f )
-                {
-                    npsd += log10( m_olPSDs[n][f]);//( f, n ) );
-                    ++nnp;
+                bool  flagOff = false;
+                float extrap  = 0;
 
-                    //if( m_olPSDs[n][f] < npsd )
-                    //{
-                    //    npsd = m_olPSDs[n][f];
-                    //}
-                }
-
-                npsd /= nnp;
-                npsd = pow( 10, npsd );*/
-
-                //Calculate the noise as the 25th percentile
-                //this is to avoid spikes that make the noise too high
+                // Calculate the noise as the 25th percentile in log10
+                // this is to avoid spikes that make the noise too high
                 size_t f0 = 0.5 * m_goptCurrent[n].f_size();
                 size_t f1 = m_goptCurrent[n].f_size();
 
@@ -2802,33 +2896,73 @@ void modalGainOpt::goptThreadExec()
                 {
                     npsd[f - f0] = log10( m_olPSDs[n][f] );
                 }
-                auto nth = npsd.begin() + 0.25 * ( f1 - f0 );
+                float pct = 0.25;
+
+                MGO_BREADCRUMB;
+                if( n < 2 )
+                {
+                    pct = 0.05;
+                }
+
+                auto nth = npsd.begin() + pct * ( f1 - f0 );
                 std::nth_element( npsd.begin(), nth, npsd.end() );
 
+                MGO_BREADCRUMB;
+
+                float noise = pow( 10, *nth );
                 for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                 {
-                    m_nPSDs[n][f]  = pow( 10, *nth );
-                    m_olPSDs[n][f] = m_olPSDs[n][f] - m_nPSDs[n][f];
+                    m_nPSDs[n][f] = noise;
                 }
 
-                bool flagOff = false;
-
-                float extrap = 0;
-                int   nexp   = 0;
-                for( size_t f = 5; f < 20; ++f )
+                if( m_extrapOL )
                 {
-                    if( m_olPSDs[n][f] <= 0.1*m_nPSDs[n][f])
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_olPSDs[n][f] = m_olPSDs[n][f] - m_nPSDs[n][f];
+                    }
+
+                    MGO_BREADCRUMB;
+
+                    // Calculate an average extrapolation point referenced to 1 Hz
+
+                    extrap   = 0;
+                    int nexp = 0;
+                    int noff = 0;
+                    for( size_t f = 1; f < 0.05 * m_freq.size(); ++f )
+                    {
+                        // This is a threshold for "too noisy"
+                        ///\todo make configurable
+                        if( m_olPSDs[n][f] <= 0.1 * m_nPSDs[n][f] )
+                        {
+                            ++noff;
+                            continue;
+                        }
+                        extrap += log10( m_olPSDs[n][f] * pow( m_freq[f] / m_freq[1], 8. / 3. ) );
+                        ++nexp;
+                    }
+
+                    extrap = pow( 10, extrap / nexp );
+
+                    MGO_BREADCRUMB;
+                    if( noff > 0.5 * ( 0.05 * m_freq.size() - 1 ) && n > 1 )
                     {
                         flagOff = true;
-                        break;
                     }
-                    extrap += log10( m_olPSDs[n][f] * pow( m_freq[f] / m_freq[1], 8. / 3. ) );
-                    ++nexp;
                 }
 
+                // flagOff = false;
+
+                MGO_BREADCRUMB;
                 
                 if( flagOff )
                 {
+                    MGO_BREADCRUMB;
+                    #pragma omp critical
+                    {
+                        ++off;
+                    }
+
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_olPSDs[n][f] = m_nPSDs[n][f];
@@ -2843,59 +2977,72 @@ void modalGainOpt::goptThreadExec()
                     {
                         m_clXferSI( f, n ) = 1;
                     }
+
+                    m_timesOnSI[n] = 0;
                 }
                 else
                 {
-                    extrap = pow( 10, extrap / nexp );
+                    MGO_BREADCRUMB;
 
-                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    if( m_extrapOL )
                     {
-                        if( m_olPSDs[n][f] < 0 )
+                        std::vector<float> tosmooth( m_nFreq );
+
+                        for( size_t f = 0; f < m_nFreq; ++f )
                         {
-                            m_olPSDs[n][f] = extrap * pow( m_freq[1] / m_freq[f], 8. / 3. );
+                            if( m_olPSDs[n][f] < 0 )
+                            {
+                                tosmooth[f] = extrap * pow( m_freq[1] / m_freq[f], 8. / 3. );
+                            }
+                            else
+                            {
+                                tosmooth[f] = m_olPSDs[n][f];
+                            }
+                        }
+
+                        std::vector<float> l10( m_nFreq ), smol( m_nFreq );
+                        std::vector<int>   smw( m_nFreq );
+                        smw[0] = 2;
+                        smw[1] = 2;
+                        l10[0] = log10( tosmooth[0] );
+                        l10[1] = log10( tosmooth[1] );
+
+                        for( size_t f = 2; f < smw.size(); ++f )
+                        {
+                            smw[f] = 2 + static_cast<float>( f ) / 10;
+                            l10[f] = log10( tosmooth[f] );
+                        }
+
+                        mx::math::vectorSmoothMean( smol, l10, smw );
+
+                        for( size_t f = 0; f < m_nFreq; ++f )
+                        {
+                            smol[f] = pow( 10, smol[f] );
+                        }
+
+                        for( size_t f = 0; f < m_nFreq; ++f )
+                        {
+                            if( m_olPSDs[n][f] < m_nPSDs[n][f] )
+                            {
+                                m_olPSDs[n][f] = smol[f];
+                            }
                         }
                     }
 
-                    std::vector<float> l10(m_olPSDs[n].size()), smol(m_olPSDs[n].size());
-                    std::vector<int> smw(m_olPSDs[n].size());
-                    smw[0] = 2;
-                    smw[1] = 2;
-                    l10[0] = log10(m_olPSDs[n][0]);
-                    l10[1] = log10(m_olPSDs[n][1]);
-
-                    for(size_t f = 2; f< smw.size(); ++f)
-                    {
-                        smw[f] = 2 + static_cast<float>(f)/100;
-                        l10[f] = log10(m_olPSDs[n][f]);
-                    }
-
-                    mx::math::vectorSmoothMean(smol, l10, smw);
-
-                    for(size_t f = 0; f< smw.size(); ++f)
-                    {
-                        smol[f] = pow(10, smol[f]);
-                    }
-
-                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
-                    {
-                        if( m_olPSDs[n][f] < m_nPSDs[n][f] )
-                        {
-                            m_olPSDs[n][f] = smol[f];
-                        }
-                    }
-
-                    
-
-
-
-
+                    MGO_BREADCRUMB;
                     m_modeVarOL[n] = mx::sigproc::psdVar( m_freq, m_olPSDs[n] );
 
                     m_optGainSI[n] =
                         m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], m_gmaxSI[n], false );
 
-                    if( fabs( ( m_modeVarOL[n] - m_modeVarSI[n] ) / m_modeVarOL[n] ) < 0.001 )
+                    if( ( m_modeVarSI[n] - m_modeVarOL[n] ) / m_modeVarOL[n] > -0.001 )
                     {
+                        #pragma omp critical
+                    {
+                        ++off;
+                    }
+
+                        MGO_BREADCRUMB;
                         m_optGainSI[n] = 0;
                         m_modeVarSI[n] = m_modeVarOL[n];
 
@@ -2903,38 +3050,76 @@ void modalGainOpt::goptThreadExec()
                         {
                             m_clXferSI( f, n ) = 1;
                         }
+
+                        m_timesOnSI[n] = 0;
+                    }
+                    else if( m_timesOnSI[n] < 5 )
+                    {
+                        #pragma omp critical
+                    {
+                        ++off;
+                    }
+
+                        MGO_BREADCRUMB;
+                        // Would be on, but we debounce
+                        m_optGainSI[n] = 0;
+                        m_modeVarSI[n] = m_modeVarOL[n];
+
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferSI( f, n ) = 1;
+                        }
+
+                        ++m_timesOnSI[n];
                     }
                     else
                     {
+                        MGO_BREADCRUMB;
                         for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                         {
                             m_clXferSI( f, n ) = m_goptSI[n].clETF2( f, m_optGainSI[n] );
                         }
+
+                        ++m_timesOnSI[n];
                     }
                 }
 
-                if( m_doPCCalcs && !flagOff)
+                if( m_doPCCalcs && !flagOff )
                 {
+                    MGO_BREADCRUMB;
                     if( m_regScale[n] == -999 || m_regCounter[n] >= m_nRegCycles )
                     {
+                        MGO_BREADCRUMB;
                         float min_sc;
                         float gmax_lp = 0;
 
-                        m_linPred[n].regularizeCoefficients( gmax_lp,
-                                                             m_optGainLP[n],
-                                                             m_modeVarLP[n],
-                                                             min_sc,
-                                                             m_goptLP[n],
-                                                             m_olPSDs[n],
-                                                             m_nPSDs[n],
-                                                             m_Na[n] );
+                        if( m_linPred[n].regularizeCoefficients( gmax_lp,
+                                                                 m_optGainLP[n],
+                                                                 m_modeVarLP[n],
+                                                                 min_sc,
+                                                                 m_goptLP[n],
+                                                                 m_olPSDs[n],
+                                                                 m_nPSDs[n],
+                                                                 m_Na[n] ) < 0 )
+                        {
+                            MGO_BREADCRUMB;
+
+                            m_optGainLP[n] = 0;
+                            m_modeVarLP[n] = m_modeVarOL[n];
+
+                            ///\todo what to do about coeffs?
+                        }
+
+                        MGO_BREADCRUMB;
 
                         if( m_regScale[n] == -999 )
                         {
+                            MGO_BREADCRUMB;
                             m_regCounter[n] = n % m_nRegCycles;
                         }
                         else
                         {
+                            MGO_BREADCRUMB;
                             m_regCounter[n] = 0;
                         }
 
@@ -2943,24 +3128,31 @@ void modalGainOpt::goptThreadExec()
                     }
                     else
                     {
-                        // use new pre-regularized version
+                        MGO_BREADCRUMB;
+                        // use pre-regularized version
                         float psdReg = m_olPSDs[n][0];
                         if( m_linPred[n].calcCoefficients(
                                 m_olPSDs[n], m_nPSDs[n], psdReg * pow( 10, -m_regScale[n] / 10 ), m_Na[n] ) < 0 )
                         {
-                            log<software_error>( { __FILE__, __LINE__, "error calculating coefficients" } );
+                            m_optGainLP[n] = 0;
+                            m_modeVarLP[n] = m_modeVarOL[n];
+
+                            ///\todo what to do about coeffs?
                         }
+                        else
+                        {
+                            m_goptLP[n].a( m_linPred[n].m_lp.m_c );
+                            m_goptLP[n].b( m_linPred[n].m_lp.m_c );
 
-                        m_goptLP[n].a( m_linPred[n].m_lp.m_c );
-                        m_goptLP[n].b( m_linPred[n].m_lp.m_c );
-
-                        m_optGainLP[n] =
-                            m_goptLP[n].optGainOpenLoop( m_modeVarLP[n], m_olPSDs[n], m_nPSDs[n], m_gmaxLP[n], false );
-
+                            m_optGainLP[n] = m_goptLP[n].optGainOpenLoop(
+                                m_modeVarLP[n], m_olPSDs[n], m_nPSDs[n], m_gmaxLP[n], false );
+                        }
                         ++m_regCounter[n];
                     }
 
-                    if( fabs( ( m_modeVarOL[n] - m_modeVarLP[n] ) / m_modeVarOL[n] ) < 0.001 )
+                    MGO_BREADCRUMB;
+
+                    /*if( ( m_modeVarLP[n] - m_modeVarOL[n] ) / m_modeVarOL[n] > -0.001 )
                     {
                         m_optGainLP[n] = 0;
                         m_modeVarLP[n] = m_modeVarOL[n];
@@ -2969,17 +3161,67 @@ void modalGainOpt::goptThreadExec()
                         {
                             m_clXferLP( f, n ) = 1;
                         }
+
+                        m_timesOnLP[n] = 0;
+                    }
+                    else*/
+                    if( ( m_modeVarLP[n] - m_modeVarSI[n] ) / m_modeVarSI[n] > -0.001 )
+                    {
+                        #pragma omp critical
+                    {
+                        ++offLP;
+                    }
+
+
+                        MGO_BREADCRUMB;
+                        m_optGainLP[n] = m_optGainSI[n];
+                        m_modeVarLP[n] = m_modeVarSI[n];
+
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferLP( f, n ) = m_clXferSI( f, n );
+                        }
+
+                        m_timesOnLP[n] = 0;
+                    }
+                    else if( m_timesOnLP[n] < 5 )
+                    {
+                        #pragma omp critical
+                    {
+                        ++offLP;
+                    }
+
+
+                        MGO_BREADCRUMB;
+                        m_optGainLP[n] = m_optGainSI[n];
+                        m_modeVarLP[n] = m_modeVarSI[n];
+
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferLP( f, n ) = m_clXferSI( f, n );
+                        }
+
+                        ++m_timesOnLP[n];
                     }
                     else
                     {
+                        MGO_BREADCRUMB;
                         for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                         {
                             m_clXferLP( f, n ) = m_goptLP[n].clETF2( f, m_optGainLP[n] );
                         }
+
+                        ++m_timesOnLP[n];
                     }
                 }
                 else
                 {
+                    #pragma omp critical
+                    {
+                        ++offLP;
+                    }
+
+                    MGO_BREADCRUMB;
                     m_optGainLP[n] = 0;
 
                     ++m_regCounter[n];
@@ -2988,9 +3230,21 @@ void modalGainOpt::goptThreadExec()
                     {
                         m_clXferLP( f, n ) = 1;
                     }
+
+                    m_timesOnLP[n] = 0;
                 }
+
+                MGO_BREADCRUMB;
             }
 
+            MGO_BREADCRUMB;
+
+            m_modesOnSI = m_nModes - off;
+            m_modesOnLP = m_nModes - offLP;
+
+            
+
+            
             if( m_updating )
             {
                 continue; // don't break b/c of omp
@@ -3001,11 +3255,11 @@ void modalGainOpt::goptThreadExec()
 
             std::cerr << "Optimization took " << dt.count() << " seconds\n";
 
-            float totVar = 0;
+            /*float totVar = 0;
             for( size_t n = 0; n < m_modeVarSI.size(); ++n )
             {
                 totVar += m_modeVarSI[n];
-            }
+            }*/
 
             // std::cerr << "total variance: " << totVar << '\n';
 
@@ -3026,11 +3280,18 @@ void modalGainOpt::goptThreadExec()
 
             for( size_t n = 0; n < m_optGainSI.size(); ++n )
             {
-                f[n]      = ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain;
-                fSI[n]    = f[n];
-                fmaxSI[n] = ( m_gainCalFacts[n] * m_gmaxSI[n] / m_gainCals[n] ) / m_opticalGain;
-                fLP[n]    = ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain;
-                fmaxLP[n] = ( m_gainCalFacts[n] * m_gmaxLP[n] / m_gainCals[n] ) / m_opticalGain;
+                // if( m_timesOnSI[n] > 5 )
+                {
+                    f[n]      = ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain;
+                    fSI[n]    = f[n];
+                    fmaxSI[n] = ( m_gainCalFacts[n] * m_gmaxSI[n] / m_gainCals[n] ) / m_opticalGain;
+                }
+
+                // if( m_timesOnLP[n] > 5 )
+                {
+                    fLP[n]    = ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain;
+                    fmaxLP[n] = ( m_gainCalFacts[n] * m_gmaxLP[n] / m_gainCals[n] ) / m_opticalGain;
+                }
 
                 mvs( 0, n ) = m_modeVarOL[n];
                 mvs( 1, n ) = m_modeVarSI[n];
@@ -3051,18 +3312,24 @@ void modalGainOpt::goptThreadExec()
                 gainFactShmimMonitorT::m_imageStream.md->write = 1;
                 if( m_dump )
                 {
-                    for( size_t n = 0; n < m_optGainSI.size(); ++n )
+                    for( size_t n = 0; n < m_nModes; ++n )
                     {
-                        f[n] = ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain;
+                        // if( m_timesOnSI[n] > 5 )
+                        {
+                            f[n] = ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain;
+                        }
                     }
                 }
                 else
                 {
-                    for( size_t n = 0; n < m_optGainSI.size(); ++n )
+                    for( size_t n = 0; n < m_nModes; ++n )
                     {
-                        f[n] = f[n] +
-                               m_gainGain *
-                                   ( ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain - f[n] );
+                        // if( m_timesOnSI[n] > 5 )
+                        {
+                            f[n] = f[n] + m_gainGain *
+                                              ( ( m_gainCalFacts[n] * m_optGainSI[n] / m_gainCals[n] ) / m_opticalGain -
+                                                f[n] );
+                        }
                     }
                 }
 
@@ -3082,27 +3349,30 @@ void modalGainOpt::goptThreadExec()
                     {
                         for( size_t n = 0; n < m_optGainLP.size(); ++n )
                         {
-                            fpc[n] = ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain;
+                            // if( m_timesOnLP[n] > 5 )
+                            {
+                                fpc[n] = ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain;
 
-                            // To be safe we treat this as if Na and Nb can be different, but they can't be.
-                            fa[n] = m_Na[n];
-                            fb[n] = m_Nb[n];
-                            for( uint32_t k = 0; k < m_Na[n]; ++k )
-                            {
-                                fa[1 + k] = m_goptLP[n].a()[k];
-                            }
-                            for( uint32_t k = m_Na[n]; k < acoeffShmimMonitorT::m_width - 1; ++k )
-                            {
-                                fa[1 + k] = 0;
-                            }
+                                // To be safe we treat this as if Na and Nb can be different, but they can't be.
+                                fa[n] = m_Na[n];
+                                fb[n] = m_Nb[n];
+                                for( uint32_t k = 0; k < m_Na[n]; ++k )
+                                {
+                                    fa[1 + k] = m_goptLP[n].a()[k];
+                                }
+                                for( uint32_t k = m_Na[n]; k < acoeffShmimMonitorT::m_width - 1; ++k )
+                                {
+                                    fa[1 + k] = 0;
+                                }
 
-                            for( uint32_t k = 0; k < m_Nb[n]; ++k )
-                            {
-                                fb[1 + k] = m_goptLP[n].b()[k];
-                            }
-                            for( uint32_t k = m_Nb[n]; k < bcoeffShmimMonitorT::m_width - 1; ++k )
-                            {
-                                fb[1 + k] = 0;
+                                for( uint32_t k = 0; k < m_Nb[n]; ++k )
+                                {
+                                    fb[1 + k] = m_goptLP[n].b()[k];
+                                }
+                                for( uint32_t k = m_Nb[n]; k < bcoeffShmimMonitorT::m_width - 1; ++k )
+                                {
+                                    fb[1 + k] = 0;
+                                }
                             }
                         }
                     }
@@ -3110,31 +3380,33 @@ void modalGainOpt::goptThreadExec()
                     {
                         for( size_t n = 0; n < m_optGainSI.size(); ++n )
                         {
+                            // if( m_timesOnLP[n] > 5 )
+                            {
+                                fpc[n] = fpc[n] +
+                                         m_gainGain *
+                                             ( ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain -
+                                               fpc[n] );
 
-                            fpc[n] =
-                                fpc[n] +
-                                m_gainGain *
-                                    ( ( m_gainCalFacts[n] * m_optGainLP[n] / m_gainCals[n] ) / m_opticalGain - fpc[n] );
+                                // To be safe we treat this as if Na and Nb can be different, but they can't be.
+                                fa[n] = m_Na[n];
+                                fb[n] = m_Nb[n];
+                                for( uint32_t k = 0; k < m_Na[n]; ++k )
+                                {
+                                    fa[1 + k] = fa[1 + k] + m_gainGain * ( m_goptLP[n].a()[k] - fa[1 + k] );
+                                }
+                                for( uint32_t k = m_Na[n]; k < acoeffShmimMonitorT::m_width - 1; ++k )
+                                {
+                                    fa[1 + k] = 0;
+                                }
 
-                            // To be safe we treat this as if Na and Nb can be different, but they can't be.
-                            fa[n] = m_Na[n];
-                            fb[n] = m_Nb[n];
-                            for( uint32_t k = 0; k < m_Na[n]; ++k )
-                            {
-                                fa[1 + k] = fa[1 + k] + m_gainGain * ( m_goptLP[n].a()[k] - fa[1 + k] );
-                            }
-                            for( uint32_t k = m_Na[n]; k < acoeffShmimMonitorT::m_width - 1; ++k )
-                            {
-                                fa[1 + k] = 0;
-                            }
-
-                            for( uint32_t k = 0; k < m_Nb[n]; ++k )
-                            {
-                                fb[1 + k] = fb[1 + k] + m_gainGain * ( m_goptLP[n].b()[k] - fb[1 + k] );
-                            }
-                            for( uint32_t k = m_Nb[n]; k < bcoeffShmimMonitorT::m_width - 1; ++k )
-                            {
-                                fb[1 + k] = 0;
+                                for( uint32_t k = 0; k < m_Nb[n]; ++k )
+                                {
+                                    fb[1 + k] = fb[1 + k] + m_gainGain * ( m_goptLP[n].b()[k] - fb[1 + k] );
+                                }
+                                for( uint32_t k = m_Nb[n]; k < bcoeffShmimMonitorT::m_width - 1; ++k )
+                                {
+                                    fb[1 + k] = 0;
+                                }
                             }
                         }
                     }
@@ -3297,6 +3569,53 @@ INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_opticalGain )( const pcf::IndiPrope
 
     m_opticalGain = target;
 
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_opticalGainUpdate )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_opticalGainUpdate, ipRecv );
+
+    if(ipRecv.find("toggle"))
+    {
+        if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off)
+        {
+            m_opticalGainUpdate = false;
+        }
+        else 
+        {
+            m_opticalGainUpdate = true;
+
+            if(m_opticalGainSource > 0 && m_opticalGainSource < 1)
+            {
+                m_opticalGain = m_opticalGainSource;
+            }
+        }
+    }
+
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_opticalGainSource )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_opticalGainSource, ipRecv );
+
+    if( ipRecv.find( m_opticalGainElement ) )
+    {
+        float opticalg = ipRecv[m_opticalGainElement].get<float>();
+
+        opticalg = (floor(opticalg * 100 + 0.5))/100.;
+        
+        if(opticalg > 0 && opticalg < 1)
+        {
+            m_opticalGainSource = opticalg;
+        }
+
+        if(m_opticalGainUpdate)
+        {
+            m_opticalGain = m_opticalGainSource;
+        }
+    }
     return 0;
 }
 
@@ -3594,6 +3913,39 @@ INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_pcOn )( const pcf::IndiProperty &ip
     return 0;
 }
 
+INDI_NEWCALLBACK_DEFN( modalGainOpt, m_indiP_extrapOL )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_extrapOL, ipRecv );
+
+    if( ipRecv.find( "toggle" ) )
+    {
+        int ext;
+
+        if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+        {
+            ext = true;
+        }
+        else
+        {
+            ext = false;
+        }
+
+        if( ext != m_extrapOL )
+        {
+            m_updating = true;
+            std::lock_guard<std::mutex> lock( m_goptMutex );
+            m_updating = true;
+
+            m_extrapOL = ext;
+
+            m_sinceChange = -1;
+            m_updating    = false;
+            std::cerr << "Got extrap: " << m_extrapOL << '\n';
+        }
+    }
+
+    return 0;
+}
 } // namespace app
 } // namespace MagAOX
 
