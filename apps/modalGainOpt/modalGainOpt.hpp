@@ -308,7 +308,7 @@ class modalGainOpt : public MagAOXApp<true>,
 
     uint32_t m_maxNCoeff{ 1000 };
 
-    uint32_t m_defaultNCoeff{25};
+    uint32_t m_defaultNCoeff{ 25 };
 
     ///@}
 
@@ -367,7 +367,7 @@ class modalGainOpt : public MagAOXApp<true>,
 
     float m_siMult{ 1 };
 
-    bool m_doPCCalcs {true};
+    bool m_doPCCalcs{ true };
 
     float m_pcGain{ 0 };
 
@@ -594,7 +594,7 @@ class modalGainOpt : public MagAOXApp<true>,
                       const wfsmaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    ///Check that all sizes and allocations have occurred
+    /// Check that all sizes and allocations have occurred
     int checkSizes();
 
   protected:
@@ -1086,12 +1086,12 @@ int modalGainOpt::allocatePCShmims()
             return log<software_error, -1>( { __FILE__, __LINE__, "error creating numpccoeffShmim" } );
         }
 
-        mx::improc::eigenMap<uint32_t> Npc( numpccoeffShmimMonitorT::m_imageStream.array.UI32, m_nModes,2 );
+        mx::improc::eigenMap<uint32_t> Npc( numpccoeffShmimMonitorT::m_imageStream.array.UI32, m_nModes, 2 );
 
-        for(uint32_t n = 0; n < m_nModes; ++n)
+        for( uint32_t n = 0; n < m_nModes; ++n )
         {
-            Npc(n,0) = m_defaultNCoeff;
-            Npc(n,1) = m_defaultNCoeff;
+            Npc( n, 0 ) = m_defaultNCoeff;
+            Npc( n, 1 ) = m_defaultNCoeff;
         }
 
         std::cerr << "created numppccoeff shmim\n";
@@ -1228,9 +1228,9 @@ int modalGainOpt::allocate( const psdShmimT &dummy )
 
         m_noisePSDStream = static_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
-        imsize[0] = 1;
-        imsize[1] = psdShmimMonitorT::m_height;
-        imsize[2] = 1;
+        // imsize[0] = 1;
+        // imsize[1] = psdShmimMonitorT::m_height;
+        // imsize[2] = 1;
         ImageStreamIO_createIm_gpu( m_noisePSDStream,
                                     m_noisePSDShmimName.c_str(),
                                     3,
@@ -1874,11 +1874,11 @@ int modalGainOpt::processImage( void *curr_src, const numpccoeffShmimT &dummy )
         m_gmaxLP.resize( w, 0 );
     }
 
-    mx::improc::eigenMap<uint32_t> Npc( reinterpret_cast<uint32_t*>( curr_src ), w, 2 );
+    mx::improc::eigenMap<uint32_t> Npc( reinterpret_cast<uint32_t *>( curr_src ), w, 2 );
 
     for( uint32_t n = 0; n < w; ++n )
     {
-        if( change || m_Na[n]  != Npc( n, 0 ) ||  m_Nb[n]  != Npc( n, 1 ) )
+        if( change || m_Na[n] != Npc( n, 0 ) || m_Nb[n] != Npc( n, 1 ) )
         {
             if( !change )
             {
@@ -2348,7 +2348,7 @@ int modalGainOpt::processImage( void *curr_src, const wfsavgShmimT &dummy )
     {
         m_counts = ( m_wfsavg * m_wfsmask ).sum();
 
-        //std::cerr << "counts: " << m_counts << '\n';
+        // std::cerr << "counts: " << m_counts << '\n';
     }
 
     return 0;
@@ -2395,7 +2395,7 @@ int modalGainOpt::checkSizes()
     }
     logged[L++] = false;
 
-    if( m_clPSDs.rows() != m_freq.size() )
+    if( static_cast<size_t>( m_clPSDs.rows() ) != m_freq.size() )
     {
         if( !logged[L] )
         {
@@ -2583,7 +2583,7 @@ int modalGainOpt::checkSizes()
     }
     ++L;
 
-    if( m_clXferLPStream == nullptr  )
+    if( m_clXferLPStream == nullptr )
     {
         if( !logged[L] )
         {
@@ -2642,7 +2642,6 @@ void modalGainOpt::goptThreadExec()
         sleep( 1 );
     }
 
-
     while( shutdown() == 0 )
     {
         timespec ts;
@@ -2652,10 +2651,10 @@ void modalGainOpt::goptThreadExec()
         {
             std::lock_guard<std::mutex> lock( m_goptMutex );
 
-            if(checkSizes() < 0)
+            if( checkSizes() < 0 )
             {
                 std::cerr << "check sizes failed\n";
-                continue; //we just wait
+                continue; // we just wait
             }
 
             if( m_goptUpdated || m_pcgoptUpdated || m_freqUpdated || m_goptCurrent.size() != m_gainFacts.size() )
@@ -2757,24 +2756,12 @@ void modalGainOpt::goptThreadExec()
                     }
                 }
 
-                // Calculate the Noise PSD
-                float npsd = 0; // noisePSD(n);
-                int   nnp  = 0;
-                for( size_t f = 0.8 * m_goptCurrent[n].f_size(); f < m_goptCurrent[n].f_size(); ++f )
-                {
-                    npsd += log10( m_clPSDs( f, n ) );
-                    ++nnp;
-                }
-                npsd /= nnp;
-                npsd = pow( 10, npsd );
-
                 // Calculate the OL PSD with the current gopt (PC or SI)
                 float og2 = m_opticalGain * m_opticalGain;
                 if( !m_loop )
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_nPSDs[n][f]  = npsd / og2;
                         m_olPSDs[n][f] = m_clPSDs( f, n ) / og2;
                     }
                 }
@@ -2782,21 +2769,73 @@ void modalGainOpt::goptThreadExec()
                 {
                     for( size_t f = 1; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_nPSDs[n][f]  = npsd / og2;
                         m_olPSDs[n][f] = ( m_clPSDs( f, n ) / og2 ) / m_clXferCurrent( f, n );
                     }
                 }
 
                 m_olPSDs[n][0] = m_olPSDs[n][1];
-                m_nPSDs[n][0]  = m_nPSDs[n][1];
 
-                m_modeVarOL[n] = mx::sigproc::psdVar( m_freq, m_olPSDs[n] );
-
-                m_optGainSI[n] =
-                    m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], m_gmaxSI[n], false );
-
-                if( fabs( ( m_modeVarOL[n] - m_modeVarSI[n] ) / m_modeVarOL[n] ) < 0.01 )
+                // Calculate the Noise PSD
+                /*float npsd = 1; // noisePSD(n);
+                int   nnp  = 0;
+                for( size_t f = 0.5 * m_goptCurrent[n].f_size(); f < m_goptCurrent[n].f_size(); ++f )
                 {
+                    npsd += log10( m_olPSDs[n][f]);//( f, n ) );
+                    ++nnp;
+
+                    //if( m_olPSDs[n][f] < npsd )
+                    //{
+                    //    npsd = m_olPSDs[n][f];
+                    //}
+                }
+
+                npsd /= nnp;
+                npsd = pow( 10, npsd );*/
+
+                //Calculate the noise as the 25th percentile
+                //this is to avoid spikes that make the noise too high
+                size_t f0 = 0.5 * m_goptCurrent[n].f_size();
+                size_t f1 = m_goptCurrent[n].f_size();
+
+                std::vector<float> npsd( f1 - f0 );
+                for( size_t f = f0; f < f1; ++f )
+                {
+                    npsd[f - f0] = log10( m_olPSDs[n][f] );
+                }
+                auto nth = npsd.begin() + 0.25 * ( f1 - f0 );
+                std::nth_element( npsd.begin(), nth, npsd.end() );
+
+                for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                {
+                    m_nPSDs[n][f]  = pow( 10, *nth );
+                    m_olPSDs[n][f] = m_olPSDs[n][f] - m_nPSDs[n][f];
+                }
+
+                bool flagOff = false;
+
+                float extrap = 0;
+                int   nexp   = 0;
+                for( size_t f = 5; f < 20; ++f )
+                {
+                    if( m_olPSDs[n][f] <= 0.1*m_nPSDs[n][f])
+                    {
+                        flagOff = true;
+                        break;
+                    }
+                    extrap += log10( m_olPSDs[n][f] * pow( m_freq[f] / m_freq[1], 8. / 3. ) );
+                    ++nexp;
+                }
+
+                
+                if( flagOff )
+                {
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        m_olPSDs[n][f] = m_nPSDs[n][f];
+                    }
+
+                    m_modeVarOL[n] = mx::sigproc::psdVar( m_freq, m_olPSDs[n] );
+
                     m_optGainSI[n] = 0;
                     m_modeVarSI[n] = m_modeVarOL[n];
 
@@ -2807,16 +2846,75 @@ void modalGainOpt::goptThreadExec()
                 }
                 else
                 {
+                    extrap = pow( 10, extrap / nexp );
 
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
-                        m_clXferSI( f, n ) = m_goptSI[n].clETF2( f, m_optGainSI[n] );
+                        if( m_olPSDs[n][f] < 0 )
+                        {
+                            m_olPSDs[n][f] = extrap * pow( m_freq[1] / m_freq[f], 8. / 3. );
+                        }
+                    }
+
+                    std::vector<float> l10(m_olPSDs[n].size()), smol(m_olPSDs[n].size());
+                    std::vector<int> smw(m_olPSDs[n].size());
+                    smw[0] = 2;
+                    smw[1] = 2;
+                    l10[0] = log10(m_olPSDs[n][0]);
+                    l10[1] = log10(m_olPSDs[n][1]);
+
+                    for(size_t f = 2; f< smw.size(); ++f)
+                    {
+                        smw[f] = 2 + static_cast<float>(f)/100;
+                        l10[f] = log10(m_olPSDs[n][f]);
+                    }
+
+                    mx::math::vectorSmoothMean(smol, l10, smw);
+
+                    for(size_t f = 0; f< smw.size(); ++f)
+                    {
+                        smol[f] = pow(10, smol[f]);
+                    }
+
+                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    {
+                        if( m_olPSDs[n][f] < m_nPSDs[n][f] )
+                        {
+                            m_olPSDs[n][f] = smol[f];
+                        }
+                    }
+
+                    
+
+
+
+
+                    m_modeVarOL[n] = mx::sigproc::psdVar( m_freq, m_olPSDs[n] );
+
+                    m_optGainSI[n] =
+                        m_goptSI[n].optGainOpenLoop( m_modeVarSI[n], m_olPSDs[n], m_nPSDs[n], m_gmaxSI[n], false );
+
+                    if( fabs( ( m_modeVarOL[n] - m_modeVarSI[n] ) / m_modeVarOL[n] ) < 0.001 )
+                    {
+                        m_optGainSI[n] = 0;
+                        m_modeVarSI[n] = m_modeVarOL[n];
+
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferSI( f, n ) = 1;
+                        }
+                    }
+                    else
+                    {
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferSI( f, n ) = m_goptSI[n].clETF2( f, m_optGainSI[n] );
+                        }
                     }
                 }
 
-                if( m_doPCCalcs )
+                if( m_doPCCalcs && !flagOff)
                 {
-
                     if( m_regScale[n] == -999 || m_regCounter[n] >= m_nRegCycles )
                     {
                         float min_sc;
@@ -2842,7 +2940,6 @@ void modalGainOpt::goptThreadExec()
 
                         m_regScale[n] = min_sc;
                         m_gmaxLP[n]   = gmax_lp;
-                        // save max-stable gain m_maxLPGain[n]
                     }
                     else
                     {
@@ -2863,13 +2960,30 @@ void modalGainOpt::goptThreadExec()
                         ++m_regCounter[n];
                     }
 
-                    for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                    if( fabs( ( m_modeVarOL[n] - m_modeVarLP[n] ) / m_modeVarOL[n] ) < 0.001 )
                     {
-                        m_clXferLP( f, n ) = m_goptLP[n].clETF2( f, m_optGainLP[n] );
+                        m_optGainLP[n] = 0;
+                        m_modeVarLP[n] = m_modeVarOL[n];
+
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferLP( f, n ) = 1;
+                        }
+                    }
+                    else
+                    {
+                        for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
+                        {
+                            m_clXferLP( f, n ) = m_goptLP[n].clETF2( f, m_optGainLP[n] );
+                        }
                     }
                 }
                 else
                 {
+                    m_optGainLP[n] = 0;
+
+                    ++m_regCounter[n];
+
                     for( size_t f = 0; f < m_goptCurrent[n].f_size(); ++f )
                     {
                         m_clXferLP( f, n ) = 1;
@@ -2885,7 +2999,7 @@ void modalGainOpt::goptThreadExec()
             timePointT t1 = std::chrono::steady_clock::now();
             durationT  dt = t1 - t0;
 
-            //std::cerr << "Optimization took " << dt.count() << " seconds\n";
+            std::cerr << "Optimization took " << dt.count() << " seconds\n";
 
             float totVar = 0;
             for( size_t n = 0; n < m_modeVarSI.size(); ++n )
@@ -2893,7 +3007,7 @@ void modalGainOpt::goptThreadExec()
                 totVar += m_modeVarSI[n];
             }
 
-            //std::cerr << "total variance: " << totVar << '\n';
+            // std::cerr << "total variance: " << totVar << '\n';
 
             float *f      = m_optGainStream->array.F;
             float *fSI    = m_optGainSIStream->array.F;
@@ -3061,14 +3175,19 @@ void modalGainOpt::goptThreadExec()
                         m_olPSDs[q].data(),
                         m_olPSDs[0].size() * sizeof( float ) );
 
-                m_noisePSDStream->array.F[q] = m_nPSDs[q][0];
+                // m_noisePSDStream->array.F[q] = m_nPSDs[q][0];
+                memcpy( m_noisePSDStream->array.F + q * m_nPSDs[0].size(),
+                        m_nPSDs[q].data(),
+                        m_nPSDs[0].size() * sizeof( float ) );
             }
 
             memcpy( m_clXferCurrentStream->array.F,
                     m_clXferCurrent.data(),
-                    m_clXferCurrent.rows() * m_clXferCurrent.cols() );
-            memcpy( m_clXferSIStream->array.F, m_clXferSI.data(), m_clXferSI.rows() * m_clXferSI.cols() );
-            memcpy( m_clXferLPStream->array.F, m_clXferLP.data(), m_clXferLP.rows() * m_clXferLP.cols() );
+                    m_clXferCurrent.rows() * m_clXferCurrent.cols() * sizeof( float ) );
+            memcpy(
+                m_clXferSIStream->array.F, m_clXferSI.data(), m_clXferSI.rows() * m_clXferSI.cols() * sizeof( float ) );
+            memcpy(
+                m_clXferLPStream->array.F, m_clXferLP.data(), m_clXferLP.rows() * m_clXferLP.cols() * sizeof( float ) );
 
             ImageStreamIO_UpdateIm( m_olPSDStream );
             ImageStreamIO_UpdateIm( m_noisePSDStream );
@@ -3290,10 +3409,10 @@ INDI_SETCALLBACK_DEFN( modalGainOpt, m_indiP_loop )( const pcf::IndiProperty &ip
 
             m_loop = state;
 
-            if(!m_loop)
+            if( !m_loop )
             {
                 m_autoUpdate = false;
-                m_dump = false;
+                m_dump       = false;
             }
 
             m_sinceChange = -1;
