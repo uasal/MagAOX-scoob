@@ -100,6 +100,14 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv)
 
+        # init INDI PROPERTY: SR_EE encircled energy method, single frame
+        nv = properties.NumberVector(name='SR_EE_inst')
+        nv.add_element(DefNumber(
+            name='current', label='SR_EE_inst', format='%i',
+            min=0, max=1, step=0.01, _value=1
+        ))
+        self.add_property(nv)
+
         # init INDI PROPERTY: jitter RMS x
         nv = properties.NumberVector(name='jitter_RMS')
         nv.add_element(DefNumber(
@@ -150,6 +158,7 @@ class camtipSR(XDevice):
         self._n_jitter = 100
         self._SR_est = 0.0 
         self._SR_EE = 0.0 
+        self._SR_EE_inst = 0.0 
         self._x0_list = []
         self._y0_list = []
         self._jitter_RMS = 0.0
@@ -259,7 +268,13 @@ class camtipSR(XDevice):
         #self.log.info(f"SR EE has been set.")
         return
     
-    def calc_jitter_RMS(self):
+    def calc_jitter_RMS(self, img):
+        # Set the single frame data in the camtipFitter
+        self.camFit.set_data(img) # background subtracted here
+        self._SR_EE_inst = self.camFit.calc_SR_EE()
+        # Set the SR
+        self.properties['SR_EE_inst']['current'] = self._SR_EE_inst
+        self.update_property(self.properties['SR_EE_inst'])
         # this needs to be run AFTER SR_EE
         self._x0_list.append(self.camFit.x0)
         self._y0_list.append(self.camFit.y0)
@@ -299,12 +314,12 @@ class camtipSR(XDevice):
     def grab_img(self):
         # start of any loop will look for files
         try:
-            img_t = self.camera.grab_stack(self._n_avg, subtract_dark=True) # stack is already averaged
+            img_t = self.camera.grab_stack(1, subtract_dark=True) # stack is already averaged
             self._dark = True
         except:
             if self._dark == True:
                 self.log.info("Error finidng files, likely the dark.")
-            img_t = self.camera.grab_stack(self._n_avg, subtract_dark=False) # stack is already averaged
+            img_t = self.camera.grab_stack(1, subtract_dark=False) # stack is already averaged
             self._dark = False
         img = img_t.shaped # vs. how it would be in a jupyter notebook
         # enforce cropping
@@ -320,7 +335,7 @@ class camtipSR(XDevice):
         return img
     
     def grab_stack(self, n):
-         try:
+        try:
             img_t = self.camera.grab_stack(n, subtract_dark=True) # stack is already averaged
             self._dark = True
         except:
@@ -345,18 +360,20 @@ class camtipSR(XDevice):
     
         if self._state == States.CLOSED_LOOP:
             img = self.grab_img()
+            img_avg = self.grab_stack(self._n_avg)
             ## CALL FIT FUNCTION
-            self.fit_SR_gauss(img)
-            self.fit_SR_EE(img)
-            self.calc_jitter_RMS()
+            self.fit_SR_gauss(img_avg)
+            self.fit_SR_EE(img_avg)
+            self.calc_jitter_RMS(img)
             # will then continue to loop
 
         elif self._state == States.ONESHOT:
             img = self.grab_img()
+            img_avg = self.grab_stack(self._n_avg)
             ## CALL FIT FUNCTION
-            self.fit_SR_gauss(img)
-            self.fit_SR_EE(img)
-            self.calc_jitter_RMS()
+            self.fit_SR_gauss(img_avg)
+            self.fit_SR_EE(img_avg)
+            self.calc_jitter_RMS(img)
             # check to see the image
             self.save_ex_img(self.camFit.data_bg_sub)
             # will now exit out
