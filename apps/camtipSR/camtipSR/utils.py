@@ -116,6 +116,8 @@ class camtipFitter:
         img = self.data_bg_sub
         # use the lab image to determine shift
         y0, x0 = calc_idx_shift(img, self.lab_fit_img, self.size)
+        self.y0 = y0
+        self.x0 = x0
         # send shift into the calc SR EE image
         self.sky_EE = calc_EE(img, x0, y0, self.grid, self.lab_rad, w_in=self.w_in, w_out=self.w_out)
         # divide by the saved lab EE value
@@ -132,6 +134,19 @@ def calc_idx_shift(data, kernel, width):
     idx_shift_raw = np.array(np.unravel_index(np.argmax(data_corr), data_corr.shape))
     idx_shift = ((idx_shift_raw + width//2) % width) - width//2
     return idx_shift
+
+def calc_idx_shift_stack(data_stack, kernel, width):
+    # fft kernel
+    kernel_fft = np.fft.fft2(kernel)
+    # fft the cube:
+    data_fft_stack = np.fft.fftn(data_stack, axes=(1,2))
+    data_corr_fft = data_fft_stack * kernel_fft[np.newaxis, :, :]
+    data_corr = np.fft.ifftn(data_corr_fft, axes=(1,2))
+    # unwravel the returned indexes
+    idx_shift_raw = np.array([np.unravel_index(np.argmax(data_corr[i]), data_corr[i].shape) for i in range(data_corr.shape[0])])
+    # accounts for negative shifts
+    idx_shift = ((idx_shift_raw + width//2) % width) - width//2
+    return np.array(idx_shift)
 
 def calc_EE(data, x0, y0, grid, rad, w_in=2, w_out=18):
     R_mask_lab = make_R_filter(x0, y0, grid, rad, w=w_in)
