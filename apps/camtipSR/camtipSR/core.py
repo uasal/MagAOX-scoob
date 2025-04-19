@@ -100,19 +100,11 @@ class camtipSR(XDevice):
         ))
         self.add_property(nv)
 
-        # init INDI PROPERTY: SR_EE encircled energy method, single frame
-        nv = properties.NumberVector(name='SR_EE_inst')
-        nv.add_element(DefNumber(
-            name='current', label='SR_EE_inst', format='%i',
-            min=0, max=1, step=0.01, _value=1
-        ))
-        self.add_property(nv)
-
         # init INDI PROPERTY: jitter RMS x
         nv = properties.NumberVector(name='jitter_RMS')
         nv.add_element(DefNumber(
             name='current', label='jitter_RMS', format='%i',
-            min=0, max=100, step=0.1, _value=1
+            min=0, max=100, step=0.1, _value=0.0
         ))
         self.add_property(nv)
 
@@ -120,7 +112,7 @@ class camtipSR(XDevice):
         nv = properties.NumberVector(name='jitter_x')
         nv.add_element(DefNumber(
             name='current', label='jitter_x', format='%i',
-            min=0, max=100, step=0.1, _value=1
+            min=0, max=100, step=0.1, _value=0.0
         ))
         self.add_property(nv)
 
@@ -128,7 +120,7 @@ class camtipSR(XDevice):
         nv = properties.NumberVector(name='jitter_y')
         nv.add_element(DefNumber(
             name='current', label='jitter_y', format='%i',
-            min=0, max=100, step=0.1, _value=1
+            min=0, max=100, step=0.1, _value=0.0
         ))
         self.add_property(nv)
 
@@ -157,8 +149,9 @@ class camtipSR(XDevice):
         self._n_avg = 1
         self._n_jitter = 100
         self._SR_est = 0.0 
+        self._SR_est_list = []
         self._SR_EE = 0.0 
-        self._SR_EE_inst = 0.0 
+        self._SR_EE_list = []
         self._x0_list = []
         self._y0_list = []
         self._jitter_RMS = 0.0
@@ -247,8 +240,11 @@ class camtipSR(XDevice):
         self.camFit.fit_data()
         #self.log.info(f"Image has been fit.")
         # Calculate the SR
-        self._SR_est = self.camFit.calc_SR()
+        SR_est_new = self.camFit.calc_SR()
+        self._SR_est_list.append(SR_est_new)
         #self.log.info(f"SR estimate: {self._SR_est}.")
+        idx = np.min([len(self._SR_est_list), self._n_avg])
+        self._SR_est = np.mean(self._SR_est_list[-idx:])
         # Set the SR
         self.properties['SR_est']['current'] = self._SR_est
         self.update_property(self.properties['SR_est'])
@@ -260,21 +256,18 @@ class camtipSR(XDevice):
         self.camFit.set_data(img) # background subtracted here
         #self.log.info(f"Image has been set. ")
         # Calculate the SR
-        self._SR_EE = self.camFit.calc_SR_EE()
+        SR_EE_new = self.camFit.calc_SR_EE()
+        self._SR_EE_list.append(SR_EE_new)
         #self.log.info(f"SR EE estimate: {self._SR_EE}.")
+        idx = np.min([len(self._SR_EE_list), self._n_avg])
+        self._SR_EE = np.mean(self._SR_EE_list[-idx:])
         # Set the SR
         self.properties['SR_EE']['current'] = self._SR_EE
         self.update_property(self.properties['SR_EE'])
         #self.log.info(f"SR EE has been set.")
         return
     
-    def calc_jitter_RMS(self, img):
-        # Set the single frame data in the camtipFitter
-        self.camFit.set_data(img) # background subtracted here
-        self._SR_EE_inst = self.camFit.calc_SR_EE()
-        # Set the SR
-        self.properties['SR_EE_inst']['current'] = self._SR_EE_inst
-        self.update_property(self.properties['SR_EE_inst'])
+    def calc_jitter_RMS(self):
         # this needs to be run AFTER SR_EE
         self._x0_list.append(self.camFit.x0)
         self._y0_list.append(self.camFit.y0)
@@ -360,20 +353,18 @@ class camtipSR(XDevice):
     
         if self._state == States.CLOSED_LOOP:
             img = self.grab_img()
-            img_avg = self.grab_stack(self._n_avg)
             ## CALL FIT FUNCTION
-            self.fit_SR_gauss(img_avg)
-            self.fit_SR_EE(img_avg)
-            self.calc_jitter_RMS(img)
+            self.fit_SR_gauss(img)
+            self.fit_SR_EE(img)
+            self.calc_jitter_RMS()
             # will then continue to loop
 
         elif self._state == States.ONESHOT:
             img = self.grab_img()
-            img_avg = self.grab_stack(self._n_avg)
             ## CALL FIT FUNCTION
-            self.fit_SR_gauss(img_avg)
-            self.fit_SR_EE(img_avg)
-            self.calc_jitter_RMS(img)
+            self.fit_SR_gauss(img)
+            self.fit_SR_EE(img)
+            self.calc_jitter_RMS()
             # check to see the image
             self.save_ex_img(self.camFit.data_bg_sub)
             # will now exit out
