@@ -296,6 +296,22 @@ class adcCtrl(XDevice):
         self.add_property(sv, callback=self.handle_labmode) 
 
         sv = properties.SwitchVector(
+            name='knife_edge',
+            rule=constants.SwitchRule.ONE_OF_MANY,
+            perm=constants.PropertyPerm.READ_WRITE,
+        )
+        sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_knife_edge) 
+
+        sv = properties.SwitchVector(
+            name='knife_edge_findzero',
+            rule=constants.SwitchRule.ONE_OF_MANY,
+            perm=constants.PropertyPerm.READ_WRITE,
+        )
+        sv.add_element(DefSwitch(name="request", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_knife_edge_findzero) 
+
+        sv = properties.SwitchVector(
             name='reset_deltaADCs',
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
@@ -326,6 +342,9 @@ class adcCtrl(XDevice):
         self.delta_2 = 0
         self._offset = 0
         self._lab = False
+        self._knife_edge = False
+        self._knife_edge_zero1 = 26.78175714
+        self._knife_edge_zero2 = 26.544759645
 
         if self.client['adctrack.deltaADC1.current'] != 0:
             self.set_command(0,0)
@@ -385,6 +404,38 @@ class adcCtrl(XDevice):
             existing_property['toggle'] = constants.SwitchState.OFF
             self._lab = False
 
+        self.update_property(existing_property)
+
+
+    def handle_knife_edge(self,existing_property, new_message):
+        if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.ON:
+            self.log.debug('changing knife edge mode')
+            existing_property['toggle'] = constants.SwitchState.ON
+            self._knife_edge = True
+        else:
+            self.log.debug('exiting knife edge mode')
+            existing_property['toggle'] = constants.SwitchState.OFF
+            self._knife_edge = False
+
+        self.update_property(existing_property)
+
+    def handle_knife_edge_findzero(self,existing_property, new_message):
+        if 'request' in new_message and new_message['request'] is constants.SwitchState.ON:
+            self.log.debug('finding convergence point for use with knife edge ')
+            existing_property['request'] = constants.SwitchState.OFF
+            
+            img = self.camera.grab_stack(self._n_avg)
+            transpose = img.shaped.T 
+            img = transpose.ravel()
+
+            if self._lab == False:
+                img = self.ADC.filter_image(img)
+
+            angles = self.ADC.find_speckle_angles2()
+            self._knife_edge_zero1 = angles[1]
+            self._knife_edge_zero2 = angles[2]
+
+        self.log.debug(f'zero points for bottom speckles changed to {self._knife_edge_zero1} and {self._knife_edge_zero2}')
         self.update_property(existing_property)
 
     def handle_reset(self,existing_property, new_message):
@@ -492,11 +543,17 @@ class adcCtrl(XDevice):
             img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
             
-            angles = self.ADC.find_speckle_angles2()
-            pair_angles = self.ADC.speckle_pairs(angles)
-            self.log.debug(f'angle offsets: {angles}')
+            if self._knife_edge:
+                angles = self.ADC.find_speckle_angles2()
+                bottom_speckle_angles = np.array([angles[1] - self._knife_edge_zero1 ,angles[2] - self._knife_edge_zero2])
+                self.log.debug(f'angle offsets: {angles}')
+                error = self.ADC.calculate_command(bottom_speckle_angles)
+            else:
+                angles = self.ADC.find_speckle_angles2()
+                pair_angles = self.ADC.speckle_pairs(angles)
+                self.log.debug(f'angle offsets: {angles}')
+                error = self.ADC.calculate_command(pair_angles)
 
-            error = self.ADC.calculate_command(pair_angles)
             self.log.debug(f'measured error: {error}')
             #self._command = np.squeeze(self._command + -self._gain * error)
             
@@ -516,14 +573,20 @@ class adcCtrl(XDevice):
 
             img = self.ADC.crop_image(img,extent=self._extent)
             self.ADC.set_psf(img)
-            center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
-            self.log.info(f'center of intensity: {center_of_intensity}')
+            #center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
+            #self.log.info(f'center of intensity: {center_of_intensity}')
             
-            angles = self.ADC.find_speckle_angles2()
-            pair_angles = self.ADC.speckle_pairs(angles)
-            self.log.debug(f'angle offsets: {angles}')
+            if self._knife_edge:
+                angles = self.ADC.find_speckle_angles2()
+                bottom_speckle_angles = np.array([angles[1],angles[2]])
+                self.log.debug(f'angle offsets: {angles}')
+                self._command = np.squeeze(self.ADC.calculate_command(bottom_speckle_angles))
+            else:
+                angles = self.ADC.find_speckle_angles2()
+                pair_angles = self.ADC.speckle_pairs(angles)
+                self.log.debug(f'angle offsets: {angles}')
+                self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
 
-            self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
             self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
 
             if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
