@@ -650,24 +650,67 @@ class adcCtrl(XDevice):
             sweep_angles = np.linspace(-3,3,26)
             diff_pointing_pairs = np.zeros((len(sweep_angles),2)) 
 
-            for i, orientation in enumerate(sweep_angles):
-                self.log.debug(f'Step {i:d}')
-                self.set_command(orientation, 0)
-                self.send_command()
+            if self._knife_edge == False:
+                self.log.debug(f'calibrating in regular mode')
+                for i, orientation in enumerate(sweep_angles):
+                    self.log.debug(f'Step {i:d}')
+                    self.set_command(orientation, 0)
+                    self.send_command()
 
-                img = self.camera.grab_stack(self._n_avg)
-                transpose = img.shaped.T 
-                img = transpose.ravel()
+                    img = self.camera.grab_stack(self._n_avg)
+                    transpose = img.shaped.T 
+                    img = transpose.ravel()
 
-                if self._lab == False:
-                    img = self.ADC.filter_image(img)
+                    if self._lab == False:
+                        img = self.ADC.filter_image(img)
 
-                img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
-                self.ADC.set_psf(img)
+                    img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                    self.ADC.set_psf(img)
+                    
+                    angles = self.ADC.find_speckle_angles2()
+                    pointing_pair = self.ADC.speckle_pairs(angles)
+                    diff_pointing_pairs[i,] = pointing_pair
+
+                # self.set_command(0,0)
+                # self.send_command()
+
+                # a1 = np.zeros(2)
+                # b1 = np.zeros(2)
+
+                # for j in range(2):
+                #     b1[j] , a1[j] = np.polyfit(sweep_angles,diff_pointing_pairs[:,j],deg=1)
+
+                # response = np.matrix([b1])
+                # self.log.debug(f'response matrix: {response}')
                 
-                angles = self.ADC.find_speckle_angles2()
-                pointing_pair = self.ADC.speckle_pairs(angles)
-                diff_pointing_pairs[i,] = pointing_pair
+                # if np.isnan(np.sum(response)):
+                #     self.log.info(f'calibration failed, measured response is NaN')
+                #     self.transition_to_idle()
+                # else:
+                #     new_control_mtx = np.linalg.pinv(response)
+
+                #     self._control_mtx = new_control_mtx.T
+
+            else:
+                self.log.debug(f'calibrating in knife-edge mode')
+                for i, orientation in enumerate(sweep_angles):
+                    self.log.debug(f'Step {i:d}')
+                    self.set_command(orientation, 0)
+                    self.send_command()
+
+                    img = self.camera.grab_stack(self._n_avg)
+                    transpose = img.shaped.T 
+                    img = transpose.ravel()
+
+                    if self._lab == False:
+                        img = self.ADC.filter_image(img)
+
+                    img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                    self.ADC.set_psf(img)
+                    
+                    angles = self.ADC.find_speckle_angles2()
+                    bottom_speckle_angles = np.array([angles[1],angles[2]])
+                    diff_pointing_pairs[i,] = bottom_speckle_angles
 
             self.set_command(0,0)
             self.send_command()
@@ -687,15 +730,15 @@ class adcCtrl(XDevice):
             else:
                 new_control_mtx = np.linalg.pinv(response)
 
-                self._control_mtx = new_control_mtx.T
-                self.ADC.set_control_mtx(self._control_mtx)
-                self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
+            self._control_mtx = new_control_mtx.T
+            self.ADC.set_control_mtx(self._control_mtx)
+            self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
 
-                self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
-                self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
-                self.update_property(self.properties['ctrl_mtx'])
-                
-                self.transition_to_idle()
+            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
+            self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
+            self.update_property(self.properties['ctrl_mtx'])
+            
+            self.transition_to_idle()
 
 
 
