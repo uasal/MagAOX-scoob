@@ -590,14 +590,15 @@ class adcCtrl(XDevice):
                 self.log.debug(f'angle offsets: {angles}')
                 self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
 
-            self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
+            self.log.info(f'One-shot ADC correction calculated a command of {self._command}, but was not sent')
 
-            if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.add_command(self._command,0)
-                self.send_command()
-                self.log.debug(f'ADC command sent: {self._command}')
-            else: 
-                self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
+            #### deleting the send command part so you can use it without interfering with anyone else's stuff
+            # if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+            #     self.add_command(self._command,0)
+            #     self.send_command()
+            #     self.log.debug(f'ADC command sent: {self._command}')
+            # else: 
+            #     self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
             self.log.info('transitioning to idle')
             self.transition_to_idle()
