@@ -177,7 +177,10 @@
       <speak>Nothing is working. Good.</speak>
       <speak>That is a block too far, I am afraid.</speak>
       <speak>This is embarrassing</speak>
-      
+      <speak>I can’t fix this.</speak>
+      <speak>My algorithms are useless.</speak>
+      <speak>My Strehl ratio is a joke…</speak>
+      <speak>I peaked at calibration!</speak>
     </transition>
   </react-to>
   <react-to indi-id="tcsi.teldata.dome_stat">
