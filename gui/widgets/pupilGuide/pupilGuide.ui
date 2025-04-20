@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>2090</width>
+    <width>2084</width>
     <height>926</height>
    </rect>
   </property>
@@ -21,7 +21,7 @@
    <item row="0" column="0">
     <layout class="QHBoxLayout" name="hl_main" stretch="6,1,6,1,6,1,6">
      <item>
-      <layout class="QVBoxLayout" name="vl_pwfsAcq" stretch="1,1,2,1,1,5,0,1,3,0,0">
+      <layout class="QVBoxLayout" name="vl_pwfsAcq" stretch="1,1,2,1,1,1,1,1,3,2,2">
        <item>
         <widget class="QLabel" name="label_modulation">
          <property name="maximumSize">
@@ -2798,7 +2798,7 @@
       </spacer>
      </item>
      <item>
-      <layout class="QVBoxLayout" name="vl_alignLoops" stretch="4,2,4,1,5,3,1,1">
+      <layout class="QVBoxLayout" name="vl_alignLoops" stretch="1,5,1,1,7,1,1,1">
        <item>
         <layout class="QVBoxLayout" name="vl_pupTrack">
          <item>
@@ -2930,7 +2930,79 @@
         </spacer>
        </item>
        <item>
-        <layout class="QVBoxLayout" name="vl_actAlignLoop">
+        <widget class="QLabel" name="label_alignment">
+         <property name="font">
+          <font>
+           <pointsize>12</pointsize>
+          </font>
+         </property>
+         <property name="text">
+          <string>Auto Alignment</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="hl_alignmentStartStop" stretch="0,0,0,0">
+         <item>
+          <spacer name="horizontalSpacer_38">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="button_startAlignment">
+           <property name="text">
+            <string>start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="button_stopAlignment">
+           <property name="text">
+            <string>stop</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_39">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_14">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="vl_actAlignLoop" stretch="1,1,1,5">
          <item>
           <widget class="QLabel" name="label_actAlignLoop">
            <property name="maximumSize">
@@ -3142,78 +3214,6 @@
             <enum>Qt::NoFocus</enum>
            </property>
           </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_11">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
-        <widget class="QLabel" name="label_alignment">
-         <property name="font">
-          <font>
-           <pointsize>12</pointsize>
-          </font>
-         </property>
-         <property name="text">
-          <string>Alignment</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="hl_alignmentStartStop">
-         <item>
-          <spacer name="horizontalSpacer_38">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-         <item>
-          <widget class="QPushButton" name="button_startAlignment">
-           <property name="text">
-            <string>start</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="button_stopAlignment">
-           <property name="text">
-            <string>stop</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_39">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
          </item>
         </layout>
        </item>

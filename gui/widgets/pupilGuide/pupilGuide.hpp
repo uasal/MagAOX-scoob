@@ -602,6 +602,7 @@ void pupilGuide::subscribe()
     m_parent->addSubscriberProperty( this, "camwfs", "fps" );
 
     m_parent->addSubscriberProperty( this, "tcsi", "fsm" );
+    m_parent->addSubscriberProperty( this, "tcsi", "labMode" );
 
     m_parent->addSubscriberProperty( this, "dmwoofer", "fsm" );
     m_parent->addSubscriberProperty( this, "wooferModes", "fsm" );
@@ -958,10 +959,8 @@ void pupilGuide::handleSetProperty( const pcf::IndiProperty &ipRecv )
     }
     else if( dev == "picomotors" )
     {
-        std::cerr << "picomotors\n";
         if( ipRecv.getName() == "fsm" )
         {
-            std::cerr << "fsm\n";
             if( ipRecv.find( "state" ) )
             {
                 m_picoState = ipRecv["state"].get<std::string>();
@@ -969,11 +968,9 @@ void pupilGuide::handleSetProperty( const pcf::IndiProperty &ipRecv )
         }
         else if( ipRecv.getName() == "picoscix_pos" )
         {
-            std::cerr << "picoscix_pos\n";
             if( ipRecv.find( "current" ) )
             {
                 m_picoscixPos = ipRecv["current"].get<int>();
-                std::cerr << m_picoscixPos << '\n';
             }
         }
     }
@@ -2153,7 +2150,7 @@ void pupilGuide::on_button_ttmtel_pressed()
         m_tipmovewhat = MOVE_WOOF;
         ui.button_ttmtel->setText( "move woofer" );
     }
-    else if( m_tipmovewhat == MOVE_WOOF && !m_LabMode )
+    else if( m_tipmovewhat == MOVE_WOOF && !m_labMode )
     {
         m_tipmovewhat = MOVE_TEL;
         ui.button_ttmtel->setText( "move telescope" );
@@ -2593,8 +2590,6 @@ void pupilGuide::move_picoscix(int delta)
     }
 
     int newpos = m_picoscixPos + delta;
-
-    std::cerr << "New pos: " << newpos << '\n';
 
     pcf::IndiProperty ip( pcf::IndiProperty::Number );
 
