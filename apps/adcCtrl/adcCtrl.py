@@ -254,6 +254,13 @@ class adcCtrl(XDevice):
         ))
         self.add_property(nv, callback=self.handle_n_avg)
 
+        nv = properties.NumberVector(name='no_measurements')
+        nv.add_element(DefNumber( 
+            name='number', label='number', format='%i',
+            min=1, max=100.00, step=1, _value=1
+        ))
+        self.add_property(nv, callback=self.handle_no_measurements) 
+
         nv = properties.NumberVector(name='gain')
         nv.add_element(DefNumber(
             name='current', label='ADC Loop Gain', format='%.2f',
@@ -341,17 +348,30 @@ class adcCtrl(XDevice):
         self.delta_1 = 0
         self.delta_2 = 0
         self._offset = 0
+        self._mask_diam = 50
         self._lab = False
         self._knife_edge = False
         self._knife_edge_zero1 = 26.78175714
         self._knife_edge_zero2 = 26.544759645
+        self._no_measurements = 1
 
         if self.client['adctrack.deltaADC1.current'] != 0:
             self.set_command(0,0)
             self.send_command()
 
-        self.update_wavelength()
+        if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
+            self._center_wavelength = 762E-9
+            self._extent = 400
+        elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
+            self._center_wavelength = 908E-9
+            self._extent = 480
+        else: 
+            self._center_wavelength = 656E-9
+            self._extent = 400
+
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
+        self.log.debug(f'initial normalized wavelength value: {self.ADC.normalized_wavelength}')
+        #self.update_wavelength()
         self.ADC.set_control_mtx(self._control_mtx)
 
         self.properties['fsm']['state'] = StateCodes.READY.name
@@ -377,17 +397,17 @@ class adcCtrl(XDevice):
                         self.log.debug('State changed to idle')                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to closed-loop')
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to oneshot')
                     elif key == 'calibrate':
                         self._state = States.CALIB
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to calibration')
 
@@ -406,10 +426,9 @@ class adcCtrl(XDevice):
 
         self.update_property(existing_property)
 
-
     def handle_knife_edge(self,existing_property, new_message):
         if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.ON:
-            self.log.debug('changing knife edge mode')
+            self.log.debug('changing into knife edge mode')
             existing_property['toggle'] = constants.SwitchState.ON
             self._knife_edge = True
         else:
@@ -430,7 +449,8 @@ class adcCtrl(XDevice):
 
             if self._lab == False:
                 img = self.ADC.filter_image(img)
-
+            
+            self.ADC.set_psf(img)
             angles = self.ADC.find_speckle_angles2()
             self._knife_edge_zero1 = angles[1]
             self._knife_edge_zero2 = angles[2]
@@ -454,6 +474,13 @@ class adcCtrl(XDevice):
             existing_property['target'] = new_message['target']
             self._n_avg = int(new_message['target'])
             self.log.debug(f'now averaging over {self._n_avg} frames')
+        self.update_property(existing_property)
+
+    def handle_no_measurements(self, existing_property, new_message):
+        if 'number' in new_message and new_message['number'] != existing_property['number']:
+            existing_property['number'] = new_message['number']
+            self._no_measurements = int(new_message['number'])
+            self.log.debug(f'now averaging {self._no_measurements} measurements before sending command')
         self.update_property(existing_property)
 
     def handle_gain(self, existing_property, new_message):
@@ -493,10 +520,14 @@ class adcCtrl(XDevice):
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
             self._center_wavelength = 908E-9
             self._extent = 480
+            self.log.debug('filter in zprime')
         else: 
             self._center_wavelength = 656E-9
             self._extent = 400
-        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
+        
+        self.ADC.wavelength = self._center_wavelength
+        self.ADC.normalized_wavelength = self.ADC.wavelength / 6565E-9
+        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm, ADC instance sees {self.ADC.wavelength} & {self.ADC.normalized_wavelength} normalized')
 
     def transition_to_idle(self):
         #self._command = 0
@@ -533,68 +564,82 @@ class adcCtrl(XDevice):
 
     def loop(self):
         if self._state == States.CLOSED_LOOP:
-            img = self.camera.grab_stack(self._n_avg)
-            transpose = img.shaped.T 
-            img = transpose.ravel()
-
-            if self._lab == False:
-                img = self.ADC.filter_image(img)
-
-            img = self.ADC.crop_image(img,extent=self._extent)
-            self.ADC.set_psf(img)
+            measurements = []
+            error = 0
             
-            if self._knife_edge:
-                angles = self.ADC.find_speckle_angles2()
-                bottom_speckle_angles = np.array([angles[1] - self._knife_edge_zero1 ,angles[2] - self._knife_edge_zero2])
-                self.log.debug(f'angle offsets: {angles}')
-                error = self.ADC.calculate_command(bottom_speckle_angles)
-            else:
-                angles = self.ADC.find_speckle_angles2()
-                pair_angles = self.ADC.speckle_pairs(angles)
-                self.log.debug(f'angle offsets: {angles}')
-                error = self.ADC.calculate_command(pair_angles)
+            for i in range(self._no_measurements):
+                img = self.camera.grab_stack(self._n_avg)
+                transpose = img.shaped.T 
+                img = transpose.ravel()
 
-            self.log.debug(f'measured error: {error}')
+                if self._lab == False:
+                    img = self.ADC.filter_image(img)
+
+                img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                self.ADC.set_psf(img)
+                
+                if self._knife_edge:
+                    angles = self.ADC.find_speckle_angles2()
+                    bottom_speckle_angles = np.array([angles[1] - self._knife_edge_zero1 ,angles[2] - self._knife_edge_zero2])
+                    self.log.debug(f'angle offsets: {angles}')
+                    error = self.ADC.calculate_command(bottom_speckle_angles)
+                else:
+                    angles = self.ADC.find_speckle_angles2()
+                    pair_angles = self.ADC.speckle_pairs(angles)
+                    self.log.debug(f'angle offsets: {angles}')
+                    error = self.ADC.calculate_command(pair_angles)
+
+                self.log.debug(f'measured error: {error}')
+                measurements.append(error)
             #self._command = np.squeeze(self._command + -self._gain * error)
             
-            if np.abs(self._command) < 10: #setting a threshold so the prisms don't do anything crazy     
+            error = np.mean(measurements)
+            self.log.debug(f'mean error: {error}')
+
+            if np.abs(error) < 2: #setting a threshold so the prisms don't do anything crazy     
                 self.add_command(error * self._gain,0)
                 self.send_command()
-                self.log.debug(f'ADC command sent: {self._command}')
+                self.log.debug(f'ADC command sent: {error * self._gain}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
 
         elif self._state == States.ONESHOT:
-            img = self.camera.grab_stack(self._n_avg)
-            transpose = img.shaped.T 
-            img = transpose.ravel()
+            measurements = []
+            for i in range(self._no_measurements):
+                img = self.camera.grab_stack(self._n_avg)
+                transpose = img.shaped.T 
+                img = transpose.ravel()
 
-            if self._lab == False:
-                img = self.ADC.filter_image(img)
+                if self._lab == False:
+                    img = self.ADC.filter_image(img)
 
-            img = self.ADC.crop_image(img,extent=self._extent)
-            self.ADC.set_psf(img)
-            #center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
-            #self.log.info(f'center of intensity: {center_of_intensity}')
-            
-            if self._knife_edge:
-                angles = self.ADC.find_speckle_angles2()
-                bottom_speckle_angles = np.array([angles[1],angles[2]])
-                self.log.debug(f'angle offsets: {angles}')
-                self._command = np.squeeze(self.ADC.calculate_command(bottom_speckle_angles))
-            else:
-                angles = self.ADC.find_speckle_angles2()
-                pair_angles = self.ADC.speckle_pairs(angles)
-                self.log.debug(f'angle offsets: {angles}')
-                self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
+                img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                self.ADC.set_psf(img)
+                #center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
+                #self.log.info(f'center of intensity: {center_of_intensity}')
+                
+                if self._knife_edge:
+                    angles = self.ADC.find_speckle_angles2()
+                    bottom_speckle_angles = np.array([angles[1],angles[2]])
+                    self.log.debug(f'angle offsets: {angles}')
+                    self._command = np.squeeze(self.ADC.calculate_command(bottom_speckle_angles))
+                else:
+                    angles = self.ADC.find_speckle_angles2()
+                    pair_angles = self.ADC.speckle_pairs(angles)
+                    self.log.debug(f'angle offsets: {angles}')
+                    self._command = np.squeeze(self.ADC.calculate_command(pair_angles))
 
-            self.log.info(f'One-shot ADC correction calculated a command of: {self._command}')
+                measurements.append(self._command)
+                self.log.debug(f'single measurement command: {self._command}')
 
-            if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
-                self.add_command(self._command,0)
-                self.send_command()
-                self.log.debug(f'ADC command sent: {self._command}')
-            else: 
-                self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
+            error = np.mean(measurements)
+            self.log.debug(f'average command: {error} (just calculated, not sent)')
+            #### deleting the send command part so you can use it without interfering with anyone else's stuff
+            # if np.abs(self._command) < 5: #setting a threshold so the prisms don't do anything crazy     
+            #     self.add_command(self._command,0)
+            #     self.send_command()
+            #     self.log.debug(f'ADC command sent: {self._command}')
+            # else: 
+            #     self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')            
 
             self.log.info('transitioning to idle')
             self.transition_to_idle()
@@ -605,24 +650,67 @@ class adcCtrl(XDevice):
             sweep_angles = np.linspace(-3,3,26)
             diff_pointing_pairs = np.zeros((len(sweep_angles),2)) 
 
-            for i, orientation in enumerate(sweep_angles):
-                self.log.debug(f'Step {i:d}')
-                self.set_command(orientation, 0)
-                self.send_command()
+            if self._knife_edge == False:
+                self.log.debug(f'calibrating in regular mode')
+                for i, orientation in enumerate(sweep_angles):
+                    self.log.debug(f'Step {i:d}')
+                    self.set_command(orientation, 0)
+                    self.send_command()
 
-                img = self.camera.grab_stack(self._n_avg)
-                transpose = img.shaped.T 
-                img = transpose.ravel()
+                    img = self.camera.grab_stack(self._n_avg)
+                    transpose = img.shaped.T 
+                    img = transpose.ravel()
 
-                if self._lab == False:
-                    img = self.ADC.filter_image(img)
+                    if self._lab == False:
+                        img = self.ADC.filter_image(img)
 
-                img = self.ADC.crop_image(img,extent=self._extent)
-                self.ADC.set_psf(img)
+                    img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                    self.ADC.set_psf(img)
+                    
+                    angles = self.ADC.find_speckle_angles2()
+                    pointing_pair = self.ADC.speckle_pairs(angles)
+                    diff_pointing_pairs[i,] = pointing_pair
+
+                # self.set_command(0,0)
+                # self.send_command()
+
+                # a1 = np.zeros(2)
+                # b1 = np.zeros(2)
+
+                # for j in range(2):
+                #     b1[j] , a1[j] = np.polyfit(sweep_angles,diff_pointing_pairs[:,j],deg=1)
+
+                # response = np.matrix([b1])
+                # self.log.debug(f'response matrix: {response}')
                 
-                angles = self.ADC.find_speckle_angles2()
-                pointing_pair = self.ADC.speckle_pairs(angles)
-                diff_pointing_pairs[i,] = pointing_pair
+                # if np.isnan(np.sum(response)):
+                #     self.log.info(f'calibration failed, measured response is NaN')
+                #     self.transition_to_idle()
+                # else:
+                #     new_control_mtx = np.linalg.pinv(response)
+
+                #     self._control_mtx = new_control_mtx.T
+
+            else:
+                self.log.debug(f'calibrating in knife-edge mode')
+                for i, orientation in enumerate(sweep_angles):
+                    self.log.debug(f'Step {i:d}')
+                    self.set_command(orientation, 0)
+                    self.send_command()
+
+                    img = self.camera.grab_stack(self._n_avg)
+                    transpose = img.shaped.T 
+                    img = transpose.ravel()
+
+                    if self._lab == False:
+                        img = self.ADC.filter_image(img)
+
+                    img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
+                    self.ADC.set_psf(img)
+                    
+                    angles = self.ADC.find_speckle_angles2()
+                    bottom_speckle_angles = np.array([angles[1],angles[2]])
+                    diff_pointing_pairs[i,] = bottom_speckle_angles
 
             self.set_command(0,0)
             self.send_command()
@@ -642,15 +730,15 @@ class adcCtrl(XDevice):
             else:
                 new_control_mtx = np.linalg.pinv(response)
 
-                self._control_mtx = new_control_mtx.T
-                self.ADC.set_control_mtx(self._control_mtx)
-                self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
+            self._control_mtx = new_control_mtx.T
+            self.ADC.set_control_mtx(self._control_mtx)
+            self.log.info(f'calibration updated control matrix to: {self._control_mtx}')
 
-                self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
-                self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
-                self.update_property(self.properties['ctrl_mtx'])
-                
-                self.transition_to_idle()
+            self.properties['ctrl_mtx']['m00'] = self._control_mtx[0,0]
+            self.properties['ctrl_mtx']['m01'] = self._control_mtx[0,1]
+            self.update_property(self.properties['ctrl_mtx'])
+            
+            self.transition_to_idle()
 
 
 
