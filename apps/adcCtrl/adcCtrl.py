@@ -351,8 +351,19 @@ class adcCtrl(XDevice):
             self.set_command(0,0)
             self.send_command()
 
-        self.update_wavelength()
+        if self.client['fwsci1.filterName.i'] == constants.SwitchState.ON:
+            self._center_wavelength = 762E-9
+            self._extent = 400
+        elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
+            self._center_wavelength = 908E-9
+            self._extent = 480
+        else: 
+            self._center_wavelength = 656E-9
+            self._extent = 400
+
         self.ADC = AdcFitter(wavelength=self._center_wavelength)
+        self.log.debug(f'initial normalized wavelength value: {self.ADC.normalized_wavelength}')
+        #self.update_wavelength()
         self.ADC.set_control_mtx(self._control_mtx)
 
         self.properties['fsm']['state'] = StateCodes.READY.name
@@ -378,17 +389,17 @@ class adcCtrl(XDevice):
                         self.log.debug('State changed to idle')                    
                     elif key == 'adcLoop':
                         self._state = States.CLOSED_LOOP
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to closed-loop')
                     elif key == 'oneshot':
                         self._state = States.ONESHOT
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to oneshot')
                     elif key == 'calibrate':
                         self._state = States.CALIB
-                        self.update_wavelength()
+                        #self.update_wavelength()
                         self.properties['fsm']['state'] = StateCodes.OPERATING.name
                         self.log.debug('State changed to calibration')
 
@@ -494,12 +505,14 @@ class adcCtrl(XDevice):
         elif self.client['fwsci1.filterName.z'] == constants.SwitchState.ON:
             self._center_wavelength = 908E-9
             self._extent = 480
+            self.log.debug('filter in zprime')
         else: 
             self._center_wavelength = 656E-9
             self._extent = 400
         
-        self.normalized_wavelength = self._center_wavelength / 6565E-9
-        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm, {self.normalized_wavelength} normalized')
+        self.ADC.wavelength = self._center_wavelength
+        self.ADC.normalized_wavelength = self.ADC.wavelength / 6565E-9
+        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm, ADC instance sees {self.ADC.wavelength} & {self.ADC.normalized_wavelength} normalized')
 
     def transition_to_idle(self):
         #self._command = 0
