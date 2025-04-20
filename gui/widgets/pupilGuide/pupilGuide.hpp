@@ -2153,7 +2153,7 @@ void pupilGuide::on_button_ttmtel_pressed()
         m_tipmovewhat = MOVE_WOOF;
         ui.button_ttmtel->setText( "move woofer" );
     }
-    else if( m_tipmovewhat == MOVE_WOOF )
+    else if( m_tipmovewhat == MOVE_WOOF && !m_LabMode )
     {
         m_tipmovewhat = MOVE_TEL;
         ui.button_ttmtel->setText( "move telescope" );
@@ -3257,11 +3257,14 @@ void pupilGuide::on_button_stopAlignment_pressed()
     sendNewProperty( ip );
 
 
-    ip.setDevice( "camwfs-align" );
-    ip.setName( "loop_state" );
-    ip["toggle"] = pcf::IndiElement::Off;
+    if(m_labMode)
+    {
+        ip.setDevice( "camwfs-align" );
+        ip.setName( "loop_state" );
+        ip["toggle"] = pcf::IndiElement::Off;
 
-    sendNewProperty( ip );
+        sendNewProperty( ip );
+    }
 }
 
 } // namespace xqt
