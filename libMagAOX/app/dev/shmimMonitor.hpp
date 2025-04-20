@@ -245,18 +245,18 @@ class shmimMonitor
 
     /// Create the image
     /** This will create the shared memory image, erasing an existing.  This is independent of the actual
-      * shmim monitoring function, which will pick up the new inode change on its own and restart the 
-      * allocate() and processImage() cycle. 
-      * 
-      * \returns 0 on success
-      * \returns \<0 on error
-      */
-    int create( uint32_t width, ///< [in] width of the new image
-        uint32_t height, ///< [in] height of the new image
-        uint32_t depth, ///< [in] depth of the new image 
-        uint8_t datatype, ///< [in] CACAO data type of the new image 
-        void * initData=nullptr /**< [in] [optional] data to initialize the new image with.  Must be of size
-                                                     width*height*depth*sizeof(dataType)  */
+     * shmim monitoring function, which will pick up the new inode change on its own and restart the
+     * allocate() and processImage() cycle.
+     *
+     * \returns 0 on success
+     * \returns \<0 on error
+     */
+    int create( uint32_t width,             ///< [in] width of the new image
+                uint32_t height,            ///< [in] height of the new image
+                uint32_t depth,             ///< [in] depth of the new image
+                uint8_t  datatype,          ///< [in] CACAO data type of the new image
+                void    *initData = nullptr /**< [in] [optional] data to initialize the new image with.  Must be of size
+                                                                 width*height*depth*sizeof(dataType)  */
     );
     ///@}
 
@@ -854,13 +854,14 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
 }
 
 template <class derivedT, class specificT>
-int shmimMonitor<derivedT, specificT>::create( uint32_t width, uint32_t height, uint32_t depth, uint8_t dtype, void * initData )
+int shmimMonitor<derivedT, specificT>::create(
+    uint32_t width, uint32_t height, uint32_t depth, uint8_t dtype, void *initData )
 {
-    //This is all local to this function, so the smThread itself will find out about the changes when the inode 
-    //goes stale.
+    // This is all local to this function, so the smThread itself will find out about the changes when the inode
+    // goes stale.
     IMAGE imageStream;
 
-    //First silently see if it exists and then destroy it if it does
+    // First silently see if it exists and then destroy it if it does
     int  SM_fd;
     char SM_fname[200];
     ImageStreamIO_filename( SM_fname, sizeof( SM_fname ), m_shmimName.c_str() );
@@ -871,16 +872,14 @@ int shmimMonitor<derivedT, specificT>::create( uint32_t width, uint32_t height, 
 
         if( ImageStreamIO_openIm( &m_imageStream, m_shmimName.c_str() ) != IMAGESTREAMIO_SUCCESS )
         {
-            return derivedT::template log<software_error,-1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
+            return derivedT::template log<software_error, -1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
         }
 
-        if(ImageStreamIO_destroyIm(&m_imageStream)!= IMAGESTREAMIO_SUCCESS )
+        if( ImageStreamIO_destroyIm( &m_imageStream ) != IMAGESTREAMIO_SUCCESS )
         {
-            return derivedT::template log<software_error,-1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
+            return derivedT::template log<software_error, -1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
         }
     }
-
-    //size_t typeSize = ImageStreamIO_typesize( dType );
 
     uint32_t imsize[3] = { 0, 0, 0 };
 
@@ -889,8 +888,6 @@ int shmimMonitor<derivedT, specificT>::create( uint32_t width, uint32_t height, 
     imsize[2] = depth;
 
     std::cerr << "Creating: " << m_shmimName << " " << width << " " << height << " " << depth << "\n";
-
-    std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
 
     if( ImageStreamIO_createIm_gpu( &imageStream,
                                     m_shmimName.c_str(),
@@ -904,28 +901,20 @@ int shmimMonitor<derivedT, specificT>::create( uint32_t width, uint32_t height, 
                                     CIRCULAR_BUFFER | ZAXIS_TEMPORAL,
                                     0 ) != IMAGESTREAMIO_SUCCESS )
     {
-        return derivedT::template log<software_error,-1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
+        return derivedT::template log<software_error, -1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
     }
 
-    std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
-
-    if(initData != nullptr)
+    if( initData != nullptr )
     {
-        memcpy(imageStream.array.raw, initData, width*height*ImageStreamIO_typesize( dtype ));
+        memcpy( imageStream.array.raw, initData, width * height * ImageStreamIO_typesize( dtype ) );
     }
-
-    std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
 
     imageStream.md->cnt1 = depth - 1;
 
-    std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
-
     if( ImageStreamIO_closeIm( &imageStream ) != IMAGESTREAMIO_SUCCESS )
     {
-        return derivedT::template log<software_error,-1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
+        return derivedT::template log<software_error, -1>( { __FILE__, __LINE__, "error from ImageStreamIO" } );
     }
-
-    std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
 
     return 0;
 }
