@@ -341,6 +341,7 @@ class adcCtrl(XDevice):
         self.delta_1 = 0
         self.delta_2 = 0
         self._offset = 0
+        self._mask_diam = 50
         self._lab = False
         self._knife_edge = False
         self._knife_edge_zero1 = 26.78175714
@@ -406,10 +407,9 @@ class adcCtrl(XDevice):
 
         self.update_property(existing_property)
 
-
     def handle_knife_edge(self,existing_property, new_message):
         if 'toggle' in new_message and new_message['toggle'] is constants.SwitchState.ON:
-            self.log.debug('changing knife edge mode')
+            self.log.debug('changing into knife edge mode')
             existing_property['toggle'] = constants.SwitchState.ON
             self._knife_edge = True
         else:
@@ -430,7 +430,8 @@ class adcCtrl(XDevice):
 
             if self._lab == False:
                 img = self.ADC.filter_image(img)
-
+            
+            self.ADC.set_psf(img)
             angles = self.ADC.find_speckle_angles2()
             self._knife_edge_zero1 = angles[1]
             self._knife_edge_zero2 = angles[2]
@@ -496,7 +497,9 @@ class adcCtrl(XDevice):
         else: 
             self._center_wavelength = 656E-9
             self._extent = 400
-        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm')
+        
+        self.normalized_wavelength = self._center_wavelength / 6565E-9
+        self.log.debug(f'using center wavelength {self._center_wavelength*1E9} nm, {self.normalized_wavelength} normalized')
 
     def transition_to_idle(self):
         #self._command = 0
@@ -540,7 +543,7 @@ class adcCtrl(XDevice):
             if self._lab == False:
                 img = self.ADC.filter_image(img)
 
-            img = self.ADC.crop_image(img,extent=self._extent)
+            img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
             self.ADC.set_psf(img)
             
             if self._knife_edge:
@@ -557,10 +560,10 @@ class adcCtrl(XDevice):
             self.log.debug(f'measured error: {error}')
             #self._command = np.squeeze(self._command + -self._gain * error)
             
-            if np.abs(self._command) < 10: #setting a threshold so the prisms don't do anything crazy     
+            if np.abs(self._command) < 1: #setting a threshold so the prisms don't do anything crazy     
                 self.add_command(error * self._gain,0)
                 self.send_command()
-                self.log.debug(f'ADC command sent: {self._command}')
+                self.log.debug(f'ADC command sent: {error * self._gain}')
             else: self.log.info(f'ADC command {self._command} exceeds acceptable threshold and was not sent')
 
         elif self._state == States.ONESHOT:
@@ -571,7 +574,7 @@ class adcCtrl(XDevice):
             if self._lab == False:
                 img = self.ADC.filter_image(img)
 
-            img = self.ADC.crop_image(img,extent=self._extent)
+            img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
             self.ADC.set_psf(img)
             #center_of_intensity = np.array([sum(img*img.grid.x)/sum(img),sum(img*img.grid.y)/sum(img)])
             #self.log.info(f'center of intensity: {center_of_intensity}')
@@ -617,7 +620,7 @@ class adcCtrl(XDevice):
                 if self._lab == False:
                     img = self.ADC.filter_image(img)
 
-                img = self.ADC.crop_image(img,extent=self._extent)
+                img = self.ADC.crop_image(img,extent=self._extent,mask_diam=self._mask_diam)
                 self.ADC.set_psf(img)
                 
                 angles = self.ADC.find_speckle_angles2()
