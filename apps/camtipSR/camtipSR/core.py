@@ -112,7 +112,7 @@ class camtipSR(XDevice):
         nv = properties.NumberVector(name='jitter_x')
         nv.add_element(DefNumber(
             name='current', label='jitter_x', format='%i',
-            min=0, max=100, step=0.1, _value=0.0
+            min=-20, max=20, step=0.1, _value=0.0
         ))
         self.add_property(nv)
 
@@ -120,7 +120,7 @@ class camtipSR(XDevice):
         nv = properties.NumberVector(name='jitter_y')
         nv.add_element(DefNumber(
             name='current', label='jitter_y', format='%i',
-            min=0, max=100, step=0.1, _value=0.0
+            min=-20, max=20, step=0.1, _value=0.0
         ))
         self.add_property(nv)
 
