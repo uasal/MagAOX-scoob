@@ -88,6 +88,22 @@ class XCam:
 		return (self.shmim.md.size[0], self.shmim.md.size[1])
 
 	@property
+	def x(self):
+		return self._roi_state['roi_region_bin_x']
+
+	@property
+	def y(self):
+		return self._roi_state['roi_region_bin_y']
+
+	@property
+	def width(self):
+		return self._roi_state['roi_region_w']
+
+	@property
+	def height(self):
+		return self._roi_state['roi_region_h']
+
+	@property
 	def exposure_time(self):
 		return self._client[self.shm_name + '.exptime.current']
 	
