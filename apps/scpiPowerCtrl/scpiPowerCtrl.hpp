@@ -153,7 +153,21 @@ public:
       */
     int devConnect();
 
-    int devStatus(std::string & strRead);
+    int devStatus();
+    
+    int updateChannels();
+    
+    int updateChannel(int channel);
+    
+    int setPollRate();
+    
+    int setChannelVolts(int channel, double volts);
+
+    int setChannelAmps(int channel, double amps);
+
+    int setChannelLimits(int channel, double highVolt, double lowVolt, double highCurr, double lowCurr);
+    
+    void updateAlarmsAndWarnings();
 
     ///@}
 
@@ -226,7 +240,8 @@ void scpiPowerCtrl::loadConfig()
         config(ch.currLowLimit,  prefix + "lowCurr");
     }
 
-    /*
+    /*  expecting this format
+
         [channel1.limits]
         highVolt = 230
         lowVolt = 10
@@ -252,10 +267,6 @@ int scpiPowerCtrl::appStartup()
     REG_INDI_NEWPROP_NOCB(m_indiP_status, "status", pcf::IndiProperty::Text);
     m_indiP_status.add (pcf::IndiElement("value"));
 
-    //REG_INDI_NEWPROP_NOCB(m_indiP_load_ch1, "load", pcf::IndiProperty::Number);
-    //m_indiP_load_ch1.add (pcf::IndiElement("voltage"));
-    //m_indiP_load_ch1.add (pcf::IndiElement("current"));
-    
     m_indiP_load_channels.resize(m_numChannels);
 
     if(m_numChannels == 0)
@@ -325,6 +336,10 @@ int scpiPowerCtrl::appLogic()
  
     if(state() == stateCodes::CONNECTED)
     {
+        // after fd open set for remote control
+    
+        // CONF:SETPT 3
+
         state(stateCodes::READY);
     }
  
@@ -354,55 +369,68 @@ int scpiPowerCtrl::appLogic()
 
 int scpiPowerCtrl::appShutdown()
 {
+
+    // release power supply to user control 
+    // CONF:SETPT 0 (ROTARY) | 1 (KEYPAD) | 2 (EXT PGM) | 3 (REMOTE)
+
+    // CONF:SETPT 1
+
    return 0;
 }
 
 int scpiPowerCtrl::updateOutletState( int outletNum )
 {
-   static_cast<void>(outletNum);
+    int rv;
 
-   return updateOutletStates(); //We can't do just one.
+    rv = devStatus();
+
+    if(rv < 0)
+    {
+        log<software_error>({__FILE__, __LINE__, "device status error"});
+        state(stateCodes::NOTCONNECTED);
+        return 0;
+    }
+
+    updateChannel(outletNum); 
+
+    updateIfChanged(m_indiP_status, "value", m_status);
+
+    std::string propName = "load_ch" + std::to_string(outletNum + 1);
+
+    updateIfChanged(m_indiP_load_channels[outletNum], "voltage", m_channelVoltages[outletNum]);
+    updateIfChanged(m_indiP_load_channels[outletNum], "current", m_channelCurrents[outletNum]);
+
+    dev::outletController<scpiPowerCtrl>::updateINDI();
+
+    return 0;
 }
 
 
 int scpiPowerCtrl::updateOutletStates()
 {
     int rv;
-    std::string strRead;
 
-    rv = devStatus(strRead);
+    rv = devStatus();
 
-    if(rv < 0 )
+    if(rv < 0)
     {
-        log<software_error>({__FILE__, __LINE__, "error getting device status"});
+        log<software_error>({__FILE__, __LINE__, "device status error"});
         state(stateCodes::NOTCONNECTED);
         return 0;
     }
 
-    if(rv > 0)
-    {
-        return 0; //this means the re-read was successful, but we don't want to parse this time.
+    updateChannels(); 
+
+    updateIfChanged(m_indiP_status, "value", m_status);
+
+    for (size_t i = 0; i < m_numChannels; i++) {
+        std::string propName = "load_ch" + std::to_string(i + 1);
+    
+        updateIfChanged(m_indiP_load_channels[i], "voltage", m_channelVoltages[i]);
+        updateIfChanged(m_indiP_load_channels[i], "current", m_channelCurrents[i]);
     }
 
-    rv = updateChannels(); // poll channels to update voltages and currents
-
-    if(rv == 0)
-    {
-        updateIfChanged(m_indiP_status, "value", m_status);
-
-        for (size_t i = 0; i < m_numChannels; i++) {
-            std::string propName = "load_ch" + std::to_string(i + 1);
-        
-            updateIfChanged(m_indiP_load_channels[i], "voltage", m_channelVoltages[i]);
-            updateIfChanged(m_indiP_load_channels[i], "current", m_channelCurrents[i]);
-        }
-
-        dev::outletController<scpiPowerCtrl>::updateINDI();
-    }
-    else
-    {
-        log<software_error>({__FILE__, __LINE__, 0, rv, "parse error"});
-    }
+    dev::outletController<scpiPowerCtrl>::updateINDI();
 
     return 0;
 }
@@ -433,37 +461,52 @@ int scpiPowerCtrl::devConnect()
     return 0;
 }
 
-int scpiPowerCtrl::devStatus(std::string & strRead)
+int scpiPowerCtrl::devStatus()
 {
-    return 0; // get status of the device, 
+    // verify remote status and external control
+    // CONF:SETPT? -> should return 3
+    // CONT:EXT? -> should return 1
+
+    std::string cmd_conf = "CONF:SETPT?";
+    std::string cmd_ctrl = "CONT:EXT?";
+    if (write(fd, cmd_conf.c_str(), cmd_conf.size()) != 3 ||
+        write(fd, cmd_ctrl.c_str(), cmd_ctr.size()) != 1)
+    {
+        return log<text_log,-1>("Device not in external control and remote control.", logPrio::LOG_CRITICAL);
+    }
+
+    return 0;
 }
 
 int scpiPowerCtrl::updateChannels()
 {
-    // select a channel INST:NSEL
-    // Load volt and current into strings
-    // parse strings and cast to variables 
-
     for(int i=0; i<m_numChannels; i++)
     {
-        std::string cmd_sel = "INST:NSEL " + std::to_string(i + 1) + "\n";
-        if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
-
-        std::string volt, curr;
-        bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
-        bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
-
-        if (ok_v && ok_c) {
-            volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
-            curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
-
-        }
-
-        m_channelVoltages[i] = (float)volt;
-        m_channelCurrents[i] = (float)curr;
+        updateChannel(i);
     }
 
     return 0; 
+}
+
+int scpiPowerCtrl::updateChannel(int channel)
+{
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
+
+    std::string volt, curr;
+    bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
+    bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
+
+    if (ok_v && ok_c) {
+        volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
+        curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
+
+    }
+
+    m_channelVoltages[i] = (float)volt;
+    m_channelCurrents[i] = (float)curr;
+
+    return 0;
 }
 
 int scpiPowerCtrl::setPollRate()
@@ -484,6 +527,11 @@ int scpiPowerCtrl::setChannelAmps(int channel, double amps)
 int scpiPowerCtrl::setChannelLimits(int channel, double highVolt, double lowVolt, double highCurr, double lowCurr)
 {
     return 0;
+}
+
+void scpiPowerCtrl::updateAlarmsAndWarnings()
+{
+    // TODO poll the various alarm statuses from the PDU
 }
 
 }//namespace app
