@@ -121,7 +121,7 @@ class shmimPlot : public mx::app::application
             for( size_t n = 0; n < m_imageThreads[i].m_y.size(); ++n )
             {
                 std::string tit = m_imageThreads[i].m_shmimName;
-                if( m_imageThreads[i].m_y.size() > 1 )
+                if( m_imageThreads[i].m_y.size() > 0 )
                 {
                     if( m_rows.size() > 0 )
                     {
