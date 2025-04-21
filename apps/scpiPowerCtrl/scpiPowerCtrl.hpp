@@ -215,7 +215,7 @@ void scpiPowerCtrl::loadConfig()
     m_channelVoltages.resize(m_numChannels);
     m_channelCurrents.resize(m_numChannels);
 
-    for (size_t i = 0; i < m_numChannels; ++i) {
+    for (size_t i = 0; i < m_numChannels; i++) {
         auto& ch = m_channelLimits[i];
 
         std::string prefix = "channel" + std::to_string(i + 1) + ".limits."; // channel1.limits.highVolt
@@ -263,7 +263,7 @@ int scpiPowerCtrl::appStartup()
         log<text_log>("0 power channels defined", logPrio::LOG_WARNING);
     }
 
-    for (size_t i = 0; i < m_numChannels; ++i) {
+    for (size_t i = 0; i < m_numChannels; i++) {
         std::string name = "load_ch" + std::to_string(i + 1);
     
         REG_INDI_NEWPROP_NOCB(m_indiP_load_channels[i], name, pcf::IndiProperty::Number);
@@ -389,10 +389,8 @@ int scpiPowerCtrl::updateOutletStates()
     if(rv == 0)
     {
         updateIfChanged(m_indiP_status, "value", m_status);
-        //updateIfChanged(m_indiP_load, "voltage", m_voltage);
-        //updateIfChanged(m_indiP_load, "current", m_current);
 
-        for (size_t i = 0; i < m_numChannels; ++i) {
+        for (size_t i = 0; i < m_numChannels; i++) {
             std::string propName = "load_ch" + std::to_string(i + 1);
         
             updateIfChanged(m_indiP_load_channels[i], "voltage", m_channelVoltages[i]);
@@ -442,51 +440,28 @@ int scpiPowerCtrl::devStatus(std::string & strRead)
 
 int scpiPowerCtrl::updateChannels()
 {
-    std::string cmd_sel = "INST:NSEL " + std::to_string(ch) + "\n"; // do we really need to select?
-    if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
+    // select a channel INST:NSEL
+    // Load volt and current into strings
+    // parse strings and cast to variables 
 
-    std::string volt, curr;
-    bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
-    bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
-
-    if (ok_v && ok_c) {
-        volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
-        curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
-
-    }
-
-    if(m_numChannels > 2)
+    for(int i=0; i<m_numChannels; i++)
     {
-        std::string cmd_sel = "INST:NSEL " + std::to_string(ch) + "\n"; // do we really need to select?
+        std::string cmd_sel = "INST:NSEL " + std::to_string(i + 1) + "\n";
         if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
-    
+
         std::string volt, curr;
         bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
         bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
-    
+
         if (ok_v && ok_c) {
             volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
             curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
-    
-        }
-    }
 
-    if(m_numChannels > 3)
-    {
-        std::string cmd_sel = "INST:NSEL " + std::to_string(ch) + "\n"; // do we really need to select?
-        if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
-    
-        std::string volt, curr;
-        bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
-        bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
-    
-        if (ok_v && ok_c) {
-            volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
-            curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
-    
         }
-    }
 
+        m_channelVoltages[i] = (float)volt;
+        m_channelCurrents[i] = (float)curr;
+    }
 
     return 0; 
 }
