@@ -15,19 +15,27 @@ sudo su - xsup```
 
 ### Start INDI server and all INDI drivers under resurrector control
 
-```resuctrl startup
-resuctrl status --all```
+```
+resuctrl startup
+resuctrl status --all
+```
 
 ### Stop an INDI driver
 
-```resuctrl stop maths_1
-resuctrl status --all```
+```
+resuctrl stop maths_1
+resuctrl status --all
+```
 
 ### Start an INDI driver
 
-```resuctrl start maths_x
-resuctrl status --all```
+```
+resuctrl start maths_x
+resuctrl status --all
+```
 
 ### Stop everything
 
-```resuctrl stop --all```
+```
+resuctrl stop --all
+```
