@@ -16,7 +16,7 @@ sudo su - xsup```
 ### Start INDI server and all INDI drivers under resurrector control
 
 ```resuctrl startup
-resuctrl status --all``
+resuctrl status --all```
 
 ### Stop an INDI driver
 
