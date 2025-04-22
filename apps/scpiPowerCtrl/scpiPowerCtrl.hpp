@@ -60,10 +60,10 @@ protected:
     std::vector<ChannelLimits> m_channelLimits;
     std::vector<float> m_channelVoltages;
     std::vector<float> m_channelCurrents;
-    int m_numChannels {0}; ///< The number of channels on the device
-    int m_currentChannel {0}; ///< The current channel being monitored
+    int m_numChannels = 0; ///< The number of channels on the device
+    int m_currentChannel = 0; ///< The current channel being monitored
 
-    constexpr int maxChannels = 8; // define maximum number of power channels
+    int maxChannels = 4; // define maximum number of power channels
 
     int fd; ///< The file descriptor for the device
     int m_pollRateHz {1000};  ///< The timeout for writing to the device [msec].
@@ -169,6 +169,8 @@ public:
     
     void updateAlarmsAndWarnings();
 
+    bool send_scpi(int fd, const std::string& cmd, std::string& response);
+
     ///@}
 
 protected:
@@ -229,7 +231,7 @@ void scpiPowerCtrl::loadConfig()
     m_channelVoltages.resize(m_numChannels);
     m_channelCurrents.resize(m_numChannels);
 
-    for (size_t i = 0; i < m_numChannels; i++) {
+    for (int i = 0; i < m_numChannels; i++) {
         auto& ch = m_channelLimits[i];
 
         std::string prefix = "channel" + std::to_string(i + 1) + ".limits."; // channel1.limits.highVolt
@@ -274,7 +276,7 @@ int scpiPowerCtrl::appStartup()
         log<text_log>("0 power channels defined", logPrio::LOG_WARNING);
     }
 
-    for (size_t i = 0; i < m_numChannels; i++) {
+    for (int i = 0; i < m_numChannels; i++) {
         std::string name = "load_ch" + std::to_string(i + 1);
     
         REG_INDI_NEWPROP_NOCB(m_indiP_load_channels[i], name, pcf::IndiProperty::Number);
@@ -423,7 +425,7 @@ int scpiPowerCtrl::updateOutletStates()
 
     updateIfChanged(m_indiP_status, "value", m_status);
 
-    for (size_t i = 0; i < m_numChannels; i++) {
+    for (int i = 0; i < m_numChannels; i++) {
         std::string propName = "load_ch" + std::to_string(i + 1);
     
         updateIfChanged(m_indiP_load_channels[i], "voltage", m_channelVoltages[i]);
@@ -466,15 +468,21 @@ int scpiPowerCtrl::devStatus()
     // verify remote status and external control
     // CONF:SETPT? -> should return 3
     // CONT:EXT? -> should return 1
-
+    /*
     std::string cmd_conf = "CONF:SETPT?";
     std::string cmd_ctrl = "CONT:EXT?";
-    if (write(fd, cmd_conf.c_str(), cmd_conf.size()) != 3 ||
-        write(fd, cmd_ctrl.c_str(), cmd_ctr.size()) != 1)
+
+    int conf = write(fd, cmd_conf.c_str(), cmd_conf.size());
+    int ctrl = write(fd, cmd_ctrl.c_str(), cmd_ctrl.size());
+
+
+    if (conf != 3 ||
+        ctrl != 1)
     {
+        printf("%d, %d\n", conf, ctrl);
         return log<text_log,-1>("Device not in external control and remote control.", logPrio::LOG_CRITICAL);
     }
-
+    */
     return 0;
 }
 
@@ -491,7 +499,9 @@ int scpiPowerCtrl::updateChannels()
 int scpiPowerCtrl::updateChannel(int channel)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
-    if (write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0) continue;
+    if(write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0){
+        return log<text_log,-1>("Unable to select channel.", logPrio::LOG_CRITICAL);
+    } 
 
     std::string volt, curr;
     bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
@@ -503,8 +513,8 @@ int scpiPowerCtrl::updateChannel(int channel)
 
     }
 
-    m_channelVoltages[i] = (float)volt;
-    m_channelCurrents[i] = (float)curr;
+    m_channelVoltages[channel] = std::stof(volt);
+    m_channelCurrents[channel] = std::stof(curr);
 
     return 0;
 }
@@ -533,6 +543,24 @@ void scpiPowerCtrl::updateAlarmsAndWarnings()
 {
     // TODO poll the various alarm statuses from the PDU
 }
+
+bool scpiPowerCtrl::send_scpi(int fd, const std::string& cmd, std::string& response) {
+    if (write(fd, cmd.c_str(), cmd.size()) < 0) {
+        perror("Write failed");
+        return false;
+    }
+
+    char buffer[1024] = {0};
+    int n = read(fd, buffer, sizeof(buffer) - 1);
+    if (n < 0) {
+        perror("Read failed");
+        return false;
+    }
+
+    response.assign(buffer, n);
+    return true;
+}
+
 
 }//namespace app
 } //namespace MagAOX
