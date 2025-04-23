@@ -344,6 +344,7 @@ function parse_commands {
   || return 1
 
   [ ! "$All" ] || procnames="$(find_all_procnames)" || return 1
+  [ ! "$All" ] && [ ! "$procnames" ] && [ "$verb" == "status" ] && procnames="$(find_all_procnames)"
 
   true
 } ### function parse_commands
@@ -492,9 +493,9 @@ function find_resurrector_indi_path {
            "/usr/local/bin/" \
   ; do
      ### If directory ends in "/" then don't recurse below that dir
-     [ "$P%/" == "$P" ] && unset maxdepthopt || maxdepthopt="-maxdepth 1"
+     [ "${P%/}" == "$P" ] && unset maxdepthopt || maxdepthopt="-maxdepth 1"
 
-     find "$P" $depthopt -name resurrector_indi 2>/dev/null \
+     find "$P" $maxdepthopt -name resurrector_indi 2>/dev/null \
      | head -1 | grep . && return 0 || continue
 
   done
