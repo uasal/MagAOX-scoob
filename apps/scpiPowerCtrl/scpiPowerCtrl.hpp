@@ -165,7 +165,13 @@ public:
 
     int setChannelAmps(int channel, double amps);
 
-    int setChannelLimits(int channel, double highVolt, double lowVolt, double highCurr, double lowCurr);
+    int setChannelHighVolt(int channel, double highVolt);
+    
+    int setChannelLowVolt(int channel, double lowVolt);
+    
+    int setChannelHighCurr(int channel, double highCurr);
+    
+    int setChannelLowCurr(int channel, double lowCurr);
     
     void updateAlarmsAndWarnings();
 
@@ -437,20 +443,39 @@ int scpiPowerCtrl::updateOutletStates()
     return 0;
 }
 
-// turns channel on
 int scpiPowerCtrl::turnOutletOn( int outletNum )
 {
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(outletNum), logPrio::LOG_WARNING);
+    }
+
+    if (!send_scpi(fd, "OUTP ON\n")) {
+        return log<text_log,-1>("Failed to turn output channel " + std::string(outletNum) + " on.", logPrio::LOG_WARNING);
+    }
+
     return 0;
 }
 
-// turns channel off
 int scpiPowerCtrl::turnOutletOff( int outletNum )
 {
+ 
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
-   return 0;
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(outletNum), logPrio::LOG_WARNING);
+    }
+
+    if (!send_scpi(fd, "OUTP OFF\n")) {
+        return log<text_log,-1>("Failed to turn output channel " + std::string(outletNum) + " off.", logPrio::LOG_WARNING);
+    }
+
+    return 0;
 }
 
 int scpiPowerCtrl::devConnect()
@@ -526,16 +551,99 @@ int scpiPowerCtrl::setPollRate()
 
 int scpiPowerCtrl::setChannelVolts(int channel, double volts)
 {
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd_volts = "VOLT " + std::to_string(volts) + "\n";
+
+    if (!send_scpi(fd, cmd_volts)) {
+        return log<text_log,-1>("Failed to set volts for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
     return 0;
 }
 
 int scpiPowerCtrl::setChannelAmps(int channel, double amps)
 {
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd_amps = "CURR " + std::to_string(amps) + "\n";
+
+    if (!send_scpi(fd, cmd_amps)) {
+        return log<text_log,-1>("Failed to set current for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
     return 0;
 }
 
-int scpiPowerCtrl::setChannelLimits(int channel, double highVolt, double lowVolt, double highCurr, double lowCurr)
+int scpiPowerCtrl::setChannelHighVolt(int channel, double highVolt)
 {
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd = "VOLT:LIM:HIGH " + std::to_string(highVolt) + "\n";
+    if (!send_scpi(fd, cmd)) {
+        return log<text_log,-1>("Failed to set high voltage limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    return 0;
+}
+
+int scpiPowerCtrl::setChannelLowVolt(int channel, double lowVolt)
+{
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd = "VOLT:LIM:LOW " + std::to_string(lowVolt) + "\n";
+    if (!send_scpi(fd, cmd)) {
+        return log<text_log,-1>("Failed to set low voltage limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    return 0;
+}
+
+int scpiPowerCtrl::setChannelHighCurr(int channel, double highCurr)
+{
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd = "CURR:LIM:HIGH " + std::to_string(highCurr) + "\n";
+    if (!send_scpi(fd, cmd)) {
+        return log<text_log,-1>("Failed to set high current limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    return 0;
+}
+
+int scpiPowerCtrl::setChannelLowCurr(int channel, double lowCurr)
+{
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+
+    if (!send_scpi(fd, cmd_sel)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
+    std::string cmd = "CURR:LIM:LOW " + std::to_string(lowCurr) + "\n";
+    if (!send_scpi(fd, cmd)) {
+        return log<text_log,-1>("Failed to set low current limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    }
+
     return 0;
 }
 
