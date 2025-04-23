@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SEC = 10
 
-class XCam():
+class XCam:
 	'''A Python interface for MagAO-X cameras
 	'''
 	_roi_properties : tuple[str] = ('roi_region_h', 'roi_region_w', 'roi_region_bin_x', 'roi_region_bin_y')
@@ -25,6 +25,7 @@ class XCam():
 			indi_client = indi.client.IndiClient()
 			indi_client.connect()
 		self._client = indi_client
+		self._client.wait_to_connect()
 		self._client.get_properties_and_wait(shm_name)
 
 		self._old_counter = 0
@@ -64,7 +65,7 @@ class XCam():
 
 		if self._use_hcipy:
 			from hcipy import make_pupil_grid
-			self.grid = make_pupil_grid(self.shape, self._pixel_size * self.shape)
+			self.grid = make_pupil_grid(self.shape, self._pixel_size * np.array(self.shape))
 		else:
 			self.grid = None
 
@@ -85,6 +86,22 @@ class XCam():
 	@property
 	def shape(self):
 		return (self.shmim.md.size[0], self.shmim.md.size[1])
+
+	@property
+	def x(self):
+		return self._roi_state['roi_region_bin_x']
+
+	@property
+	def y(self):
+		return self._roi_state['roi_region_bin_y']
+
+	@property
+	def width(self):
+		return self._roi_state['roi_region_w']
+
+	@property
+	def height(self):
+		return self._roi_state['roi_region_h']
 
 	@property
 	def exposure_time(self):
@@ -119,28 +136,28 @@ class XCam():
 		if 'emgain' in self._client[self.shm_name]:
 			return self._client[self.shm_name + '.emgain.current']
 		else:
-			raise MissingValueError("This camera has no emgain.")
+			raise ValueError("This camera has no emgain.")
 
 	@emgain.setter
 	def emgain(self, new_emgain):
 		if 'emgain' in self._client[self.shm_name]:
 			self._client[self.shm_name + '.emgain.target'] = new_emgain
 		else:
-			raise MissingValueError("This camera has no emgain.")
+			raise ValueError("This camera has no emgain.")
 
 	@property
 	def temperature(self):
 		if 'temp_ccd' in self._client[self.shm_name]:
 			return self._client[self.shm_name + '.temp_ccd.current']
 		else:
-			raise MissingValueError("This camera has no temperature monitor.")
+			raise ValueError("This camera has no temperature monitor.")
 
 	@temperature.setter
 	def temperature(self, new_temperature):
 		if 'temp_ccd' in self._client[self.shm_name]:
 			self._client[self.shm_name + '.temp_ccd.target'] = new_temperature
 		else:
-			raise MissingValueError("This camera has no temperature monitor.")
+			raise ValueError("This camera has no temperature monitor.")
 
 	@property
 	def shutter(self):
@@ -150,8 +167,10 @@ class XCam():
 	def shutter(self, shutter_state):
 		self._client[self.shm_name + '.shutter.toggle'] = indi.SwitchState.ON if shutter_state else indi.SwitchState.OFF
 
-	def process(self, data):
-		if self._dark_exists:
+	def process(self, data, subtract_dark):
+		if subtract_dark and not self._dark_exists:
+			raise RuntimeError("No dark found, but subtract_dark=False was not supplied")
+		elif self._dark_exists and subtract_dark:
 			if np.all(self.dark_shmim.md.size == self.shmim.md.size):
 				arr = data - self.dark_shmim.copy().astype(float)
 		else:
@@ -161,7 +180,7 @@ class XCam():
 			arr = Field(arr.ravel(), self.grid)
 		return arr
 
-	def grab(self, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
+	def grab(self, timeout=DEFAULT_TIMEOUT_SEC, subtract_dark=True) -> Union[np.ndarray, 'hcipy.Field']:
 		self._old_counter = self.counter
 		data = self.shmim.get_data(check=True, timeout=timeout).astype(float)
 		
@@ -170,10 +189,10 @@ class XCam():
 		else:
 			self._old_counter = self.counter
 		
-		data = self.process(data)
+		data = self.process(data, subtract_dark)
 		return data
 
-	def grab_stack(self, num_images, timeout=DEFAULT_TIMEOUT_SEC) -> Union[np.ndarray, 'hcipy.Field']:
+	def grab_stack(self, num_images, timeout=DEFAULT_TIMEOUT_SEC, subtract_dark=True) -> Union[np.ndarray, 'hcipy.Field']:
 		stacked_image = 0
 		k = 0
 		for i in range(num_images):
@@ -192,6 +211,5 @@ class XCam():
 		if k != 0:
 			stacked_image = stacked_image / k
 
-		stacked_image = self.process(stacked_image)
+		stacked_image = self.process(stacked_image, subtract_dark)
 		return stacked_image
-		

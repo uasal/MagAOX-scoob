@@ -264,7 +264,9 @@ pwrDevice::~pwrDevice()
     }
 
     if( m_channels )
+    {
         delete[] m_channels;
+    }
 
     // This is taken care of by parent destruct:
     // delete m_deviceNameLabel;
@@ -293,7 +295,10 @@ void pwrDevice::setChannels( const std::vector<std::string> &channelNames )
     }
 
     if( m_channels )
+    {
         delete[] m_channels;
+    }
+
     m_channels = nullptr;
 
     m_numChannels = channelNames.size();
@@ -352,9 +357,6 @@ void pwrDevice::handleSetProperty( const pcf::IndiProperty &ipRecv )
                 std::vector<int> outlets;
                 mx::ioutils::parseStringVector( outlets, outletStr );
 
-                // size_t noutlets = std::count(outletStr.begin(), outletStr.end(), ',');
-                // std::cerr << "   " << m_channels[n]->channelName() << " " << noutlets+1 << " " << outlets.size() <<
-                // "\n"; m_channels[n]->numOutlets(noutlets+1);
                 m_channels[n]->outlets( outlets );
             }
         }
@@ -399,19 +401,10 @@ void pwrDevice::handleSetProperty( const pcf::IndiProperty &ipRecv )
             {
                 if( ipRecv.find( "toggle" ) )
                 {
+                    m_channels[i]->isToggle( true );
                     if( ipRecv.getState() == pcf::IndiProperty::Busy )
                     {
                         m_channels[i]->switchState( pwrChState::Int );
-
-                        //infer that target state is opposite of current
-                        if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
-                        {
-                            m_channels[i]->switchState( pwrChState::Off );
-                        }
-                        else
-                        {
-                            m_channels[i]->switchState( pwrChState::On );
-                        }
                     }
                     else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
                     {
@@ -425,28 +418,40 @@ void pwrDevice::handleSetProperty( const pcf::IndiProperty &ipRecv )
             }
             else
             {
-                if( ipRecv.find( "target" ) )
+                if( ipRecv.find( "target" ))
                 {
-                    std::string tmp = ipRecv["target"].get();
+                    std::string target = ipRecv["target"].get();
 
-                    if( tmp == "On" )
-                        m_channels[i]->switchTarget( pwrChState::On );
-                    if( tmp == "Int" )
+                    if( target == "Int" )
+                    {
                         m_channels[i]->switchTarget( pwrChState::Int );
-                    if( tmp == "Off" )
+                    }
+                    else if( target == "On" )
+                    {
+                        m_channels[i]->switchTarget( pwrChState::On );
+                    }
+                    else if( target == "Off" )
+                    {
                         m_channels[i]->switchTarget( pwrChState::Off );
+                    }
                 }
 
-                if( ipRecv.find( "state" ) )
+                if( ipRecv.find( "state" ))
                 {
-                    std::string tmp = ipRecv["state"].get();
+                    std::string state = ipRecv["state"].get();
 
-                    if( tmp == "On" )
+                    if( state == "On" )
+                    {
                         m_channels[i]->switchState( pwrChState::On );
-                    if( tmp == "Int" )
+                    }
+                    else if( state == "Int" )
+                    {
                         m_channels[i]->switchState( pwrChState::Int );
-                    if( tmp == "Off" )
+                    }
+                    else if( state == "Off" )
+                    {
                         m_channels[i]->switchState( pwrChState::Off );
+                    }
                 }
             }
         }
@@ -465,7 +470,6 @@ void pwrDevice::handleSetProperty( const pcf::IndiProperty &ipRecv )
         if( ipRecv.find( "voltage" ) )
         {
             m_voltage.add( ipRecv["voltage"].get<double>(), ts );
-            // std::cerr << m_deviceName << " " << ipRecv["voltage"].get<double>() << "\n";
         }
 
         if( ipRecv.find( "frequency" ) )
@@ -500,26 +504,75 @@ double pwrDevice::frequency()
 
 void pwrDevice::switchOn( const std::string &channelName )
 {
-    pcf::IndiProperty ip( pcf::IndiProperty::Text );
+    bool toggle = false;
+    for( size_t n = 0; n < m_numChannels; ++n )
+    {
+        if( m_channels[n]->channelName() == channelName )
+        {
+            toggle = m_channels[n]->isToggle();
+            break;
+        }
+    }
 
-    ip.setDevice( m_deviceName );
-    ip.setName( channelName );
-    ip.add( pcf::IndiElement( "target" ) );
-    ip["target"] = "On";
+    if( toggle )
+    {
+        pcf::IndiProperty ip( pcf::IndiProperty::Switch );
 
-    emit chChange( ip );
+        ip.setDevice( m_deviceName );
+        ip.setName( channelName );
+        ip.add( pcf::IndiElement( "toggle" ) );
+        ip["toggle"] = pcf::IndiElement::On;
+
+        emit chChange( ip );
+    }
+    else
+    {
+
+        pcf::IndiProperty ip( pcf::IndiProperty::Text );
+
+        ip.setDevice( m_deviceName );
+        ip.setName( channelName );
+        ip.add( pcf::IndiElement( "target" ) );
+        ip["target"] = "On";
+
+        emit chChange( ip );
+    }
 }
 
 void pwrDevice::switchOff( const std::string &channelName )
 {
-    pcf::IndiProperty ip( pcf::IndiProperty::Text );
+    bool toggle = false;
+    for( size_t n = 0; n < m_numChannels; ++n )
+    {
+        if( m_channels[n]->channelName() == channelName )
+        {
+            toggle = m_channels[n]->isToggle();
+            break;
+        }
+    }
 
-    ip.setDevice( m_deviceName );
-    ip.setName( channelName );
-    ip.add( pcf::IndiElement( "target" ) );
-    ip["target"] = "Off";
+    if( toggle )
+    {
+        pcf::IndiProperty ip( pcf::IndiProperty::Switch );
 
-    emit chChange( ip );
+        ip.setDevice( m_deviceName );
+        ip.setName( channelName );
+        ip.add( pcf::IndiElement( "toggle" ) );
+        ip["toggle"] = pcf::IndiElement::Off;
+
+        emit chChange( ip );
+    }
+    else
+    {
+        pcf::IndiProperty ip( pcf::IndiProperty::Text );
+
+        ip.setDevice( m_deviceName );
+        ip.setName( channelName );
+        ip.add( pcf::IndiElement( "target" ) );
+        ip["target"] = "Off";
+
+        emit chChange( ip );
+    }
 }
 
 } // namespace xqt

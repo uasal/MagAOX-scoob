@@ -135,7 +135,8 @@ xInstGraph::xInstGraph()
 
 void xInstGraph::setupConfig()
 {
-    config.add("graph.file", "", "graph.file", argType::Required, "graph", "file", false, "string", "path to the graph .drawio file");
+    config.add("graph.file", "", "graph.file", argType::Required, "graph", "file", false, "string", "path to the input graph .drawio file");
+    config.add("graph.outputPath", "", "graph.outputPath", argType::Required, "graph", "outputPath", false, "string", "path to the output graph .drawio file");
 
 }
 
@@ -144,6 +145,10 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
     ///\todo this should be relative to config path
     std::string file;
     config(file, "graph.file");
+
+    std::string outputPath = m_graph.outputPath();
+    config(outputPath, "graph.outputPath");
+    m_graph.outputPath(outputPath);
 
     std::string emsg;
     if( m_graph.loadXMLFile( emsg, file ) < 0 )
@@ -378,6 +383,9 @@ int xInstGraph::loadConfigImpl( mx::app::appConfigurator &_config )
         }
     }
 
+
+    m_graph.hideLinks();
+    m_graph.hidePuts();
     return 0;
 }
 
