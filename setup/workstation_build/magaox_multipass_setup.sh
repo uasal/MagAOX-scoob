@@ -18,6 +18,7 @@ function default_options() {
 -M=magao-x/MagAOX,,dev  ### MagAOX:  GithubUsr/GithubName,TargDir,Branch
 -r=                     ### Additional repos
 -SP=                    ### Skip Provisioning if not empty
+-2=                     ### Duplicate VM, cloned from first (see -v=...)
 -k=${HOME}/.ssh/id_ed25519.pub      ### SSH public key
 __EoF
 }
@@ -33,6 +34,7 @@ for arg in $(default_options) $* ; do
   -r=*,*,*) _arg_r="${_arg_r} ${arg#-r=}" ;;
   -r=) true ;;
   -SP=*) _arg_SP="${arg#-SP=}" ;;
+  -2=*) _arg_2=${arg#-k=} ;;
   -k=*) _arg_k=${arg#-k=} ;;
   *) echo "Bad argument [$arg]; exiting" && false || default_options help && false || exit 1 ;;
   esac
@@ -103,4 +105,22 @@ ssh $uATip "cd githubalt/MagAOX/setup && MAGAOX_ROLE=workstation ./pre_provision
 || ssh $uATip "cd githubalt/MagAOX/setup && bash ./provision.sh"
 
 changerole=/opt/MagAOX/config/change_role_to_hostname.sh
+
+vmname2=$_arg_2
+
+#clone second multipass VM if requested via -2=vmname2
+if [ "$vmname2" ] ; then
+  #stop first VM, clone to second VM, start both VMs
+  multipass stop $vmname
+  multipass clone -n $vmname2 $vmname
+  multipass start $vmname $vmname2
+  #get ubuntu@IP address of second VM
+  uATip2=ubuntu@$(multipass exec $vmname2 -- hostname -I | awk '{print $1}')
+  #clear second VM's IP address from known hosts
+  ssh-add -f "${HOME}/.ssh/known_hosts" -R "${uATip2#ubuntu@}" 2>/dev/null || true
+  #change role of second VM
+  ssh -o StrictHostKeyChecking=accept-new $uATip2 "[ -x '$changerole' ] && $changerole || true"
+fi
+
+#change role of first VM
 ssh $uATip "[ -x '$changerole' ] && $changerole || true"
