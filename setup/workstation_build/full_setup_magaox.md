@@ -1,10 +1,19 @@
 ## As some user on multipass host OS:
 
+### Create and provision multipass VM named magaox01
+* N.B. Role will change to magaox01 after provisioning
 ```
-./magaox_multipass_setup.sh -v=magaox01 -M=drbitboy/MagAOX,MagAOX,resurrector-merge-dev-20250328-02plus-improve-resurrector -r=drbitboy/magao-x-config,config,resurrector-indi-compression
+./magaox_multipass_setup.sh -v=magaox01 -M=drbitboy/MagAOX,MagAOX,resurrector-20250423 -r=drbitboy/magao-x-config,config,resurrector-indi-compression
 ```
 
-## As user ubuntu:
+### Clone multipass VM magaox01 to multipass VM named magaox02,
+* then update role to magaox02
+```
+multipass clone -n magaox02 magaox01
+multipass exec magaox02 -- /opt/MagAOX/config/change_role_to_hostname.sh
+```
+
+## As user ubuntu on both magaox01 and magaox02:
 
 ### Cache config file that user xsup can use; switch to user xsup
 
