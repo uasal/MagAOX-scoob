@@ -12,31 +12,37 @@
 ### Cache config file that user xsup can use; switch to user xsup
 
 ```
-resuctrl reset
+resuctrl reset   ### Creation, provisioning are complete after this step
 sudo su - xsup
 ```
 
 ## As user xsup:
 
 ### Start INDI server and all INDI drivers under resurrector control
+### Update maths_1 and maths_2 INDI drivers, view results
 
 ```
 resuctrl startup
 resuctrl status --all
+
+setINDI maths_1.val.value=1.1   ### on magaox01
+setINDI maths_2.val.value=1.2   ### on magaox02
+
+getINDI -t 1
 ```
 
 ### Stop an INDI driver
 
 ```
-resuctrl stop maths_1
-resuctrl status --all
+resuctrl stop maths_1           ### on magaox01
+resuctrl status                 ### --all is implied
 ```
 
 ### Start an INDI driver
 
 ```
-resuctrl start maths_x
-resuctrl status --all
+resuctrl start maths_1          ### on magaox01
+resuctrl status                 ### --all is implied
 ```
 
 ### Stop everything
