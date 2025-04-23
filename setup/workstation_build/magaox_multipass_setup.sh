@@ -88,4 +88,4 @@ ssh $uATip "cd githubalt/MagAOX/setup && MAGAOX_ROLE=workstation ./pre_provision
 ssh $uATip "cd githubalt/MagAOX/setup && bash ./provision.sh"
 
 changerole=/opt/MagAOX/config/change_role_to_hostname.sh
-ssh $uATip "[ -x '$changerole' ] && .$changerole || true"
+ssh $uATip "[ -x '$changerole' ] && $changerole || true"
