@@ -1319,7 +1319,13 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
         << ".hb], status directory, and exiting ..."
         << std::endl;
         if ( createResurrecteeFIFO() ) { exit( -1 ); };
+        std::cerr
+        << "Hexbeat FIFO either already existed or was created successfully"
+        << std::endl;
         if( mkStatusDir() ) { exit( -1 ); };
+        std::cerr
+        << "Status directory either already existed or was created successfully"
+        << std::endl;
         break;
     }
 
