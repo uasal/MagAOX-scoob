@@ -1316,10 +1316,11 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
         std::cerr
         << "Creating Hexbeat FIFO ["
         << m_configName
-        << ".hb] and exiting ..."
+        << ".hb], status directory, and exiting ..."
         << std::endl;
-        if( m_configName.empty() ) { exit( -1 ); }
-        exit( createResurrecteeFIFO() );
+        if ( createResurrecteeFIFO() ) { exit( -1 ); };
+        if( mkStatusDir() ) { exit( -1 ); };
+        break;
     }
 
     if( m_configName == "" )
@@ -3054,6 +3055,8 @@ int MagAOXApp<_useINDI>::startINDI()
 template <bool _useINDI>
 int MagAOXApp<_useINDI>::createResurrecteeFIFO()
 {
+    ///Need non-empty drivername
+    if ( m_configName.empty() ) { return -1; }
 
     ///\todo make driver FIFO path full configurable.
     std::string driverFIFOPath = MAGAOX_path;
