@@ -1326,7 +1326,7 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
         std::cerr
         << "Status directory either already existed or was created successfully"
         << std::endl;
-        break;
+        exit( 0 );
     }
 
     if( m_configName == "" )
