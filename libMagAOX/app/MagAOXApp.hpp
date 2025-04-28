@@ -398,6 +398,18 @@ class MagAOXApp : public application
 
     pid_t m_pid{ 0 }; ///< This process's PID
 
+    /// Attempt to create status directory for PID file
+
+    /** call mkdir("/opt/MagAOX/sys/<m_configName>/") with appropriate permissions and ownership
+     *
+     * Called by lockPID() below; also called when --mkfifo-hexbeat is command-line argument
+     *
+     * \returns 0 on success.
+     * \returns -1 on any error
+     */
+
+    int mkStatusDir();
+
     /// Attempt to lock the PID by writing it to a file. Fails if a process is already running with the same config
     /// name.
     /** First checks the PID file for an existing PID.  If found, interrogates /proc to determine if that process is
@@ -2093,10 +2105,8 @@ int MagAOXApp<_useINDI>::setEuidReal()
 }
 
 template <bool _useINDI>
-int MagAOXApp<_useINDI>::lockPID()
+int MagAOXApp<_useINDI>::mkStatusDir()
 {
-    m_pid = getpid();
-
     std::string statusDir = sysPath;
 
     // Get the maximum privileges available
@@ -2115,7 +2125,20 @@ int MagAOXApp<_useINDI>::lockPID()
             return -1;
         }
     }
+    return 0;
+}
 
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::lockPID()
+{
+    if (mkStatusDir()) { return -1; }
+
+    m_pid = getpid();
+
+    // Get the maximum privileges available
+    elevatedPrivileges elPriv( this );
+
+    std::string statusDir = sysPath;
     statusDir += "/";
     statusDir += m_configName;
 
