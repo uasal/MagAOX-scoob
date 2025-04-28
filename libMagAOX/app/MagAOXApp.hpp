@@ -1451,6 +1451,12 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
     bool ig{ false };
     config( ig, "ignore_git" );
 
+    {
+    //--------- Check for, and ignore, mkfifo-hexbeat --------//
+    bool mh{ false };
+    config( mh, "mkfifo-hexbeat" );
+    }
+
     config( m_indiserver_ctrl_fifo, "indiserver_ctrl_fifo" );
 
     if( !ig && m_gitAlert )
