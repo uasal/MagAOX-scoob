@@ -36,7 +36,7 @@ from ..core import (
     decide_to_process,
     create_bundle_from_span,
 )
-from ..pack import pack_one_obs, ChannelConfig, DEFAULT_CHANNELS, DEFAULT_DMS
+from ..pack import pack_one_obs, StreamConfig, DEFAULT_STREAMS
 from ._base import BaseQuicklookCommand
 
 
@@ -60,11 +60,8 @@ class Pack(BaseQuicklookCommand):
     parallel_jobs: int = xconf.field(
         default=10, help="How many export jobs to start in parallel"
     )
-    channels: list[ChannelConfig] = xconf.field(
-        default_factory=lambda: [ChannelConfig(name=chan) for chan in DEFAULT_CHANNELS]
-    )
-    dms: list[ChannelConfig] = xconf.field(
-        default_factory=lambda: [ChannelConfig(name=chan) for chan in DEFAULT_DMS]
+    streams: list[StreamConfig] = xconf.field(
+        default_factory=lambda: [StreamConfig(name=strm) for strm in DEFAULT_STREAMS]
     )
     zarr_mode: ZarrMode = xconf.field(default=ZarrMode.WRITE_NO_OVERWRITE)
 
@@ -113,8 +110,7 @@ class Pack(BaseQuicklookCommand):
                 log.info(f"Observation interval to process: {span}")
                 paths_packed, orig_bytes, final_bytes = pack_one_obs(
                     span,
-                    self.channels,
-                    self.dms,
+                    self.streams,
                     pack_target_group,
                     dbconn,
                     self.path_rewrites,

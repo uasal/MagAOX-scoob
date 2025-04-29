@@ -31,7 +31,7 @@ log.setLevel(logging.DEBUG)
 
 CHUNK_DEFAULT_MB = 1000
 TELEM_ENTRIES_CHUNK = 10_000
-DEFAULT_CHANNELS = [
+DEFAULT_STREAMS = [
     'camsci1',
     'camsci2',
     'camwfs',
@@ -40,15 +40,13 @@ DEFAULT_CHANNELS = [
     'camlowfs',
     'camacq',
     'camtip',
-]
-DEFAULT_DMS = [
     'dm00disp',
     'dm01disp',
     'dm02disp',
 ]
 
 @xconf.config
-class ChannelConfig:
+class StreamConfig:
     name: str = xconf.field(help="Name of the camera channel")
     chunk_size_mb: int = xconf.field(
         default=CHUNK_DEFAULT_MB, help="Number of frames per chunk"
@@ -120,6 +118,7 @@ def datetime_to_seconds_nanos(dt):
 def unpack_one_xrif(
     local_path, idx, frames_per_xrif_chunk, frames_tmp, times_tmp, log
 ) -> int:
+    log.debug(f"{local_path=} {idx=} {frames_per_xrif_chunk=}")
     with open(local_path, "rb") as f:
         frames = fixr.XrifReader(f).copy_data()
         # n.b. after reading `frames`, file `f` has seeked (sought?) to
@@ -194,7 +193,7 @@ def infer_common_xrif_cube_size_dtype(paths):
 
 
 def repack_xrif_channel(
-    camera_channel: ChannelConfig,
+    camera_channel: StreamConfig,
     channel_grouping_root: zarr.Group,
     cur: psycopg.Connection,
     path_rewrites: list[PathRewriteConfig],
@@ -451,8 +450,7 @@ WHERE
 
 def pack_one_obs(
     span,
-    channels: list[ChannelConfig],
-    dms: list[ChannelConfig],
+    streams: list[StreamConfig],
     root: zarr.Group,
     conn,
     path_rewrites: list[PathRewriteConfig],
@@ -463,28 +461,26 @@ def pack_one_obs(
     paths_packed = []
     orig_total_bytes, final_total_bytes = 0, 0
 
-    detector = root.require_group('detector')
-    dm = root.require_group('dm')
-    for channel_root, channels in zip((detector, dm), (channels, dms)):
-        for channel in channels:
-            log.info(f"Checking for {channel.name}...")
-            cam_files_packed, orig_bytes_packed, final_bytes_packed = (
-                repack_xrif_channel(
-                    channel,
-                    channel_root,
-                    cur,
-                    path_rewrites,
-                    bounds,
-                    channel.chunk_size_mb,
-                    pool,
-                )
+    stream_root = root.require_group('stream')
+    for stream in streams:
+        log.info(f"Checking for {stream.name}...")
+        cam_files_packed, orig_bytes_packed, final_bytes_packed = (
+            repack_xrif_channel(
+                stream,
+                stream_root,
+                cur,
+                path_rewrites,
+                bounds,
+                stream.chunk_size_mb,
+                pool,
             )
-            paths_packed.extend(cam_files_packed)
-            orig_total_bytes += orig_bytes_packed
-            final_total_bytes += final_bytes_packed
-            if final_bytes_packed > 0:
-                log.debug(
-                    f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
-                )
+        )
+        paths_packed.extend(cam_files_packed)
+        orig_total_bytes += orig_bytes_packed
+        final_total_bytes += final_bytes_packed
+        if final_bytes_packed > 0:
+            log.debug(
+                f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
+            )
     repack_telem(root.require_group("telem"), cur, bounds, chunk_size=TELEM_ENTRIES_CHUNK)
     return paths_packed, orig_total_bytes, final_total_bytes
