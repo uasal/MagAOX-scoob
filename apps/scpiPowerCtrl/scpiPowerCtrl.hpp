@@ -175,7 +175,7 @@ public:
     
     void updateAlarmsAndWarnings();
 
-    bool send_scpi(int fd, const std::string& cmd, std::string& response);
+    bool send_scpi(const std::string& cmd, std::string& response);
 
     ///@}
 
@@ -448,13 +448,14 @@ int scpiPowerCtrl::turnOutletOn( int outletNum )
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
     std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(outletNum), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
     }
 
-    if (!send_scpi(fd, "OUTP ON\n")) {
-        return log<text_log,-1>("Failed to turn output channel " + std::string(outletNum) + " on.", logPrio::LOG_WARNING);
+    if (!send_scpi("OUTP ON\n", res)) {
+        return log<text_log,-1>("Failed to turn output channel " + std::to_string(outletNum) + " on.", logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -466,13 +467,14 @@ int scpiPowerCtrl::turnOutletOff( int outletNum )
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
     std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(outletNum), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
     }
 
-    if (!send_scpi(fd, "OUTP OFF\n")) {
-        return log<text_log,-1>("Failed to turn output channel " + std::string(outletNum) + " off.", logPrio::LOG_WARNING);
+    if (!send_scpi("OUTP OFF\n", res)) {
+        return log<text_log,-1>("Failed to turn output channel " + std::to_string(outletNum) + " off.", logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -529,8 +531,8 @@ int scpiPowerCtrl::updateChannel(int channel)
     } 
 
     std::string volt, curr;
-    bool ok_v = send_scpi(fd, "MEAS:VOLT?\n", volt);
-    bool ok_c = send_scpi(fd, "MEAS:CURR?\n", curr);
+    bool ok_v = send_scpi("MEAS:VOLT?\n", volt);
+    bool ok_c = send_scpi("MEAS:CURR?\n", curr);
 
     if (ok_v && ok_c) {
         volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
@@ -552,15 +554,16 @@ int scpiPowerCtrl::setPollRate()
 int scpiPowerCtrl::setChannelVolts(int channel, double volts)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd_volts = "VOLT " + std::to_string(volts) + "\n";
 
-    if (!send_scpi(fd, cmd_volts)) {
-        return log<text_log,-1>("Failed to set volts for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_volts, res)) {
+        return log<text_log,-1>("Failed to set volts for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -569,15 +572,16 @@ int scpiPowerCtrl::setChannelVolts(int channel, double volts)
 int scpiPowerCtrl::setChannelAmps(int channel, double amps)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd_amps = "CURR " + std::to_string(amps) + "\n";
 
-    if (!send_scpi(fd, cmd_amps)) {
-        return log<text_log,-1>("Failed to set current for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_amps, res)) {
+        return log<text_log,-1>("Failed to set current for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -586,14 +590,15 @@ int scpiPowerCtrl::setChannelAmps(int channel, double amps)
 int scpiPowerCtrl::setChannelHighVolt(int channel, double highVolt)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd = "VOLT:LIM:HIGH " + std::to_string(highVolt) + "\n";
-    if (!send_scpi(fd, cmd)) {
-        return log<text_log,-1>("Failed to set high voltage limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd, res)) {
+        return log<text_log,-1>("Failed to set high voltage limit for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -602,14 +607,15 @@ int scpiPowerCtrl::setChannelHighVolt(int channel, double highVolt)
 int scpiPowerCtrl::setChannelLowVolt(int channel, double lowVolt)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log, -1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd = "VOLT:LIM:LOW " + std::to_string(lowVolt) + "\n";
-    if (!send_scpi(fd, cmd)) {
-        return log<text_log,-1>("Failed to set low voltage limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd, res)) {
+        return log<text_log, -1>("Failed to set low voltage limit for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -618,14 +624,15 @@ int scpiPowerCtrl::setChannelLowVolt(int channel, double lowVolt)
 int scpiPowerCtrl::setChannelHighCurr(int channel, double highCurr)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log, -1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd = "CURR:LIM:HIGH " + std::to_string(highCurr) + "\n";
-    if (!send_scpi(fd, cmd)) {
-        return log<text_log,-1>("Failed to set high current limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd, res)) {
+        return log<text_log, -1>("Failed to set high current limit for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -634,14 +641,15 @@ int scpiPowerCtrl::setChannelHighCurr(int channel, double highCurr)
 int scpiPowerCtrl::setChannelLowCurr(int channel, double lowCurr)
 {
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    std::string res;
 
-    if (!send_scpi(fd, cmd_sel)) {
-        return log<text_log,-1>("Could not select outlet channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log, -1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     std::string cmd = "CURR:LIM:LOW " + std::to_string(lowCurr) + "\n";
-    if (!send_scpi(fd, cmd)) {
-        return log<text_log,-1>("Failed to set low current limit for channel " + std::string(channel), logPrio::LOG_WARNING);
+    if (!send_scpi(cmd, res)) {
+        return log<text_log,-1>("Failed to set low current limit for channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
     return 0;
@@ -652,7 +660,7 @@ void scpiPowerCtrl::updateAlarmsAndWarnings()
     // TODO poll the various alarm statuses from the PDU
 }
 
-bool scpiPowerCtrl::send_scpi(int fd, const std::string& cmd, std::string& response) {
+bool scpiPowerCtrl::send_scpi(const std::string& cmd, std::string& response) {
     if (write(fd, cmd.c_str(), cmd.size()) < 0) {
         perror("Write failed");
         return false;
