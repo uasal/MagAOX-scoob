@@ -126,28 +126,31 @@ def unpack_one_xrif(
         # the image data
         times = fixr.XrifReader(f).copy_data()
         frames = frames.reshape((-1,) + frames.shape[2:])
-        times = times.reshape((-1,) + (times.shape[-1],))
+        # time rows are [frame_num, acqsec, acqnsec, wrtsec, wrtnsec]
+        times = times.reshape((-1, 5))
 
     if frames.shape[0] != times.shape[0]:
         log.warning(
             f"Discarding {frames.shape[0]} frames because xrif wrote {times.shape[0]} timestamps for this archive"
         )
-        return 0
+        return idx, 0
 
     if frames.shape[1:] != frames_tmp.shape[1:]:
         log.warning(
             f"Skipping {frames.shape[0]} frames because {frames.shape[1:]=} but {frames_tmp.shape[1:]=}"
         )
-        return 0
+        return idx, 0
 
     start_idx = idx * frames_per_xrif_chunk
-    n_actual_frames = frames.shape[0]
+    # zero for timestamp seconds is used as a sentinel for empty frames, which we should skip
+    actual_frames_mask = times[:, 1] != 0
+    n_actual_frames = np.count_nonzero(actual_frames_mask)
     if n_actual_frames != frames_per_xrif_chunk:
         log.debug(
             f"Got {n_actual_frames=} from {local_path} but expected {frames_per_xrif_chunk=}, filling in the frames we have"
         )
-    frames_tmp[start_idx : start_idx + n_actual_frames] = frames
-    times_tmp[start_idx : start_idx + n_actual_frames] = times
+    frames_tmp[start_idx : start_idx + n_actual_frames] = frames[actual_frames_mask]
+    times_tmp[start_idx : start_idx + n_actual_frames] = times[actual_frames_mask]
     return idx, n_actual_frames
 
 
