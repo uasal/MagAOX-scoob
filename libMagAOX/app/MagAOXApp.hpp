@@ -2115,6 +2115,8 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::mkStatusDir()
 {
     std::string statusDir = sysPath;
+    statusDir += "/";
+    statusDir += m_configName;
 
     // Get the maximum privileges available
     elevatedPrivileges elPriv( this );
@@ -2132,6 +2134,7 @@ int MagAOXApp<_useINDI>::mkStatusDir()
             return -1;
         }
     }
+    ::perror((std::string("mkdir of ")+statusDir).c_str());
     return 0;
 }
 
