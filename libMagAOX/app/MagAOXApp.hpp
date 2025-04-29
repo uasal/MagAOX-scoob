@@ -2134,7 +2134,7 @@ int MagAOXApp<_useINDI>::mkStatusDir()
             return -1;
         }
     }
-    ::perror((std::string("mkdir of ")+statusDir).c_str());
+    ::perror((std::string("Successful existing/mkdir ")+statusDir).c_str());
     return 0;
 }
 
@@ -3091,6 +3091,7 @@ int MagAOXApp<_useINDI>::createResurrecteeFIFO()
             return -1;
         }
     }
+    ::perror((std::string("Succesfful existing or mkfifo ") + m_resurrecteeFifoName).c_str());
 
     umask( prev );
     // euidReal();
