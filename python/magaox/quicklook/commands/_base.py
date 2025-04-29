@@ -34,6 +34,7 @@ class BaseQuicklookCommand(dbconfig.BaseConfig, xconf.Command):
     utc_end : typing.Optional[datetime.datetime] = xconf.field(default=None, help="ISO UTC datetime stamp of latest observation end time to process (supersedes semester)")
     data_roots : list[Path] = xconf.field(default_factory=constants.LOOKYLOO_DATA_ROOTS.copy, help=f"Search directory for telem and rawimages subdirectories, repeat to specify multiple roots. (default: {constants.LOOKYLOO_DATA_ROOTS})")
     common_path_prefix : str = xconf.field(default=constants.DEFAULT_PREFIX, help="Prefix for all instrument data and config directories")
+    temp_root : str = xconf.field(default='/data/users/xsup/temp', help="Temporary folder on disk for array storage during re-packing")
     path_rewrites : list[PathRewriteConfig] = xconf.field(default_factory=generate_path_rewrites, help="Rewrite the paths in the inventory (e.g. to use an NFS mount to read from another host)")
 
     def get_time_range(self):

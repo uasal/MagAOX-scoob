@@ -115,6 +115,7 @@ class Pack(BaseQuicklookCommand):
                     dbconn,
                     self.path_rewrites,
                     threadpool,
+                    self.temp_root,
                 )
                 orig_total_bytes += orig_bytes
                 final_total_bytes += final_bytes

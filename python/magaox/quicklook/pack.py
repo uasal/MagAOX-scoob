@@ -200,6 +200,7 @@ def repack_xrif_channel(
     bounds,
     chunk_size_mb,
     pool: futures.ThreadPoolExecutor,
+    temp_root: str,
 ) -> tuple[list[str], int]:
     other_files_args = bounds + (camera_channel.name,)
     other_files_q_body = SQL("""
@@ -254,7 +255,8 @@ def repack_xrif_channel(
 
     n_frames = frames_per_xrif_chunk * xrifs_row_count
 
-    with tempfile.TemporaryDirectory() as td:
+    os.makedirs(temp_root, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root) as td:
         rechunk = zarr.open_group(f"file://" + td)
         frames_tmp = rechunk.zeros(
             "frames",
@@ -455,6 +457,7 @@ def pack_one_obs(
     conn,
     path_rewrites: list[PathRewriteConfig],
     pool: futures.ThreadPoolExecutor,
+    temp_root: str,
 ):
     cur = conn.cursor()
     bounds = span.begin, span.end
@@ -473,6 +476,7 @@ def pack_one_obs(
                 bounds,
                 stream.chunk_size_mb,
                 pool,
+                temp_root,
             )
         )
         paths_packed.extend(cam_files_packed)
