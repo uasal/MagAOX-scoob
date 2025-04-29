@@ -223,7 +223,7 @@ function verb_ripath {
 }
 
 ########################################################################
-### Verb to reset (or create) the cached proclist
+### Verb to reset (or create) the cached proclist, writable by any user
 function verb_reset {
 
   hide reset
@@ -239,7 +239,30 @@ function verb_reset {
   && return 1
 
   cp -v "$proclist_base" "$proclist_cached"
-  chmod -v o+w "$proclist_cached"
+  [ "$USER" == "xsup" ] && return 0
+  chmod -c o+w "$proclist_cached"
+
+  SH="sudo -H -n"
+  ug="root:xsup"
+  dM=--mode=775
+  fM=--mode=660
+  for procname in $(find_all_procnames | tr "$delim" " ") ; do
+
+    ### Create directory for process files:  pid; outputs
+    pDir="/opt/MagAOX/sys/$procname"
+    [ -d "$pDir" ] \
+    || ( $SH mkdir -v $dM "$pDir" && $SH chown -c $ug "$pDir" ) \
+    || echo "Failed to create process directory $pDir" \
+    || true
+
+    ### Create named FIFO for sending process Hexbeats to resurrector
+    fHb="/opt/MagAOX/drivers/fifos/$procname.hb"
+    [ -p "$fHb" ] \
+    || ( $SH mkfifo $fM "$fHb" && $SH chown -v $ug "$fHb" ) \
+    || echo "Failed to create Hexbeat FIFO $fHb" \
+    || true
+
+  done
 
 }
 
