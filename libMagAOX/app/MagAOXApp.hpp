@@ -3091,7 +3091,7 @@ int MagAOXApp<_useINDI>::createResurrecteeFIFO()
             return -1;
         }
     }
-    ::perror((std::string("Succesfful existing or mkfifo ") + m_resurrecteeFifoName).c_str());
+    ::perror((std::string("Successful existing or mkfifo ") + m_resurrecteeFifoName).c_str());
 
     umask( prev );
     // euidReal();
