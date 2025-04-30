@@ -60,10 +60,10 @@ protected:
     std::vector<ChannelLimits> m_channelLimits;
     std::vector<float> m_channelVoltages;
     std::vector<float> m_channelCurrents;
-    int m_numChannels = 0; ///< The number of channels on the device
+    int m_numChannels = 3; ///< The number of channels on the device -- abandoning dynamic, hard-coding 3 for now
     int m_currentChannel = 0; ///< The current channel being monitored
 
-    int maxChannels = 4; // define maximum number of power channels
+    int maxChannels = 3; // define maximum number of power channels
 
     int fd; ///< The file descriptor for the device
     int m_pollRateHz {1000};  ///< The timeout for writing to the device [msec].
@@ -75,9 +75,27 @@ protected:
 
    // array for statuses on each channel (On Off) ?
 
+//    std::vector<pcf::IndiProperty> m_indiP_blockVolts;
+//    std::vector<pcf::IndiProperty> m_indiP_blockGains;
+
+//    pcf::IndiProperty m_indiP_singleVolt;
+//    pcf::IndiProperty m_indiP_singleCurr;
+
 public:
 
-    std::vector<pcf::IndiProperty> m_indiP_load_channels;
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet1volt);
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet2volt);
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet3volt);
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet1curr);
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet2curr);
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet3curr);
+
+    //INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_load_channels);
+
+    //std::vector<pcf::IndiProperty> m_indiP_load_channels;   
+
+    // INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_singleVolt);
+    // INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_singleCurr);
 
     /// Default c'tor.
     scpiPowerCtrl();
@@ -183,8 +201,14 @@ protected:
 
    //declare our properties
    pcf::IndiProperty m_indiP_status; ///< The device's status string
-
-   // need to dynamically add indiProperties for each channel once connected and know the number of channels
+   
+   // could not get dynamic-length vector of these to work with callbacks so here they are hard-coded..
+   pcf::IndiProperty m_indiP_outlet1volt;
+   pcf::IndiProperty m_indiP_outlet2volt;
+   pcf::IndiProperty m_indiP_outlet3volt;
+   pcf::IndiProperty m_indiP_outlet1curr;
+   pcf::IndiProperty m_indiP_outlet2curr;
+   pcf::IndiProperty m_indiP_outlet3curr;
 
 };
 
@@ -275,21 +299,53 @@ int scpiPowerCtrl::appStartup()
     REG_INDI_NEWPROP_NOCB(m_indiP_status, "status", pcf::IndiProperty::Text);
     m_indiP_status.add (pcf::IndiElement("value"));
 
-    m_indiP_load_channels.resize(m_numChannels);
+    //m_indiP_load_channels.resize(m_numChannels);
 
-    if(m_numChannels == 0)
-    {
-        log<text_log>("0 power channels defined", logPrio::LOG_WARNING);
-    }
+    //if(m_numChannels == 0)
+   // {
+    //    log<text_log>("0 power channels defined", logPrio::LOG_WARNING);
+   // }
 
-    for (int i = 0; i < m_numChannels; i++) {
-        std::string name = "load_ch" + std::to_string(i + 1);
+    //for (int i = 0; i < m_numChannels; i++) {
+    //    std::string name = "load_ch" + std::to_string(i + 1);
     
-        REG_INDI_NEWPROP_NOCB(m_indiP_load_channels[i], name, pcf::IndiProperty::Number);
-        m_indiP_load_channels[i].add(pcf::IndiElement("voltage"));
-        m_indiP_load_channels[i].add(pcf::IndiElement("current"));
-    }
+        // REG_INDI_NEWPROP_NOCB(m_indiP_load_channels[i], name, pcf::IndiProperty::Number);
+        // m_indiP_load_channels[i].add(pcf::IndiElement("current_voltage"));
+        // m_indiP_load_channels[i].add(pcf::IndiElement("target_voltage"));
+        // m_indiP_load_channels[i].add(pcf::IndiElement("current_current"));
+        // m_indiP_load_channels[i].add(pcf::IndiElement("target_current"));
     
+    //}
+    
+    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%d");
+    m_indiP_outlet1volt["current"] = m_channelVoltages[0];
+    m_indiP_outlet1volt["target"] = m_channelVoltages[0];
+    registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
+
+    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%d");
+    m_indiP_outlet1curr["current"] = m_channelCurrents[0];
+    m_indiP_outlet1curr["target"] = m_channelCurrents[0];
+    registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
+
+    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%d");
+    m_indiP_outlet2volt["current"] = m_channelVoltages[1];
+    m_indiP_outlet2volt["target"] = m_channelVoltages[1];
+    registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
+
+    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%d");
+    m_indiP_outlet2curr["current"] = m_channelCurrents[1];
+    m_indiP_outlet2curr["target"] = m_channelCurrents[1];
+    registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
+
+    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%d");
+    m_indiP_outlet3volt["current"] = m_channelVoltages[2];
+    m_indiP_outlet3volt["target"] = m_channelVoltages[2];
+    registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
+
+    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%d");
+    m_indiP_outlet3curr["current"] = m_channelCurrents[2];
+    m_indiP_outlet3curr["target"] = m_channelCurrents[2];
+    registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
     
     if(dev::outletController<scpiPowerCtrl>::setupINDI() < 0)
     {
@@ -405,8 +461,19 @@ int scpiPowerCtrl::updateOutletState( int outletNum )
 
     std::string propName = "load_ch" + std::to_string(outletNum + 1);
 
-    updateIfChanged(m_indiP_load_channels[outletNum], "voltage", m_channelVoltages[outletNum]);
-    updateIfChanged(m_indiP_load_channels[outletNum], "current", m_channelCurrents[outletNum]);
+    if( outletNum == 0 ) {
+        updateIfChanged(m_indiP_outlet1volt, "ch_1_volt", m_channelVoltages[0]);
+        updateIfChanged(m_indiP_outlet1curr, "ch_1_curr", m_channelCurrents[0]);
+    } else if( outletNum == 1 ) {
+        updateIfChanged(m_indiP_outlet2volt, "ch_2_volt", m_channelVoltages[1]);
+        updateIfChanged(m_indiP_outlet2curr, "ch_2_curr", m_channelCurrents[1]);
+    } else if( outletNum == 2) {
+        updateIfChanged(m_indiP_outlet3volt, "ch_3_volt", m_channelVoltages[2]);
+        updateIfChanged(m_indiP_outlet3curr, "ch_3_curr", m_channelCurrents[2]);
+    }
+
+    //updateIfChanged(m_indiP_load_channels[outletNum], "voltage", m_channelVoltages[outletNum]);
+    //updateIfChanged(m_indiP_load_channels[outletNum], "current", m_channelCurrents[outletNum]);
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
 
@@ -431,12 +498,21 @@ int scpiPowerCtrl::updateOutletStates()
 
     updateIfChanged(m_indiP_status, "value", m_status);
 
+    /*
     for (int i = 0; i < m_numChannels; i++) {
         std::string propName = "load_ch" + std::to_string(i + 1);
     
         updateIfChanged(m_indiP_load_channels[i], "voltage", m_channelVoltages[i]);
         updateIfChanged(m_indiP_load_channels[i], "current", m_channelCurrents[i]);
     }
+    */
+
+    updateIfChanged(m_indiP_outlet1volt, "ch_1_volt", m_channelVoltages[0]);
+    updateIfChanged(m_indiP_outlet1curr, "ch_1_curr", m_channelCurrents[0]);
+    updateIfChanged(m_indiP_outlet2volt, "ch_2_volt", m_channelVoltages[1]);
+    updateIfChanged(m_indiP_outlet2curr, "ch_2_curr", m_channelCurrents[1]);
+    updateIfChanged(m_indiP_outlet3volt, "ch_3_volt", m_channelVoltages[2]);
+    updateIfChanged(m_indiP_outlet3curr, "ch_3_curr", m_channelCurrents[2]);
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
 
@@ -675,6 +751,198 @@ bool scpiPowerCtrl::send_scpi(const std::string& cmd, std::string& response) {
 
     response.assign(buffer, n);
     return true;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1volt)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet1volt.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelVoltages[0] = vc;
+   int rv = setChannelVolts(0, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 1 volts!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet1volt, "target", vc);
+   updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2volt)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet2volt.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelVoltages[1] = vc;
+   int rv = setChannelVolts(1, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 2 volts!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet2volt, "target", vc);
+   updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3volt)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet3volt.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelVoltages[2] = vc;
+   int rv = setChannelVolts(2, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 1 volts!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet3volt, "target", vc);
+   updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1curr)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet1curr.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelCurrents[0] = vc;
+   int rv = setChannelAmps(0, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 1 current!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet1curr, "target", vc);
+   updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2curr)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet2curr.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelCurrents[1] = vc;
+   int rv = setChannelAmps(1, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 2 current!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet2curr, "target", vc);
+   updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3curr)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_outlet3curr.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+      vc = ipRecv["current"].get<int>();
+
+   if (ipRecv.find("target"))
+      vc = ipRecv["target"].get<int>();
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_channelCurrents[2] = vc;
+   int rv = setChannelAmps(2, vc);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting channel 3 current!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_outlet3curr, "target", vc);
+   updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+
+   return 0;
 }
 
 
