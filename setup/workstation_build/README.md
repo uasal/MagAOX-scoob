@@ -1,6 +1,64 @@
-## As some user on multipass host OS:
+## Example of a manual installation on an existing system:
 
-### Create, provision multipass VM named magaox01, plus second cloned VM named magaox02
+### Role and sources
+
+* MagAOX role:
+  * **magaox01**
+  * Initial role for provisioning:   **workstation**
+* MagAOX source:
+  * Repository => **https://github.com/drbitboy/MagAOX.git**
+  * Branch => **resurrector-20250428-resuctrl-xsup-permissions**
+* MagAOX configuration source:
+  * Repository => **https://github.com/drbitboy/magao-x-config.git**
+  * Branch => **resurrector-indi-compression**
+
+### Initial setup
+
+* As sudo-capable user:
+```
+sudo apt update
+sudo apt upgrade -y
+sudo reboot
+```
+
+### Get sources
+* As sudo-capable user:
+```
+cd
+mkdir githubalt
+
+git clone \
+  --depth=1 \
+  -b resurrector-20250428-resuctrl-xsup-pemissions \
+  https://github.com/drbitboy/MagAOX.git \
+  githubalt/MagAOX
+
+git clone \
+  --depth=1 \
+  -b resurrector-indi-compression \
+  https://github.com/drbitboy/magao-x-config.git \
+  githubalt/config
+```
+
+### Provision MagAOX system
+* As sudo-capable user:
+```
+cd
+cd githubalt/MagAOX/setup
+MAGAOX_ROLE=workstation ./pre_provision.sh
+```
+
+### Change role to **magaox01**
+* As sudo-capable user:
+```
+echo MAGAOX_ROLE=magaox01 | sudo tee /etc/profile.d/magaox_role.sh
+```
+
+___
+___
+## Single-command Example of creating new Multipass VMs, followed by installation and provisioning of MagAOX on same:
+
+### Create and provision multipass VM named magaox01, plus second cloned VM named magaox02
 
 * N.B. Roles will change to magaox01 and magaox02 after provisioning
 ```
