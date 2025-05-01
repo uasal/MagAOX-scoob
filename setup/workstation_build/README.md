@@ -1,4 +1,4 @@
-## Example of a manual installation on an existing system:
+## Example of a manual MagAOX installation on an existing system:
 
 ### Role and sources
 
@@ -53,11 +53,10 @@ MAGAOX_ROLE=workstation ./pre_provision.sh
 ```
 echo MAGAOX_ROLE=magaox01 | sudo tee /etc/profile.d/magaox_role.sh
 ```
-
 ## End of manual installation
 ___
 ___
-## Single-command Example of creating new Multipass VMs, followed by installation and provisioning of MagAOX on same:
+## Single-command example of automated creation new Multipass VMs, plus installation and provisioning of MagAOX on same:
 
 ### Create and provision multipass VM named magaox01, plus second cloned VM named magaox02
 
@@ -68,21 +67,23 @@ ___
   -M=drbitboy/MagAOX,MagAOX,resurrector-20250428-resuctrl-xsup-permissions \
   -r=drbitboy/magao-x-config,config,resurrector-indi-compression
 ```
+## End of automated installation
+___
+___
+## Running MagAOX system, assuming either installation procedure above is complete
 
-## As user ubuntu on both magaox01 and magaox02:
+### Cache process list file for use by non-privileged user **xsup**; create Hexbeater FIFOs and INDI driver/server system directories (/opt/MagAOX/sys/.../); su to non-privileged user **xsup** to run MagAOX system
 
-### Cache config file that user xsup can use; switch to user xsup
-
+* As sudo-capable user on both/either magaox01 and magaox02:
 ```
 resuctrl reset   ### Creation, provisioning are complete after this step
 sudo su - xsup
 ```
 
-## As user xsup:
-
 ### Start INDI server and all INDI drivers under resurrector control
 ### Update maths_1 and maths_2 INDI drivers, view results
 
+* As user xsup:
 ```
 resuctrl startup
 resuctrl status --all
