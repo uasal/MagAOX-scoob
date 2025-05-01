@@ -46,12 +46,15 @@ git clone \
 cd
 cd githubalt/MagAOX/setup
 MAGAOX_ROLE=workstation ./pre_provision.sh
+source /etc/profile.d/magaox_role.sh
+bash ./provision.sh"
 ```
 
-### Change role to **magaox01**
+### Change system role to **magaox01**
 * As sudo-capable user:
 ```
 echo MAGAOX_ROLE=magaox01 | sudo tee /etc/profile.d/magaox_role.sh
+source /etc/profile.d/magaox_role.sh
 ```
 ## End of manual installation
 ___
