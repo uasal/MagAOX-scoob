@@ -59,7 +59,7 @@ source /etc/profile.d/magaox_role.sh
 ## End of manual installation
 ___
 ___
-## Single-command example of automated creation new Multipass VMs, plus installation and provisioning of MagAOX on same:
+## Single-command example of automated creation of two new Multipass VMs, plus installation and provisioning of MagAOX on same:
 
 ### Create and provision multipass VM named magaox01, plus second cloned VM named magaox02
 
