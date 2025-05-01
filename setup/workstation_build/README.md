@@ -47,7 +47,12 @@ cd
 cd githubalt/MagAOX/setup
 MAGAOX_ROLE=workstation ./pre_provision.sh
 source /etc/profile.d/magaox_role.sh
-bash ./provision.sh"
+bash -l ./provision.sh"
+```
+
+### Alternative to compile OpenBLAS for TARGET=HASWELL:
+```
+OPENBLAS_MAKE_DEFINES=TARGET=HASWELL bash -l ./provision.sh"
 ```
 
 ### Change system role to **magaox01**
