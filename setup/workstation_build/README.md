@@ -54,6 +54,7 @@ MAGAOX_ROLE=workstation ./pre_provision.sh
 echo MAGAOX_ROLE=magaox01 | sudo tee /etc/profile.d/magaox_role.sh
 ```
 
+## End of manual installation
 ___
 ___
 ## Single-command Example of creating new Multipass VMs, followed by installation and provisioning of MagAOX on same:
