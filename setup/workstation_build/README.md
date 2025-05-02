@@ -69,6 +69,7 @@ ___
 ### Create and provision multipass VM named magaox01, plus second cloned VM named magaox02
 
 * N.B. Roles will change to magaox01 and magaox02 after provisioning
+* N.B. The VM hostnames specified below (**-v=magaox01** and **-2=magaox02**) are mandatory when using the config branch specified below (**resurrector-indi-compression**)
 ```
 ./magaox_multipass_setup.sh \
   -v=magaox01 -2=magaox02 \
