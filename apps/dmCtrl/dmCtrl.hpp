@@ -76,8 +76,10 @@ namespace MagAOX
       ///@}
 
     private:
+        dev::sdevQuery *versionQuery = new dev::VersionQuery();
         dev::sdevQuery *telemetryQuery = new TelemetryQuery();
-        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery };
+        dev::sdevQuery *shortPixelQuery = new ShortPixelsQuery();
+        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, versionQuery, shortPixelQuery };
 
     public:
       /// Default c'tor.
@@ -214,6 +216,7 @@ namespace MagAOX
 
       config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the DM in actuators.");
       config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the DM in actuators.");
+
       telemeterT::setupConfig(config);
     }
 
@@ -319,6 +322,28 @@ namespace MagAOX
 
       if (state() == stateCodes::CONNECTED)
       {
+        // Test setpoints
+        uint16_t setpoints[10] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
+        uint16_t setpointsLen = sizeof(setpoints);
+        uint16_t startPixel = 50;
+
+        log<text_log>("Sending setpoints to dm");
+
+        ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
+        castShortPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
+
+        dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
+      
+        dev::summerDevice<dmCtrl>::receive();
+      }
+
+      if ((state() == stateCodes::CONNECTED) || (state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
+      {
+        if (telemeterT::appLogic() < 0)
+        {
+          log<software_error>({__FILE__, __LINE__});
+          return 0;
+        }
       }
 
       return 0;
@@ -360,6 +385,7 @@ namespace MagAOX
       
       dev::summerDevice<dmCtrl>::receive();
       telemetryQuery->logReply();
+
       return recordDM(true);
     }
 
