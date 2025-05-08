@@ -314,7 +314,7 @@ def repack_xrif_channel(
                 succeeded += 1
 
         log.info(
-            f"Loaded {total_frames=} of an expected {n_frames=} (loads {succeeded=} {failed=})"
+            f"Loaded {total_frames=} of an expected {n_frames} (loads {succeeded=} {failed=})"
         )
         if failed > 0:
             log.warning(f"Failed to load {failed} files, final array will contain gaps")
