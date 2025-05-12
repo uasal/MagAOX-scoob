@@ -28,7 +28,7 @@ class DbConfig:
     host : str = xconf.field(default='localhost', help='Hostname on which PostgreSQL is listening for connections')
     user : str = xconf.field(default='xtelem', help='Username with access to PostgreSQL database over TCP')
     port : int = xconf.field(default=5432, help='TCP port to connect to PostgreSQL on')
-    database : int = xconf.field(default='xtelem', help='Name of PostgreSQL database')
+    database : str = xconf.field(default='xtelem', help='Name of PostgreSQL database')
     password_file : str = xconf.field(default='/opt/MagAOX/secrets/xtelemdb_password', help="File containing the password for the given user (newlines are stripped). If $XTELEMDB_PASSWORD is set in the environment, it will take precedence.")
 
     def connect(self) -> psycopg.Connection:
