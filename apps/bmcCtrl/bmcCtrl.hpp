@@ -49,6 +49,7 @@ namespace MagAOX
 namespace app
 {
 
+
 /// The MagAO-X BMC DM Controller
 /**
   * \ingroup bmcCtrl

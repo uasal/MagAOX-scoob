@@ -13,6 +13,8 @@
  \todo test that restarting fpsCtrl doesn't scram this
  */
 
+//#define XWC_DMTIMINGS
+
 #include <mx/improc/eigenImage.hpp>
 #include <mx/ioutils/fits/fitsFile.hpp>
 
@@ -840,7 +842,7 @@ int dm<derivedT, realT>::appLogic()
         m_intervalSatTrip = false;
     }
 
-    #ifdef XWC_DMTIMINGScd 
+    #ifdef XWC_DMTIMINGS
     static uint64_t lastMono = 0;
 
     if(m_piTimes.size() >= m_piTimes.maxEntries() && m_piTimes.maxEntries() > 0 && m_piTimes.mono() != lastMono)

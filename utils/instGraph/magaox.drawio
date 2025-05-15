@@ -384,28 +384,28 @@
 
                 <!-- WFS -->
 
-                <mxCell id="node:modttm" value="" style="group" connectable="0" vertex="1" parent="1">
+                <mxCell id="node:modwfs" value="" style="group" connectable="0" vertex="1" parent="1">
                     <mxGeometry x="1710" y="350" width="180" height="100" as="geometry"/>
                 </mxCell>
-                    <mxCell id="frame:modttm" value="" style="rounded=0;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="node:modttm">
+                    <mxCell id="frame:modwfs" value="" style="rounded=0;whiteSpace=wrap;html=1;fontSize=18;" vertex="1" parent="node:modwfs">
                         <mxGeometry width="180" height="100" as="geometry"/>
                     </mxCell>
-                    <mxCell id="input:modttm:in" value="in" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" vertex="1" parent="node:modttm">
+                    <mxCell id="input:modwfs:in" value="in" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" vertex="1" parent="node:modwfs">
                         <mxGeometry x="0" y="55" width="32" height="16" as="geometry"/>
                     </mxCell>
-                    <mxCell id="output:modttm:out" value="out" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" vertex="1" parent="node:modttm">
+                    <mxCell id="output:modwfs:out" value="out" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" vertex="1" parent="node:modwfs">
                         <mxGeometry x="74" y="84" width="32" height="16" as="geometry"/>
                     </mxCell>
-                    <mxCell id="link:modttm:in2out" value="" style="endArrow=classic;html=1;dashed=1;strokeColor=#00FF00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="node:modttm" source="input:modttm:in" target="output:modttm:out">
+                    <mxCell id="link:modwfs:in2out" value="" style="endArrow=classic;html=1;dashed=1;strokeColor=#00FF00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="node:modwfs" source="input:modwfs:in" target="output:modwfs:out">
                         <mxGeometry width="50" height="50" relative="1" as="geometry"/>
                     </mxCell>
-                    <mxCell id="state:modttm" value="state" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" vertex="1" parent="node:modttm">
+                    <mxCell id="state:modwfs" value="state" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" vertex="1" parent="node:modwfs">
                         <mxGeometry y="70" width="180" height="30" as="geometry"/>
                     </mxCell>
-                    <mxCell id="title:modttm" value="modttm" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" vertex="1" parent="node:modttm">
+                    <mxCell id="title:modwfs" value="modwfs" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" vertex="1" parent="node:modwfs">
                         <mxGeometry width="180" height="30" as="geometry"/>
                     </mxCell>
-                    <mxCell id="fsmstate:modttm" value="fsmstate" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;fontColor=#3399FF;" vertex="1" parent="node:modttm">
+                    <mxCell id="fsmstate:modwfs" value="fsmstate" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;fontColor=#3399FF;" vertex="1" parent="node:modwfs">
                         <mxGeometry y="25" width="180" height="30" as="geometry"/>
                     </mxCell>
 
@@ -763,28 +763,28 @@
                         <mxGeometry y="25" width="180" height="30" as="geometry"/>
                     </mxCell>
 
-                <mxCell id="node:fwflowfs" value="" style="group" parent="1" connectable="0" vertex="1">
+                <mxCell id="node:fwlowfs" value="" style="group" parent="1" connectable="0" vertex="1">
                     <mxGeometry x="790" y="800" width="180" height="100" as="geometry"/>
                 </mxCell>
-                    <mxCell id="frame:fwflowfs" value="" style="rounded=0;whiteSpace=wrap;html=1;fontSize=18;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="frame:fwlowfs" value="" style="rounded=0;whiteSpace=wrap;html=1;fontSize=18;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry width="180" height="100" as="geometry"/>
                     </mxCell>
-                    <mxCell id="input:fwflowfs:in" value="in" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="input:fwlowfs:in" value="in" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry y="55" width="32" height="16" as="geometry"/>
                     </mxCell>
-                    <mxCell id="output:fwflowfs:out" value="out" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="output:fwlowfs:out" value="out" style="rounded=0;whiteSpace=wrap;html=1;strokeColor=#FF0000;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry x="148" y="55" width="32" height="16" as="geometry"/>
                     </mxCell>
-                    <mxCell id="link:fwflowfs:in2out" value="" style="endArrow=classic;html=1;dashed=1;strokeColor=#00FF00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="node:fwflowfs" source="input:fwflowfs:in" target="output:fwflowfs:out" edge="1">
+                    <mxCell id="link:fwlowfs:in2out" value="" style="endArrow=classic;html=1;dashed=1;strokeColor=#00FF00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="node:fwlowfs" source="input:fwlowfs:in" target="output:fwlowfs:out" edge="1">
                         <mxGeometry width="50" height="50" relative="1" as="geometry"/>
                     </mxCell>
-                    <mxCell id="state:fwflowfs" value="state" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="state:fwlowfs" value="state" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry y="70" width="180" height="30" as="geometry"/>
                     </mxCell>
-                    <mxCell id="title:fwflowfs" value="fwflowfs" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="title:fwlowfs" value="fwlowfs" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry width="180" height="30" as="geometry"/>
                     </mxCell>
-                    <mxCell id="fsmstate:fwflowfs" value="fsmstate" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;fontColor=#3399FF;" parent="node:fwflowfs" vertex="1">
+                    <mxCell id="fsmstate:fwlowfs" value="fsmstate" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=19;fontColor=#3399FF;" parent="node:fwlowfs" vertex="1">
                         <mxGeometry y="25" width="180" height="30" as="geometry"/>
                     </mxCell>
 
@@ -1003,11 +1003,11 @@
                     <mxGeometry relative="1" as="geometry" />
                 </mxCell>
 
-                <mxCell id="beam:stagebs2modttm" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:stagebs:wfs" target="input:modttm:in">
+                <mxCell id="beam:stagebs2modwfs" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:stagebs:wfs" target="input:modwfs:in">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
 
-                <mxCell id="beam:modttm2flipwfsf" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1.0;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:modttm:out" target="input:flipwfsf:in">
+                <mxCell id="beam:modwfs2flipwfsf" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1.0;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:modwfs:out" target="input:flipwfsf:in">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
 
@@ -1066,11 +1066,11 @@
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
 
-                <mxCell id="beam:stagelosel2fwflowfs" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:stagelosel:out" target="input:fwflowfs:in">
+                <mxCell id="beam:stagelosel2fwlowfs" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:stagelosel:out" target="input:fwlowfs:in">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
 
-                <mxCell id="beam:fwflowfs2shflowfs" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:fwflowfs:out" target="input:shflowfs:in">
+                <mxCell id="beam:fwlowfs2shflowfs" value="" style="endArrow=classic;html=1;strokeColor=#FF0000;strokeWidth=2;fontColor=#FF0000;fontSize=14;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="output:fwlowfs:out" target="input:shflowfs:in">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
 

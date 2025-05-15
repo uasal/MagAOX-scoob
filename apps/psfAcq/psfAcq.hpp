@@ -158,6 +158,7 @@ class psfAcq : public MagAOXApp<true>,
     int m_num_stars{ 0 };
     float m_seeing{ 0 }; 
     int m_acquire_star{ -1 }; // Testing for user to select star
+    int m_seeing_star { -1 }; // default star to calc seeing 
     int m_x_center{};     // 'center' of image or hot spot
     int m_y_center{};
 
@@ -229,9 +230,13 @@ class psfAcq : public MagAOXApp<true>,
     pcf::IndiProperty m_indiP_fpsSource;
     INDI_SETCALLBACK_DECL( psfAcq, m_indiP_fpsSource );
 
-    // Testing for user to select star
+    // For user to select star
     pcf::IndiProperty m_indiP_acquire_star;
     INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_acquire_star );
+
+    // For user to set what star they want to use to calc seeing
+    pcf::IndiProperty m_indiP_seeing_star;
+    INDI_NEWCALLBACK_DECL( psfAcq, m_indiP_seeing_star );
 
     // toggling 
     pcf::IndiProperty m_indiP_restartAcq;
@@ -402,6 +407,11 @@ inline int psfAcq::appStartup()
     m_indiP_acquire_star["current"].setValue( m_acquire_star );
     m_indiP_acquire_star["target"].setValue( m_acquire_star );
 
+    // INDI prop for user to select seeing star
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_seeing_star, "seeing_star", 0, 20, 1, "%d", "", "" );
+    m_indiP_seeing_star["current"].setValue( m_seeing_star );
+    m_indiP_seeing_star["target"].setValue( m_seeing_star );
+
     // number of stars INDI prop
     createROIndiNumber(m_indiP_num_stars, "num_stars");
     m_indiP_num_stars.add(pcf::IndiElement("current"));
@@ -484,14 +494,14 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     {
         for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
         {
-            m_image.data()[nn] = ( (uint16_t *)curr_src )[nn] - m_dark.data()[nn];
+            m_image.data()[nn] = ( (float *)curr_src )[nn] - m_dark.data()[nn];
         }
     }
     else
     {
         for( unsigned nn = 0; nn < shmimMonitorT::m_width * shmimMonitorT::m_height; ++nn )
         {
-            m_image.data()[nn] = ( (uint16_t *)curr_src )[nn];
+            m_image.data()[nn] = ( (float *)curr_src )[nn];
         }
     }
 
@@ -504,6 +514,9 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
     int N_loops = 0;
     // 1. find brightest star
     max = m_image.maxCoeff( &x, &y );
+
+    std::cerr << __LINE__ << " " << max << " " << x << " " << y << "\n";
+
     // mx::improc::medianSmooth(m_sm, x, y, max, m_image, 3);
 
     // mx::improc::imageCenterOfLight(m_x, m_y, m_image);
@@ -743,6 +756,11 @@ inline int psfAcq::processImage( void *curr_src, const dev::shmimT &dummy )
         m_acquire_star = -1;
     }
 
+    if ( m_seeing_star != -1 &&  (m_seeing_star > m_detectedStars.size() - 1 || m_seeing_star < 0 )){
+        std::cout << "Please enter a star number between 0 and " << m_detectedStars.size() - 1 << "." << std::endl;
+        m_seeing_star = -1;
+    }
+
     if( m_acquire_star >= 0 && m_acquire_star < m_detectedStars.size())
     {
         m_acqQuitTime = mx::sys::get_curr_time();
@@ -878,7 +896,7 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_recordSeeing )(const pcf::IndiProperty &i
     return -1;
 }
 
-// Testing for user to select star number
+// For user to select acquisition star number
 INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_acquire_star )( const pcf::IndiProperty &ipRecv )
 {
     if( ipRecv.getName() != m_indiP_acquire_star.getName() )
@@ -898,6 +916,29 @@ INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_acquire_star )( const pcf::IndiProperty &
     m_acquire_star = target;
 
     log<text_log>( "set acquire_star = " + std::to_string( m_acquire_star ), logPrio::LOG_NOTICE );
+    return 0;
+}
+
+// For user to select seeing star number
+INDI_NEWCALLBACK_DEFN( psfAcq, m_indiP_seeing_star )( const pcf::IndiProperty &ipRecv )
+{
+    if( ipRecv.getName() != m_indiP_seeing_star.getName() )
+    {
+        log<software_error>( { __FILE__, __LINE__, "wrong INDI property received." } );
+        return -1;
+    }
+
+    float target;
+
+    if( indiTargetUpdate( m_indiP_seeing_star, target, ipRecv, true ) < 0 )
+    {
+        log<software_error>( { __FILE__, __LINE__ } );
+        return -1;
+    }
+
+    m_seeing_star = target;
+
+    log<text_log>( "set seeing_star = " + std::to_string( m_seeing_star ), logPrio::LOG_NOTICE );
     return 0;
 }
 

@@ -55,7 +55,7 @@ class Image(ImageStreamIOWrap.Image):
         column-major if necessary
         '''
         if not buffer.flags['F_CONTIGUOUS']:
-            data_towrite = data_towrite.copy('F')
+            data_towrite = buffer.copy('F')
         else:
             data_towrite = buffer
         return super().write(data_towrite)

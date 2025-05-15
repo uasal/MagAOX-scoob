@@ -605,7 +605,7 @@ inline int psfFit::appLogic()
             m_xcbD.resize( m_xcb.maxEntries() - 1 );
             m_ycbD.resize( m_xcb.maxEntries() - 1 );
 
-            for( size_t n = 0; n < static_cast<size_t>(m_xcb.size()); ++n )
+            for( size_t n = 0; n < m_xcbD.size(); ++n )
             {
                 m_pcbD[n] = m_pcb.at( refEntry, n );
                 m_xcbD[n] = m_xcb.at( refEntry, n );
@@ -674,7 +674,6 @@ inline int psfFit::appLogic()
     SHMIMMONITOR_UPDATE_INDI;
     SHMIMMONITORT_UPDATE_INDI( darkShmimMonitorT );
     SHMIMMONITORT_UPDATE_INDI( refShmimMonitorT );
-
     FRAMEGRABBER_UPDATE_INDI;
 
     updateIfChanged( m_indiP_statsTime, "current", m_fitCircBuffMaxTime );
@@ -685,6 +684,7 @@ inline int psfFit::appLogic()
 
     updateIfChanged( m_indiP_dx, "current", m_dx );
     updateIfChanged( m_indiP_dy, "current", m_dy );
+
 
     return 0;
 }
@@ -727,7 +727,7 @@ inline int psfFit::allocate( const dev::shmimT &dummy )
     else
     {
         // Set up the fit circ. buffs
-        cbIndexT cbSz = m_fitCircBuffMaxTime * m_fps;
+        cbIndexT cbSz = m_fitCircBuffMaxTime * m_fps+1;
         if( cbSz > m_fitCircBuffMaxLength )
         {
             cbSz = m_fitCircBuffMaxLength;
@@ -737,6 +737,7 @@ inline int psfFit::allocate( const dev::shmimT &dummy )
             cbSz = 3; // Make variance meaningful
         }
 
+        std::cerr << "Fit circ. buff size: " << cbSz << ' ' << m_fitCircBuffMaxTime << ' ' << m_fps << '\n';
         m_pcb.maxEntries( cbSz );
         m_xcb.maxEntries( cbSz );
         m_ycb.maxEntries( cbSz );
