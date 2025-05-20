@@ -18,7 +18,7 @@ namespace MagAOX
         static const uint16_t DMMaxControllerBoards = 6;
         static const uint16_t DMMDacsPerControllerBoard = 4;
         static const uint16_t DMActuatorsPerDac = 40;
-        static const uint16_t DMMaxActuators = DMActuatorsPerDac * DMMDacsPerControllerBoard * DMMaxControllerBoards;        
+        static const uint16_t DMMaxActuators = DMActuatorsPerDac * DMMDacsPerControllerBoard * DMMaxControllerBoards;
 
         /**
          * @brief Payload types for the commands
@@ -111,43 +111,27 @@ namespace MagAOX
             
             CGraphDMMappingPayload() : ControllerBoardIndex(0), DacIndex(0), DacChannel(0) { }
             CGraphDMMappingPayload(unsigned long bi, unsigned long di, unsigned long dc) : ControllerBoardIndex(bi), DacIndex(di), DacChannel(dc) { }
+
+            // Overload operator<< for logging
+            friend std::ostream& operator<<(std::ostream& os, const CGraphDMMappingPayload& payload) {
+                os << "{ControllerBoardIndex: " << static_cast<int>(payload.ControllerBoardIndex)
+                << ", DacIndex: " << static_cast<int>(payload.DacIndex)
+                << ", DacChannel: " << static_cast<int>(payload.DacChannel) << "}";
+                return os;
+            }
         };
-        
-        //May send multiple copies per packet; array of 1...N of the following:
+
         struct CGraphDMMappings
         {
             CGraphDMMappingPayload Mappings[DMMaxActuators];
-            
-            //Let's just make a default initialization so it's not totally null until uploaded, cause that causes all actuators to write ram0:0:0 over & over
-            CGraphDMMappings()
-            {
-                uint8_t ControllerBoardIndex = 0;
-                uint8_t DacIndex = 0;
-                uint8_t DacChannel = 0;
-        
+
+            // Overload operator<< for logging
+            friend std::ostream& operator<<(std::ostream& os, const CGraphDMMappings& mappings) {
                 for (size_t i = 0; i < DMMaxActuators; i++)
                 {
-                    Mappings[i].ControllerBoardIndex = ControllerBoardIndex;
-                    Mappings[i].DacIndex = DacIndex;
-                    Mappings[i].DacChannel = DacChannel;
-                    
-                    DacChannel++;
-                    if (DacChannel >= DMActuatorsPerDac)
-                    {
-                        DacChannel = 0;
-                        DacIndex++;
-                        if (DacIndex >= DMMDacsPerControllerBoard)
-                        {
-                            DacIndex = 0;
-                            ControllerBoardIndex++;
-                            if (ControllerBoardIndex >= DMMaxControllerBoards)
-                            {
-                                //We really really really shouldn't get here, but just in case we do it's better than crashing...
-                                ControllerBoardIndex = 0;
-                            }
-                        }
-                    }
+                    os << "DMMapping: Pixel " << i << ": " << mappings.Mappings[i] << "\n";
                 }
+                return os;
             }
         };
 
@@ -227,6 +211,7 @@ namespace MagAOX
             // const uint32_t *ParamsPtr = nullptr;
             // uint32_t DacSetpoints[3];
 
+            // Assumes that SetPoints is an array of uint16_t values, each corresponding to a pixel.
             virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel=0)
             {
                 // Make payload header
@@ -256,17 +241,17 @@ namespace MagAOX
                     // !!! At the moment, different exit points in the BinaryDMShortPixelsCommand function build the package differently.
                     // If the setpoints are set successfully, the return payload only contains the nb of setpoints set.
                     // However, other return payloads contains the full header + setpoints or variations thereof.
-                    // !!! Leaving it like this for now, but we need a starndard payload structure here.
+                    // !!! Leaving it like this for now, but we need a standard payload structure here.
                     const CGraphDMPixelPayloadHeader PixelHeader = *reinterpret_cast<const CGraphDMPixelPayloadHeader*>(Params);
                     const uint16_t StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
-                    oss << "BinaryDMShortPixelsCommand: Returned StartPixel: " << StartPixel;
+                    oss << "DMShortPixels: Returned StartPixel: " << StartPixel;
                     MagAOXAppT::log<text_log>( oss.str());
                     
                     uint16_t NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(uint16_t);
                     if ((NumPixels + StartPixel) > DMMaxActuators) 
                     {
-                        oss << "BinaryDMShortPixelsCommand: Invalid NumPixels (truncating):  " << NumPixels;
+                        oss << "DMShortPixels: Invalid NumPixels (truncating):  " << NumPixels;
                         MagAOXAppT::log<text_log>(oss.str());
                         NumPixels = DMMaxActuators - StartPixel; 
                     }
@@ -274,13 +259,13 @@ namespace MagAOX
                     for (size_t i = 0; i < NumPixels; i++)
                     {
                         const uint16_t Pixel = *reinterpret_cast<const uint16_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(uint16_t)));
-                        oss << "BinaryDMShortPixelsCommand: Pixel " << i << ": " << Pixel;
+                        oss << "DMShortPixels: Pixel " << i << ": " << Pixel;
                         MagAOXAppT::log<text_log>(oss.str());
                     }
                 }
                 else
                 {
-                    MagAOXAppT::log<software_error>({__FILE__, __LINE__, "BinaryDMShortPixelsCommand: Empty packet returned!"});
+                    MagAOXAppT::log<software_error>({__FILE__, __LINE__, "DMShortPixels: Empty packet returned!"});
                 }
             }
 
@@ -294,7 +279,7 @@ namespace MagAOX
             void logReply() override
             {
                 std::ostringstream oss;
-                oss << "DMShortPixels Command: Short pixels received";
+                oss << "DMShortPixels: Short pixels received";
                 // debug
                 MagAOXAppT::log<text_log>(oss.str());
             }
@@ -309,14 +294,15 @@ namespace MagAOX
         public:
             LongPixelsQuery()
             {
-                PayloadType = CGraphPayloadTypeDMShortPixels;
-                startLog = "DMTelemetry: Querying short pixels.";
-                endLog = "DMTelemetry: Finished querying short pixels.";
+                PayloadType = CGraphPayloadTypeDMLongPixels;
+                startLog = "DMLongPixels: Querying long pixels.";
+                endLog = "DMLongPixels: Finished querying long pixels.";
             }
 
             // const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
             // CGraphDMTelemetryPayload Telemetry;
 
+            // Assumes that SetPoints is an array of uint8_t values, where each group of 3 successive values makes a pixel.
             virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel=0)
             {
                 // Make payload header
@@ -343,48 +329,143 @@ namespace MagAOX
             {
                 if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
                 {
-                    // !!! At the moment, different exit points in the BinaryDMShortPixelsCommand function build the package differently.
+                    // !!! At the moment, different exit points in the BinaryDMLongPixelsCommand function build the package differently.
                     // If the setpoints are set successfully, the return payload only contains the nb of setpoints set.
                     // However, other return payloads contains the full header + setpoints or variations thereof.
-                    // !!! Leaving it like this for now, but we need a starndard payload structure here.
+                    // !!! Leaving it like this for now, but we need a standard payload structure here.
+
                     const CGraphDMPixelPayloadHeader PixelHeader = *reinterpret_cast<const CGraphDMPixelPayloadHeader*>(Params);
-                    const uint16_t StartPixel = PixelHeader.StartPixel;
+                    const unsigned long StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
-                    oss << "BinaryDMShortPixelsCommand: Returned StartPixel: " << StartPixel;
-                    MagAOXAppT::log<text_log>( oss.str());
+                    oss << "DMLongPixels: Returned StartPixel: " << StartPixel;
+                    MagAOXAppT::log<text_log>( oss.str());                    
+                    unsigned long NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(uint8_t);
                     
-                    uint16_t NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(uint16_t);
                     if ((NumPixels + StartPixel) > DMMaxActuators) 
                     {
-                        oss << "BinaryDMShortPixelsCommand: Invalid NumPixels (truncating):  " << NumPixels;
+                        oss << "DMLongPixels: Invalid NumPixels (truncating):  " << NumPixels;
                         MagAOXAppT::log<text_log>(oss.str());
                         NumPixels = DMMaxActuators - StartPixel; 
                     }
                                     
                     for (size_t i = 0; i < NumPixels; i++)
                     {
-                        const uint16_t Pixel = *reinterpret_cast<const uint16_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(uint16_t)));
-                        oss << "BinaryDMShortPixelsCommand: Pixel " << i << ": " << Pixel;
+                        const uint32_t Pixel = *reinterpret_cast<const uint32_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(uint32_t)));
+                        oss << "DMLongPixels: Pixel " << i << ": " << Pixel;
                         MagAOXAppT::log<text_log>(oss.str());
                     }
                 }
                 else
                 {
-                    MagAOXAppT::log<software_error>({__FILE__, __LINE__, "BinaryDMShortPixelsCommand: Empty packet returned!"});
+                    MagAOXAppT::log<software_error>({__FILE__, __LINE__, "DMLongPixels: Empty packet returned!"});
                 }
             }
 
             void errorLogString(const size_t ParamsLen) override
             {
                 std::ostringstream oss;
-                oss << "DMTelemetry: Short packet: " << ParamsLen << " (expected " << sizeof(CGraphDMTelemetryPayload) << " bytes): ";
+                oss << "DMLongPixels: Short packet: " << ParamsLen << " (expected at least " << sizeof(CGraphDMPixelPayloadHeader) << " bytes): ";
                 MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
             }
 
             void logReply() override
             {
                 std::ostringstream oss;
-                oss << "DMShortPixels Command: Short pixels received";
+                oss << "DMLongPixels: Long pixels received";
+                // debug
+                MagAOXAppT::log<text_log>(oss.str());
+            }
+        };
+
+        // Derived class
+        /**
+         * @brief Child query class that handles sending a mapping query to the dm
+         */
+        class MappingQuery : public dev::sdevQuery
+        {
+        public:
+            MappingQuery()
+            {
+                PayloadType = CGraphPayloadTypeDMMappings;
+                startLog = "DMMapping: Querying mapping.";
+                endLog = "DMMapping: Finished querying mapping.";
+            }
+
+            // const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
+            // CGraphDMTelemetryPayload Telemetry;
+
+            // Assumes that MappingPayloads is an array of CGraphDMMappingPayload values.
+            virtual void setPayload(const void *MappingPayloads, uint16_t MappingPayloadsLen, uint16_t StartPixel=0)
+            {
+                // Make payload header
+                CGraphDMPixelPayloadHeader payloadHeader(StartPixel);
+
+                // Calculate sizes
+                const size_t headerSize = sizeof(payloadHeader);
+                const size_t totalSize = headerSize + static_cast<size_t>(MappingPayloadsLen);
+
+                // Allocate new buffer for the combined payload.
+                uint8_t *buffer = new uint8_t[totalSize];
+
+                // Copy header first.
+                std::memcpy(buffer, &payloadHeader, headerSize);
+                // Then copy the setpoints after the header.
+                std::memcpy(buffer + headerSize, MappingPayloads, MappingPayloadsLen);
+
+                // Save new payload.
+                PayloadData = buffer;
+                PayloadLen = totalSize;
+            }
+
+            void processReply(char const *Params, const size_t ParamsLen) override
+            {
+                if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
+                {
+                    // !!! At the moment, different exit points in the BinaryDMMappingCommand function build the package differently.
+                    // If the setpoints are set successfully, the return payload only contains the nb of setpoints set.
+                    // However, other return payloads contains the full header + setpoints or variations thereof.
+                    // !!! Leaving it like this for now, but we need a starndard payload structure here.
+
+                    const CGraphDMPixelPayloadHeader PixelHeader = *reinterpret_cast<const CGraphDMPixelPayloadHeader*>(Params);
+                    const unsigned long StartPixel = PixelHeader.StartPixel;
+                    std::ostringstream oss;
+                    oss << "DMMapping: Returned StartPixel: " << StartPixel;
+                    MagAOXAppT::log<text_log>( oss.str());                    
+                    unsigned long NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(CGraphDMMappingPayload);
+                    
+                    if ((NumPixels + StartPixel) > DMMaxActuators) 
+                    {
+                        oss.str("");
+                        oss << "DMMapping: Invalid NumPixels (truncating):  " << NumPixels;
+                        MagAOXAppT::log<text_log>(oss.str());
+                        NumPixels = DMMaxActuators - StartPixel; 
+                    }
+                                    
+                    for (size_t i = 0; i < NumPixels; i++)
+                    {
+                        oss.str("");
+                        const CGraphDMMappingPayload Mapping = *reinterpret_cast<const CGraphDMMappingPayload*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(CGraphDMMappingPayload)));
+                        oss << "DMMapping: Pixel " << i << ": " << Mapping;
+                        MagAOXAppT::log<text_log>(oss.str());
+                    }
+                }
+                else
+                {
+                    MagAOXAppT::log<software_error>({__FILE__, __LINE__, "DMMapping: Empty packet returned!"});
+                }
+            }
+
+            void errorLogString(const size_t ParamsLen) override
+            {
+                std::ostringstream oss;
+                oss << "DMMapping: Short packet: " << ParamsLen << " (expected " << sizeof(CGraphDMPixelPayloadHeader) << " bytes): ";
+                MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+            }
+
+            void logReply() override
+            {
+                std::ostringstream oss;
+                oss << "DMMapping: Mapping received";
                 // debug
                 MagAOXAppT::log<text_log>(oss.str());
             }
