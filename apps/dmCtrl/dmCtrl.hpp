@@ -7,7 +7,7 @@
 #ifndef dmCtrl_hpp
 #define dmCtrl_hpp
 
-
+#include <mx/ioutils/fits/fitsFile.hpp>
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
@@ -50,6 +50,8 @@ namespace MagAOX
       friend class dev::shmimMonitor<dmCtrl>;
       friend class dev::summerDevice<dmCtrl>;
 
+      typedef float realT;  ///< This defines the datatype used to signal the DM using the ImageStreamIO library.
+      
       typedef dev::telemeter<dmCtrl> telemeterT;
       typedef dev::dm<dmCtrl,float> dmT;
       typedef dev::shmimMonitor<dmCtrl> shmimMonitorT;
@@ -59,27 +61,39 @@ namespace MagAOX
        *@{
        */
         const std::string USB0 = "/dev/ttyUSB0";
+        const std::string FITS = ".fits";
+        const std::string SHORT = "short";
+        const std::string LONG = "long";
+        const std::string DITHER = "dither";
       ///@}
 
       /** \name Configurable Parameters
          *@{
          */
-      
-      //here add parameters which will be config-able at runtime
-      
+        std::string m_mode = ""; ///< Operating mode of the DM. Takes one value from: "short", "long", "dither"
+        std::string m_shmim_map_filename = "actuator_mapping.fits"; ///< Filename of fits image containing the mapping from 2D grid position to linear index in the command vector; must exist in the calibPath (or calibRelDir if set)
+        std::string m_dm_map_filename = ""; ///< Request the pixel array to actuator map from the DM. If false, a map will be sent to the DM.
+
         // Telemeter callback parameters
         int period_s;
 
-        // Shmim size
-        double width = 3; // shm size
-        double height = 1; // shm size
       ///@}
 
     private:
         dev::sdevQuery *versionQuery = new dev::VersionQuery();
         dev::sdevQuery *telemetryQuery = new TelemetryQuery();
         dev::sdevQuery *shortPixelQuery = new ShortPixelsQuery();
-        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, versionQuery, shortPixelQuery };
+        dev::sdevQuery *longPixelQuery = new LongPixelsQuery();
+        dev::sdevQuery *mappingQuery = new MappingQuery();
+        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, versionQuery, shortPixelQuery, longPixelQuery, mappingQuery };
+
+
+    protected:
+      // INDI properties
+      pcf::IndiProperty m_indiP_mode;
+
+    public:
+      INDI_NEWCALLBACK_DECL(dmCtrl, m_indiP_mode);
 
     public:
       /// Default c'tor.
@@ -87,7 +101,10 @@ namespace MagAOX
 
       /// D'tor, declared and defined for noexcept.
       ~dmCtrl() noexcept
-      {}
+      {
+      if(m_actuator_mapping) free(m_actuator_mapping);
+      if(m_dminputs) free(m_dminputs);
+      }
 
       virtual void setupConfig();
 
@@ -161,40 +178,97 @@ namespace MagAOX
       int recordDM(bool force = false);
       ///@}
 
-      /** \name shmim Monitor Interface
-       *
-       * @{
-       */
+      /** \name DM Template Interface
+         * (The DM template implements the shmim interface, so that is not needed here.)
+         *
+         *@{
+        */
 
-      /**
-       * @brief Required by smimMonitor Interface
-       * Called after shmimMonitor connects to the dm stream.
-       *
-       * \returns 0 on success
-       * \returns -1 if incorrect size or data type in stream.
-       */
-      int allocate(const dev::shmimT &sp);
+      protected:
+        double m_act_gain {0}; ///< Actuator gain (microns/volt)
+        double m_volume_factor {0}; ///< the volume factor to convert from displacement to commands
+        uint32_t m_nbAct {DMMaxActuators}; ///< The number of actuators
 
-      /**
-       * @brief Required by smimMonitor Interface
-       * Called by shmimMonitor when a new dm command is available.
-       *
-       * \returns 0 on success
-       * \returns -1 if incorrect size or data type in stream.
-       */
-      int processImage(void *curr_src,
-                       const dev::shmimT &sp);
+        int * m_actuator_mapping {nullptr}; ///< Array containing the mapping from 2D grid position to linear index in the command vector
+      
+        double * m_dminputs {nullptr}; ///< Pre-allocated command vector, only used in commandDM
 
-      /**
-       * @brief Send to dm new values from shmim
-       *
-       * Called as part of processImage.
-       *
-       * \returns 0 on success
-       * \returns -1 if incorrect size or data type in stream.
-       */
-      int commandDM(void *curr_src);
+        long m_satThresh {100000} ;///< Threshold above which to log saturation.
+        long m_nsat {0};
 
+        // Not using this (yet?). The DM doesn't have a handle
+        // bool m_dmopen {false}; ///< Track whether the DM connection has been opened
+  
+        public:
+        
+        /// Read the shmim to pixel mapping from a FITS file
+        /**
+           * \returns 0 on success
+           * \returns -1 on error
+           */
+          int get_shmim_to_pixel_mapping();
+        
+        
+        /// Read the pixel to DM actuators mapping from file
+        /**
+           * Sets values on map_lut
+           * 
+           * \returns 0 on success
+           * \returns -1 on error
+           */
+          int get_array_to_actuator_mapping(CGraphDMMappings &map_lut);
+        
+        /// Send the array of values to the DM
+        /**
+           * \returns 0 on success
+           * \returns -1 on error
+           */
+          int send_array(double *inputs, uint16_t nbInputs, uint16_t startPixel);
+
+        /// Initialize the DM and prepare for operation.
+        /** Application is in state OPERATING upon successful conclusion.
+         *
+         * @brief Required by DM Interface
+         * 
+         * \returns 0 on success
+         * \returns -1 on error
+         */
+        int initDM();
+
+        /// Zero all commands on the DM
+        /** This does not update the shared memory buffer.
+          *
+          * @brief Required by DM Interface
+          * 
+          * \returns 0 on success
+          * \returns -1 on error
+          */
+        int zeroDM();
+    
+        /// Send a command to the DM
+        /** This is called by the shmim monitoring thread in response to a semaphore trigger.
+          *
+          *  @brief Required by DM Interface
+          * 
+          * \returns 0 on success
+          * \returns -1 on error
+          */
+        int commandDM(void * curr_src);
+    
+        /// Release the DM, making it safe to turn off power.
+        /** The application will be state READY at the conclusion of this.
+          *
+          *  @brief Required by DM Interface
+          * 
+          * \returns 0 on success
+          * \returns -1 on error
+          */
+        int releaseDM();
+
+        /** \name Other methods
+         *
+         *@{
+        */
     };
 
     dmCtrl::dmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
@@ -210,25 +284,55 @@ namespace MagAOX
       shmimMonitorT::setupConfig(config);
 
       config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the dm.");
-
-      // shmim parameters
-      config.add("shmimMonitor.shmimName", "", "shmimMonitor.shmimName", argType::Required, "shmimMonitor", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /tmp/<shmimName>.im.shm. Default is dm");
-
-      config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the DM in actuators.");
-      config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the DM in actuators.");
-
+      config.add("dm.calibRelDir", "", "dm.calibRelDir", argType::Required, "dm", "calibRelDir", false, "string", "Used to find the default config directory.");
+      config.add("dm.satThresh", "", "dm.satThresh", argType::Required, "dm", "satThresh", false, "string", "Threshold above which to log saturation.");
+      config.add("dm.mapFilename", "", "dm.mapFilename", argType::Optional, "dm", "mapFilename", false, "string", "The filename of fits image containing the mapping from 2D grid position to linear index in the command vector. Must exist in the calibPath (or calibRelDir if set).");
+      config.add("dm.dmMapFilename", "", "dm.dmMapFilename", argType::Optional, "dm", "dmMapFilename", false, "bool", "The filename of file containing the mapping from the pixel array to actuator map from the DM. If empty, a map will be requested from the DM.");
+      config.add("dm.mode", "", "dm.mode", argType::Required, "dm", "mode", false, "string", "Operating mode of the DM. Takes one value from: 'short', 'long', 'dither'.");
+      config.add("dm.actuatorGain", "", "dm.actuatorGain", argType::Required, "dm", "actuatorGain", false, "float", "Actuator gain (microns/volt).");
+      config.add("dm.volumeFactor", "", "dm.volumeFactor", argType::Required, "dm", "volumeFactor", false, "float", "The volume factor to convert from displacement to commands.");
+      
+      dev::dm<dmCtrl,float>::setupConfig(config);
       telemeterT::setupConfig(config);
     }
 
     int dmCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
     {
-      /// CONNECTION PARAMETERS ///
-      _config(period_s, "parameters.period_s");
       log<text_log>("Loading config");
+      
+      /// CONNECTION PARAMETERS ///
+      config(period_s, "parameters.period_s");
+      
+      /// DM PARAMETERS ///
+      config(m_calibRelDir, "dm.calibRelDir");
+      config(m_shmim_map_filename, "dm.mapFilename");
+      config(m_dm_map_filename, "dm.dmMapFilename");
+      config(m_satThresh, "dm.satThresh");
+      config(m_mode, "dm.mode");
+      config(m_act_gain, "dm.actuatorGain");
+      config(m_volume_factor, "dm.volumeFactor");
 
-      /// SHMIM PARAMETERS ///
-      _config(width, "shmimMonitor.width");
-      _config(height, "shmimMonitor.height");
+      // Check that the mode is one of the three valid options
+      if (m_mode != SHORT && m_mode != LONG && m_mode != DITHER)
+      {
+        std::ostringstream oss;
+        oss << "The provided mode, " << m_mode << ", is not a valid option. Valid options are: 'short', 'long', 'dither'.";
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+      
+      // If map_filename is shorter than FITS or doesn't end with FITS, it is not a valid fits file.
+      if ((m_shmim_map_filename.length() < FITS.length()) || (0 != m_shmim_map_filename.compare (m_shmim_map_filename.length() - FITS.length(), FITS.length(), FITS)))
+      {
+        std::ostringstream oss;
+        oss << "The provided map_filename, " << m_shmim_map_filename << ", is not a valid fits file.";
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+      
+      dev::dm<dmCtrl,float>::loadConfig(_config);
+      m_shmim_map_filename = m_calibPath + "/" + m_shmim_map_filename;
+      m_dm_map_filename = m_calibPath + "/" + m_dm_map_filename;
 
       return 0;
     }
@@ -272,32 +376,35 @@ namespace MagAOX
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
+      if (dev::dm<dmCtrl,float>::appStartup() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
       if (dev::summerDevice<dmCtrl>::appStartup() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
-      // if(!streamExists()) {
-      //   if (createStream() < 0) {
-      //     log<software_error>({__FILE__, __LINE__});
-      //     return -1;
-      //   }
-      // }
+      REG_INDI_NEWPROP(m_indiP_mode, "mode", pcf::IndiProperty::Text);
+      m_indiP_mode.add(pcf::IndiElement("current"));
+      m_indiP_mode.add(pcf::IndiElement("target"));
+      m_indiP_mode["current"] = m_mode;
+      m_indiP_mode["target"] = m_mode;
 
       return 0;
     }
 
     int dmCtrl::appLogic()
     {
-      if (shmimMonitorT::appLogic() < 0)
+      if (dev::dm<dmCtrl,float>::appLogic() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
-      // Set the INDI name, width & heigh properties to those of the shmim
-      if (shmimMonitorT::updateINDI() < 0)
+      if (shmimMonitorT::appLogic() < 0)
       {
-        log<software_error>({__FILE__, __LINE__});
+        return log<software_error, -1>({__FILE__, __LINE__});
       }
 
       if (state() == stateCodes::POWERON)
@@ -322,19 +429,47 @@ namespace MagAOX
 
       if (state() == stateCodes::CONNECTED)
       {
+        int rv = initDM();
+
+        if (rv == 0)
+        {
+          // shmimMonitor executes processImage as long as the state is OPERATING.
+          // The DM template implements shmimMonitor's processImage to execute commandDM.
+          state(stateCodes::READY);
+        }
+      }
+
+      if (state() == stateCodes::OPERATING)
+      {
         // Test setpoints
-        uint16_t setpoints[10] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
-        uint16_t setpointsLen = sizeof(setpoints);
-        uint16_t startPixel = 50;
+        // uint16_t setpoints[10] = {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000};
+        // uint16_t setpointsLen = sizeof(setpoints);
+        // uint16_t startPixel = 50;
 
-        log<text_log>("Sending setpoints to dm");
+        // log<text_log>("Sending setpoints to dm");
 
-        ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
-        castShortPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
+        // ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
+        // castShortPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
 
-        dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
+        // dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
       
-        dev::summerDevice<dmCtrl>::receive();
+        // dev::summerDevice<dmCtrl>::receive();
+
+        sleep(10);
+
+        // LongPixelsQuery *castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery);
+        // castLongPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
+
+        // dev::summerDevice<dmCtrl>::query(castLongPixelQuery);
+      
+        // dev::summerDevice<dmCtrl>::receive();
+
+        if(m_nsat > m_satThresh)
+        {
+            log<text_log>("Saturated actuators in last second: " + std::to_string(m_nsat), logPrio::LOG_WARNING);
+        }
+
+        m_nsat = 0;
       }
 
       if ((state() == stateCodes::CONNECTED) || (state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
@@ -405,44 +540,431 @@ namespace MagAOX
 
 
     /////////////////////////
-    // SHMIMMONITOR INTERFACE
+    // DM INTERFACE
     /////////////////////////
 
-    int dmCtrl::allocate(const dev::shmimT &sp)
+    int dmCtrl::initDM()
     {
-      static_cast<void>(sp); // be unused
+      //  // enable high resolution mode (dithering filter)
+      //  ret = BMC_PCIeEnableHighRes(&m_dm, 1);
+      //  if(ret != NO_ERR)
+      //  {
+      //     const char *err;
+      //     err = BMCErrorString(ret);
+      //     log<text_log>(std::string("Enabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
+      //  }
+      //  log<text_log>("BMC high resolution mode enabled", logPrio::LOG_NOTICE);
 
-      // // validateStream will delete & recreate stream if it doesn't match size & kw requirements
-      // if (streamExists()) {
-      //   if (validateStream() < 0) {
-      //     log<software_error>({__FILE__, __LINE__});
-      //     return -1;
-      //   }
-      // }   
+      // Query the DM for the full mapping
+      CGraphDMMappings map_lut;
+      uint16_t startPixel = 0;
+      uint16_t payloadLen = static_cast<uint16_t>(m_nbAct * sizeof(CGraphDMMappingPayload));
 
-      return 0;
-    }
+      MappingQuery *castMappingQuery = dynamic_cast<MappingQuery *>(mappingQuery);
 
-    int dmCtrl::processImage(void *curr_src,
-                              const dev::shmimT &sp)
-    {
-      static_cast<void>(sp); // be unused
+      // If not map file provided, query the DM for the mapping
+      if (m_dm_map_filename.empty()) {
+        log<text_log>("Querying DM for mapping.");
+        castMappingQuery->setPayload(map_lut.Mappings, 0, 0);
+      // If map file provided, read it and send a new mapping to the DM instead
+      } else {
+        log<text_log>("Sending mapping to DM.");
 
-      int rv = commandDM(curr_src);
-
-      if (rv < 0)
-      {
-        log<software_critical>({__FILE__, __LINE__, errno, rv, "Error from commandDM"});
-        return rv;
+        int ret = get_array_to_actuator_mapping(map_lut);
+        if (ret < 0)
+        {
+          log<software_critical>({__FILE__, __LINE__, errno, "Failed to get array to actuator mapping."});
+          return -1;
+        }
+        
+        castMappingQuery->setPayload(map_lut.Mappings, payloadLen, startPixel);
       }
 
-      return rv;
-    }
-
-    int dmCtrl::commandDM(void *curr_src)
-    {
+      dev::summerDevice<dmCtrl>::query(castMappingQuery);
+      dev::summerDevice<dmCtrl>::receive();
+  
+      if(m_dminputs) free(m_dminputs);
+      m_dminputs = reinterpret_cast<double*>(calloc( m_nbAct, sizeof( double ) ));
+  
+      if(zeroDM() < 0)
+      {
+        log<text_log>("DM initialization failed.  Error zeroing DM.", logPrio::LOG_ERROR);
+        return -1;
+      }
+  
+      /* get actuator mapping from 2D shmim to 1D vector for DM input */
+      if(m_actuator_mapping) free(m_actuator_mapping);
+      m_actuator_mapping = reinterpret_cast<int *>(malloc(m_nbAct * sizeof(int))); /* memory for actuator mapping */
+  
+      /* initialize to -1 to allow for handling addressable but ignored actuators */
+      for (uint32_t idx = 0; idx < m_nbAct; ++idx)
+      {
+          m_actuator_mapping[idx] = -1;
+      }
+  
+      if(get_shmim_to_pixel_mapping() < 0)
+      {
+        log<text_log>("DM initialization failed.  Failed to get actuator mapping.", logPrio::LOG_ERROR);
+        return -1;
+      }
+  
+      if(m_actuator_mapping == nullptr)
+      {
+        log<text_log>("DM initialization failed.  null pointer.", logPrio::LOG_ERROR);
+        return -1;
+      }
+  
       return 0;
     }
+    
+    int dmCtrl::zeroDM()
+    {
+      uint16_t startPixel = 0;
+
+      double *dminputs = reinterpret_cast<double*>(calloc( m_nbAct, sizeof( double ) ));
+      if (!dminputs)
+      {
+          log<software_error>({__FILE__, __LINE__, "Memory allocation failed for zero dminputs"});
+          return -1;
+      }
+
+      log<text_log>("Sending dminputs to dm");
+      
+      /* Send the all 0 command to the DM */
+      send_array(dminputs, m_nbAct, startPixel);
+  
+      /* Release memory */
+      free( dminputs );
+  
+      log<text_log>("DM zeroed");
+      return 0;
+    }
+    
+    int dmCtrl::commandDM(void * curr_src)
+    {
+      log<text_log>("Starting commandDM");
+
+       //This is based on Kyle Van Gorkoms original sendCommand function.
+    
+       /*This loop performs the following steps:
+         1) converts from float to double
+         2) convert to volume-normalized displacement
+         3) convert to squared fractional voltage clamped from 0 to 1.
+       */
+    
+       #ifdef XWC_DMTIMINGS
+       dmT::m_tact0 = mx::sys::get_curr_time();
+       #endif
+    
+       for (uint32_t idx = 0; idx < m_nbAct; ++idx)
+       {
+          int address = m_actuator_mapping[idx];
+          if(address == -1)
+          {
+             m_dminputs[idx] = 0.; // addressable but ignored actuators set to 0
+          }
+          else
+          {
+             m_dminputs[idx] = ((double)  (static_cast<realT *>(curr_src)[address])) * m_volume_factor/m_act_gain;
+    
+             if (m_dminputs[idx] > 1)
+             {
+                m_dminputs[idx] = 1;
+             }
+             else if (m_dminputs[idx] < 0)
+             {
+                m_dminputs[idx] = 0;
+             }
+             else
+             {
+                m_dminputs[idx] = sqrt(m_dminputs[idx]);
+             }
+          }
+       }
+    
+       #ifdef XWC_DMTIMINGS
+       dmT::m_tact1 = mx::sys::get_curr_time();
+       #endif
+    
+       /* Send the command to the DM */
+       uint16_t startPixel = 0;
+       int ret = send_array(m_dminputs, m_nbAct, startPixel);
+    
+       #ifdef XWC_DMTIMINGS
+       dmT::m_tact2 = mx::sys::get_curr_time();
+       #endif
+    
+       /* Return immediately upon error, logging the error
+       message first and then return the failure code. */
+       if(ret != 0)
+       {
+          const char *err;
+          log<text_log>(std::string("DM command failed: "), logPrio::LOG_ERROR);
+          return -1;
+       }
+    
+       #ifdef XWC_DMTIMINGS
+       dmT::m_tact3 = mx::sys::get_curr_time();
+       #endif
+    
+       /* Now update the instantaneous sat map */
+       for (uint32_t idx = 0; idx < m_nbAct; ++idx)
+       {
+          int address = m_actuator_mapping[idx];
+    
+          if(address == -1)
+          {
+             continue;
+          }
+          else if(m_dminputs[idx] >= 1 || m_dminputs[idx] <= 0)
+          {
+             ++m_nsat;
+             m_instSatMap.data()[address] = 1;
+          }
+          else
+          {
+             m_instSatMap.data()[address] = 0;
+          }
+       }
+    
+       #ifdef XWC_DMTIMINGS
+       dmT::m_tact4 = mx::sys::get_curr_time();
+       #endif
+    
+      log<text_log>("Ending commandDM");
+
+      return 0;
+    }
+    
+    int dmCtrl::releaseDM()
+    {
+       // Safe DM shutdown on interrupt
+    
+       state(stateCodes::READY);
+    
+       if(!shutdown())
+       {
+          pthread_kill(m_smThread.native_handle(), SIGUSR1);
+       }
+    
+       sleep(1);
+    
+       if(zeroDM() < 0)
+       {
+          log<text_log>("DM release failed. Error zeroing DM.", logPrio::LOG_ERROR);
+          return -1;
+       }
+    
+      //   // disable high resolution mode (releasing segfaults unless you disable)
+      //  ret = BMC_PCIeEnableHighRes(&m_dm, 0);
+      //  if(ret != NO_ERR)
+      //  {
+      //     const char *err;
+      //     err = BMCErrorString(ret);
+      //     log<text_log>(std::string("Disabling high resolution (pseudo 16-bit) mode failed: ") + err, logPrio::LOG_ERROR);
+      //  }
+      //  log<text_log>("BMC high resolution mode disabled", logPrio::LOG_NOTICE);
+    
+       log<text_log>("DM reset and released", logPrio::LOG_NOTICE);
+    
+       return 0;
+    }
+
+
+    int dmCtrl::get_shmim_to_pixel_mapping() //const char * serial, int nbAct, int * actuator_mapping)
+    {
+      mx::fits::fitsFile<realT> ff;
+      mx::fits::fitsHeader fh;
+      mx::improc::eigenImage<realT> map_data;
+
+      if(ff.read(map_data, fh, m_shmim_map_filename) < 0) 
+      {
+        log<software_critical>({__FILE__, __LINE__, errno, "Could not open mapping fits file " + m_shmim_map_filename});
+        return -1;
+      }
+
+      // Assuming this is an image, not a table (how to check this with fitsFile?)
+
+      if (ff.naxis() != 2)
+      {
+        std::ostringstream oss;
+        oss << "Error: NAXIS = " << ff.naxis() << " Only 2-D images are supported.";
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+
+      int ij = 0;/* actuator mapping index */
+      // Currently, array starts at index 1, as it did for the original CFITSIO get_actuator_mapping implementation.
+      // Pre-increment it to start at 0.
+      for (auto it = map_data.data(); it != map_data.data() + map_data.size(); it++) {
+        int element = *it;
+        if (element > 0) {
+          m_actuator_mapping[element - 1] = ij;
+        }
+        ij++;
+      }
+
+      ff.close();
+
+      log<text_log>("DM: Using actuator mapping from " + m_shmim_map_filename);
+
+      // std::ostringstream oss;
+      // for (int i = 0; i < m_nbAct; i++)
+      // {
+      //   oss << "New Actuator mapping[" << i << "] = " << m_actuator_mapping[i] << "\n";
+      // }  
+      // log<text_log>(oss.str());
+      return 0;
+    }
+
+
+    int dmCtrl::get_array_to_actuator_mapping(CGraphDMMappings &map_lut)
+    {
+      // Read the data from the file
+      std::ifstream file(m_dm_map_filename);
+      std::string line;
+      size_t i = 0;
+      bool hasValidData = false;
+      while (std::getline(file, line))
+      {
+          if (line.find("[") != std::string::npos)
+          {
+              // Parse the line and create the CGraphDMMappingPayload
+              int controlerBoard, dacNumber, actuatorNumber;
+              if (sscanf(line.c_str(), "[%d, %d, %d],", &controlerBoard, &dacNumber, &actuatorNumber) == 3)
+              {
+                if (controlerBoard >= 1 && controlerBoard <= DMMaxControllerBoards &&
+                    dacNumber >= 1 && dacNumber <= DMMDacsPerControllerBoard &&
+                    actuatorNumber >= 1 && actuatorNumber <= DMActuatorsPerDac)
+                {
+                  map_lut.Mappings[i] = CGraphDMMappingPayload(controlerBoard - 1, dacNumber - 1, actuatorNumber - 1);
+                  i++;
+                  hasValidData = true;
+                }
+                else
+                {
+                  std::ostringstream oss;
+                  oss << "Invalid data in line: " << line << " (controlerBoard: " << controlerBoard << ", dacNumber: " << dacNumber << ", actuatorNumber: " << actuatorNumber << ")";
+                  log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+                }
+              }
+              else
+              {
+                log<software_error>({__FILE__, __LINE__, "Error parsing line: " + line});
+                return -1;
+              }
+          }
+      }
+
+      if (!hasValidData)
+      {
+        log<software_error>({__FILE__, __LINE__, "No valid data found in the file."});
+        return -1;
+      }
+
+      return 0; 
+    }
+
+    int dmCtrl::send_array(double *inputs, uint16_t nbInputs, uint16_t startPixel)
+    {
+      if (m_mode == SHORT)
+      {
+        uint16_t *mode_inputs = reinterpret_cast<uint16_t *>(malloc(nbInputs * sizeof(uint16_t)));
+        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * sizeof(uint16_t));
+
+        // Convert m_dminputs to format expected by payload
+        for (uint16_t i = 0; i < nbInputs; ++i)
+        {
+          mode_inputs[i] = static_cast<uint16_t>(inputs[i]);
+        }
+        
+        ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
+        castShortPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
+        
+        dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
+      }
+      else if (m_mode == LONG)
+      {
+        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(nbInputs * 3 * sizeof(uint8_t)));
+        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * 3 * sizeof(uint8_t));
+
+        // Convert m_dminputs to format expected by payload
+        // Hard coding little-endian, matching Summer's choice - can revisit or make it configurable if needed
+        for (uint16_t i = 0; i < nbInputs; ++i)
+        {
+          uint32_t val = static_cast<uint32_t>(inputs[i]);
+          mode_inputs[i * 3] = static_cast<uint8_t>(val & 0x000000FFUL);
+          mode_inputs[i * 3 + 1] = static_cast<uint8_t>((val & 0x0000FF00UL) >> 8);
+          mode_inputs[i * 3 + 2] = static_cast<uint8_t>((val & 0x00FF0000UL) >> 16);
+        }
+
+        LongPixelsQuery *castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery);
+        castLongPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
+
+        dev::summerDevice<dmCtrl>::query(castLongPixelQuery);
+      }
+      else if (m_mode == DITHER)
+      {
+        // mode_inputs = reinterpret_cast<int *>(malloc(m_nbAct * sizeof(int)));
+        
+        log<text_log>("Sending setpoints to dm");
+        // uint16_t payloadLen = static_cast<uint16_t>(inputsLen * sizeof(uint16_t));
+        // uint16_t startPixel = 0;
+      }
+      else
+      {
+        log<text_log>("Invalid mode. No setpoints sent to dm");
+        return -1;
+      }
+      
+      dev::summerDevice<dmCtrl>::receive();
+
+      return 0;
+    }
+
+
+    ////////////////////
+    // INDI CALLBACKS
+    ////////////////////
+
+    // callback from setting m_indiP_val1
+    // only 'target' is editable ('current' should be updated by code)
+    INDI_NEWCALLBACK_DEFN(dmCtrl, m_indiP_mode)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_mode, ipRecv);
+
+      std::string current = "", target = "";
+
+      if (ipRecv.find("current"))
+      {
+        current = ipRecv["current"].get<std::string>();
+      }
+
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<std::string>();
+      }
+
+      if (!(target == SHORT || target == LONG || target == DITHER))
+      {
+        std::ostringstream oss;
+        oss << "mode.target '" << target << "' not short, long or dither";
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+
+      // Lock the mutex, waiting if necessary
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+
+      updateIfChanged(m_indiP_mode, "target", target);
+      m_mode = target;
+
+      std::ostringstream oss;
+      oss << "INDI mode callback: " << target;
+      log<text_log>(oss.str());
+    }
+
 
   } //namespace app
 } //namespace MagAOX
