@@ -123,7 +123,25 @@ namespace MagAOX
 
         struct CGraphDMMappings
         {
-            CGraphDMMappingPayload Mappings[DMMaxActuators];
+            CGraphDMMappingPayload* Mappings;
+            size_t size;
+
+            // Constructor to initialize the array with an optional size parameter, defaulting to DMMaxActuators
+            CGraphDMMappings(size_t actuatorCount = DMMaxActuators) : size(actuatorCount) {
+                // Allocate memory
+                Mappings = new CGraphDMMappingPayload[size];
+
+                // Should we initialize the mappings to an 'unset' value (-1)?
+            }
+
+            // Destructor to free the allocated memory
+            ~CGraphDMMappings() {
+                delete[] Mappings; // Free memory
+            }
+
+            size_t length() const {
+                return size;
+            }
 
             // Overload operator<< for logging
             friend std::ostream& operator<<(std::ostream& os, const CGraphDMMappings& mappings) {
@@ -132,6 +150,14 @@ namespace MagAOX
                     os << "DMMapping: Pixel " << i << ": " << mappings.Mappings[i] << "\n";
                 }
                 return os;
+            }
+
+            // Method to reject out of bounds access
+            CGraphDMMappingPayload& operator[](size_t index) {
+                if (index >= size) {
+                    throw std::out_of_range("Index out of bounds");
+                }
+                return Mappings[index];
             }
         };
 

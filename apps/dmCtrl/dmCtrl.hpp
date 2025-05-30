@@ -7,6 +7,8 @@
 #ifndef dmCtrl_hpp
 #define dmCtrl_hpp
 
+#include <filesystem>
+
 #include <mx/ioutils/fits/fitsFile.hpp>
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
@@ -55,6 +57,7 @@ namespace MagAOX
       typedef dev::telemeter<dmCtrl> telemeterT;
       typedef dev::dm<dmCtrl,float> dmT;
       typedef dev::shmimMonitor<dmCtrl> shmimMonitorT;
+      typedef dev::summerDevice<dmCtrl> summerDeviceT;
 
     protected:
       /** \name Constants
@@ -70,41 +73,33 @@ namespace MagAOX
       /** \name Configurable Parameters
          *@{
          */
-        std::string m_mode = ""; ///< Operating mode of the DM. Takes one value from: "short", "long", "dither"
         std::string m_shmim_map_filename = "actuator_mapping.fits"; ///< Filename of fits image containing the mapping from 2D grid position to linear index in the command vector; must exist in the calibPath (or calibRelDir if set)
         std::string m_dm_map_filename = ""; ///< Request the pixel array to actuator map from the DM. If false, a map will be sent to the DM.
+        std::string m_mode = ""; ///< Operating mode of the DM. Takes one value from: "short", "long", "dither"
 
         // Telemeter callback parameters
         int period_s;
 
       ///@}
 
-    private:
-        dev::sdevQuery *versionQuery = new dev::VersionQuery();
-        dev::sdevQuery *telemetryQuery = new TelemetryQuery();
-        dev::sdevQuery *shortPixelQuery = new ShortPixelsQuery();
-        dev::sdevQuery *longPixelQuery = new LongPixelsQuery();
-        dev::sdevQuery *mappingQuery = new MappingQuery();
-        std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, versionQuery, shortPixelQuery, longPixelQuery, mappingQuery };
+      std::unique_ptr<dev::sdevQuery> versionQuery = std::make_unique<dev::VersionQuery>();
+      std::unique_ptr<dev::sdevQuery> telemetryQuery = std::make_unique<TelemetryQuery>();
+      std::unique_ptr<dev::sdevQuery> shortPixelQuery = std::make_unique<ShortPixelsQuery>();
+      std::unique_ptr<dev::sdevQuery> longPixelQuery = std::make_unique<LongPixelsQuery>();
+      std::unique_ptr<dev::sdevQuery> mappingQuery = std::make_unique<MappingQuery>();
+      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), versionQuery.get(), shortPixelQuery.get(), longPixelQuery.get(), mappingQuery.get() };
 
-
-    protected:
       // INDI properties
       pcf::IndiProperty m_indiP_mode;
 
     public:
       INDI_NEWCALLBACK_DECL(dmCtrl, m_indiP_mode);
 
-    public:
       /// Default c'tor.
       dmCtrl();
 
-      /// D'tor, declared and defined for noexcept.
-      ~dmCtrl() noexcept
-      {
-      if(m_actuator_mapping) free(m_actuator_mapping);
-      if(m_dminputs) free(m_dminputs);
-      }
+      /// D'tor
+      ~dmCtrl() noexcept = default;
 
       virtual void setupConfig();
 
@@ -189,9 +184,8 @@ namespace MagAOX
         double m_volume_factor {0}; ///< the volume factor to convert from displacement to commands
         uint32_t m_nbAct {DMMaxActuators}; ///< The number of actuators
 
-        int * m_actuator_mapping {nullptr}; ///< Array containing the mapping from 2D grid position to linear index in the command vector
-      
-        double * m_dminputs {nullptr}; ///< Pre-allocated command vector, only used in commandDM
+        std::vector<int> m_actuator_mapping;///< Vector containing the mapping from 2D grid position to linear index in the command vector
+        std::vector<double> m_dminputs; ///< Pre-allocated command vector, only used in commandDM
 
         long m_satThresh {100000} ;///< Threshold above which to log saturation.
         long m_nsat {0};
@@ -213,6 +207,10 @@ namespace MagAOX
         /**
            * Sets values on map_lut
            * 
+           * TODO: Do we ever want to send only a subset of the mapping?
+           * If yes, we need to also read in startPixel (from the file or config) 
+           * and request existing mapping from the DM first.
+           * 
            * \returns 0 on success
            * \returns -1 on error
            */
@@ -223,7 +221,7 @@ namespace MagAOX
            * \returns 0 on success
            * \returns -1 on error
            */
-          int send_array(double *inputs, uint16_t nbInputs, uint16_t startPixel);
+          int send_array(const std::vector<double> &inputs, uint16_t nbInputs, uint16_t startPixel);
 
         /// Initialize the DM and prepare for operation.
         /** Application is in state OPERATING upon successful conclusion.
@@ -280,14 +278,14 @@ namespace MagAOX
 
     void dmCtrl::setupConfig()
     {
-      dev::summerDevice<dmCtrl>::setupConfig(config);
+      summerDeviceT::setupConfig(config);
       shmimMonitorT::setupConfig(config);
 
       config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the dm.");
-      config.add("dm.calibRelDir", "", "dm.calibRelDir", argType::Required, "dm", "calibRelDir", false, "string", "Used to find the default config directory.");
+      config.add("dm.calibRelDir", "", "dm.calibRelDir", argType::Optional, "dm", "calibRelDir", false, "string", "Used to find the default config directory.");
       config.add("dm.satThresh", "", "dm.satThresh", argType::Required, "dm", "satThresh", false, "string", "Threshold above which to log saturation.");
-      config.add("dm.mapFilename", "", "dm.mapFilename", argType::Optional, "dm", "mapFilename", false, "string", "The filename of fits image containing the mapping from 2D grid position to linear index in the command vector. Must exist in the calibPath (or calibRelDir if set).");
-      config.add("dm.dmMapFilename", "", "dm.dmMapFilename", argType::Optional, "dm", "dmMapFilename", false, "bool", "The filename of file containing the mapping from the pixel array to actuator map from the DM. If empty, a map will be requested from the DM.");
+      config.add("dm.mapFilename", "", "dm.mapFilename", argType::Required, "dm", "mapFilename", false, "string", "The filename of fits image containing the mapping from 2D grid position to linear index in the command vector. Must exist in the calibPath (or calibRelDir if set).");
+      config.add("dm.dmMapFilename", "", "dm.dmMapFilename", argType::Optional, "dm", "dmMapFilename", false, "string", "The filename of file containing the mapping from the pixel array to actuator map from the DM. If empty, a map will be requested from the DM.");
       config.add("dm.mode", "", "dm.mode", argType::Required, "dm", "mode", false, "string", "Operating mode of the DM. Takes one value from: 'short', 'long', 'dither'.");
       config.add("dm.actuatorGain", "", "dm.actuatorGain", argType::Required, "dm", "actuatorGain", false, "float", "Actuator gain (microns/volt).");
       config.add("dm.volumeFactor", "", "dm.volumeFactor", argType::Required, "dm", "volumeFactor", false, "float", "The volume factor to convert from displacement to commands.");
@@ -308,18 +306,16 @@ namespace MagAOX
       config(m_shmim_map_filename, "dm.mapFilename");
       config(m_dm_map_filename, "dm.dmMapFilename");
       config(m_satThresh, "dm.satThresh");
-      config(m_mode, "dm.mode");
-      config(m_act_gain, "dm.actuatorGain");
-      config(m_volume_factor, "dm.volumeFactor");
 
-      // Check that the mode is one of the three valid options
-      if (m_mode != SHORT && m_mode != LONG && m_mode != DITHER)
+      config(m_mode, "dm.mode");
+      if (!(m_mode == SHORT || m_mode == LONG || m_mode == DITHER))
       {
-        std::ostringstream oss;
-        oss << "The provided mode, " << m_mode << ", is not a valid option. Valid options are: 'short', 'long', 'dither'.";
-        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + m_mode + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
         return -1;
       }
+
+      config(m_act_gain, "dm.actuatorGain");
+      config(m_volume_factor, "dm.volumeFactor");
       
       // If map_filename is shorter than FITS or doesn't end with FITS, it is not a valid fits file.
       if ((m_shmim_map_filename.length() < FITS.length()) || (0 != m_shmim_map_filename.compare (m_shmim_map_filename.length() - FITS.length(), FITS.length(), FITS)))
@@ -332,7 +328,11 @@ namespace MagAOX
       
       dev::dm<dmCtrl,float>::loadConfig(_config);
       m_shmim_map_filename = m_calibPath + "/" + m_shmim_map_filename;
-      m_dm_map_filename = m_calibPath + "/" + m_dm_map_filename;
+
+      if (!m_dm_map_filename.empty())
+      {
+        m_dm_map_filename = m_calibPath + "/" + m_dm_map_filename;
+      }
 
       return 0;
     }
@@ -345,7 +345,7 @@ namespace MagAOX
         m_shutdown = true;
       }
 
-      if (dev::summerDevice<dmCtrl>::loadConfig(config) < 0)
+      if (summerDeviceT::loadConfig(config) < 0)
       {
         log<text_log>("Error during summerDevice config", logPrio::LOG_CRITICAL);
         m_shutdown = true;
@@ -381,7 +381,7 @@ namespace MagAOX
         return log<software_error, -1>({__FILE__, __LINE__});
       }
 
-      if (dev::summerDevice<dmCtrl>::appStartup() < 0)
+      if (summerDeviceT::appStartup() < 0)
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
@@ -419,7 +419,7 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        rv = dev::summerDevice<dmCtrl>::connect();
+        rv = summerDeviceT::connect();
 
         if (rv == 0)
         {
@@ -488,7 +488,7 @@ namespace MagAOX
     {
       telemeterT::appShutdown();
       shmimMonitorT::appShutdown();
-      dev::summerDevice<dmCtrl>::appShutdown();
+      summerDeviceT::appShutdown();
 
       return 0;
     }
@@ -502,7 +502,7 @@ namespace MagAOX
     }
 
     void dmCtrl::receive() {
-      dev::summerDevice<dmCtrl>::receive();
+      summerDeviceT::receive();
     }
 
     /////////////////////////
@@ -516,9 +516,9 @@ namespace MagAOX
 
     int dmCtrl::recordTelem(const telem_dm *)
     {
-      dev::summerDevice<dmCtrl>::query(telemetryQuery);
+      summerDeviceT::query(telemetryQuery.get());
       
-      dev::summerDevice<dmCtrl>::receive();
+      summerDeviceT::receive();
       telemetryQuery->logReply();
 
       return recordDM(true);
@@ -527,12 +527,16 @@ namespace MagAOX
     int dmCtrl::recordDM(bool force)
     {
       static CGraphDMTelemetryPayload LastTelemetry; ///< Structure holding the previous dm voltage measurement.
-      TelemetryQuery *telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery);
 
-      if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
-      {
-        LastTelemetry = telemetryQueryPtr->Telemetry;
-        telem<telem_dm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.P2I2, LastTelemetry.P4I3, LastTelemetry.P6I});
+      if (auto telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery.get())) {
+        if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
+        {
+          LastTelemetry = telemetryQueryPtr->Telemetry;
+          telem<telem_dm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.P2I2, LastTelemetry.P4I3, LastTelemetry.P6I});
+        }
+      } else {
+        log<software_error>({__FILE__, __LINE__, "Query casting failed."});
+        return -1;
       }
 
       return 0;
@@ -555,62 +559,51 @@ namespace MagAOX
       //  }
       //  log<text_log>("BMC high resolution mode enabled", logPrio::LOG_NOTICE);
 
-      // Query the DM for the full mapping
       CGraphDMMappings map_lut;
       uint16_t startPixel = 0;
       uint16_t payloadLen = static_cast<uint16_t>(m_nbAct * sizeof(CGraphDMMappingPayload));
 
-      MappingQuery *castMappingQuery = dynamic_cast<MappingQuery *>(mappingQuery);
+      if (auto castMappingQuery = dynamic_cast<MappingQuery *>(mappingQuery.get())) {
+        // If not map file provided, query the DM for the mapping
+        if (m_dm_map_filename.empty()) {
+          log<text_log>("Querying DM for mapping.");
+          castMappingQuery->setPayload(map_lut.Mappings, 0, 0);
+        // If map file provided, read it and send a new mapping to the DM instead
+        } else {
+          log<text_log>("Sending mapping to DM.");
 
-      // If not map file provided, query the DM for the mapping
-      if (m_dm_map_filename.empty()) {
-        log<text_log>("Querying DM for mapping.");
-        castMappingQuery->setPayload(map_lut.Mappings, 0, 0);
-      // If map file provided, read it and send a new mapping to the DM instead
-      } else {
-        log<text_log>("Sending mapping to DM.");
-
-        int ret = get_array_to_actuator_mapping(map_lut);
-        if (ret < 0)
-        {
-          log<software_critical>({__FILE__, __LINE__, errno, "Failed to get array to actuator mapping."});
-          return -1;
+          int ret = get_array_to_actuator_mapping(map_lut);
+          if (ret < 0)
+          {
+            log<software_critical>({__FILE__, __LINE__, errno, "Failed to get array to actuator mapping."});
+            return -1;
+          }
+          
+          castMappingQuery->setPayload(map_lut.Mappings, payloadLen, startPixel);
         }
-        
-        castMappingQuery->setPayload(map_lut.Mappings, payloadLen, startPixel);
+
+        query(castMappingQuery);
+        receive();
+      } else {
+        log<software_error>({__FILE__, __LINE__, "Query casting failed."});
+        return -1;
       }
 
-      dev::summerDevice<dmCtrl>::query(castMappingQuery);
-      dev::summerDevice<dmCtrl>::receive();
-  
-      if(m_dminputs) free(m_dminputs);
-      m_dminputs = reinterpret_cast<double*>(calloc( m_nbAct, sizeof( double ) ));
+      /* initialize to 0 to allow for handling addressable but ignored actuators */
+      m_dminputs.assign(m_nbAct, 0.0);
   
       if(zeroDM() < 0)
       {
-        log<text_log>("DM initialization failed.  Error zeroing DM.", logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, errno, "DM initialization failed.  Error zeroing DM."});
         return -1;
       }
   
-      /* get actuator mapping from 2D shmim to 1D vector for DM input */
-      if(m_actuator_mapping) free(m_actuator_mapping);
-      m_actuator_mapping = reinterpret_cast<int *>(malloc(m_nbAct * sizeof(int))); /* memory for actuator mapping */
-  
       /* initialize to -1 to allow for handling addressable but ignored actuators */
-      for (uint32_t idx = 0; idx < m_nbAct; ++idx)
-      {
-          m_actuator_mapping[idx] = -1;
-      }
+      m_actuator_mapping.assign(m_nbAct, -1);
   
       if(get_shmim_to_pixel_mapping() < 0)
       {
         log<text_log>("DM initialization failed.  Failed to get actuator mapping.", logPrio::LOG_ERROR);
-        return -1;
-      }
-  
-      if(m_actuator_mapping == nullptr)
-      {
-        log<text_log>("DM initialization failed.  null pointer.", logPrio::LOG_ERROR);
         return -1;
       }
   
@@ -621,20 +614,14 @@ namespace MagAOX
     {
       uint16_t startPixel = 0;
 
-      double *dminputs = reinterpret_cast<double*>(calloc( m_nbAct, sizeof( double ) ));
-      if (!dminputs)
-      {
-          log<software_error>({__FILE__, __LINE__, "Memory allocation failed for zero dminputs"});
-          return -1;
-      }
+      std::vector<double> dminputs;
+      dminputs.assign(m_nbAct, 0);
 
-      log<text_log>("Sending dminputs to dm");
-      
       /* Send the all 0 command to the DM */
-      send_array(dminputs, m_nbAct, startPixel);
-  
-      /* Release memory */
-      free( dminputs );
+      if (send_array(dminputs, m_nbAct, startPixel) < 0) {
+        log<software_error>({__FILE__, __LINE__, errno, "Failed to send zero command to DM."});
+        return -1;
+      }
   
       log<text_log>("DM zeroed");
       return 0;
@@ -771,20 +758,35 @@ namespace MagAOX
     }
 
 
-    int dmCtrl::get_shmim_to_pixel_mapping() //const char * serial, int nbAct, int * actuator_mapping)
+    int dmCtrl::get_shmim_to_pixel_mapping()
     {
       mx::fits::fitsFile<realT> ff;
       mx::fits::fitsHeader fh;
       mx::improc::eigenImage<realT> map_data;
+      
+      if(!std::filesystem::exists(m_shmim_map_filename)) {
+        log<software_critical>({__FILE__, __LINE__, errno, "Mapping fits file " + m_shmim_map_filename + " does not exist."});
+        return -1;
+      }
 
-      if(ff.read(map_data, fh, m_shmim_map_filename) < 0) 
+      int ret;
+      try { 
+        ret = ff.read(map_data, fh, m_shmim_map_filename);
+      } catch(const mx::err::liberr &e) 
       {
-        log<software_critical>({__FILE__, __LINE__, errno, "Could not open mapping fits file " + m_shmim_map_filename});
+        log<software_critical>({__FILE__, __LINE__, errno, "Could not read mapping fits file " + m_shmim_map_filename + ": " + e.what()});
+        return -1;
+      }
+      
+      if (ret < 0)
+      {
+        log<software_critical>({__FILE__, __LINE__, errno, "Could not read mapping fits file " + m_shmim_map_filename});
         return -1;
       }
 
       // Assuming this is an image, not a table (how to check this with fitsFile?)
 
+      // Check image dimensions
       if (ff.naxis() != 2)
       {
         std::ostringstream oss;
@@ -792,6 +794,12 @@ namespace MagAOX
         log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
         return -1;
       }
+
+      // // Something like this could be a good check we're sending a sensible map, but max value might be the way to go
+      // if (map_data.size() > m_nbAct) {
+      //     log<software_critical>({__FILE__, __LINE__, "Mapping image is too large for actuator count"});
+      //     return -1;
+      // }
 
       int ij = 0;/* actuator mapping index */
       // Currently, array starts at index 1, as it did for the original CFITSIO get_actuator_mapping implementation.
@@ -818,8 +826,16 @@ namespace MagAOX
     }
 
 
+    // TODO: Do we ever want to send only a subset of the mapping?
+    // If yes, we need to also read in startPixel (from the file or config) 
+    // and request existing mapping from the DM first.
     int dmCtrl::get_array_to_actuator_mapping(CGraphDMMappings &map_lut)
     {
+      if(!std::filesystem::exists(m_dm_map_filename)) {
+        log<software_critical>({__FILE__, __LINE__, errno, "Actuator mapping file " + m_dm_map_filename + " does not exist."});
+        return -1;
+      }
+
       // Read the data from the file
       std::ifstream file(m_dm_map_filename);
       std::string line;
@@ -827,33 +843,51 @@ namespace MagAOX
       bool hasValidData = false;
       while (std::getline(file, line))
       {
-          if (line.find("[") != std::string::npos)
+        std::istringstream iss(line);
+        char firstChar;
+        char discard; 
+
+        // Skip leading whitespace
+        iss >> std::ws; 
+
+        // Check if the first character is '['
+        if (iss >> firstChar && firstChar == '[') {
+          int controlerBoard, dacNumber, actuatorNumber;
+
+          // Parse the line and create the CGraphDMMappingPayload
+          if (iss >> controlerBoard >> discard >> dacNumber >> discard >> actuatorNumber >> discard)
           {
-              // Parse the line and create the CGraphDMMappingPayload
-              int controlerBoard, dacNumber, actuatorNumber;
-              if (sscanf(line.c_str(), "[%d, %d, %d],", &controlerBoard, &dacNumber, &actuatorNumber) == 3)
+            if (controlerBoard >= 0 && controlerBoard < DMMaxControllerBoards &&
+                dacNumber >= 0 && dacNumber < DMMDacsPerControllerBoard &&
+                actuatorNumber >= 0 && actuatorNumber < DMActuatorsPerDac)
+            {
+              try  // Does the file provide more entries than the number of actuators?
               {
-                if (controlerBoard >= 1 && controlerBoard <= DMMaxControllerBoards &&
-                    dacNumber >= 1 && dacNumber <= DMMDacsPerControllerBoard &&
-                    actuatorNumber >= 1 && actuatorNumber <= DMActuatorsPerDac)
-                {
-                  map_lut.Mappings[i] = CGraphDMMappingPayload(controlerBoard - 1, dacNumber - 1, actuatorNumber - 1);
-                  i++;
-                  hasValidData = true;
-                }
-                else
-                {
-                  std::ostringstream oss;
-                  oss << "Invalid data in line: " << line << " (controlerBoard: " << controlerBoard << ", dacNumber: " << dacNumber << ", actuatorNumber: " << actuatorNumber << ")";
-                  log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-                }
-              }
-              else
+                map_lut[i] = CGraphDMMappingPayload(controlerBoard, dacNumber, actuatorNumber);
+              } catch ( const std::out_of_range &e )
               {
-                log<software_error>({__FILE__, __LINE__, "Error parsing line: " + line});
+                log<software_error>({__FILE__, __LINE__, "The number of entries in the file exceeds the number of actuators."});
                 return -1;
               }
+              i++;
+              hasValidData = true;
+            }
+            else
+            {
+              std::ostringstream oss;
+              oss << "Invalid data in line: " << line << " (controlerBoard: " << controlerBoard << ", dacNumber: " << dacNumber << ", actuatorNumber: " << actuatorNumber << ")";
+              log<software_error>({__FILE__, __LINE__, errno, oss.str()});
+              // Throwing an error here; assuming that if there is an invalid entry none can be trusted.
+              // Not deleting entries already added to map_lut since this is a critical error, but might need to revisit this.
+              return -1;
+            }
           }
+          else
+          {
+            log<software_error>({__FILE__, __LINE__, "Error parsing line: " + line});
+            return -1;
+          }
+        }
       }
 
       if (!hasValidData)
@@ -865,7 +899,7 @@ namespace MagAOX
       return 0; 
     }
 
-    int dmCtrl::send_array(double *inputs, uint16_t nbInputs, uint16_t startPixel)
+    int dmCtrl::send_array(const std::vector<double> &inputs, uint16_t nbInputs, uint16_t startPixel)
     {
       if (m_mode == SHORT)
       {
@@ -878,10 +912,14 @@ namespace MagAOX
           mode_inputs[i] = static_cast<uint16_t>(inputs[i]);
         }
         
-        ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
-        castShortPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
-        
-        dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
+        if (auto castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery.get())) {
+          castShortPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
+          query(castShortPixelQuery);
+        } else {
+          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
+          free(mode_inputs);
+          return -1;
+        }
       }
       else if (m_mode == LONG)
       {
@@ -898,10 +936,14 @@ namespace MagAOX
           mode_inputs[i * 3 + 2] = static_cast<uint8_t>((val & 0x00FF0000UL) >> 16);
         }
 
-        LongPixelsQuery *castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery);
-        castLongPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
-
-        dev::summerDevice<dmCtrl>::query(castLongPixelQuery);
+        if (auto castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery.get())) {
+          castLongPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
+          query(castLongPixelQuery);
+        } else {
+          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
+          free(mode_inputs);
+          return -1;
+        }
       }
       else if (m_mode == DITHER)
       {
@@ -913,11 +955,11 @@ namespace MagAOX
       }
       else
       {
-        log<text_log>("Invalid mode. No setpoints sent to dm");
+        log<software_error>({__FILE__, __LINE__, "Unkown dm mode: "+ m_mode + "."});
         return -1;
       }
       
-      dev::summerDevice<dmCtrl>::receive();
+      receive();
 
       return 0;
     }
@@ -948,10 +990,7 @@ namespace MagAOX
 
       if (!(target == SHORT || target == LONG || target == DITHER))
       {
-        std::ostringstream oss;
-        oss << "mode.target '" << target << "' not short, long or dither";
-        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
-        return -1;
+        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + m_mode + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
       }
 
       // Lock the mutex, waiting if necessary
