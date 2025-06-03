@@ -4,7 +4,8 @@
 
 //#define IRMAGAOX_top "/opt/MagAOX"
 #define IRMAGAOX_top IRMAGAOX_top_func()+
-#define IRMAGAOX_config (IRMAGAOX_top "/config")
+#define IRMAGAOX_proclist_prefix (IRMAGAOX_top "/sys/resurrector_proclist/proclist_")
+#define IRMAGAOX_proclist_base (IRMAGAOX_top "/config/proclist_")
 #define IRMAGAOX_bin (IRMAGAOX_top "/bin")
 #define IRMAGAOX_fifos (IRMAGAOX_top "/drivers/fifos")
 
@@ -165,12 +166,15 @@ get_magaox_proclist_role(int argc, char** argv)
     if (!role) { role = getenv("MAGAOX_ROLE"); }
     if (!role) { Usage(1, "\nERROR:  no role specified; try --help"); }
 
-    const char default_cache_suffix[] = { ".copy" };
+    const char default_cache_suffix[] = { ".active" };
     char* cache_suffix{arg_value(argc, argv, "-cs", "--cache-suffix=")};
     if (!cache_suffix) { cache_suffix = (char*) default_cache_suffix; }
 
-    std::string pl_role{IRMAGAOX_config};  // /opt/MagAOX/config
-    pl_role += "/proclist_";
+    std::string pl_role{
+        strcmp(cache_suffix,"-") && strlen(cache_suffix)
+        ? IRMAGAOX_proclist_prefix  // /opt/MagAOX/sys/resurrector_proclist/proclist_
+        : IRMAGAOX_proclist_base    // /opt/MagAOX/config/proclist_
+    };
     pl_role += role;
     pl_role += ".txt";
     if (strcmp(cache_suffix,"-")) { pl_role += cache_suffix; }
