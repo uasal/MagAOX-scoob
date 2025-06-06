@@ -367,7 +367,7 @@ function parse_commands {
   || return 1
 
   [ ! "$All" ] || procnames="$(find_all_procnames)" || return 1
-  [ ! "$All" ] && [ ! "$procnames" ] && [ "$verb" == "status" ] && procnames="$(find_all_procnames)"
+  [ ! "$All" ] && [ ! "$procnames" ] && [ "${verb#l}" == "status" ] && procnames="$(find_all_procnames)"
 
   true
 } ### function parse_commands
