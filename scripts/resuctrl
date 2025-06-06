@@ -238,27 +238,42 @@ function verb_reset {
   && ( echo "Cached proclist path cannot be the same as the base proclist path" || true ) \
   && return 1
 
-  cp -v "$proclist_base" "$proclist_cached"
-  [ "$USER" == "xsup" ] && return 0
-  chmod -c o+w "$proclist_cached"
-
   SH="sudo -H -n"
   ug="root:xsup"
-  dM=--mode=775
-  fM=--mode=660
+  ugxsup="xsup:xsup"
+  dM=775
+  fM=660
+
+  cDir="$(dirname "$proclist_cached")"
+  ### Create directory, owned by user xsup,for cached proclist file
+  [ -d  "$cDir" ] \
+  || ( $SH mkdir -pv "$cDir" \
+     && $SH chown -c $ug "$cDir" \
+     && $SH chmod $dM "$cDir" \
+     ) \
+  || return 1
+
+  $SH -u xsup \
+  cp -v "$proclist_base" "$proclist_cached" || return 1
+  [ "$USER" == "xsup" ] && return 0
+
+  $SH chown -c $ugxsup  "$proclist_cached" \
+  && $SH chmod 774 "$proclist_cached" \
+  || return 1
+
   for procname in $(find_all_procnames | tr "$delim" " ") ; do
 
     ### Create directory for process files:  pid; outputs
     pDir="/opt/MagAOX/sys/$procname"
     [ -d "$pDir" ] \
-    || ( $SH mkdir -v $dM "$pDir" && $SH chown -c $ug "$pDir" ) \
+    || ( $SH mkdir -v --mode=$dM "$pDir" && $SH chown -c $ug "$pDir" ) \
     || echo "Failed to create process directory $pDir" \
     || true
 
     ### Create named FIFO for sending process Hexbeats to resurrector
     fHb="/opt/MagAOX/drivers/fifos/$procname.hb"
     [ -p "$fHb" ] \
-    || ( $SH mkfifo $fM "$fHb" && $SH chown -v $ug "$fHb" ) \
+    || ( $SH mkfifo --mode=$fM "$fHb" && $SH chown -v $ug "$fHb" ) \
     || echo "Failed to create Hexbeat FIFO $fHb" \
     || true
 
