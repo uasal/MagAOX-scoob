@@ -197,6 +197,47 @@ function verb_peek {
 function verb_status {
   hide status
 
+  ripid=$(ps axo pid,exe | grep '/resurrector_indi$' | head -1 | sed -e 's/^ *//' -e 's,  *.*/resurrector_indi$,,' | grep '^[0-9][0-9]*$') || true
+
+  [ "$ripid" ] \
+  && __resu_default="'2=resurrector exists, but process not started'" \
+  || __resu_default="'1=no resurrector, not started'"
+
+  ### Start with null variables __resu_state_<name> for process PIDs
+  pns="${procnames#${delim}}"
+  pns="${pns%${delim}}"
+  eval "_resu_pid_${pns//${delim}${delim}/=$__resu_default;__resu_state_}=$__resu_default"
+  __resu_knownpids=
+
+  ### Replace with PID from file /opt/MagAOX/sys/<name>/pid
+  ### Also create null variables __resu_name_<pid>
+  eval $(eval "grep '^[0-9][0-9]*\$' /opt/MagAOX/sys/{${procnames//${delim}/,}}/pid 2>/dev/null | sed -e s,/pid:,=, -e 's=.*/==' -e 's/^/__resu_state_/' -e 's/^__resu_state_\([^=]*\)=\(..*\)\$/__resu_state_\1=\"0=running (pid: \2)\";__resu_name_\2=\1;__resu_knownpids=\"\${__resu_knownpids}\2 \"/'")
+
+  __resu_knownpids="$__resu_knownpids"
+
+  [ "$ripid" ] \
+  && __resu_resu="resurrector exists" \
+  || __resu_resu="no resurrector"
+
+  for missingpid in $(kill -0 $__resu_knownpids 2>&1 | grep -i no.such.process| sed -e 's/[)].*$//' -e 's/[^(]*(//' || true) ; do
+    eval "missingname=\$__resu_name_$missingpid"
+    eval "__resu_state_$missingname='3=dead ($__resu_resu, stale PID file)'"
+  done
+
+  set|grep -E '^__resu_state_' | sort -t= -k2,2 -k1,1 | tr -d \' \
+  | sed -e "/=0=/s/__resu_state_/$GREEN_SEQ/" \
+        -e "/=1=/s/__resu_state_/$CYAN_SEQ/" \
+        -e "/=2=/s/__resu_state_/$MAGENTA_SEQ/" \
+        -e "/=3=/s/__resu_state_/$BLUE_SEQ/" \
+        -e "s/=[0-3]=/: /" \
+        -e "s/$/$RESET_SEQ/"
+  return 0
+}
+
+########################################################################
+function oldverb_status {
+  hide status
+
   for procname in ${procnames//${delim}/ } ; do
     _brief_status "$procname"
   done
@@ -205,7 +246,7 @@ function verb_status {
 ########################################################################
 function verb_lstatus {
   hide lstatus
-  USElsof=yes verb_status
+  USElsof=yes oldverb_status
 }
 
 ########################################################################
@@ -545,7 +586,7 @@ function find_resurrector_indi_path {
 ### Warning message for function resurrector_indi_pid above
 function slow_warning {
   cat 1>&2 << EoFwarning
-$YELLOW_SEQ
+$MAGENTA_SEQ
 A running resurrector_indi binary was not found where expected; trying
 again in all filesystems, but it may take as much as a minute longer;
 press ^C if there is no resurrector_indi currently active.$RESET_SEQ
@@ -770,6 +811,8 @@ function misc_setup {
   GREEN_SEQ="$(tput setaf 2 2>/dev/null)"
   YELLOW_SEQ="$(tput setaf 3 2>/dev/null)"
   BLUE_SEQ="$(tput setaf 4 2>/dev/null)"
+  MAGENTA_SEQ="$(tput setaf 5 2>/dev/null)"
+  CYAN_SEQ="$(tput setaf 6 2>/dev/null)"
   RESET_SEQ="$(tput sgr0)"
 
   ### whitespace:  ws=>tab+space; wsh=>#+tab+space; notws=>not-tab+space
@@ -792,7 +835,7 @@ function misc_setup {
 ### Write messages of success, failure, warning and informational nature
 function resu_success { echo "${GREEN_SEQ}$*${RESET_SEQ}" ; }
 function resu_failure { echo "${RED_SEQ}$*${RESET_SEQ}" 1>&2 && false; }
-function resu_warning { echo "${YELLOW_SEQ}$*${RESET_SEQ}" ; }
+function resu_warning { echo "${MAGENTA_SEQ}$*${RESET_SEQ}" ; }
 function resu_informa { echo "${BLUE_SEQ}$*${RESET_SEQ}" ; }
 
 ########################################################################
