@@ -131,8 +131,8 @@ protected:
    //PicamAcquisitionBuffer m_acqBuff;
    //PicamAvailableData m_available;
 
-   long m_imgSize;
-   unsigned char* m_imgBuff;
+   long m_imgSize = 0;
+   unsigned char* m_imgBuff = nullptr;
    //float m_blacklevel;
    //std::string m_cameraName;
    //std::string m_cameraModel;
@@ -284,10 +284,11 @@ asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 inline
 asiCtrl::~asiCtrl() noexcept
 {
-   /*if(m_imgBuff) // fix me
+   if (m_imgBuff) 
    {
-      free(m_imgBuff);
-   }*/
+      delete[] m_imgBuff;
+      m_imgBuff = nullptr;
+   }
 
    return;
 }
@@ -595,7 +596,7 @@ int asiCtrl::connect()
 
     if (m_imgBuff) {
         std::cerr << "Clearing image buffer\n";
-        free(m_imgBuff);
+        delete[] m_imgBuff;
         m_imgBuff = nullptr;
     }
 
