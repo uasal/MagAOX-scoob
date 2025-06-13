@@ -57,14 +57,13 @@ namespace app
 /**
  * You can define a base configuration file for this class by defining
  * \code
- *  m_configBase = "base_name";
- *  \endcode
+ *     m_configBase = "base_name";
+ * \endcode
  * in the derived class constructor. This would be used, for instance to have a config common to
  * all filter wheels.
  *
  *
- * \todo make m_powerMgtEnabled a template parameter, and static_assert check if _useINDI== false and power management
- * is true
+ * \todo add a check if _useINDI== false and power management is true
  *
  * \ingroup magaoxapp
  */
@@ -469,8 +468,8 @@ class MagAOXApp : public application
      * @{
      */
   private:
-    stateCodes::stateCodeT m_state{ stateCodes::UNINITIALIZED }; ///< The application's state.  Never ever set this
-                                                                 ///< directly, use state(const stateCodeT & s).
+    stateCodes::stateCodeT m_state{ stateCodes::UNINITIALIZED }; /**< The application's state.  Never ever set this
+                                                                      directly, use state(const stateCodeT & s).*/
 
     bool m_stateAlert{ false }; // Flag to control whether the FSM is in an alert state.  Once set, only user
                                 // acknowledgement can change this.
