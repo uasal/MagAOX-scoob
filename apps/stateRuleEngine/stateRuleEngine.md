@@ -1,3 +1,4 @@
+\ingroup stateRuleEngine
 # State Rule Engine
 
 This document describes the configuration and operation of the state rule engine, `stateRuleEngine`, which is designed to provide a system for evaluating the state of MagAO-X to provide user feedback when the system is not in the correct state for observations.
