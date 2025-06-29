@@ -1,7 +1,7 @@
 \ingroup stateRuleEngine
 # State Rule Engine
 
-This document describes the configuration and operation of the state rule engine, `stateRuleEngine`, which is designed to provide a system for evaluating the state of MagAO-X to provide user feedback when the system is not in the correct state for observations.
+`stateRuleEngine` is designed to provide a system for evaluating the state of an XWCTk system to provide user feedback when the system is not in the correct state for observations.
 
 ## Example
 Suppose we want to caution the user when the FPM wheel is in a certain position and the focus stage is not in the corresponding position to produce an in-focus image. Recall that information about the instrument is stored in INDI properties, with the logical structure `device.property.element=value`.  We can set up a "rule" to notify the user of this out-of-focus state by creating comparisons between such properties as follows.

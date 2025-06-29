@@ -49,10 +49,7 @@ namespace MagAOX
 namespace app
 {
 
-/// The base-class for XWCTk applications.
-/**
- * This class implements the standard logic for an XWCTk application, including PID locking,
- * privilege management, configuration, logging, INDI communications, and a finite state machine (FSM).
+/** \addtogroup magaoxapp
  *
  * A typical XWCApp is the interface to a single piece of hardware, such as a camera or a filter wheel.
  * Through various optional CRTP base classes, many different standard functionalities can be included.
@@ -60,8 +57,27 @@ namespace app
  *
  * \image html xwcapp.png "Block diagram of a typical XWCApp. Note that ImageStreamIO (ISIO) is not included by default, but there are several ways to interface with 'image streams' provided in XWCTk.  Many different hardware device interfaces are similarly provided."
  *
+ * The following figure illustrates the logic of the XWCApp finite state machine (FSM).
+ *
+ * \image html xwcapp_fsm.png "The XWCApp FSM. The blue sequence highlights the normal 'appLogic' loop."
+
+ *
+ *
+ *
+*/
+
+
+/// The base-class for XWCTk applications.
+/**
+ * This class implements the standard logic for an XWCTk application, including PID locking,
+ * privilege management, configuration, logging, INDI communications, and a finite state machine (FSM).
+ *
+ *
+ *
  * This class is inherited using standard virtual inheritance. The virtual interface consists of the
  * following functions:
+ *
+ *  - \ref virtual void loadConfig();
  *
  * \code
  *     /// Setup the configuration system (called by MagAOXApp::setup())
@@ -89,9 +105,6 @@ namespace app
  *
  * \endcode
  *
- * The following figure illustrates the logic of the XWCApp FSM.
- *
- * \image html xwcapp_fsm.png "The XWCApp FSM. The blue sequence highlights the normal 'appLogic' loop."
  *
  * Standard configurable options are set in \ref setupBasicConfig().  See either the source code for that function
  * or run an application with `-h`.
