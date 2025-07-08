@@ -224,6 +224,15 @@ function verb_status {
     eval "__resu_state_$missingname='3=dead ($__resu_resu, stale PID file)'"
   done
 
+  ### Find any processes that are in base proclist,
+  ### but stopped (commented out) in cached proclist
+  [ "$ImpliedAll" ] || [ "$All" ] \
+  && ripath="$(find_resurrector_indi_path)" \
+  && proclist_base="$($ripath -r $ROLE -cs - -pn)" \
+  && proclist_cached="$($ripath -r $ROLE $CACHESUFFIXargs -pn)" \
+  && eval $(diff "$proclist_cached" "$proclist_base" -tdbwyW200 --suppress-common-lines --strip-trailing-cr | awk '{h4="#" $4}NF==5&&$2==$5&&$3=="|"&&h4==$1{print "__resu_state_" $4 "=0=\"disabled (probably)\""}')
+
+  ### Outuput status of all processes
   set|grep -E '^__resu_state_' | sort -t= -k2,2 -k1,1 | tr -d \' \
   | sed -e "/=0=/s/__resu_state_/$GREEN_SEQ/" \
         -e "/=1=/s/__resu_state_/$CYAN_SEQ/" \
@@ -423,7 +432,7 @@ function parse_commands {
   || return 1
 
   [ ! "$All" ] || procnames="$(find_all_procnames)" || return 1
-  [ ! "$All" ] && [ ! "$procnames" ] && [ "${verb#l}" == "status" ] && procnames="$(find_all_procnames)"
+  [ ! "$All" ] && [ ! "$procnames" ] && [ "${verb#l}" == "status" ] && procnames="$(find_all_procnames)" && ImpliedAll=yes
 
   true
 } ### function parse_commands
@@ -798,6 +807,7 @@ verb{$verb}:
 - procnames{$procnames}
 - Proclist cache suffix arguments{$CACHESUFFIXargs}
 - All{$All}
+- ImpliedAll{$ImpliedAll}
 EoFhide
 }
 
