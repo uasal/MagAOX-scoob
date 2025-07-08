@@ -200,8 +200,8 @@ function verb_status {
   ripid=$(ps axo pid,exe | grep '/resurrector_indi$' | head -1 | sed -e 's/^ *//' -e 's,  *.*/resurrector_indi$,,' | grep '^[0-9][0-9]*$') || true
 
   [ "$ripid" ] \
-  && __resu_default="'2=resurrector exists, but process not started'" \
-  || __resu_default="'1=no resurrector, not started'"
+  && __resu_default="'3magenta=resurrector exists, but process not started'" \
+  || __resu_default="'2cyan=no resurrector, not started'"
 
   ### Start with null variables __resu_state_<name> for process PIDs
   pns="${procnames#${delim}}"
@@ -211,7 +211,7 @@ function verb_status {
 
   ### Replace with PID from file /opt/MagAOX/sys/<name>/pid
   ### Also create null variables __resu_name_<pid>
-  eval $(eval "grep '^[0-9][0-9]*\$' /opt/MagAOX/sys/{${procnames//${delim}/,}}/pid 2>/dev/null | sed -e s,/pid:,=, -e 's=.*/==' -e 's/^/__resu_state_/' -e 's/^__resu_state_\([^=]*\)=\(..*\)\$/__resu_state_\1=\"0=running (pid: \2)\";__resu_name_\2=\1;__resu_knownpids=\"\${__resu_knownpids}\2 \"/'")
+  eval $(eval "grep '^[0-9][0-9]*\$' /opt/MagAOX/sys/{${procnames//${delim}/,}}/pid 2>/dev/null | sed -e s,/pid:,=, -e 's=.*/==' -e 's/^/__resu_state_/' -e 's/^__resu_state_\([^=]*\)=\(..*\)\$/__resu_state_\1=\"0green=running (pid: \2)\";__resu_name_\2=\1;__resu_knownpids=\"\${__resu_knownpids}\2 \"/'")
 
   __resu_knownpids="$__resu_knownpids"
 
@@ -221,7 +221,7 @@ function verb_status {
 
   for missingpid in $(kill -0 $__resu_knownpids 2>&1 | grep -i no.such.process| sed -e 's/[)].*$//' -e 's/[^(]*(//' || true) ; do
     eval "missingname=\$__resu_name_$missingpid"
-    eval "__resu_state_$missingname='3=dead ($__resu_resu, stale PID file)'"
+    eval "__resu_state_$missingname='4red=dead ($__resu_resu, stale PID file)'"
   done
 
   ### Find any processes that are in base proclist,
@@ -230,15 +230,16 @@ function verb_status {
   && ripath="$(find_resurrector_indi_path)" \
   && proclist_base="$($ripath -r $ROLE -cs - -pn)" \
   && proclist_cached="$($ripath -r $ROLE $CACHESUFFIXargs -pn)" \
-  && eval $(diff "$proclist_cached" "$proclist_base" -tdbwyW200 --suppress-common-lines --strip-trailing-cr | awk '{h4="#" $4}NF==5&&$2==$5&&$3=="|"&&h4==$1{print "__resu_state_" $4 "=0=\"disabled (probably)\""}')
+  && eval $(diff "$proclist_cached" "$proclist_base" -tdbwyW200 --suppress-common-lines --strip-trailing-cr | awk '{h4="#" $4}NF==5&&$2==$5&&$3=="|"&&h4==$1{print "__resu_state_" $4 "=1yellow=\"disabled (probably)\""}')
 
   ### Outuput status of all processes
   set|grep -E '^__resu_state_' | sort -t= -k2,2 -k1,1 | tr -d \' \
-  | sed -e "/=0=/s/__resu_state_/$GREEN_SEQ/" \
-        -e "/=1=/s/__resu_state_/$CYAN_SEQ/" \
-        -e "/=2=/s/__resu_state_/$MAGENTA_SEQ/" \
-        -e "/=3=/s/__resu_state_/$BLUE_SEQ/" \
-        -e "s/=[0-3]=/: /" \
+  | sed -e "/=[0-9]green=/s/__resu_state_/$GREEN_SEQ/" \
+        -e "/=[0-9]yellow=/s/__resu_state_/$YELLOW_SEQ/" \
+        -e "/=[0-9]cyan=/s/__resu_state_/$CYAN_SEQ/" \
+        -e "/=[0-9]magenta=/s/__resu_state_/$MAGENTA_SEQ/" \
+        -e "/=[0-9]red=/s/__resu_state_/$RED_SEQ/" \
+        -e "s/=[0-9][grencyamgtylowbu]*=/: /" \
         -e "s/$/$RESET_SEQ/"
   return 0
 }
