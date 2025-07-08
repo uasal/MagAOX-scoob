@@ -239,7 +239,7 @@ function verb_status {
         -e "/=[0-9]cyan=/s/__resu_state_/$CYAN_SEQ/" \
         -e "/=[0-9]magenta=/s/__resu_state_/$MAGENTA_SEQ/" \
         -e "/=[0-9]red=/s/__resu_state_/$RED_SEQ/" \
-        -e "s/=[0-9][grencyamgtylowbu]*=/: /" \
+        -e "s/=[0-9][grencyamgtylowbud]*=/: /" \
         -e "s/$/$RESET_SEQ/"
   return 0
 }
