@@ -113,16 +113,17 @@ else ifeq ($(MAGAOX_ROLE),SS)
 endif
 
 all_guis = \
-	dmCtrlGUI \
-	dmModeGUI \
-	offloadCtrlGUI \
-	pupilGuideGUI \
-	pwr \
-	coronAlignGUI \
-	loopCtrlGUI \
-	roiGUI \
-	cameraGUI \
-	stageGUI
+	#roiGUI 
+	#cameraGUI \
+	#stageGUI
+	#dmModeGUI
+	#dmCtrlGUI
+	#pupilGuideGUI
+	#offloadCtrlGUI
+	#pwr
+	#coronAlignGUI
+	#loopCtrlGUI
+
 
 ifeq ($(MAGAOX_ROLE),RTC)
   guis_to_build =

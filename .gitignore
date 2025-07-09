@@ -216,3 +216,8 @@ libMagAOX/doc/diag/xwcapps_connections.drawio
 libMagAOX/doc/diag/png/xwcapp_fsm.png
 libMagAOX/doc/diag/png/xwcapp.png
 libMagAOX/doc/diag/png/xwcapps_connections.png
+
+
+# Coverage files
+**/*.gcno
+**/*.gcda
