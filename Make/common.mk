@@ -27,8 +27,8 @@ ifeq ($(MAGAOX_ROLE),RTC)
 endif
 endif
 
-CFLAGS += -D_XOPEN_SOURCE=700
-CXXFLAGS += -D_XOPEN_SOURCE=700
+CFLAGS += -D_XOPEN_SOURCE=700 --coverage
+CXXFLAGS += -D_XOPEN_SOURCE=700 --coverage
 
 #Need this on COS-7, doesn't hurt elsewhere.
 #CXXFLAGS += -DMX_OLD_GSL
@@ -49,13 +49,13 @@ INCLUDES += $(shell pkg-config --cflags eigen3)
 ########################################
 ## Optimize Flags
 #######################################
-OPTIMIZE ?= -O3 -fopenmp -ffast-math
+OPTIMIZE ?= -O0 -fopenmp -ffast-math
 
 ########################################
 ## Libraries
 #######################################
 
-EXTRA_LDFLAGS ?=
+EXTRA_LDFLAGS ?= --coverage
 
 #the required librarires
 EXTRA_LDLIBS ?=  -lmxlib \

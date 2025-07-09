@@ -115,7 +115,7 @@ else ifeq ($(MAGAOX_ROLE),SS)
 endif
 
 all_guis = \
-	roiGUI 
+	#roiGUI 
 	#cameraGUI \
 	#stageGUI
 	#dmModeGUI
