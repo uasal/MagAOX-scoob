@@ -221,7 +221,7 @@ function verb_status {
 
   for missingpid in $(kill -0 $__resu_knownpids 2>&1 | grep -i no.such.process| sed -e 's/[)].*$//' -e 's/[^(]*(//' || true) ; do
     eval "missingname=\$__resu_name_$missingpid"
-    eval "__resu_state_$missingname='4blue=dead ($__resu_resu, stale PID file)'"
+    eval "__resu_state_$missingname='4red=dead ($__resu_resu, stale PID file)'"
   done
 
   ### Find any processes that are in base proclist,
@@ -234,12 +234,12 @@ function verb_status {
 
   ### Outuput status of all processes
   set|grep -E '^__resu_state_' | sort -t= -k2,2 -k1,1 | tr -d \' \
-  | sed -e "/=0green=/s/__resu_state_/$GREEN_SEQ/" \
-        -e "/=1yellow=/s/__resu_state_/$YELLOW_SEQ/" \
-        -e "/=2cyan=/s/__resu_state_/$CYAN_SEQ/" \
-        -e "/=3magenta=/s/__resu_state_/$MAGENTA_SEQ/" \
-        -e "/=4blue=/s/__resu_state_/$BLUE_SEQ/" \
-        -e "s/=[0-3][grencyamgtylowbu]*=/: /" \
+  | sed -e "/=[0-9]green=/s/__resu_state_/$GREEN_SEQ/" \
+        -e "/=[0-9]yellow=/s/__resu_state_/$YELLOW_SEQ/" \
+        -e "/=[0-9]cyan=/s/__resu_state_/$CYAN_SEQ/" \
+        -e "/=[0-9]magenta=/s/__resu_state_/$MAGENTA_SEQ/" \
+        -e "/=[0-9]red=/s/__resu_state_/$RED_SEQ/" \
+        -e "s/=[0-9][grencyamgtylowbu]*=/: /" \
         -e "s/$/$RESET_SEQ/"
   return 0
 }
