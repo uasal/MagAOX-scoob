@@ -264,7 +264,8 @@ asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_default_h = 2048;  
    m_default_bin_x = 2;
    m_default_bin_y = 2;
-      
+     
+   // these all need to be overwritten by actual sensor characteristics 
    m_full_x = 4143.5; 
    m_full_y = 2821.5; 
    m_full_w = 8288; 
@@ -324,9 +325,8 @@ inline
 int asiCtrl::appStartup()
 {
 
-   // DELETE ME
-   //m_outfile = fopen("/home/xsup/test2.txt", "w");
-
+   //ASIInitLibrary();
+   
    //createROIndiNumber( m_indiP_readouttime, "readout_time", "Readout Time (s)");
    //indi::addNumberElement<float>( m_indiP_readouttime, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%0.1f", "readout time");
    //registerIndiPropertyReadOnly( m_indiP_readouttime );
@@ -621,30 +621,33 @@ int asiCtrl::connect()
     } else {
       log<text_log>(std::to_string(numDevices) + " ASI Cameras found. Attempting to connect");
     }
-
+    
     std::cout << numDevices << " cameras found." << "\n" << "Searching for: "
               << m_camName << " w/ serial #: " << m_serialNumber << "\n";
 
     int matchingIndex = -1;
 
     for (int i = 0; i < numDevices; ++i) {
-        ASI_CAMERA_INFO camInfo;
+        ASI_CAMERA_INFO camInfo{};
         ASIGetCameraProperty(&camInfo, i);
 
         std::cout << "Camera index: " << i << "\n";
         std::cout << "  Name: " << camInfo.Name << "\n";
+	std::cout << "Camera id: " << camInfo.CameraID << "\n";
 
         ASI_SN sn;
         bool matchFound = false;
 
-        if (ASIOpenCamera(i) == ASI_SUCCESS && ASIInitCamera(i) == ASI_SUCCESS) {
-            if (ASIGetSerialNumber(camInfo.CameraID, &sn) == ASI_SUCCESS) {
+	int camID = camInfo.CameraID;
+
+        if (ASIOpenCamera(camID) == ASI_SUCCESS && ASIInitCamera(camID) == ASI_SUCCESS) {
+            if (ASIGetSerialNumber(camID, &sn) == ASI_SUCCESS) {
                 char serialHex[17];
                 for (int j = 0; j < 8; ++j)
                     sprintf(serialHex + j * 2, "%02X", sn.id[j]);
                 serialHex[16] = '\0';
 
-                std::cout << "  Serial Number (Hex): " << serialHex << std::endl;
+               std::cout << "  Serial Number (Hex): " << serialHex << std::endl;
                log<text_log>("Index: " + std::to_string(i) + 
                              " Name: " + m_camName + 
                              " Serial #: " + serialHex);
@@ -661,7 +664,7 @@ int asiCtrl::connect()
             }
 
             // Close for now — reopen later only if it’s the one we want
-            ASICloseCamera(camInfo.CameraID);
+            ASICloseCamera(camID);
         } else {
             std::cerr << "  Failed to open or initialize camera " << i << "\n";
         }
