@@ -55,6 +55,7 @@ apps/acronameUsbHub/acronameUsbHub
 apps/acronameUsbHub/utils/configusbhub
 apps/alignLoop/alignLoop
 apps/acesxeCtrl/acesxeCtrl
+apps/asiCtrl/asiCtrl
 
 #b
 apps/baslerCtrl/baslerCtrl
