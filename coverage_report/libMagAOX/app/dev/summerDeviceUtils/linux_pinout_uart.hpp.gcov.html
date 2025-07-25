@@ -1,0 +1,618 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>LCOV - MagAOX - libMagAOX/app/dev/summerDeviceUtils/linux_pinout_uart.hpp</title>
+  <link rel="stylesheet" type="text/css" href="../../../../gcov.css">
+</head>
+
+<body>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="title">LCOV - code coverage report</td></tr>
+    <tr><td class="ruler"><img src="../../../../glass.png" width=3 height=3 alt=""></td></tr>
+
+    <tr>
+      <td width="100%">
+        <table cellpadding=1 border=0 width="100%">
+          <tr>
+            <td width="10%" class="headerItem">Current view:</td>
+            <td width="35%" class="headerValue"><a href="../../../../index.html">top level</a> - <a href="index.html">libMagAOX/app/dev/summerDeviceUtils</a> - linux_pinout_uart.hpp<span style="font-size: 80%;"> (source / <a href="linux_pinout_uart.hpp.func-sort-c.html">functions</a>)</span></td>
+            <td width="5%"></td>
+            <td width="15%"></td>
+            <td width="10%" class="headerCovTableHead">Hit</td>
+            <td width="10%" class="headerCovTableHead">Total</td>
+            <td width="15%" class="headerCovTableHead">Coverage</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Test:</td>
+            <td class="headerValue">MagAOX</td>
+            <td></td>
+            <td class="headerItem">Lines:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">128</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr>
+            <td class="headerItem">Date:</td>
+            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td></td>
+            <td class="headerItem">Functions:</td>
+            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">14</td>
+            <td class="headerCovTableEntryLo">0.0 %</td>
+          </tr>
+          <tr><td><img src="../../../../glass.png" width=3 height=3 alt=""></td></tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="ruler"><img src="../../../../glass.png" width=3 height=3 alt=""></td></tr>
+  </table>
+
+  <table cellpadding=0 cellspacing=0 border=0>
+    <tr>
+      <td><br></td>
+    </tr>
+    <tr>
+      <td>
+<pre class="sourceHeading">          Line data    Source code</pre>
+<pre class="source">
+<a name="1"><span class="lineNum">       1 </span>            : /// \file</a>
+<a name="2"><span class="lineNum">       2 </span>            : /// $Source: /raincloud/src/projects/include/uart/linux_pinout_uart.hpp,v $</a>
+<a name="3"><span class="lineNum">       3 </span>            : /// $Revision: 1.9 $</a>
+<a name="4"><span class="lineNum">       4 </span>            : /// $Date: 2009/11/14 00:20:04 $</a>
+<a name="5"><span class="lineNum">       5 </span>            : /// $Author: steve $</a>
+<a name="6"><span class="lineNum">       6 </span>            : </a>
+<a name="7"><span class="lineNum">       7 </span>            : #pragma once</a>
+<a name="8"><span class="lineNum">       8 </span>            : </a>
+<a name="9"><span class="lineNum">       9 </span>            : #include &lt;stdio.h&gt;   /* Standard input/output definitions */</a>
+<a name="10"><span class="lineNum">      10 </span>            : #include &lt;string.h&gt;  /* String function definitions */</a>
+<a name="11"><span class="lineNum">      11 </span>            : #include &lt;unistd.h&gt;  /* UNIX standard function definitions */</a>
+<a name="12"><span class="lineNum">      12 </span>            : #include &lt;fcntl.h&gt;   /* File control definitions */</a>
+<a name="13"><span class="lineNum">      13 </span>            : #include &lt;errno.h&gt;   /* Error number definitions */</a>
+<a name="14"><span class="lineNum">      14 </span>            : #include &lt;termios.h&gt; /* POSIX terminal control definitions */</a>
+<a name="15"><span class="lineNum">      15 </span>            : //~ #include &lt;termbits.h&gt;</a>
+<a name="16"><span class="lineNum">      16 </span>            : #include &lt;sys/ioctl.h&gt; /* ioctl() */</a>
+<a name="17"><span class="lineNum">      17 </span>            : #include &lt;sys/socket.h&gt; /* FIONREAD on cygwin */</a>
+<a name="18"><span class="lineNum">      18 </span>            : #include &lt;linux/serial.h&gt;</a>
+<a name="19"><span class="lineNum">      19 </span>            : </a>
+<a name="20"><span class="lineNum">      20 </span>            : #include &lt;spawn.h&gt;</a>
+<a name="21"><span class="lineNum">      21 </span>            : #include &lt;sstream&gt; // for stringstreams</a>
+<a name="22"><span class="lineNum">      22 </span>            : </a>
+<a name="23"><span class="lineNum">      23 </span>            : #include &quot;IUart.h&quot;</a>
+<a name="24"><span class="lineNum">      24 </span>            : </a>
+<a name="25"><span class="lineNum">      25 </span>            : namespace MagAOX</a>
+<a name="26"><span class="lineNum">      26 </span>            : {</a>
+<a name="27"><span class="lineNum">      27 </span>            :         namespace app</a>
+<a name="28"><span class="lineNum">      28 </span>            :         {</a>
+<a name="29"><span class="lineNum">      29 </span>            :         namespace dev</a>
+<a name="30"><span class="lineNum">      30 </span>            :         {</a>
+<a name="31"><span class="lineNum">      31 </span>            : </a>
+<a name="32"><span class="lineNum">      32 </span>            :             class linux_pinout_uart : public IUart</a>
+<a name="33"><span class="lineNum">      33 </span>            :             {</a>
+<a name="34"><span class="lineNum">      34 </span>            :             public:</a>
+<a name="35"><span class="lineNum">      35 </span>            : </a>
+<a name="36"><span class="lineNum">      36 </span><span class="lineNoCov">          0 :                 linux_pinout_uart() : IUart(), ComFileDescriptor(-1), echo(false), autoreopen(false), Baud(0), RtsCts(false), OddParity(false) { }</span></a>
+<a name="37"><span class="lineNum">      37 </span>            :                     </a>
+<a name="38"><span class="lineNum">      38 </span><span class="lineNoCov">          0 :                 virtual ~linux_pinout_uart() { if (-1 != ComFileDescriptor) { close(ComFileDescriptor); } }</span></a>
+<a name="39"><span class="lineNum">      39 </span>            : </a>
+<a name="40"><span class="lineNum">      40 </span>            :                     //~ Table 3 - Termios Structure Members Member      Description</a>
+<a name="41"><span class="lineNum">      41 </span>            :                         //~ c_cflag     Control options</a>
+<a name="42"><span class="lineNum">      42 </span>            :                         //~ c_lflag     Line options</a>
+<a name="43"><span class="lineNum">      43 </span>            :                         //~ c_iflag     Input options</a>
+<a name="44"><span class="lineNum">      44 </span>            :                         //~ c_oflag     Output options</a>
+<a name="45"><span class="lineNum">      45 </span>            :                         //~ c_cc        Control characters</a>
+<a name="46"><span class="lineNum">      46 </span>            :                         //~ c_ispeed    Input baud (new interface)</a>
+<a name="47"><span class="lineNum">      47 </span>            :                         //~ c_ospeed    Output baud (new interface)</a>
+<a name="48"><span class="lineNum">      48 </span>            :                     //~ The c_cflag member controls the baud rate, number of data bits, parity, stop bits, and hardware flow control. There are constants for all of the supported configurations.</a>
+<a name="49"><span class="lineNum">      49 </span>            :                         //~ CS8 8 data bits</a>
+<a name="50"><span class="lineNum">      50 </span>            :                     //~ CREAD   Enable receiver</a>
+<a name="51"><span class="lineNum">      51 </span>            :                     //~ CLOCAL  Local line - do not change &quot;owner&quot; of port</a>
+<a name="52"><span class="lineNum">      52 </span>            :                     //~ The c_cflag member contains two options that should always be enabled, CLOCAL and CREAD. These will ensure that your program does not become the 'owner' of the port subject to sporatic job control and hangup signals, and also that the serial interface driver will read incoming data bytes.</a>
+<a name="53"><span class="lineNum">      53 </span>            :                     //~ The baud rate constants (CBAUD, B9600, etc.) are used for older interfaces that lack the c_ispeed and c_ospeed members. See the next section for information on the POSIX functions used to set the baud rate.</a>
+<a name="54"><span class="lineNum">      54 </span>            :                     //~ Never initialize the c_cflag (or any other flag) member directly; you should always use the bitwise AND, OR, and NOT operators to set or clear bits in the members. Different operating system versions (and even patches) can and do use the bits differently, so using the bitwise operators will prevent you from clobbering a bit flag that is needed in a newer serial driver.</a>
+<a name="55"><span class="lineNum">      55 </span>            :                     //~ The baud rate is stored in different places depending on the operating system. Older interfaces store the baud rate in the c_cflag member using one of the baud rate constants in table 4, while newer implementations provide the c_ispeed and c_ospeed members that contain the actual baud rate value.</a>
+<a name="56"><span class="lineNum">      56 </span>            :                     //~ The cfsetospeed(3) and cfsetispeed(3) functions are provided to set the baud rate in the termios structure regardless of the underlying operating system interface. Typically you'd use the code in Listing 2 to set the baud rate.</a>
+<a name="57"><span class="lineNum">      57 </span>            :                     //~ struct termios options;</a>
+<a name="58"><span class="lineNum">      58 </span>            :                         //~ Get the current options for the port...</a>
+<a name="59"><span class="lineNum">      59 </span>            :                         //~ tcgetattr(ComFileDescriptor, &amp;options);</a>
+<a name="60"><span class="lineNum">      60 </span>            :                         //~ Set the baud rates to 19200...</a>
+<a name="61"><span class="lineNum">      61 </span>            :                         //~ cfsetispeed(&amp;options, B19200);</a>
+<a name="62"><span class="lineNum">      62 </span>            :                         //~ cfsetospeed(&amp;options, B19200);</a>
+<a name="63"><span class="lineNum">      63 </span>            :                         //~ * Enable the receiver and set local mode...</a>
+<a name="64"><span class="lineNum">      64 </span>            :                         //~ com_settings.c_cflag |= (CLOCAL | CREAD);</a>
+<a name="65"><span class="lineNum">      65 </span>            :                         //~ com_settings.c_cflag &amp;= ~CSIZE; /* Mask the character size bits */</a>
+<a name="66"><span class="lineNum">      66 </span>            :                         //~ com_settings.c_cflag |= CS8;    /* Select 8 data bits */</a>
+<a name="67"><span class="lineNum">      67 </span>            :                         //~ com_settings.c_cflag &amp;= ~PARENB</a>
+<a name="68"><span class="lineNum">      68 </span>            :                         //~ com_settings.c_cflag &amp;= ~CSTOPB</a>
+<a name="69"><span class="lineNum">      69 </span>            :                         //~ com_settings.c_cflag &amp;= ~CSIZE;</a>
+<a name="70"><span class="lineNum">      70 </span>            :                         //~ com_settings.c_cflag |= CS8;</a>
+<a name="71"><span class="lineNum">      71 </span>            :                         //~ com_settings.c_cflag &amp;= ~CNEW_RTSCTS; //to disable hardware flow control</a>
+<a name="72"><span class="lineNum">      72 </span>            :                         //~ Set the new options for the port...</a>
+<a name="73"><span class="lineNum">      73 </span>            :                         //~ tcsetattr(ComFileDescriptor, TCSANOW, &amp;options);</a>
+<a name="74"><span class="lineNum">      74 </span>            :                     //~ The tcgetattr(3) function fills the termios structure you provide with the current serial port configuration. After we set the baud rates and enable local mode and serial data receipt, we select the new configuration using tcsetattr(3). The TCSANOW constant specifies that all changes should occur immediately without waiting for output data to finish sending or input data to finish receiving. There are other constants to wait for input and output to finish or to flush the input and output buffers.</a>
+<a name="75"><span class="lineNum">      75 </span>            :                     //~ Most systems do not support different input and output speeds, so be sure to set both to the same value for maximum portability.</a>
+<a name="76"><span class="lineNum">      76 </span>            :                     //~ Table 5 - Constants for tcsetattr Constant      Description</a>
+<a name="77"><span class="lineNum">      77 </span>            :                     //~ TCSANOW Make changes now without waiting for data to complete</a>
+<a name="78"><span class="lineNum">      78 </span>            :                     //~ TCSADRAIN       Wait until everything has been transmitted</a>
+<a name="79"><span class="lineNum">      79 </span>            :                     //~ TCSAFLUSH       Flush input and output buffers and make the change</a>
+<a name="80"><span class="lineNum">      80 </span>            :                     //~ The O_NOCTTY flag tells UNIX that this program doesn't want to be the &quot;controlling terminal&quot; for that port. If you don't specify this then any input (such as keyboard abort signals and so forth) will affect your process. Programs like getty(1M/8) use this feature when starting the login process, but normally a user program does not want this behavior.</a>
+<a name="81"><span class="lineNum">      81 </span>            :                     //~ The O_NDELAY flag tells UNIX that this program doesn't care what state the DCD signal line is in - whether the other end of the port is up and running. If you do not specify this flag, your process will be put to sleep until the DCD signal line is the space voltage.</a>
+<a name="82"><span class="lineNum">      82 </span>            :                     //~ The local modes member c_lflag controls how input characters are managed by the serial driver. In general you will configure the c_lflag member for canonical or raw input.</a>
+<a name="83"><span class="lineNum">      83 </span>            :                     //~ Table 6 - Constants for the c_lflag Member Constant     Description</a>
+<a name="84"><span class="lineNum">      84 </span>            :                     //~ ISIG    Enable SIGINTR, SIGSUSP, SIGDSUSP, and SIGQUIT signals</a>
+<a name="85"><span class="lineNum">      85 </span>            :                     //~ ICANON  Enable canonical input (else raw)</a>
+<a name="86"><span class="lineNum">      86 </span>            :                     //~ XCASE   Map uppercase \lowercase (obsolete)</a>
+<a name="87"><span class="lineNum">      87 </span>            :                     //~ ECHO    Enable echoing of input characters</a>
+<a name="88"><span class="lineNum">      88 </span>            :                     //~ ECHOE   Echo erase character as BS-SP-BS</a>
+<a name="89"><span class="lineNum">      89 </span>            :                     //~ ECHOK   Echo NL after kill character</a>
+<a name="90"><span class="lineNum">      90 </span>            :                     //~ ECHONL  Echo NL</a>
+<a name="91"><span class="lineNum">      91 </span>            :                     //~ NOFLSH  Disable flushing of input buffers after interrupt or quit characters</a>
+<a name="92"><span class="lineNum">      92 </span>            :                     //~ IEXTEN  Enable extended functions</a>
+<a name="93"><span class="lineNum">      93 </span>            :                     //~ ECHOCTL Echo control characters as ^char and delete as ~?</a>
+<a name="94"><span class="lineNum">      94 </span>            :                     //~ ECHOPRT Echo erased character as character erased</a>
+<a name="95"><span class="lineNum">      95 </span>            :                     //~ ECHOKE  BS-SP-BS entire line on line kill</a>
+<a name="96"><span class="lineNum">      96 </span>            :                     //~ FLUSHO  Output being flushed</a>
+<a name="97"><span class="lineNum">      97 </span>            :                     //~ PENDIN  Retype pending input at next read or input char</a>
+<a name="98"><span class="lineNum">      98 </span>            :                     //~ TOSTOP  Send SIGTTOU for background output</a>
+<a name="99"><span class="lineNum">      99 </span>            :                         //~ Canonical input is line-oriented. Input characters are put into a buffer which can be edited interactively by the user until a CR (carriage return) or LF (line feed) character is received.</a>
+<a name="100"><span class="lineNum">     100 </span>            :                     //~ When selecting this mode you normally select the ICANON, ECHO, and ECHOE options:</a>
+<a name="101"><span class="lineNum">     101 </span>            :                         //~ com_settings.c_lflag |= (ICANON | ECHO | ECHOE);</a>
+<a name="102"><span class="lineNum">     102 </span>            :                     //~ Raw input is unprocessed. Input characters are passed through exactly as they are received, when they are received. Generally you'll deselect the ICANON, ECHO, ECHOE, and ISIG options when using raw input:</a>
+<a name="103"><span class="lineNum">     103 </span>            :                     //~ com_settings.c_lflag &amp;= ~(ICANON | ECHO | ECHOE | ISIG);</a>
+<a name="104"><span class="lineNum">     104 </span>            :                     //~ Never enable input echo (ECHO, ECHOE) when sending commands to a MODEM or other computer that is echoing characters, as you will generate a feedback loop between the two serial interfaces!</a>
+<a name="105"><span class="lineNum">     105 </span>            :                     //~ Constant        Description</a>
+<a name="106"><span class="lineNum">     106 </span>            :                     //~ INPCK   Enable parity check</a>
+<a name="107"><span class="lineNum">     107 </span>            :                     //~ IGNPAR  Ignore parity errors</a>
+<a name="108"><span class="lineNum">     108 </span>            :                     //~ PARMRK  Mark parity errors</a>
+<a name="109"><span class="lineNum">     109 </span>            :                     //~ ISTRIP  Strip parity bits</a>
+<a name="110"><span class="lineNum">     110 </span>            :                     //~ IXON    Enable software flow control (outgoing)</a>
+<a name="111"><span class="lineNum">     111 </span>            :                     //~ IXOFF   Enable software flow control (incoming)</a>
+<a name="112"><span class="lineNum">     112 </span>            :                     //~ IXANY   Allow any character to start flow again</a>
+<a name="113"><span class="lineNum">     113 </span>            :                     //~ IGNBRK  Ignore break condition</a>
+<a name="114"><span class="lineNum">     114 </span>            :                     //~ BRKINT  Send a SIGINT when a break condition is detected</a>
+<a name="115"><span class="lineNum">     115 </span>            :                     //~ INLCR   Map NL to CR</a>
+<a name="116"><span class="lineNum">     116 </span>            :                     //~ IGNCR   Ignore CR</a>
+<a name="117"><span class="lineNum">     117 </span>            :                     //~ ICRNL   Map CR to NL</a>
+<a name="118"><span class="lineNum">     118 </span>            :                     //~ IUCLC   Map uppercase to lowercase</a>
+<a name="119"><span class="lineNum">     119 </span>            :                     //~ IMAXBEL Echo BEL on input line too long</a>
+<a name="120"><span class="lineNum">     120 </span>            :                     //~ To disable software flow control simply mask those bits: com_settings.c_iflag &amp;= ~(IXON | IXOFF | IXANY);</a>
+<a name="121"><span class="lineNum">     121 </span>            :                     //~ Raw output is selected by resetting the OPOST option in the c_oflag member:</a>
+<a name="122"><span class="lineNum">     122 </span>            :                     //~ com_settings.c_oflag &amp;= ~OPOST;</a>
+<a name="123"><span class="lineNum">     123 </span>            :                     //~ When the OPOST option is disabled, all other option bits in c_oflag are ignored.</a>
+<a name="124"><span class="lineNum">     124 </span>            :                     //~ The c_cc character array contains control character definitions as well as timeout parameters. Constants are defined for every element of this array.</a>
+<a name="125"><span class="lineNum">     125 </span>            :                     </a>
+<a name="126"><span class="lineNum">     126 </span><span class="lineNoCov">          0 :                 int init(const PinoutConfig&amp; config)</span></a>
+<a name="127"><span class="lineNum">     127 </span>            :                 {</a>
+<a name="128"><span class="lineNum">     128 </span><span class="lineNoCov">          0 :                     Baud = config.Baudrate;</span></a>
+<a name="129"><span class="lineNum">     129 </span><span class="lineNoCov">          0 :                     strncpy(Device, config.device, DeviceMaxLen);</span></a>
+<a name="130"><span class="lineNum">     130 </span><span class="lineNoCov">          0 :                     RtsCts = config.UseRtsCts;</span></a>
+<a name="131"><span class="lineNum">     131 </span><span class="lineNoCov">          0 :                     OddParity = config.UseOddParity;</span></a>
+<a name="132"><span class="lineNum">     132 </span>            :                     </a>
+<a name="133"><span class="lineNum">     133 </span>            :                     termios com_settings;</a>
+<a name="134"><span class="lineNum">     134 </span>            : </a>
+<a name="135"><span class="lineNum">     135 </span>            :                     //close if previously opened</a>
+<a name="136"><span class="lineNum">     136 </span><span class="lineNoCov">          0 :                     if (-1 != ComFileDescriptor) { close(ComFileDescriptor); }</span></a>
+<a name="137"><span class="lineNum">     137 </span>            : </a>
+<a name="138"><span class="lineNum">     138 </span>            :                     //open port</a>
+<a name="139"><span class="lineNum">     139 </span><span class="lineNoCov">          0 :                     ComFileDescriptor = open(config.device, config.OpenFlags); //O_NDELAY makes open, write, and read non-blocking; since we have dataready() this is uneccesary &amp; dangerous...</span></a>
+<a name="140"><span class="lineNum">     140 </span><span class="lineNoCov">          0 :                     if (ComFileDescriptor &lt; 0)</span></a>
+<a name="141"><span class="lineNum">     141 </span>            :                     {</a>
+<a name="142"><span class="lineNum">     142 </span><span class="lineNoCov">          0 :                         int err = errno;</span></a>
+<a name="143"><span class="lineNum">     143 </span>            :                         // std::ostringstream oss;</a>
+<a name="144"><span class="lineNum">     144 </span>            :                         // oss &lt;&lt; &quot;\nlinux_pinout_uart::init(): Can't open COM-Port &quot; &lt;&lt; config.device &lt;&lt; &quot; ! (Error: &quot; &lt;&lt; err &lt;&lt; &quot; d (0x &quot; &lt;&lt; err &lt;&lt; &quot;))\n&quot;;</a>
+<a name="145"><span class="lineNum">     145 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, oss.str()});</a>
+<a name="146"><span class="lineNum">     146 </span><span class="lineNoCov">          0 :                         return(err);</span></a>
+<a name="147"><span class="lineNum">     147 </span>            :                     }</a>
+<a name="148"><span class="lineNum">     148 </span>            : </a>
+<a name="149"><span class="lineNum">     149 </span>            :                     //put port into non-blocking mode (returns '\0' if no chars waiting)...</a>
+<a name="150"><span class="lineNum">     150 </span>            :                     //~ fcntl(ComFileDescriptor, F_SETFL, 0);</a>
+<a name="151"><span class="lineNum">     151 </span>            : </a>
+<a name="152"><span class="lineNum">     152 </span>            :                     //get current port settings (initializes struct correctly for us)</a>
+<a name="153"><span class="lineNum">     153 </span><span class="lineNoCov">          0 :                     tcgetattr(ComFileDescriptor, &amp;com_settings);</span></a>
+<a name="154"><span class="lineNum">     154 </span>            : </a>
+<a name="155"><span class="lineNum">     155 </span>            :             //~ ifneq ($(findstring Darwin,$(OSTYPE)),)</a>
+<a name="156"><span class="lineNum">     156 </span>            :             //~ CFLAGS+=-D__APPLE__</a>
+<a name="157"><span class="lineNum">     157 </span>            :             //~ else</a>
+<a name="158"><span class="lineNum">     158 </span>            :             //~ CFLAGS          += -static</a>
+<a name="159"><span class="lineNum">     159 </span>            :             //~ endif</a>
+<a name="160"><span class="lineNum">     160 </span>            :             //~ #ifdef __APPLE__</a>
+<a name="161"><span class="lineNum">     161 </span>            :             //~ #define NEWTERMIOS_SETBAUDARTE(bps) IspEnvironment-&gt;newtio.c_ispeed = IspEnvironment-&gt;newtio.c_ospeed = bps;</a>
+<a name="162"><span class="lineNum">     162 </span>            :             //~ #else</a>
+<a name="163"><span class="lineNum">     163 </span>            :             //~ #define NEWTERMIOS_SETBAUDARTE(bps) IspEnvironment-&gt;newtio.c_cflag |= bps;</a>
+<a name="164"><span class="lineNum">     164 </span>            :             //~ #endif</a>
+<a name="165"><span class="lineNum">     165 </span>            : </a>
+<a name="166"><span class="lineNum">     166 </span><span class="lineNoCov">          0 :                     switch(Baud)</span></a>
+<a name="167"><span class="lineNum">     167 </span>            :                     {</a>
+<a name="168"><span class="lineNum">     168 </span><span class="lineNoCov">          0 :                         case 1152000: com_settings.c_cflag |= B1152000; cfsetispeed(&amp;com_settings, B1152000); cfsetospeed(&amp;com_settings, B1152000); break;</span></a>
+<a name="169"><span class="lineNum">     169 </span><span class="lineNoCov">          0 :                         case  921600: com_settings.c_cflag |= B921600; cfsetispeed(&amp;com_settings, B921600); cfsetospeed(&amp;com_settings, B921600); break;</span></a>
+<a name="170"><span class="lineNum">     170 </span><span class="lineNoCov">          0 :                         case  460800: com_settings.c_cflag |= B460800; cfsetispeed(&amp;com_settings, B460800); cfsetospeed(&amp;com_settings, B460800); break;</span></a>
+<a name="171"><span class="lineNum">     171 </span><span class="lineNoCov">          0 :                         case  230400: com_settings.c_cflag |= B230400; cfsetispeed(&amp;com_settings, B230400); cfsetospeed(&amp;com_settings, B230400); break;</span></a>
+<a name="172"><span class="lineNum">     172 </span><span class="lineNoCov">          0 :                         case  115200: com_settings.c_cflag |= B115200; cfsetispeed(&amp;com_settings, B115200); cfsetospeed(&amp;com_settings, B115200); break;</span></a>
+<a name="173"><span class="lineNum">     173 </span><span class="lineNoCov">          0 :                         case   57600: com_settings.c_cflag |= B57600; cfsetispeed(&amp;com_settings, B57600); cfsetospeed(&amp;com_settings, B57600); break;</span></a>
+<a name="174"><span class="lineNum">     174 </span><span class="lineNoCov">          0 :                         case   38400: com_settings.c_cflag |= B38400; cfsetispeed(&amp;com_settings, B38400); cfsetospeed(&amp;com_settings, B38400); break;</span></a>
+<a name="175"><span class="lineNum">     175 </span><span class="lineNoCov">          0 :                         case   19200: com_settings.c_cflag |= B19200; cfsetispeed(&amp;com_settings, B19200); cfsetospeed(&amp;com_settings, B19200); break;</span></a>
+<a name="176"><span class="lineNum">     176 </span><span class="lineNoCov">          0 :                         case    9600: com_settings.c_cflag |= B9600; cfsetispeed(&amp;com_settings, B9600); cfsetospeed(&amp;com_settings, B9600); break;</span></a>
+<a name="177"><span class="lineNum">     177 </span><span class="lineNoCov">          0 :                         case    4800: com_settings.c_cflag |= B4800; cfsetispeed(&amp;com_settings, B4800); cfsetospeed(&amp;com_settings, B4800); break;</span></a>
+<a name="178"><span class="lineNum">     178 </span><span class="lineNoCov">          0 :                         default: </span></a>
+<a name="179"><span class="lineNum">     179 </span>            :                         { </a>
+<a name="180"><span class="lineNum">     180 </span><span class="lineNoCov">          0 :                             bool useterm2 = false;</span></a>
+<a name="181"><span class="lineNum">     181 </span>            :                             </a>
+<a name="182"><span class="lineNum">     182 </span>            :                             // std::ostringstream oss;</a>
+<a name="183"><span class="lineNum">     183 </span>            :                             // oss &lt;&lt; &quot;\nlinux_pinout_uart::init(): non-standard baudrate &quot; &lt;&lt; Baud &lt;&lt; &quot;; strap in we're goin' off-roadin'\n&quot;;</a>
+<a name="184"><span class="lineNum">     184 </span>            :                             // MagAOXAppT::log&lt;text_log&gt;(oss.str());</a>
+<a name="185"><span class="lineNum">     185 </span>            :                                 </a>
+<a name="186"><span class="lineNum">     186 </span>            :                             serial_struct serial;</a>
+<a name="187"><span class="lineNum">     187 </span>            :                             </a>
+<a name="188"><span class="lineNum">     188 </span><span class="lineNoCov">          0 :                             if (ioctl(ComFileDescriptor, TIOCGSERIAL, &amp;serial))</span></a>
+<a name="189"><span class="lineNum">     189 </span>            :                             {</a>
+<a name="190"><span class="lineNum">     190 </span>            :                                 // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::init(): non-standard baudrate ioctl(TIOCGSERIAL) failed.&quot;});</a>
+<a name="191"><span class="lineNum">     191 </span><span class="lineNoCov">          0 :                                 useterm2 = true;</span></a>
+<a name="192"><span class="lineNum">     192 </span>            :                             }</a>
+<a name="193"><span class="lineNum">     193 </span>            :                             </a>
+<a name="194"><span class="lineNum">     194 </span><span class="lineNoCov">          0 :                             serial.flags &amp;= ~ASYNC_SPD_MASK;</span></a>
+<a name="195"><span class="lineNum">     195 </span><span class="lineNoCov">          0 :                             serial.flags |= ASYNC_SPD_CUST;</span></a>
+<a name="196"><span class="lineNum">     196 </span><span class="lineNoCov">          0 :                             serial.custom_divisor = serial.baud_base / Baud;</span></a>
+<a name="197"><span class="lineNum">     197 </span>            :                             </a>
+<a name="198"><span class="lineNum">     198 </span>            :                             //ugly hack:</a>
+<a name="199"><span class="lineNum">     199 </span><span class="lineNoCov">          0 :                             if (0 == serial.baud_base)</span></a>
+<a name="200"><span class="lineNum">     200 </span>            :                             {</a>
+<a name="201"><span class="lineNum">     201 </span><span class="lineNoCov">          0 :                                 useterm2 = true;</span></a>
+<a name="202"><span class="lineNum">     202 </span>            :                             }</a>
+<a name="203"><span class="lineNum">     203 </span>            :                             else</a>
+<a name="204"><span class="lineNum">     204 </span>            :                             {</a>
+<a name="205"><span class="lineNum">     205 </span><span class="lineNoCov">          0 :                                 if (ioctl(ComFileDescriptor, TIOCSSERIAL, &amp;serial))</span></a>
+<a name="206"><span class="lineNum">     206 </span>            :                                 {</a>
+<a name="207"><span class="lineNum">     207 </span>            :                                     // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::init(): non-standard baudrate ioctl(TIOCSSERIAL) failed.&quot;});</a>
+<a name="208"><span class="lineNum">     208 </span><span class="lineNoCov">          0 :                                     useterm2 = true;</span></a>
+<a name="209"><span class="lineNum">     209 </span>            :                                 }</a>
+<a name="210"><span class="lineNum">     210 </span>            :                             }</a>
+<a name="211"><span class="lineNum">     211 </span>            :                             </a>
+<a name="212"><span class="lineNum">     212 </span><span class="lineNoCov">          0 :                             if (useterm2)</span></a>
+<a name="213"><span class="lineNum">     213 </span>            :                             {</a>
+<a name="214"><span class="lineNum">     214 </span>            :                                 // MagAOXAppT::log&lt;text_log&gt;(&quot;\nlinux_pinout_uart::init(): non-standard baudrate clock of zero detected; assuming Nvidia Orin 408MHz clock...&quot;);</a>
+<a name="215"><span class="lineNum">     215 </span>            :                                 </a>
+<a name="216"><span class="lineNum">     216 </span><span class="lineNoCov">          0 :                                 serial.baud_base = 408000000;</span></a>
+<a name="217"><span class="lineNum">     217 </span>            :                                 </a>
+<a name="218"><span class="lineNum">     218 </span>            :                                 //~ termios2 tty;</a>
+<a name="219"><span class="lineNum">     219 </span>            :                                 struct termios2</a>
+<a name="220"><span class="lineNum">     220 </span>            :                                 {</a>
+<a name="221"><span class="lineNum">     221 </span>            :                                 tcflag_t c_iflag;</a>
+<a name="222"><span class="lineNum">     222 </span>            :                                 tcflag_t c_oflag;</a>
+<a name="223"><span class="lineNum">     223 </span>            :                                 tcflag_t c_cflag;</a>
+<a name="224"><span class="lineNum">     224 </span>            :                                 tcflag_t c_lflag;</a>
+<a name="225"><span class="lineNum">     225 </span>            :                                 cc_t c_cc[NCCS];</a>
+<a name="226"><span class="lineNum">     226 </span>            :                                 cc_t c_line;</a>
+<a name="227"><span class="lineNum">     227 </span>            :                                 speed_t c_ispeed;</a>
+<a name="228"><span class="lineNum">     228 </span>            :                                 speed_t c_ospeed;</a>
+<a name="229"><span class="lineNum">     229 </span>            :                                 } tty;</a>
+<a name="230"><span class="lineNum">     230 </span>            : </a>
+<a name="231"><span class="lineNum">     231 </span>            :                                 // Read in the terminal settings using ioctl instead</a>
+<a name="232"><span class="lineNum">     232 </span>            :                                 // of tcsetattr (tcsetattr only works with termios, not termios2)</a>
+<a name="233"><span class="lineNum">     233 </span><span class="lineNoCov">          0 :                                 if (ioctl(ComFileDescriptor, TCGETS2, &amp;tty))</span></a>
+<a name="234"><span class="lineNum">     234 </span>            :                                 {</a>
+<a name="235"><span class="lineNum">     235 </span><span class="lineNoCov">          0 :                                     perror(&quot;\nlinux_pinout_uart::init(): non-standard baudrate, ioctl(fd, TCGETS2, &amp;tty) failed: &quot;);</span></a>
+<a name="236"><span class="lineNum">     236 </span>            :                                 }</a>
+<a name="237"><span class="lineNum">     237 </span>            : </a>
+<a name="238"><span class="lineNum">     238 </span>            :                                 // Set everything but baud rate as usual</a>
+<a name="239"><span class="lineNum">     239 </span>            :                                 // ...</a>
+<a name="240"><span class="lineNum">     240 </span>            :                                 // ...</a>
+<a name="241"><span class="lineNum">     241 </span>            : </a>
+<a name="242"><span class="lineNum">     242 </span>            :                                 // Set custom baud rate</a>
+<a name="243"><span class="lineNum">     243 </span><span class="lineNoCov">          0 :                                 tty.c_cflag &amp;= ~CBAUD;</span></a>
+<a name="244"><span class="lineNum">     244 </span><span class="lineNoCov">          0 :                                 tty.c_cflag |= CBAUDEX;</span></a>
+<a name="245"><span class="lineNum">     245 </span>            :                                 // On the internet there is also talk of using the &quot;BOTHER&quot; macro here:</a>
+<a name="246"><span class="lineNum">     246 </span>            :                                 // tty.c_cflag |= BOTHER;</a>
+<a name="247"><span class="lineNum">     247 </span>            :                                 // I never had any luck with it, so omitting in favour of using</a>
+<a name="248"><span class="lineNum">     248 </span>            :                                 // CBAUDEX</a>
+<a name="249"><span class="lineNum">     249 </span><span class="lineNoCov">          0 :                                 tty.c_ispeed = Baud; // What a custom baud rate!</span></a>
+<a name="250"><span class="lineNum">     250 </span><span class="lineNoCov">          0 :                                 tty.c_ospeed = Baud;</span></a>
+<a name="251"><span class="lineNum">     251 </span>            : </a>
+<a name="252"><span class="lineNum">     252 </span>            :                                 // Write terminal settings to file descriptor</a>
+<a name="253"><span class="lineNum">     253 </span><span class="lineNoCov">          0 :                                 if (ioctl(ComFileDescriptor, TCSETS2, &amp;tty))</span></a>
+<a name="254"><span class="lineNum">     254 </span>            :                                 {</a>
+<a name="255"><span class="lineNum">     255 </span><span class="lineNoCov">          0 :                                     perror(&quot;\nlinux_pinout_uart::init(): non-standard baudrate, ioctl(fd, TCSETS2, &amp;tty) failed: &quot;);</span></a>
+<a name="256"><span class="lineNum">     256 </span>            :                                 }</a>
+<a name="257"><span class="lineNum">     257 </span>            :                             }</a>
+<a name="258"><span class="lineNum">     258 </span>            : </a>
+<a name="259"><span class="lineNum">     259 </span>            :                             // oss.str(&quot;&quot;);</a>
+<a name="260"><span class="lineNum">     260 </span>            :                             // oss &lt;&lt; &quot;\nlinux_pinout_uart::init(): non-standard baudrate settings complete; Clock: &quot; &lt;&lt; serial.baud_base &lt;&lt; &quot;, divider: &quot; &lt;&lt; serial.custom_divisor &lt;&lt; &quot;, actual baud: &quot; &lt;&lt; (double)serial.baud_base / (double)serial.custom_divisor &lt;&lt; &quot;.\n&quot;;</a>
+<a name="261"><span class="lineNum">     261 </span>            :                             // MagAOXAppT::log&lt;text_log&gt;(oss.str());</a>
+<a name="262"><span class="lineNum">     262 </span>            : </a>
+<a name="263"><span class="lineNum">     263 </span>            :                         }</a>
+<a name="264"><span class="lineNum">     264 </span>            :                     }</a>
+<a name="265"><span class="lineNum">     265 </span>            :                     </a>
+<a name="266"><span class="lineNum">     266 </span>            :                     //raw input mode:</a>
+<a name="267"><span class="lineNum">     267 </span>            :                     //~ com_settings.c_lflag &amp;= ~(ICANON | ECHO | ECHOE | ISIG);</a>
+<a name="268"><span class="lineNum">     268 </span><span class="lineNoCov">          0 :                     com_settings.c_lflag = 0;</span></a>
+<a name="269"><span class="lineNum">     269 </span>            : </a>
+<a name="270"><span class="lineNum">     270 </span>            :                     //raw output mode:</a>
+<a name="271"><span class="lineNum">     271 </span>            :                     //~ com_settings.c_oflag &amp;= ~OPOST;</a>
+<a name="272"><span class="lineNum">     272 </span><span class="lineNoCov">          0 :                     com_settings.c_oflag = 0;</span></a>
+<a name="273"><span class="lineNum">     273 </span>            :                             </a>
+<a name="274"><span class="lineNum">     274 </span>            :                     //enable single-byte input &amp; output:</a>
+<a name="275"><span class="lineNum">     275 </span><span class="lineNoCov">          0 :                     cfmakeraw(&amp;com_settings);</span></a>
+<a name="276"><span class="lineNum">     276 </span>            : </a>
+<a name="277"><span class="lineNum">     277 </span><span class="lineNoCov">          0 :                     com_settings.c_cflag |= (CLOCAL | CREAD);</span></a>
+<a name="278"><span class="lineNum">     278 </span><span class="lineNoCov">          0 :                     com_settings.c_cflag &amp;= ~CSIZE; /* Mask the character size bits */</span></a>
+<a name="279"><span class="lineNum">     279 </span><span class="lineNoCov">          0 :                     com_settings.c_cflag |= CS8;    /* Select 8 data bits */</span></a>
+<a name="280"><span class="lineNum">     280 </span><span class="lineNoCov">          0 :                     com_settings.c_cflag &amp;= ~CSTOPB;</span></a>
+<a name="281"><span class="lineNum">     281 </span>            :                     </a>
+<a name="282"><span class="lineNum">     282 </span><span class="lineNoCov">          0 :                     if (RtsCts) { com_settings.c_cflag |= CRTSCTS; }</span></a>
+<a name="283"><span class="lineNum">     283 </span><span class="lineNoCov">          0 :                     else { com_settings.c_cflag &amp;= ~CRTSCTS; }</span></a>
+<a name="284"><span class="lineNum">     284 </span>            :                     </a>
+<a name="285"><span class="lineNum">     285 </span><span class="lineNoCov">          0 :                     if (OddParity) </span></a>
+<a name="286"><span class="lineNum">     286 </span>            :                     {</a>
+<a name="287"><span class="lineNum">     287 </span>            :                         // MagAOXAppT::log&lt;text_log&gt;(&quot;\nlinux_pinout_uart::init(): Odd parity!\n&quot;);</a>
+<a name="288"><span class="lineNum">     288 </span><span class="lineNoCov">          0 :                         com_settings.c_iflag &amp;= ~IGNPAR;</span></a>
+<a name="289"><span class="lineNum">     289 </span><span class="lineNoCov">          0 :                         com_settings.c_cflag |= PARODD; </span></a>
+<a name="290"><span class="lineNum">     290 </span><span class="lineNoCov">          0 :                         com_settings.c_cflag |= PARENB; </span></a>
+<a name="291"><span class="lineNum">     291 </span>            :                     }</a>
+<a name="292"><span class="lineNum">     292 </span>            :                     else </a>
+<a name="293"><span class="lineNum">     293 </span>            :                     { </a>
+<a name="294"><span class="lineNum">     294 </span><span class="lineNoCov">          0 :                         com_settings.c_iflag |= IGNPAR;</span></a>
+<a name="295"><span class="lineNum">     295 </span><span class="lineNoCov">          0 :                         com_settings.c_cflag &amp;= ~PARENB; </span></a>
+<a name="296"><span class="lineNum">     296 </span><span class="lineNoCov">          0 :                         com_settings.c_cflag &amp;= ~PARODD;</span></a>
+<a name="297"><span class="lineNum">     297 </span>            :                     }</a>
+<a name="298"><span class="lineNum">     298 </span>            :                     </a>
+<a name="299"><span class="lineNum">     299 </span>            :                     //write settings to the port:</a>
+<a name="300"><span class="lineNum">     300 </span><span class="lineNoCov">          0 :                     if(tcsetattr(ComFileDescriptor, TCSANOW, &amp;com_settings))</span></a>
+<a name="301"><span class="lineNum">     301 </span>            :                     {</a>
+<a name="302"><span class="lineNum">     302 </span><span class="lineNoCov">          0 :                         int err = errno;</span></a>
+<a name="303"><span class="lineNum">     303 </span>            :                         // std::ostringstream oss;</a>
+<a name="304"><span class="lineNum">     304 </span>            :                         // oss &lt;&lt; &quot;nlinux_pinout_uart::init(): Could not change serial port (&quot; &lt;&lt; config.device &lt;&lt; &quot;) behaviour (wrong baudrate?) (Error: &quot; &lt;&lt; err &lt;&lt; &quot;d (0x&quot; &lt;&lt; err &lt;&lt; &quot;))\n&quot;;</a>
+<a name="305"><span class="lineNum">     305 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, oss.str()});</a>
+<a name="306"><span class="lineNum">     306 </span><span class="lineNoCov">          0 :                         return(err);</span></a>
+<a name="307"><span class="lineNum">     307 </span>            :                     }</a>
+<a name="308"><span class="lineNum">     308 </span>            : </a>
+<a name="309"><span class="lineNum">     309 </span>            :                     //clear input &amp; output buffers</a>
+<a name="310"><span class="lineNum">     310 </span><span class="lineNoCov">          0 :                     tcflush(ComFileDescriptor, TCOFLUSH);</span></a>
+<a name="311"><span class="lineNum">     311 </span><span class="lineNoCov">          0 :                     tcflush(ComFileDescriptor, TCIFLUSH);</span></a>
+<a name="312"><span class="lineNum">     312 </span>            :                     </a>
+<a name="313"><span class="lineNum">     313 </span><span class="lineNoCov">          0 :                     return(IUartOK);</span></a>
+<a name="314"><span class="lineNum">     314 </span>            :                 }</a>
+<a name="315"><span class="lineNum">     315 </span>            : </a>
+<a name="316"><span class="lineNum">     316 </span><span class="lineNoCov">          0 :                 virtual void deinit()</span></a>
+<a name="317"><span class="lineNum">     317 </span>            :                 {</a>
+<a name="318"><span class="lineNum">     318 </span><span class="lineNoCov">          0 :                     if (-1 == ComFileDescriptor) { return; }</span></a>
+<a name="319"><span class="lineNum">     319 </span>            :                     </a>
+<a name="320"><span class="lineNum">     320 </span><span class="lineNoCov">          0 :                     tcflush(ComFileDescriptor, TCOFLUSH);</span></a>
+<a name="321"><span class="lineNum">     321 </span><span class="lineNoCov">          0 :                     tcflush(ComFileDescriptor, TCIFLUSH);</span></a>
+<a name="322"><span class="lineNum">     322 </span><span class="lineNoCov">          0 :                     close(ComFileDescriptor);</span></a>
+<a name="323"><span class="lineNum">     323 </span>            :                 }</a>
+<a name="324"><span class="lineNum">     324 </span>            :                 </a>
+<a name="325"><span class="lineNum">     325 </span><span class="lineNoCov">          0 :                 virtual bool Echo() const { return(echo); }</span></a>
+<a name="326"><span class="lineNum">     326 </span><span class="lineNoCov">          0 :                 virtual void Echo(const bool e) { echo = e; }</span></a>
+<a name="327"><span class="lineNum">     327 </span>            : </a>
+<a name="328"><span class="lineNum">     328 </span>            :                     //~ In Chapter 2, Configuring the Serial Port we used the tcgetattr and tcsetattr functions to configure the serial port. Under UNIX these functions use the ioctl(2) system call to do their magic.</a>
+<a name="329"><span class="lineNum">     329 </span>            :                     //~ The ioctl system call takes three arguments:</a>
+<a name="330"><span class="lineNum">     330 </span>            :                     //~ int ioctl(int ComFileDescriptor, int request, ...);</a>
+<a name="331"><span class="lineNum">     331 </span>            :                     //~ The ComFileDescriptor argument specifies the serial port file descriptor. The request argument is a constant defined in the &lt;termios.h&gt; header file and is typically one of the constants listed in Table 10.</a>
+<a name="332"><span class="lineNum">     332 </span>            :                     //~ Table 10 - IOCTL Requests for Serial Ports Request      Description     POSIX Function</a>
+<a name="333"><span class="lineNum">     333 </span>            :                     //~ TCGETS  Gets the current serial port settings.  tcgetattr</a>
+<a name="334"><span class="lineNum">     334 </span>            :                     //~ TCSETS  Sets the serial port settings immediately.      tcsetattr(ComFileDescriptor, TCSANOW, &amp;options)</a>
+<a name="335"><span class="lineNum">     335 </span>            :                     //~ TCSETSF Sets the serial port settings after flushing the input and output buffers.      tcsetattr(ComFileDescriptor, TCSAFLUSH, &amp;options)</a>
+<a name="336"><span class="lineNum">     336 </span>            :                     //~ TCSETSW Sets the serial port settings after allowing the input and output buffers to drain/empty.       tcsetattr(ComFileDescriptor, TCSADRAIN, &amp;options)</a>
+<a name="337"><span class="lineNum">     337 </span>            :                     //~ TCSBRK  Sends a break for the given time.       tcsendbreak, tcdrain</a>
+<a name="338"><span class="lineNum">     338 </span>            :                     //~ TCXONC  Controls software flow control. tcflow</a>
+<a name="339"><span class="lineNum">     339 </span>            :                     //~ TCFLSH  Flushes the input and/or output queue.  tcflush</a>
+<a name="340"><span class="lineNum">     340 </span>            :                     //~ TIOCMGET        Returns the state of the &quot;MODEM&quot; bits.        None</a>
+<a name="341"><span class="lineNum">     341 </span>            :                     //~ TIOCMSET        Sets the state of the &quot;MODEM&quot; bits.   None</a>
+<a name="342"><span class="lineNum">     342 </span>            :                     //~ FIONREAD        Returns the number of bytes in the input buffer.        None</a>
+<a name="343"><span class="lineNum">     343 </span>            :                     //~ Getting the Number of Bytes Available</a>
+<a name="344"><span class="lineNum">     344 </span>            :                     //~ The FIONREAD ioctl gets the number of bytes in the serial port input buffer. As with TIOCMGET you pass in a pointer to an integer to hold the number of bytes, as shown in Listing 7.</a>
+<a name="345"><span class="lineNum">     345 </span>            :                     //~ Listing 7 - Getting the number of bytes in the input buffer.</a>
+<a name="346"><span class="lineNum">     346 </span>            :                         //~ #include &lt;unistd.h&gt;</a>
+<a name="347"><span class="lineNum">     347 </span>            :                         //~ #include &lt;termios.h&gt;</a>
+<a name="348"><span class="lineNum">     348 </span>            :                         //~ int ComFileDescriptor;</a>
+<a name="349"><span class="lineNum">     349 </span>            :                         //~ int bytes;</a>
+<a name="350"><span class="lineNum">     350 </span>            :                         //~ ioctl(ComFileDescriptor, FIONREAD, &amp;bytes);</a>
+<a name="351"><span class="lineNum">     351 </span>            :                     //~ This can be useful when polling a serial port for data, as your program can determine the number of bytes in the input buffer before attempting a read.</a>
+<a name="352"><span class="lineNum">     352 </span>            : </a>
+<a name="353"><span class="lineNum">     353 </span><span class="lineNoCov">          0 :                 virtual bool dataready() const</span></a>
+<a name="354"><span class="lineNum">     354 </span>            :                 {</a>
+<a name="355"><span class="lineNum">     355 </span><span class="lineNoCov">          0 :                     if (-1 == ComFileDescriptor) {</span></a>
+<a name="356"><span class="lineNum">     356 </span>            :                         // MagAOXAppT::log&lt;text_log&gt;(&quot;\nlinux_pinout_uart::dataready(): ioctl on uninitialized port; please open port!\n&quot;);</a>
+<a name="357"><span class="lineNum">     357 </span><span class="lineNoCov">          0 :                         return(false);</span></a>
+<a name="358"><span class="lineNum">     358 </span>            :                     }</a>
+<a name="359"><span class="lineNum">     359 </span>            : </a>
+<a name="360"><span class="lineNum">     360 </span>            :                     //Didn't work under cygwin:</a>
+<a name="361"><span class="lineNum">     361 </span>            :                     //~ {</a>
+<a name="362"><span class="lineNum">     362 </span>            :                         //~ int BytesWaitingToRead = 0;</a>
+<a name="363"><span class="lineNum">     363 </span>            :                         //~ int err = ioctl(ComFileDescriptor, FIONREAD, &amp;BytesWaitingToRead); //get number of bytes in input buffer</a>
+<a name="364"><span class="lineNum">     364 </span>            :                         //~ if (0 != err) { printf(&quot;linux_pinout_uart::dataready(): ioctl err: %u, errno: %u\n&quot;, err, errno); return(false); }</a>
+<a name="365"><span class="lineNum">     365 </span>            :                         //~ return(0 != BytesWaitingToRead);</a>
+<a name="366"><span class="lineNum">     366 </span>            :                     //~ }</a>
+<a name="367"><span class="lineNum">     367 </span>            :                     </a>
+<a name="368"><span class="lineNum">     368 </span>            :                     struct timeval tvptr;</a>
+<a name="369"><span class="lineNum">     369 </span>            :                     fd_set rset;</a>
+<a name="370"><span class="lineNum">     370 </span><span class="lineNoCov">          0 :                     int status = -1;</span></a>
+<a name="371"><span class="lineNum">     371 </span><span class="lineNoCov">          0 :                     int rtnval = 0;</span></a>
+<a name="372"><span class="lineNum">     372 </span>            : </a>
+<a name="373"><span class="lineNum">     373 </span><span class="lineNoCov">          0 :                     if (ComFileDescriptor != -1)</span></a>
+<a name="374"><span class="lineNum">     374 </span>            :                     {</a>
+<a name="375"><span class="lineNum">     375 </span>            :                         /* Zero out the seconds and microseconds so we don't block */</a>
+<a name="376"><span class="lineNum">     376 </span>            : </a>
+<a name="377"><span class="lineNum">     377 </span><span class="lineNoCov">          0 :                         tvptr.tv_sec = 0;</span></a>
+<a name="378"><span class="lineNum">     378 </span><span class="lineNoCov">          0 :                         tvptr.tv_usec = 0;</span></a>
+<a name="379"><span class="lineNum">     379 </span>            : </a>
+<a name="380"><span class="lineNum">     380 </span>            :                         /* Initialize the read set to zero */</a>
+<a name="381"><span class="lineNum">     381 </span>            : </a>
+<a name="382"><span class="lineNum">     382 </span><span class="lineNoCov">          0 :                         FD_ZERO(&amp;rset);</span></a>
+<a name="383"><span class="lineNum">     383 </span>            : </a>
+<a name="384"><span class="lineNum">     384 </span>            :                         /* And now turn on the read set */</a>
+<a name="385"><span class="lineNum">     385 </span>            : </a>
+<a name="386"><span class="lineNum">     386 </span><span class="lineNoCov">          0 :                         FD_SET(ComFileDescriptor,&amp;rset);</span></a>
+<a name="387"><span class="lineNum">     387 </span>            : </a>
+<a name="388"><span class="lineNum">     388 </span><span class="lineNoCov">          0 :                         status = select(ComFileDescriptor + 1,&amp;rset,NULL,NULL,&amp;tvptr);</span></a>
+<a name="389"><span class="lineNum">     389 </span>            : </a>
+<a name="390"><span class="lineNum">     390 </span><span class="lineNoCov">          0 :                         if (status == -1) /* Error */</span></a>
+<a name="391"><span class="lineNum">     391 </span>            :                         {</a>
+<a name="392"><span class="lineNum">     392 </span>            :                             // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::dataready(): select() returned -1\n&quot;});</a>
+<a name="393"><span class="lineNum">     393 </span><span class="lineNoCov">          0 :                             rtnval = 0;</span></a>
+<a name="394"><span class="lineNum">     394 </span>            :                         }</a>
+<a name="395"><span class="lineNum">     395 </span><span class="lineNoCov">          0 :                         else if (status &gt; 0)</span></a>
+<a name="396"><span class="lineNum">     396 </span>            :                         {</a>
+<a name="397"><span class="lineNum">     397 </span><span class="lineNoCov">          0 :                             if (FD_ISSET(ComFileDescriptor,&amp;rset))</span></a>
+<a name="398"><span class="lineNum">     398 </span>            :                             {</a>
+<a name="399"><span class="lineNum">     399 </span><span class="lineNoCov">          0 :                                 rtnval = 1;</span></a>
+<a name="400"><span class="lineNum">     400 </span>            :                             }</a>
+<a name="401"><span class="lineNum">     401 </span>            :                         }</a>
+<a name="402"><span class="lineNum">     402 </span>            :                     }</a>
+<a name="403"><span class="lineNum">     403 </span>            : </a>
+<a name="404"><span class="lineNum">     404 </span><span class="lineNoCov">          0 :                     return(rtnval);</span></a>
+<a name="405"><span class="lineNum">     405 </span>            :                 }</a>
+<a name="406"><span class="lineNum">     406 </span>            : </a>
+<a name="407"><span class="lineNum">     407 </span>            :                     //~ Reading data from a port is a little trickier. When you operate the port in raw data mode, each read(2) system call will return the number of characters that are actually available in the serial input buffers. If no characters are available, the call will block (wait) until characters come in, an interval timer expires, or an error occurs. The read function can be made to return immediately by doing the following:</a>
+<a name="408"><span class="lineNum">     408 </span>            :                     //~ fcntl(ComFileDescriptor, F_SETFL, FNDELAY);</a>
+<a name="409"><span class="lineNum">     409 </span>            :                     //~ The FNDELAY option causes the read function to return 0 if no characters are available on the port. To restore normal (blocking) behavior, call fcntl() without the FNDELAY option:</a>
+<a name="410"><span class="lineNum">     410 </span>            :                     //~ fcntl(ComFileDescriptor, F_SETFL, 0);</a>
+<a name="411"><span class="lineNum">     411 </span>            :                     //~ This is also used after opening a serial port with the O_NDELAY option.</a>
+<a name="412"><span class="lineNum">     412 </span>            : </a>
+<a name="413"><span class="lineNum">     413 </span><span class="lineNoCov">          0 :                 virtual char getcqq()</span></a>
+<a name="414"><span class="lineNum">     414 </span>            :                 {</a>
+<a name="415"><span class="lineNum">     415 </span><span class="lineNoCov">          0 :                     char c = '\0';</span></a>
+<a name="416"><span class="lineNum">     416 </span>            : </a>
+<a name="417"><span class="lineNum">     417 </span><span class="lineNoCov">          0 :                     if (-1 == ComFileDescriptor) {</span></a>
+<a name="418"><span class="lineNum">     418 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::getcqq(): read on uninitialized port; please open port!\n&quot;});</a>
+<a name="419"><span class="lineNum">     419 </span><span class="lineNoCov">          0 :                         return('\0');</span></a>
+<a name="420"><span class="lineNum">     420 </span>            :                     }</a>
+<a name="421"><span class="lineNum">     421 </span>            : </a>
+<a name="422"><span class="lineNum">     422 </span><span class="lineNoCov">          0 :                     size_t len = read(ComFileDescriptor, &amp;c, 1);</span></a>
+<a name="423"><span class="lineNum">     423 </span>            : </a>
+<a name="424"><span class="lineNum">     424 </span><span class="lineNoCov">          0 :                     if (len != 1)</span></a>
+<a name="425"><span class="lineNum">     425 </span>            :                     {</a>
+<a name="426"><span class="lineNum">     426 </span>            :                         // std::ostringstream oss;</a>
+<a name="427"><span class="lineNum">     427 </span>            :                         // oss &lt;&lt; &quot;\nlinux_pinout_uart::getcqq(): read failure (len: &quot; &lt;&lt; len &lt;&lt; &quot;, errno: &quot; &lt;&lt; errno &lt;&lt; &quot;)\n&quot;;</a>
+<a name="428"><span class="lineNum">     428 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, oss.str()});</a>
+<a name="429"><span class="lineNum">     429 </span>            :                         </a>
+<a name="430"><span class="lineNum">     430 </span><span class="lineNoCov">          0 :                         if (autoreopen) </span></a>
+<a name="431"><span class="lineNum">     431 </span>            :                         {</a>
+<a name="432"><span class="lineNum">     432 </span>            :                             // MagAOXAppT::log&lt;text_log&gt;(&quot;\nlinux_pinout_uart::autoreopen.\n&quot;);</a>
+<a name="433"><span class="lineNum">     433 </span><span class="lineNoCov">          0 :                             deinit();</span></a>
+<a name="434"><span class="lineNum">     434 </span><span class="lineNoCov">          0 :                             PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(Baud, Device, RtsCts, OddParity);</span></a>
+<a name="435"><span class="lineNum">     435 </span><span class="lineNoCov">          0 :                             init(pinoutConfig);</span></a>
+<a name="436"><span class="lineNum">     436 </span>            :                         }               </a>
+<a name="437"><span class="lineNum">     437 </span>            :                         </a>
+<a name="438"><span class="lineNum">     438 </span><span class="lineNoCov">          0 :                         return('\0'); </span></a>
+<a name="439"><span class="lineNum">     439 </span>            :                     }</a>
+<a name="440"><span class="lineNum">     440 </span>            : </a>
+<a name="441"><span class="lineNum">     441 </span><span class="lineNoCov">          0 :                     if (echo) { </span></a>
+<a name="442"><span class="lineNum">     442 </span>            :                         // std::ostringstream oss;</a>
+<a name="443"><span class="lineNum">     443 </span>            :                         // oss &lt;&lt; &quot;&lt;%.2x &quot; &lt;&lt; c;</a>
+<a name="444"><span class="lineNum">     444 </span>            :                         // MagAOXAppT::log&lt;text_log&gt;(oss.str());</a>
+<a name="445"><span class="lineNum">     445 </span>            :                     }</a>
+<a name="446"><span class="lineNum">     446 </span>            : </a>
+<a name="447"><span class="lineNum">     447 </span><span class="lineNoCov">          0 :                     return(c);</span></a>
+<a name="448"><span class="lineNum">     448 </span>            :                 }</a>
+<a name="449"><span class="lineNum">     449 </span>            : </a>
+<a name="450"><span class="lineNum">     450 </span><span class="lineNoCov">          0 :                 virtual char putcqq(char c)</span></a>
+<a name="451"><span class="lineNum">     451 </span>            :                 {</a>
+<a name="452"><span class="lineNum">     452 </span><span class="lineNoCov">          0 :                     if (echo) {</span></a>
+<a name="453"><span class="lineNum">     453 </span>            :                         // std::ostringstream oss;</a>
+<a name="454"><span class="lineNum">     454 </span>            :                         // oss &lt;&lt; &quot;&gt;%.2x &quot; &lt;&lt; c;</a>
+<a name="455"><span class="lineNum">     455 </span>            :                         // MagAOXAppT::log&lt;text_log&gt;(oss.str());                    </a>
+<a name="456"><span class="lineNum">     456 </span>            :                     }</a>
+<a name="457"><span class="lineNum">     457 </span>            :                     </a>
+<a name="458"><span class="lineNum">     458 </span><span class="lineNoCov">          0 :                     if (-1 != ComFileDescriptor)</span></a>
+<a name="459"><span class="lineNum">     459 </span>            :                     {</a>
+<a name="460"><span class="lineNum">     460 </span><span class="lineNoCov">          0 :                         size_t len = write(ComFileDescriptor, &amp;c, 1);</span></a>
+<a name="461"><span class="lineNum">     461 </span><span class="lineNoCov">          0 :                         if (len != 1) </span></a>
+<a name="462"><span class="lineNum">     462 </span>            :                         {</a>
+<a name="463"><span class="lineNum">     463 </span>            :                             // std::ostringstream oss;</a>
+<a name="464"><span class="lineNum">     464 </span>            :                             // oss &lt;&lt; &quot;\nlinux_pinout_uart::putcqq(): write failure (len: &quot; &lt;&lt; len &lt;&lt; &quot;, errno: &quot; &lt;&lt; errno &lt;&lt; &quot;)\n&quot;;</a>
+<a name="465"><span class="lineNum">     465 </span>            :                             // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, oss.str()});      </a>
+<a name="466"><span class="lineNum">     466 </span>            :                             </a>
+<a name="467"><span class="lineNum">     467 </span><span class="lineNoCov">          0 :                             if (autoreopen) </span></a>
+<a name="468"><span class="lineNum">     468 </span>            :                             {</a>
+<a name="469"><span class="lineNum">     469 </span>            :                                 // MagAOXAppT::log&lt;text_log&gt;(&quot;\nlinux_pinout_uart::autoreopen.\n&quot;);</a>
+<a name="470"><span class="lineNum">     470 </span><span class="lineNoCov">          0 :                                 deinit();</span></a>
+<a name="471"><span class="lineNum">     471 </span><span class="lineNoCov">          0 :                                 PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(Baud, Device, RtsCts, OddParity);</span></a>
+<a name="472"><span class="lineNum">     472 </span><span class="lineNoCov">          0 :                                 init(pinoutConfig);</span></a>
+<a name="473"><span class="lineNum">     473 </span>            :                             }           </a>
+<a name="474"><span class="lineNum">     474 </span>            :                             </a>
+<a name="475"><span class="lineNum">     475 </span><span class="lineNoCov">          0 :                             return('\0'); </span></a>
+<a name="476"><span class="lineNum">     476 </span>            :                         }               </a>
+<a name="477"><span class="lineNum">     477 </span>            :                     }</a>
+<a name="478"><span class="lineNum">     478 </span>            :                     else</a>
+<a name="479"><span class="lineNum">     479 </span>            :                     {</a>
+<a name="480"><span class="lineNum">     480 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::putcqq(): read on uninitialized port; please open port!\n&quot;});</a>
+<a name="481"><span class="lineNum">     481 </span>            :                     }</a>
+<a name="482"><span class="lineNum">     482 </span>            : </a>
+<a name="483"><span class="lineNum">     483 </span><span class="lineNoCov">          0 :                     return (c);</span></a>
+<a name="484"><span class="lineNum">     484 </span>            :                 }</a>
+<a name="485"><span class="lineNum">     485 </span>            : </a>
+<a name="486"><span class="lineNum">     486 </span><span class="lineNoCov">          0 :                 virtual void flushoutput()</span></a>
+<a name="487"><span class="lineNum">     487 </span>            :                 {</a>
+<a name="488"><span class="lineNum">     488 </span><span class="lineNoCov">          0 :                     if (-1 != ComFileDescriptor)</span></a>
+<a name="489"><span class="lineNum">     489 </span>            :                     {</a>
+<a name="490"><span class="lineNum">     490 </span><span class="lineNoCov">          0 :                         fsync(ComFileDescriptor);</span></a>
+<a name="491"><span class="lineNum">     491 </span>            :                         //~ int BytesWaitingToWrite;</a>
+<a name="492"><span class="lineNum">     492 </span>            :                         //~ ioctl(ComFileDescriptor, TIOCOUTQ, &amp;BytesWaitingToWrite); //get number of bytes in output buffer</a>
+<a name="493"><span class="lineNum">     493 </span>            :                         //~ printf(&quot;linux_pinout_uart::flushoutput(): bytes in output buffer: %u\n&quot;, BytesWaitingToWrite);</a>
+<a name="494"><span class="lineNum">     494 </span>            :                     }</a>
+<a name="495"><span class="lineNum">     495 </span>            :                     else</a>
+<a name="496"><span class="lineNum">     496 </span>            :                     {</a>
+<a name="497"><span class="lineNum">     497 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::flushout(): fflush on uninitialized port; please open port!\n&quot;});</a>
+<a name="498"><span class="lineNum">     498 </span>            :                     }</a>
+<a name="499"><span class="lineNum">     499 </span><span class="lineNoCov">          0 :                 }</span></a>
+<a name="500"><span class="lineNum">     500 </span>            :                 </a>
+<a name="501"><span class="lineNum">     501 </span><span class="lineNoCov">          0 :                 virtual void purgeinput()</span></a>
+<a name="502"><span class="lineNum">     502 </span>            :                 {</a>
+<a name="503"><span class="lineNum">     503 </span><span class="lineNoCov">          0 :                     if (-1 != ComFileDescriptor)</span></a>
+<a name="504"><span class="lineNum">     504 </span>            :                     {</a>
+<a name="505"><span class="lineNum">     505 </span><span class="lineNoCov">          0 :                         tcflush(ComFileDescriptor, TCIFLUSH);</span></a>
+<a name="506"><span class="lineNum">     506 </span>            :                     }</a>
+<a name="507"><span class="lineNum">     507 </span>            :                     else</a>
+<a name="508"><span class="lineNum">     508 </span>            :                     {</a>
+<a name="509"><span class="lineNum">     509 </span>            :                         // MagAOXAppT::log&lt;software_error&gt;({__FILE__, __LINE__, &quot;\nlinux_pinout_uart::flushout(): fflush on uninitialized port; please open port!\n&quot;});</a>
+<a name="510"><span class="lineNum">     510 </span>            :                     }</a>
+<a name="511"><span class="lineNum">     511 </span><span class="lineNoCov">          0 :                 }</span></a>
+<a name="512"><span class="lineNum">     512 </span>            :                 </a>
+<a name="513"><span class="lineNum">     513 </span><span class="lineNoCov">          0 :                 virtual void flush()</span></a>
+<a name="514"><span class="lineNum">     514 </span>            :                 {</a>
+<a name="515"><span class="lineNum">     515 </span><span class="lineNoCov">          0 :                     flushoutput();</span></a>
+<a name="516"><span class="lineNum">     516 </span><span class="lineNoCov">          0 :                     purgeinput();</span></a>
+<a name="517"><span class="lineNum">     517 </span><span class="lineNoCov">          0 :                 }</span></a>
+<a name="518"><span class="lineNum">     518 </span>            :                 </a>
+<a name="519"><span class="lineNum">     519 </span><span class="lineNoCov">          0 :                 virtual bool isopen() const { return(-1 != ComFileDescriptor); }</span></a>
+<a name="520"><span class="lineNum">     520 </span>            :                 </a>
+<a name="521"><span class="lineNum">     521 </span>            :                 bool AutoReopen() { return(autoreopen); }</a>
+<a name="522"><span class="lineNum">     522 </span>            :                 </a>
+<a name="523"><span class="lineNum">     523 </span>            :                 void AutoReopen(const bool ar) { autoreopen = ar; }</a>
+<a name="524"><span class="lineNum">     524 </span>            :                 </a>
+<a name="525"><span class="lineNum">     525 </span>            :                 private:</a>
+<a name="526"><span class="lineNum">     526 </span>            : </a>
+<a name="527"><span class="lineNum">     527 </span>            :                     int ComFileDescriptor; //-1: not open</a>
+<a name="528"><span class="lineNum">     528 </span>            :                 </a>
+<a name="529"><span class="lineNum">     529 </span>            :                     bool echo;</a>
+<a name="530"><span class="lineNum">     530 </span>            :                 </a>
+<a name="531"><span class="lineNum">     531 </span>            :                     bool autoreopen;</a>
+<a name="532"><span class="lineNum">     532 </span>            :                 </a>
+<a name="533"><span class="lineNum">     533 </span>            :                     uint32_t Baud;</a>
+<a name="534"><span class="lineNum">     534 </span>            :                     static const size_t DeviceMaxLen = 256;</a>
+<a name="535"><span class="lineNum">     535 </span>            :                     char Device[DeviceMaxLen];</a>
+<a name="536"><span class="lineNum">     536 </span>            :                     bool RtsCts;</a>
+<a name="537"><span class="lineNum">     537 </span>            :                     bool OddParity;</a>
+<a name="538"><span class="lineNum">     538 </span>            :             };</a>
+<a name="539"><span class="lineNum">     539 </span>            : </a>
+<a name="540"><span class="lineNum">     540 </span>            :             } // namespace dev</a>
+<a name="541"><span class="lineNum">     541 </span>            :         } // namespace app</a>
+<a name="542"><span class="lineNum">     542 </span>            : } // namespace MagAOX</a>
+</pre>
+      </td>
+    </tr>
+  </table>
+  <br>
+
+  <table width="100%" border=0 cellspacing=0 cellpadding=0>
+    <tr><td class="ruler"><img src="../../../../glass.png" width=3 height=3 alt=""></td></tr>
+    <tr><td class="versionInfo">Generated by: <a href="http://ltp.sourceforge.net/coverage/lcov.php" target="_parent">LCOV version 1.14</a></td></tr>
+  </table>
+  <br>
+
+</body>
+</html>

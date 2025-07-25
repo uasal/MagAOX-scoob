@@ -55,7 +55,7 @@ OPTIMIZE ?= -O0 -fopenmp -ffast-math
 ## Libraries
 #######################################
 
-EXTRA_LDFLAGS ?= --coverage
+EXTRA_LDFLAGS ?=
 
 #the required librarires
 EXTRA_LDLIBS ?=  -lmxlib \
@@ -182,6 +182,7 @@ endif
 #####################################
 
 LDLIBS += $(EXTRA_LDLIBS)
+LDFLAGS += --coverage
 LDFLAGS += $(EXTRA_LDFLAGS)
 
 #Hard-code the paths to system libraries so setuid works
