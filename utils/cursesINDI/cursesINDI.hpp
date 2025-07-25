@@ -1,6 +1,11 @@
 
 #include <fstream>
 
+#include <thread>
+#include <mutex>
+#include <set>
+
+
 #include "../../INDI/libcommon/IndiClient.hpp"
 #include "cursesTableGrid.hpp"
 

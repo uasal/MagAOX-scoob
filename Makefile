@@ -58,11 +58,11 @@ apps_rtc = \
 	hamCtrl \
 	psfAcq
 
+# 	picamCtrl
+# 	pvcamCtrl
 apps_icc = \
 	dmPokeCenter \
 	filterWheelCtrl \
-	picamCtrl \
-	pvcamCtrl \
 	smc100ccCtrl \
 	usbtempMon \
 	xt1121Ctrl \
@@ -71,6 +71,7 @@ apps_icc = \
 	corAlign \
 	adcCtrl
 
+# 	audibleAlerts
 apps_aoc = \
 	trippLitePDU \
 	tcsInterface \
@@ -78,8 +79,7 @@ apps_aoc = \
 	kTracker \
 	koolanceCtrl \
 	observerCtrl \
-	stateRuleEngine \
-	audibleAlerts
+	stateRuleEngine
 
 
 apps_tic = \
@@ -88,31 +88,124 @@ apps_tic = \
 	bmcCtrl \
 	trippLitePDU
 
+#     cameraSim
 apps_sim = \
-    cameraSim \
 	trippLitePDU
 
 libs_to_build = libtelnet
 
-apps_to_build = $(apps_basic)
+all_unbuildable_apps = \
+	acronameUsbHub \
+	adcCtrl \
+	alpaoCtrl \
+	andorCtrl \
+	asiCtrl \
+	audibleAlerts \
+	baslerCtrl \
+	bmcCtrl \
+	cameraSim \
+	cameratipSR \
+	corAlign \
+	dbIngest \
+	dlDataCollection \
+	efcControl \
+	hamCtrl \
+	hoPredCtrl \
+	hsfwCtrl \
+	irisaoCtrl \
+	kcubeCtrl \
+	mcp3008Ctrl \
+	nnReconstructor \
+	ocam2KCtrl \
+	photonCounter \
+	picamCtrl \
+	pixelinkCtrl \
+	po4ao \
+	pupilAlign \
+	pupilCorAlign \
+	pvcamCtrl \
+	pythonIndiExample \
+	qhyCtrl \
+	visxCtrl \
+	zylaCtrl 
 
-ifeq ($(MAGAOX_ROLE),AOC)
-  apps_to_build += $(apps_common)
-  apps_to_build += $(apps_aoc)
-else ifeq ($(MAGAOX_ROLE),ICC)
-  apps_to_build += $(apps_common)
-  apps_to_build += $(apps_rtcicc)
-  apps_to_build += $(apps_icc)
-else ifeq ($(MAGAOX_ROLE),RTC)
-  apps_to_build += $(apps_common)
-  apps_to_build += $(apps_rtcicc)
-  apps_to_build += $(apps_rtc)
-else ifeq ($(MAGAOX_ROLE),TIC)
-  apps_to_build += $(apps_common)
-  apps_to_build += $(apps_tic)
-else ifeq ($(MAGAOX_ROLE),SS)
-  apps_to_build += $(apps_sim)
-endif
+
+all_buildable_apps = \
+	acesxeCtrl \
+	adcTracker \
+	aguc8Ctrl \
+	alignLoop \
+	cacaoInterface \
+	closedLoopIndi \
+	dmMode \
+	dmPokeCenter \
+	dmPokeXCorr \
+	dmSpeckle \
+	filterWheelCtrl \
+	flipperCtrl \
+	fsmCtrl \
+	indiTSAccumulator \
+	koolanceCtrl \
+	kTracker \
+	loPredCtrl \
+	magAOXMaths \
+	modalFilter \
+	modalGainOpt \
+	modalPSDs \
+	mzmqClient \
+	mzmqServer \
+	nsvCtrl \
+	observerCtrl \
+	pi335Ctrl \
+	picoMotorCtrl \
+	psfAcq \
+	psfFit \
+	pupilFit \
+	pwfsSlopeCalc \
+	refRMS \
+	rhusbMon \
+	shmimIntegrator \
+	siglentSDG \
+	smc100ccCtrl \
+	sparkleClock \
+	sshDigger \
+	stateRuleEngine \
+	streamCircBuff \
+	streamWriter \
+	strehlEstimator \
+	sysMonitor \
+	t2wOffloader \
+	tcsInterface \
+	timeSeriesSimulator \
+	trippLitePDU \
+	ttmModulator \
+	usbtempMon \
+	w2tcsOffloader \
+	xindiserver \
+	xt1121Ctrl \
+	xt1121DCDU \
+	zaberCtrl \
+	zaberLowLevel
+
+apps_to_build += $(all_buildable_apps)
+
+# ifeq ($(MAGAOX_ROLE),AOC)
+#   apps_to_build += $(apps_common)
+#   apps_to_build += $(apps_aoc)
+# else ifeq ($(MAGAOX_ROLE),ICC)
+#   apps_to_build += $(apps_common)
+#   apps_to_build += $(apps_rtcicc)
+#   apps_to_build += $(apps_icc)
+# else ifeq ($(MAGAOX_ROLE),RTC)
+#   apps_to_build += $(apps_common)
+#   apps_to_build += $(apps_rtcicc)
+#   apps_to_build += $(apps_rtc)
+# else ifeq ($(MAGAOX_ROLE),TIC)
+#   apps_to_build += $(apps_common)
+#   apps_to_build += $(apps_tic)
+# else ifeq ($(MAGAOX_ROLE),SS)
+#   apps_to_build += $(apps_sim)
+# endif
 
 all_guis = \
 	#roiGUI 

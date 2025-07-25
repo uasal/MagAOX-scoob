@@ -21,6 +21,21 @@
 SELF_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 include $(SELF_DIR)/../Make/common.mk
 
+ifeq ($(notdir $(t)),cursesINDI_test)
+	OTHER_HEADERS += cursesTableGrid.hpp
+	LDLIBS += -lncurses
+else ifeq ($(notdir $(t)),logdump_test)
+	LDLIBS = -lmxlib -lflatbuffers
+else ifeq ($(notdir $(t)),logstream_test)
+	LDLIBS = -lmxlib -lflatbuffers
+else ifeq ($(notdir $(t)),logsurgeon_test)
+	LDLIBS = -lmxlib -lflatbuffers
+else ifeq ($(notdir $(t)),xrif2fits_test)
+	LDLIBS += -lcfitsio
+else ifeq ($(notdir $(t)),xrif2shmim_test)
+	LDLIBS += -lcfitsio
+endif
+
 LDLIBS+=$(TESTLIBS)
 
 # Single-file app name can be supplied as `TARGET=`,
