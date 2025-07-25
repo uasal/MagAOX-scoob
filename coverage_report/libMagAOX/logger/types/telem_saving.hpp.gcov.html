@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">1</td>
@@ -98,18 +98,18 @@
 <a name="36"><span class="lineNum">      36 </span>            :    struct messageT : public fbMessage</a>
 <a name="37"><span class="lineNum">      37 </span>            :    {</a>
 <a name="38"><span class="lineNum">      38 </span>            :       ///Construct from components</a>
-<a name="39"><span class="lineNum">      39 </span><span class="lineCov">          8 :       messageT( const uint32_t &amp; rawSize,</span></a>
+<a name="39"><span class="lineNum">      39 </span><span class="lineCov">          4 :       messageT( const uint32_t &amp; rawSize,</span></a>
 <a name="40"><span class="lineNum">      40 </span>            :                 const uint32_t &amp; compressedSize,</a>
 <a name="41"><span class="lineNum">      41 </span>            :                 const float &amp; encodeRate,</a>
 <a name="42"><span class="lineNum">      42 </span>            :                 const float &amp; differenceRate,</a>
 <a name="43"><span class="lineNum">      43 </span>            :                 const float &amp; reorderRate,</a>
 <a name="44"><span class="lineNum">      44 </span>            :                 const float &amp; compressRate</a>
 <a name="45"><span class="lineNum">      45 </span>            :               )</a>
-<a name="46"><span class="lineNum">      46 </span><span class="lineCov">          8 :       {</span></a>
-<a name="47"><span class="lineNum">      47 </span><span class="lineCov">          8 :          auto fp = Createtelem_saving_fb(builder, rawSize,compressedSize, encodeRate, differenceRate, reorderRate, compressRate);</span></a>
-<a name="48"><span class="lineNum">      48 </span><span class="lineCov">          8 :          builder.Finish(fp);</span></a>
+<a name="46"><span class="lineNum">      46 </span><span class="lineCov">          4 :       {</span></a>
+<a name="47"><span class="lineNum">      47 </span><span class="lineCov">          4 :          auto fp = Createtelem_saving_fb(builder, rawSize,compressedSize, encodeRate, differenceRate, reorderRate, compressRate);</span></a>
+<a name="48"><span class="lineNum">      48 </span><span class="lineCov">          4 :          builder.Finish(fp);</span></a>
 <a name="49"><span class="lineNum">      49 </span>            : </a>
-<a name="50"><span class="lineNum">      50 </span><span class="lineCov">          8 :       }</span></a>
+<a name="50"><span class="lineNum">      50 </span><span class="lineCov">          4 :       }</span></a>
 <a name="51"><span class="lineNum">      51 </span>            : </a>
 <a name="52"><span class="lineNum">      52 </span>            :    };</a>
 <a name="53"><span class="lineNum">      53 </span>            : </a>

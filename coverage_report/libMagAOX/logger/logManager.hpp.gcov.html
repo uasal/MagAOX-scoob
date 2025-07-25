@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">42</td>
@@ -313,27 +313,27 @@
 <a name="251"><span class="lineNum">     251 </span>            : };</a>
 <a name="252"><span class="lineNum">     252 </span>            : </a>
 <a name="253"><span class="lineNum">     253 </span>            : template&lt;class parentT, class logFileT&gt;</a>
-<a name="254"><span class="lineNum">     254 </span><span class="lineCov">       1074 : logManager&lt;parentT, logFileT&gt;::logManager()</span></a>
+<a name="254"><span class="lineNum">     254 </span><span class="lineCov">        340 : logManager&lt;parentT, logFileT&gt;::logManager()</span></a>
 <a name="255"><span class="lineNum">     255 </span>            : {</a>
-<a name="256"><span class="lineNum">     256 </span><span class="lineCov">       1074 : }</span></a>
+<a name="256"><span class="lineNum">     256 </span><span class="lineCov">        340 : }</span></a>
 <a name="257"><span class="lineNum">     257 </span>            : </a>
 <a name="258"><span class="lineNum">     258 </span>            : template&lt;class parentT, class logFileT&gt;</a>
-<a name="259"><span class="lineNum">     259 </span><span class="lineCov">       1074 : logManager&lt;parentT, logFileT&gt;::~logManager()</span></a>
+<a name="259"><span class="lineNum">     259 </span><span class="lineCov">        340 : logManager&lt;parentT, logFileT&gt;::~logManager()</span></a>
 <a name="260"><span class="lineNum">     260 </span>            : {</a>
-<a name="261"><span class="lineNum">     261 </span><span class="lineCov">       1074 :    m_logShutdown = true;</span></a>
+<a name="261"><span class="lineNum">     261 </span><span class="lineCov">        340 :    m_logShutdown = true;</span></a>
 <a name="262"><span class="lineNum">     262 </span>            : </a>
-<a name="263"><span class="lineNum">     263 </span><span class="lineCov">       1074 :    if(m_logThread.joinable()) m_logThread.join();</span></a>
+<a name="263"><span class="lineNum">     263 </span><span class="lineCov">        340 :    if(m_logThread.joinable()) m_logThread.join();</span></a>
 <a name="264"><span class="lineNum">     264 </span>            : </a>
 <a name="265"><span class="lineNum">     265 </span>            :    //One last check to see if there are any unwritten logs.</a>
-<a name="266"><span class="lineNum">     266 </span><span class="lineCov">       1074 :    if( !m_logQueue.empty() ) logThreadExec();</span></a>
+<a name="266"><span class="lineNum">     266 </span><span class="lineCov">        340 :    if( !m_logQueue.empty() ) logThreadExec();</span></a>
 <a name="267"><span class="lineNum">     267 </span>            : </a>
-<a name="268"><span class="lineNum">     268 </span><span class="lineCov">       1074 : }</span></a>
+<a name="268"><span class="lineNum">     268 </span><span class="lineCov">        340 : }</span></a>
 <a name="269"><span class="lineNum">     269 </span>            : </a>
 <a name="270"><span class="lineNum">     270 </span>            : template&lt;class parentT, class logFileT&gt;</a>
-<a name="271"><span class="lineNum">     271 </span><span class="lineCov">       4380 : void logManager&lt;parentT, logFileT&gt;::parent( parentT * p )</span></a>
+<a name="271"><span class="lineNum">     271 </span><span class="lineCov">        730 : void logManager&lt;parentT, logFileT&gt;::parent( parentT * p )</span></a>
 <a name="272"><span class="lineNum">     272 </span>            : {</a>
-<a name="273"><span class="lineNum">     273 </span><span class="lineCov">       4380 :    m_parent = p;</span></a>
-<a name="274"><span class="lineNum">     274 </span><span class="lineCov">       4380 : }</span></a>
+<a name="273"><span class="lineNum">     273 </span><span class="lineCov">        730 :    m_parent = p;</span></a>
+<a name="274"><span class="lineNum">     274 </span><span class="lineCov">        730 : }</span></a>
 <a name="275"><span class="lineNum">     275 </span>            : </a>
 <a name="276"><span class="lineNum">     276 </span>            : template&lt;class parentT, class logFileT&gt;</a>
 <a name="277"><span class="lineNum">     277 </span>            : parentT * logManager&lt;parentT, logFileT&gt;::parent()</a>
@@ -497,80 +497,80 @@
 <a name="435"><span class="lineNum">     435 </span>            : }</a>
 <a name="436"><span class="lineNum">     436 </span>            : </a>
 <a name="437"><span class="lineNum">     437 </span>            : template&lt;class parentT, class logFileT&gt;</a>
-<a name="438"><span class="lineNum">     438 </span><span class="lineCov">         96 : void logManager&lt;parentT, logFileT&gt;::logThreadExec()</span></a>
+<a name="438"><span class="lineNum">     438 </span><span class="lineCov">         16 : void logManager&lt;parentT, logFileT&gt;::logThreadExec()</span></a>
 <a name="439"><span class="lineNum">     439 </span>            : {</a>
 <a name="440"><span class="lineNum">     440 </span>            : </a>
-<a name="441"><span class="lineNum">     441 </span><span class="lineCov">         96 :    m_logThreadRunning = true;</span></a>
+<a name="441"><span class="lineNum">     441 </span><span class="lineCov">         16 :    m_logThreadRunning = true;</span></a>
 <a name="442"><span class="lineNum">     442 </span>            :    </a>
-<a name="443"><span class="lineNum">     443 </span><span class="lineCov">         96 :    std::unique_lock&lt;std::mutex&gt; lock(m_qMutex, std::defer_lock);</span></a>
+<a name="443"><span class="lineNum">     443 </span><span class="lineCov">         16 :    std::unique_lock&lt;std::mutex&gt; lock(m_qMutex, std::defer_lock);</span></a>
 <a name="444"><span class="lineNum">     444 </span>            : </a>
-<a name="445"><span class="lineNum">     445 </span><span class="lineCov">        192 :    while(!m_logShutdown || !m_logQueue.empty())</span></a>
+<a name="445"><span class="lineNum">     445 </span><span class="lineCov">         32 :    while(!m_logShutdown || !m_logQueue.empty())</span></a>
 <a name="446"><span class="lineNum">     446 </span>            :    {</a>
-<a name="447"><span class="lineNum">     447 </span><span class="lineCov">         96 :       std::list&lt;bufferPtrT&gt;::iterator beg, it, er, end;</span></a>
+<a name="447"><span class="lineNum">     447 </span><span class="lineCov">         16 :       std::list&lt;bufferPtrT&gt;::iterator beg, it, er, end;</span></a>
 <a name="448"><span class="lineNum">     448 </span>            : </a>
 <a name="449"><span class="lineNum">     449 </span>            :       //Get begin and end once, so we only process logs in the list at this point.</a>
 <a name="450"><span class="lineNum">     450 </span>            :       //Do it locked so we don't have any collisions with new logs (maybe not necessary)</a>
-<a name="451"><span class="lineNum">     451 </span><span class="lineCov">         96 :       lock.lock();</span></a>
-<a name="452"><span class="lineNum">     452 </span><span class="lineCov">         96 :       beg = m_logQueue.begin();</span></a>
-<a name="453"><span class="lineNum">     453 </span><span class="lineCov">         96 :       end = m_logQueue.end();</span></a>
-<a name="454"><span class="lineNum">     454 </span><span class="lineCov">         96 :       lock.unlock();</span></a>
+<a name="451"><span class="lineNum">     451 </span><span class="lineCov">         16 :       lock.lock();</span></a>
+<a name="452"><span class="lineNum">     452 </span><span class="lineCov">         16 :       beg = m_logQueue.begin();</span></a>
+<a name="453"><span class="lineNum">     453 </span><span class="lineCov">         16 :       end = m_logQueue.end();</span></a>
+<a name="454"><span class="lineNum">     454 </span><span class="lineCov">         16 :       lock.unlock();</span></a>
 <a name="455"><span class="lineNum">     455 </span>            : </a>
 <a name="456"><span class="lineNum">     456 </span>            :       //Note: we're avoiding use of size() since that could be altered concurrently by a push_back.</a>
-<a name="457"><span class="lineNum">     457 </span><span class="lineCov">         96 :       if( beg != end )</span></a>
+<a name="457"><span class="lineNum">     457 </span><span class="lineCov">         16 :       if( beg != end )</span></a>
 <a name="458"><span class="lineNum">     458 </span>            :       {</a>
-<a name="459"><span class="lineNum">     459 </span><span class="lineCov">         96 :          it = beg;</span></a>
-<a name="460"><span class="lineNum">     460 </span><span class="lineCov">       4884 :          while( it != end )</span></a>
+<a name="459"><span class="lineNum">     459 </span><span class="lineCov">         16 :          it = beg;</span></a>
+<a name="460"><span class="lineNum">     460 </span><span class="lineCov">        814 :          while( it != end )</span></a>
 <a name="461"><span class="lineNum">     461 </span>            :          {</a>
 <a name="462"><span class="lineNum">     462 </span>            :             //m_logFile.</a>
-<a name="463"><span class="lineNum">     463 </span><span class="lineCov">       4788 :             if( this-&gt;writeLog( *it ) &lt; 0) </span></a>
+<a name="463"><span class="lineNum">     463 </span><span class="lineCov">        798 :             if( this-&gt;writeLog( *it ) &lt; 0) </span></a>
 <a name="464"><span class="lineNum">     464 </span>            :             {</a>
 <a name="465"><span class="lineNum">     465 </span><span class="lineNoCov">          0 :                m_logThreadRunning = false;</span></a>
 <a name="466"><span class="lineNum">     466 </span><span class="lineNoCov">          0 :                return;</span></a>
 <a name="467"><span class="lineNum">     467 </span>            :             }</a>
 <a name="468"><span class="lineNum">     468 </span>            :         </a>
-<a name="469"><span class="lineNum">     469 </span><span class="lineCov">       4788 :             if(m_parent)</span></a>
+<a name="469"><span class="lineNum">     469 </span><span class="lineCov">        798 :             if(m_parent)</span></a>
 <a name="470"><span class="lineNum">     470 </span>            :             {</a>
 <a name="471"><span class="lineNum">     471 </span><span class="lineNoCov">          0 :                m_parent-&gt;logMessage( *it );</span></a>
 <a name="472"><span class="lineNum">     472 </span>            :             }</a>
-<a name="473"><span class="lineNum">     473 </span><span class="lineCov">       4788 :             else if( logHeader::logLevel( *it ) &lt;= logPrio::LOG_NOTICE )</span></a>
+<a name="473"><span class="lineNum">     473 </span><span class="lineCov">        798 :             else if( logHeader::logLevel( *it ) &lt;= logPrio::LOG_NOTICE )</span></a>
 <a name="474"><span class="lineNum">     474 </span>            :             {</a>
-<a name="475"><span class="lineNum">     475 </span><span class="lineCov">       2598 :                logStdFormat(std::cerr, *it);</span></a>
-<a name="476"><span class="lineNum">     476 </span><span class="lineCov">       2598 :                std::cerr &lt;&lt; &quot;\n&quot;;</span></a>
+<a name="475"><span class="lineNum">     475 </span><span class="lineCov">        433 :                logStdFormat(std::cerr, *it);</span></a>
+<a name="476"><span class="lineNum">     476 </span><span class="lineCov">        433 :                std::cerr &lt;&lt; &quot;\n&quot;;</span></a>
 <a name="477"><span class="lineNum">     477 </span>            :             }</a>
 <a name="478"><span class="lineNum">     478 </span>            :             </a>
-<a name="479"><span class="lineNum">     479 </span><span class="lineCov">       4788 :             er = it;</span></a>
-<a name="480"><span class="lineNum">     480 </span><span class="lineCov">       4788 :             ++it;</span></a>
+<a name="479"><span class="lineNum">     479 </span><span class="lineCov">        798 :             er = it;</span></a>
+<a name="480"><span class="lineNum">     480 </span><span class="lineCov">        798 :             ++it;</span></a>
 <a name="481"><span class="lineNum">     481 </span>            : </a>
 <a name="482"><span class="lineNum">     482 </span>            :             //Erase while locked so we don't collide with a push_back.</a>
-<a name="483"><span class="lineNum">     483 </span><span class="lineCov">       4788 :             lock.lock();</span></a>
-<a name="484"><span class="lineNum">     484 </span><span class="lineCov">       4788 :             m_logQueue.erase(er);</span></a>
-<a name="485"><span class="lineNum">     485 </span><span class="lineCov">       4788 :             lock.unlock();</span></a>
+<a name="483"><span class="lineNum">     483 </span><span class="lineCov">        798 :             lock.lock();</span></a>
+<a name="484"><span class="lineNum">     484 </span><span class="lineCov">        798 :             m_logQueue.erase(er);</span></a>
+<a name="485"><span class="lineNum">     485 </span><span class="lineCov">        798 :             lock.unlock();</span></a>
 <a name="486"><span class="lineNum">     486 </span>            :          }</a>
 <a name="487"><span class="lineNum">     487 </span>            :       }</a>
 <a name="488"><span class="lineNum">     488 </span>            : </a>
 <a name="489"><span class="lineNum">     489 </span>            :       //m_logFile.</a>
 <a name="490"><span class="lineNum">     490 </span>            :       ///\todo must check this for errors, and investigate how `fsyncgate` impacts us</a>
-<a name="491"><span class="lineNum">     491 </span><span class="lineCov">         96 :       this-&gt;flush();</span></a>
+<a name="491"><span class="lineNum">     491 </span><span class="lineCov">         16 :       this-&gt;flush();</span></a>
 <a name="492"><span class="lineNum">     492 </span>            : </a>
 <a name="493"><span class="lineNum">     493 </span>            :       //We only pause if there's nothing to do.</a>
-<a name="494"><span class="lineNum">     494 </span><span class="lineCov">         96 :       if(m_logQueue.empty() &amp;&amp; !m_logShutdown) std::this_thread::sleep_for( std::chrono::duration&lt;unsigned long, std::nano&gt;(m_writePause));</span></a>
+<a name="494"><span class="lineNum">     494 </span><span class="lineCov">         16 :       if(m_logQueue.empty() &amp;&amp; !m_logShutdown) std::this_thread::sleep_for( std::chrono::duration&lt;unsigned long, std::nano&gt;(m_writePause));</span></a>
 <a name="495"><span class="lineNum">     495 </span>            :    }</a>
 <a name="496"><span class="lineNum">     496 </span>            : </a>
-<a name="497"><span class="lineNum">     497 </span><span class="lineCov">         96 :    m_logThreadRunning = false;</span></a>
-<a name="498"><span class="lineNum">     498 </span><span class="lineCov">         96 : }</span></a>
+<a name="497"><span class="lineNum">     497 </span><span class="lineCov">         16 :    m_logThreadRunning = false;</span></a>
+<a name="498"><span class="lineNum">     498 </span><span class="lineCov">         16 : }</span></a>
 <a name="499"><span class="lineNum">     499 </span>            : </a>
 <a name="500"><span class="lineNum">     500 </span>            : template&lt;class parentT, class logFileT&gt;</a>
 <a name="501"><span class="lineNum">     501 </span>            : template&lt;typename logT&gt;</a>
-<a name="502"><span class="lineNum">     502 </span><span class="lineCov">       4516 : int logManager&lt;parentT, logFileT&gt;::createLog( bufferPtrT &amp; logBuffer,</span></a>
+<a name="502"><span class="lineNum">     502 </span><span class="lineCov">        798 : int logManager&lt;parentT, logFileT&gt;::createLog( bufferPtrT &amp; logBuffer,</span></a>
 <a name="503"><span class="lineNum">     503 </span>            :                                      const typename logT::messageT &amp; msg,</a>
 <a name="504"><span class="lineNum">     504 </span>            :                                      const logPrioT &amp; level</a>
 <a name="505"><span class="lineNum">     505 </span>            :                                    )</a>
 <a name="506"><span class="lineNum">     506 </span>            : {</a>
 <a name="507"><span class="lineNum">     507 </span>            :    //Very first step is to get the current time.</a>
-<a name="508"><span class="lineNum">     508 </span><span class="lineCov">       4516 :    timespecX ts;</span></a>
-<a name="509"><span class="lineNum">     509 </span><span class="lineCov">       4516 :    ts.gettime();</span></a>
+<a name="508"><span class="lineNum">     508 </span><span class="lineCov">        798 :    timespecX ts;</span></a>
+<a name="509"><span class="lineNum">     509 </span><span class="lineCov">        798 :    ts.gettime();</span></a>
 <a name="510"><span class="lineNum">     510 </span>            : </a>
-<a name="511"><span class="lineNum">     511 </span><span class="lineCov">       9032 :    return logHeader::createLog&lt;logT&gt;(logBuffer, ts, msg, level);</span></a>
+<a name="511"><span class="lineNum">     511 </span><span class="lineCov">       1596 :    return logHeader::createLog&lt;logT&gt;(logBuffer, ts, msg, level);</span></a>
 <a name="512"><span class="lineNum">     512 </span>            : }</a>
 <a name="513"><span class="lineNum">     513 </span>            : </a>
 <a name="514"><span class="lineNum">     514 </span>            : template&lt;class parentT, class logFileT&gt;</a>
@@ -586,25 +586,25 @@
 <a name="524"><span class="lineNum">     524 </span>            : </a>
 <a name="525"><span class="lineNum">     525 </span>            : template&lt;class parentT, class logFileT&gt;</a>
 <a name="526"><span class="lineNum">     526 </span>            : template&lt;typename logT&gt;</a>
-<a name="527"><span class="lineNum">     527 </span><span class="lineCov">       4540 : void logManager&lt;parentT, logFileT&gt;::log( const typename logT::messageT &amp; msg,</span></a>
+<a name="527"><span class="lineNum">     527 </span><span class="lineCov">        810 : void logManager&lt;parentT, logFileT&gt;::log( const typename logT::messageT &amp; msg,</span></a>
 <a name="528"><span class="lineNum">     528 </span>            :                                          logPrioT level</a>
 <a name="529"><span class="lineNum">     529 </span>            :                                        )</a>
 <a name="530"><span class="lineNum">     530 </span>            : {</a>
 <a name="531"><span class="lineNum">     531 </span>            :    //Step 0 check level.</a>
-<a name="532"><span class="lineNum">     532 </span><span class="lineCov">       4540 :    if(level == logPrio::LOG_DEFAULT) level = logT::defaultLevel;</span></a>
+<a name="532"><span class="lineNum">     532 </span><span class="lineCov">        810 :    if(level == logPrio::LOG_DEFAULT) level = logT::defaultLevel;</span></a>
 <a name="533"><span class="lineNum">     533 </span>            : </a>
-<a name="534"><span class="lineNum">     534 </span><span class="lineCov">       4540 :    if(level &gt; m_logLevel) return; // We do nothing with this.</span></a>
+<a name="534"><span class="lineNum">     534 </span><span class="lineCov">        810 :    if(level &gt; m_logLevel) return; // We do nothing with this.</span></a>
 <a name="535"><span class="lineNum">     535 </span>            :    </a>
 <a name="536"><span class="lineNum">     536 </span>            :    //Step 1 create log</a>
-<a name="537"><span class="lineNum">     537 </span><span class="lineCov">       4516 :    bufferPtrT logBuffer;</span></a>
-<a name="538"><span class="lineNum">     538 </span><span class="lineCov">       4516 :    createLog&lt;logT&gt;(logBuffer, msg, level);</span></a>
+<a name="537"><span class="lineNum">     537 </span><span class="lineCov">        798 :    bufferPtrT logBuffer;</span></a>
+<a name="538"><span class="lineNum">     538 </span><span class="lineCov">        798 :    createLog&lt;logT&gt;(logBuffer, msg, level);</span></a>
 <a name="539"><span class="lineNum">     539 </span>            : </a>
 <a name="540"><span class="lineNum">     540 </span>            :    //Step 2 add log to queue</a>
-<a name="541"><span class="lineNum">     541 </span><span class="lineCov">       4516 :    std::lock_guard&lt;std::mutex&gt; guard(m_qMutex);  //Lock the mutex before pushing back.</span></a>
-<a name="542"><span class="lineNum">     542 </span><span class="lineCov">       4516 :    m_logQueue.push_back(logBuffer);</span></a>
+<a name="541"><span class="lineNum">     541 </span><span class="lineCov">        798 :    std::lock_guard&lt;std::mutex&gt; guard(m_qMutex);  //Lock the mutex before pushing back.</span></a>
+<a name="542"><span class="lineNum">     542 </span><span class="lineCov">        798 :    m_logQueue.push_back(logBuffer);</span></a>
 <a name="543"><span class="lineNum">     543 </span>            :    </a>
 <a name="544"><span class="lineNum">     544 </span>            : </a>
-<a name="545"><span class="lineNum">     545 </span><span class="lineCov">       4516 : }</span></a>
+<a name="545"><span class="lineNum">     545 </span><span class="lineCov">        798 : }</span></a>
 <a name="546"><span class="lineNum">     546 </span>            : </a>
 <a name="547"><span class="lineNum">     547 </span>            : template&lt;class parentT, class logFileT&gt;</a>
 <a name="548"><span class="lineNum">     548 </span>            : template&lt;typename logT&gt;</a>

@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">1</td>
@@ -77,11 +77,11 @@
 <a name="15"><span class="lineNum">      15 </span>            : namespace sys </a>
 <a name="16"><span class="lineNum">      16 </span>            : {</a>
 <a name="17"><span class="lineNum">      17 </span>            : </a>
-<a name="18"><span class="lineNum">      18 </span><span class="lineCov">       2202 : int th_seteuid(uid_t euid /**&lt; [in] the desired new effective user id */)</span></a>
+<a name="18"><span class="lineNum">      18 </span><span class="lineCov">        367 : int th_seteuid(uid_t euid /**&lt; [in] the desired new effective user id */)</span></a>
 <a name="19"><span class="lineNum">      19 </span>            : {</a>
-<a name="20"><span class="lineNum">      20 </span><span class="lineCov">       2202 :    int rv = syscall(SYS_setreuid, -1, euid);</span></a>
+<a name="20"><span class="lineNum">      20 </span><span class="lineCov">        367 :    int rv = syscall(SYS_setreuid, -1, euid);</span></a>
 <a name="21"><span class="lineNum">      21 </span>            :    </a>
-<a name="22"><span class="lineNum">      22 </span><span class="lineCov">       2202 :    return rv;</span></a>
+<a name="22"><span class="lineNum">      22 </span><span class="lineCov">        367 :    return rv;</span></a>
 <a name="23"><span class="lineNum">      23 </span>            : }</a>
 <a name="24"><span class="lineNum">      24 </span>            : </a>
 <a name="25"><span class="lineNum">      25 </span>            :   </a>

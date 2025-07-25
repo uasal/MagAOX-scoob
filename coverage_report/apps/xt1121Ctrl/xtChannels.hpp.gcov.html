@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">7</td>
@@ -159,39 +159,39 @@
 <a name="97"><span class="lineNum">      97 </span>            : typedef xtChannels&lt;16&gt; xt1121Channels;</a>
 <a name="98"><span class="lineNum">      98 </span>            : </a>
 <a name="99"><span class="lineNum">      99 </span>            : template&lt;int numChannels&gt;</a>
-<a name="100"><span class="lineNum">     100 </span><span class="lineCov">         12 : xtChannels&lt;numChannels&gt;::xtChannels()</span></a>
+<a name="100"><span class="lineNum">     100 </span><span class="lineCov">          6 : xtChannels&lt;numChannels&gt;::xtChannels()</span></a>
 <a name="101"><span class="lineNum">     101 </span>            : {</a>
-<a name="102"><span class="lineNum">     102 </span><span class="lineCov">        204 :    for(size_t i =0; i&lt; numChannels; ++i)</span></a>
+<a name="102"><span class="lineNum">     102 </span><span class="lineCov">        102 :    for(size_t i =0; i&lt; numChannels; ++i)</span></a>
 <a name="103"><span class="lineNum">     103 </span>            :    {</a>
-<a name="104"><span class="lineNum">     104 </span><span class="lineCov">        192 :       m_channels[i] = false;</span></a>
-<a name="105"><span class="lineNum">     105 </span><span class="lineCov">        192 :       m_inputOnly[i] = false;</span></a>
+<a name="104"><span class="lineNum">     104 </span><span class="lineCov">         96 :       m_channels[i] = false;</span></a>
+<a name="105"><span class="lineNum">     105 </span><span class="lineCov">         96 :       m_inputOnly[i] = false;</span></a>
 <a name="106"><span class="lineNum">     106 </span>            :    }</a>
-<a name="107"><span class="lineNum">     107 </span><span class="lineCov">         12 : }</span></a>
+<a name="107"><span class="lineNum">     107 </span><span class="lineCov">          6 : }</span></a>
 <a name="108"><span class="lineNum">     108 </span>            : </a>
 <a name="109"><span class="lineNum">     109 </span>            : template&lt;int numChannels&gt;</a>
-<a name="110"><span class="lineNum">     110 </span><span class="lineCov">        108 : int xtChannels&lt;numChannels&gt;::setChannel( size_t chNo )</span></a>
+<a name="110"><span class="lineNum">     110 </span><span class="lineCov">         54 : int xtChannels&lt;numChannels&gt;::setChannel( size_t chNo )</span></a>
 <a name="111"><span class="lineNum">     111 </span>            : {</a>
-<a name="112"><span class="lineNum">     112 </span><span class="lineCov">        108 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
+<a name="112"><span class="lineNum">     112 </span><span class="lineCov">         54 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
 <a name="113"><span class="lineNum">     113 </span>            :    </a>
-<a name="114"><span class="lineNum">     114 </span><span class="lineCov">        108 :    if(m_inputOnly[chNo])</span></a>
+<a name="114"><span class="lineNum">     114 </span><span class="lineCov">         54 :    if(m_inputOnly[chNo])</span></a>
 <a name="115"><span class="lineNum">     115 </span>            :    {</a>
-<a name="116"><span class="lineNum">     116 </span><span class="lineCov">         18 :       m_channels[chNo] = false;</span></a>
-<a name="117"><span class="lineNum">     117 </span><span class="lineCov">         18 :       return 0;</span></a>
+<a name="116"><span class="lineNum">     116 </span><span class="lineCov">          9 :       m_channels[chNo] = false;</span></a>
+<a name="117"><span class="lineNum">     117 </span><span class="lineCov">          9 :       return 0;</span></a>
 <a name="118"><span class="lineNum">     118 </span>            :    }</a>
 <a name="119"><span class="lineNum">     119 </span>            :    </a>
-<a name="120"><span class="lineNum">     120 </span><span class="lineCov">         90 :    m_channels[chNo] = true;</span></a>
+<a name="120"><span class="lineNum">     120 </span><span class="lineCov">         45 :    m_channels[chNo] = true;</span></a>
 <a name="121"><span class="lineNum">     121 </span>            :    </a>
-<a name="122"><span class="lineNum">     122 </span><span class="lineCov">         90 :    return 0;</span></a>
+<a name="122"><span class="lineNum">     122 </span><span class="lineCov">         45 :    return 0;</span></a>
 <a name="123"><span class="lineNum">     123 </span>            : }</a>
 <a name="124"><span class="lineNum">     124 </span>            : </a>
 <a name="125"><span class="lineNum">     125 </span>            : template&lt;int numChannels&gt;</a>
-<a name="126"><span class="lineNum">     126 </span><span class="lineCov">         16 : int xtChannels&lt;numChannels&gt;::setInputOnly( size_t chNo )</span></a>
+<a name="126"><span class="lineNum">     126 </span><span class="lineCov">          8 : int xtChannels&lt;numChannels&gt;::setInputOnly( size_t chNo )</span></a>
 <a name="127"><span class="lineNum">     127 </span>            : {</a>
-<a name="128"><span class="lineNum">     128 </span><span class="lineCov">         16 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
+<a name="128"><span class="lineNum">     128 </span><span class="lineCov">          8 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
 <a name="129"><span class="lineNum">     129 </span>            :    </a>
-<a name="130"><span class="lineNum">     130 </span><span class="lineCov">         16 :    m_inputOnly[chNo] = true;</span></a>
+<a name="130"><span class="lineNum">     130 </span><span class="lineCov">          8 :    m_inputOnly[chNo] = true;</span></a>
 <a name="131"><span class="lineNum">     131 </span>            :    </a>
-<a name="132"><span class="lineNum">     132 </span><span class="lineCov">         16 :    return 0;</span></a>
+<a name="132"><span class="lineNum">     132 </span><span class="lineCov">          8 :    return 0;</span></a>
 <a name="133"><span class="lineNum">     133 </span>            : }</a>
 <a name="134"><span class="lineNum">     134 </span>            : </a>
 <a name="135"><span class="lineNum">     135 </span>            : template&lt;int numChannels&gt;</a>
@@ -205,58 +205,58 @@
 <a name="143"><span class="lineNum">     143 </span>            : }</a>
 <a name="144"><span class="lineNum">     144 </span>            : </a>
 <a name="145"><span class="lineNum">     145 </span>            : template&lt;int numChannels&gt;</a>
-<a name="146"><span class="lineNum">     146 </span><span class="lineCov">         84 : int xtChannels&lt;numChannels&gt;::clearAll()</span></a>
+<a name="146"><span class="lineNum">     146 </span><span class="lineCov">         42 : int xtChannels&lt;numChannels&gt;::clearAll()</span></a>
 <a name="147"><span class="lineNum">     147 </span>            : {</a>
-<a name="148"><span class="lineNum">     148 </span><span class="lineCov">       1428 :    for(size_t i=0;i&lt;numChannels; ++i) m_channels[i] = false;</span></a>
+<a name="148"><span class="lineNum">     148 </span><span class="lineCov">        714 :    for(size_t i=0;i&lt;numChannels; ++i) m_channels[i] = false;</span></a>
 <a name="149"><span class="lineNum">     149 </span>            :    </a>
-<a name="150"><span class="lineNum">     150 </span><span class="lineCov">         84 :    return 0;</span></a>
+<a name="150"><span class="lineNum">     150 </span><span class="lineCov">         42 :    return 0;</span></a>
 <a name="151"><span class="lineNum">     151 </span>            : }</a>
 <a name="152"><span class="lineNum">     152 </span>            : </a>
 <a name="153"><span class="lineNum">     153 </span>            : template&lt;int numChannels&gt;</a>
-<a name="154"><span class="lineNum">     154 </span><span class="lineCov">         84 : int xtChannels&lt;numChannels&gt;::setRegisters( uint16_t registers[numRegisters] )</span></a>
+<a name="154"><span class="lineNum">     154 </span><span class="lineCov">         42 : int xtChannels&lt;numChannels&gt;::setRegisters( uint16_t registers[numRegisters] )</span></a>
 <a name="155"><span class="lineNum">     155 </span>            : {</a>
-<a name="156"><span class="lineNum">     156 </span><span class="lineCov">        420 :    for(size_t i =0; i &lt; numRegisters; ++i)</span></a>
+<a name="156"><span class="lineNum">     156 </span><span class="lineCov">        210 :    for(size_t i =0; i &lt; numRegisters; ++i)</span></a>
 <a name="157"><span class="lineNum">     157 </span>            :    {</a>
-<a name="158"><span class="lineNum">     158 </span><span class="lineCov">        336 :       registers[i] = 0;</span></a>
+<a name="158"><span class="lineNum">     158 </span><span class="lineCov">        168 :       registers[i] = 0;</span></a>
 <a name="159"><span class="lineNum">     159 </span>            :       </a>
-<a name="160"><span class="lineNum">     160 </span><span class="lineCov">       1680 :       for(size_t j=0; j &lt; 4; ++j)</span></a>
+<a name="160"><span class="lineNum">     160 </span><span class="lineCov">        840 :       for(size_t j=0; j &lt; 4; ++j)</span></a>
 <a name="161"><span class="lineNum">     161 </span>            :       {</a>
-<a name="162"><span class="lineNum">     162 </span><span class="lineCov">       1344 :          if(!m_inputOnly[i*4 + j])</span></a>
+<a name="162"><span class="lineNum">     162 </span><span class="lineCov">        672 :          if(!m_inputOnly[i*4 + j])</span></a>
 <a name="163"><span class="lineNum">     163 </span>            :          {</a>
 <a name="164"><span class="lineNum">     164 </span>            :             //Set the appropriate bit for this channel if it's true.</a>
-<a name="165"><span class="lineNum">     165 </span><span class="lineCov">       1176 :             if(m_channels[i*4+j])</span></a>
+<a name="165"><span class="lineNum">     165 </span><span class="lineCov">        588 :             if(m_channels[i*4+j])</span></a>
 <a name="166"><span class="lineNum">     166 </span>            :             {</a>
-<a name="167"><span class="lineNum">     167 </span><span class="lineCov">         90 :                registers[i] += (1 &lt;&lt; j);</span></a>
+<a name="167"><span class="lineNum">     167 </span><span class="lineCov">         45 :                registers[i] += (1 &lt;&lt; j);</span></a>
 <a name="168"><span class="lineNum">     168 </span>            :             }</a>
 <a name="169"><span class="lineNum">     169 </span>            :          }</a>
 <a name="170"><span class="lineNum">     170 </span>            :       }</a>
 <a name="171"><span class="lineNum">     171 </span>            :    }</a>
 <a name="172"><span class="lineNum">     172 </span>            :    </a>
 <a name="173"><span class="lineNum">     173 </span>            :    </a>
-<a name="174"><span class="lineNum">     174 </span><span class="lineCov">         84 :    return 0;</span></a>
+<a name="174"><span class="lineNum">     174 </span><span class="lineCov">         42 :    return 0;</span></a>
 <a name="175"><span class="lineNum">     175 </span>            : }</a>
 <a name="176"><span class="lineNum">     176 </span>            : </a>
 <a name="177"><span class="lineNum">     177 </span>            : template&lt;int numChannels&gt;</a>
-<a name="178"><span class="lineNum">     178 </span><span class="lineCov">         48 : int xtChannels&lt;numChannels&gt;::readRegisters( uint16_t registers[numRegisters] )</span></a>
+<a name="178"><span class="lineNum">     178 </span><span class="lineCov">         24 : int xtChannels&lt;numChannels&gt;::readRegisters( uint16_t registers[numRegisters] )</span></a>
 <a name="179"><span class="lineNum">     179 </span>            : {</a>
-<a name="180"><span class="lineNum">     180 </span><span class="lineCov">        240 :    for(size_t i =0; i &lt; numRegisters; ++i)</span></a>
+<a name="180"><span class="lineNum">     180 </span><span class="lineCov">        120 :    for(size_t i =0; i &lt; numRegisters; ++i)</span></a>
 <a name="181"><span class="lineNum">     181 </span>            :    {      </a>
-<a name="182"><span class="lineNum">     182 </span><span class="lineCov">        192 :       m_channels[i*4] = ((registers[i] &amp; 1) &gt; 0);</span></a>
-<a name="183"><span class="lineNum">     183 </span><span class="lineCov">        192 :       m_channels[i*4+1] = ((registers[i] &amp; 2) &gt; 0) ;</span></a>
-<a name="184"><span class="lineNum">     184 </span><span class="lineCov">        192 :       m_channels[i*4+2] = ((registers[i] &amp; 4) &gt; 0);</span></a>
-<a name="185"><span class="lineNum">     185 </span><span class="lineCov">        192 :       m_channels[i*4+3] = ((registers[i] &amp; 8) &gt; 0);</span></a>
+<a name="182"><span class="lineNum">     182 </span><span class="lineCov">         96 :       m_channels[i*4] = ((registers[i] &amp; 1) &gt; 0);</span></a>
+<a name="183"><span class="lineNum">     183 </span><span class="lineCov">         96 :       m_channels[i*4+1] = ((registers[i] &amp; 2) &gt; 0) ;</span></a>
+<a name="184"><span class="lineNum">     184 </span><span class="lineCov">         96 :       m_channels[i*4+2] = ((registers[i] &amp; 4) &gt; 0);</span></a>
+<a name="185"><span class="lineNum">     185 </span><span class="lineCov">         96 :       m_channels[i*4+3] = ((registers[i] &amp; 8) &gt; 0);</span></a>
 <a name="186"><span class="lineNum">     186 </span>            :    }</a>
 <a name="187"><span class="lineNum">     187 </span>            :    </a>
 <a name="188"><span class="lineNum">     188 </span>            :    </a>
-<a name="189"><span class="lineNum">     189 </span><span class="lineCov">         48 :    return 0;</span></a>
+<a name="189"><span class="lineNum">     189 </span><span class="lineCov">         24 :    return 0;</span></a>
 <a name="190"><span class="lineNum">     190 </span>            : }</a>
 <a name="191"><span class="lineNum">     191 </span>            : </a>
 <a name="192"><span class="lineNum">     192 </span>            : template&lt;int numChannels&gt;</a>
-<a name="193"><span class="lineNum">     193 </span><span class="lineCov">        768 : int xtChannels&lt;numChannels&gt;::channel( size_t chNo )</span></a>
+<a name="193"><span class="lineNum">     193 </span><span class="lineCov">        384 : int xtChannels&lt;numChannels&gt;::channel( size_t chNo )</span></a>
 <a name="194"><span class="lineNum">     194 </span>            : {</a>
-<a name="195"><span class="lineNum">     195 </span><span class="lineCov">        768 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
+<a name="195"><span class="lineNum">     195 </span><span class="lineCov">        384 :    if(chNo &gt; numChannels - 1) return -1;</span></a>
 <a name="196"><span class="lineNum">     196 </span>            :    </a>
-<a name="197"><span class="lineNum">     197 </span><span class="lineCov">        768 :    return m_channels[chNo];</span></a>
+<a name="197"><span class="lineNum">     197 </span><span class="lineCov">        384 :    return m_channels[chNo];</span></a>
 <a name="198"><span class="lineNum">     198 </span>            :    </a>
 <a name="199"><span class="lineNum">     199 </span>            : }</a>
 <a name="200"><span class="lineNum">     200 </span>            : </a>

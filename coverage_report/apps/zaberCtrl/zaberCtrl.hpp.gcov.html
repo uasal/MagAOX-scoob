@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">9</td>
@@ -137,8 +137,8 @@
 <a name="75"><span class="lineNum">      75 </span>            :    zaberCtrl();</a>
 <a name="76"><span class="lineNum">      76 </span>            : </a>
 <a name="77"><span class="lineNum">      77 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="78"><span class="lineNum">      78 </span><span class="lineCov">         66 :    ~zaberCtrl() noexcept</span></a>
-<a name="79"><span class="lineNum">      79 </span><span class="lineCov">         66 :    {}</span></a>
+<a name="78"><span class="lineNum">      78 </span><span class="lineCov">         33 :    ~zaberCtrl() noexcept</span></a>
+<a name="79"><span class="lineNum">      79 </span><span class="lineCov">         33 :    {}</span></a>
 <a name="80"><span class="lineNum">      80 </span>            : </a>
 <a name="81"><span class="lineNum">      81 </span>            :    /// Setup the configuration of this stage controller.</a>
 <a name="82"><span class="lineNum">      82 </span>            :    virtual void setupConfig();</a>
@@ -239,12 +239,12 @@
 <a name="177"><span class="lineNum">     177 </span>            :    ///@}</a>
 <a name="178"><span class="lineNum">     178 </span>            : };</a>
 <a name="179"><span class="lineNum">     179 </span>            : </a>
-<a name="180"><span class="lineNum">     180 </span><span class="lineCov">         66 : zaberCtrl::zaberCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="180"><span class="lineNum">     180 </span><span class="lineCov">         33 : zaberCtrl::zaberCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="181"><span class="lineNum">     181 </span>            : {</a>
-<a name="182"><span class="lineNum">     182 </span><span class="lineCov">         66 :    m_fractionalPresets = false;</span></a>
-<a name="183"><span class="lineNum">     183 </span><span class="lineCov">         66 :    m_defaultPositions = false;</span></a>
+<a name="182"><span class="lineNum">     182 </span><span class="lineCov">         33 :    m_fractionalPresets = false;</span></a>
+<a name="183"><span class="lineNum">     183 </span><span class="lineCov">         33 :    m_defaultPositions = false;</span></a>
 <a name="184"><span class="lineNum">     184 </span>            :    </a>
-<a name="185"><span class="lineNum">     185 </span><span class="lineCov">         66 :    return;</span></a>
+<a name="185"><span class="lineNum">     185 </span><span class="lineCov">         33 :    return;</span></a>
 <a name="186"><span class="lineNum">     186 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="187"><span class="lineNum">     187 </span>            : </a>
 <a name="188"><span class="lineNum">     188 </span><span class="lineNoCov">          0 : void zaberCtrl::setupConfig()</span></a>
@@ -540,9 +540,9 @@
 <a name="478"><span class="lineNum">     478 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="479"><span class="lineNum">     479 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="480"><span class="lineNum">     480 </span>            : </a>
-<a name="481"><span class="lineNum">     481 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN( zaberCtrl, m_indiP_pos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="481"><span class="lineNum">     481 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN( zaberCtrl, m_indiP_pos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="482"><span class="lineNum">     482 </span>            : {</a>
-<a name="483"><span class="lineNum">     483 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_pos, ipRecv); </span></a>
+<a name="483"><span class="lineNum">     483 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_pos, ipRecv); </span></a>
 <a name="484"><span class="lineNum">     484 </span>            :    </a>
 <a name="485"><span class="lineNum">     485 </span>            :    double target =-1;</a>
 <a name="486"><span class="lineNum">     486 </span>            :    if( ipRecv.find(&quot;target&quot;) ) //Just not our stage.</a>
@@ -582,9 +582,9 @@
 <a name="520"><span class="lineNum">     520 </span>            :    return 0;</a>
 <a name="521"><span class="lineNum">     521 </span>            : }</a>
 <a name="522"><span class="lineNum">     522 </span>            : </a>
-<a name="523"><span class="lineNum">     523 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN( zaberCtrl, m_indiP_rawPos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="523"><span class="lineNum">     523 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN( zaberCtrl, m_indiP_rawPos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="524"><span class="lineNum">     524 </span>            : {</a>
-<a name="525"><span class="lineNum">     525 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_rawPos, ipRecv); </span></a>
+<a name="525"><span class="lineNum">     525 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_rawPos, ipRecv); </span></a>
 <a name="526"><span class="lineNum">     526 </span>            :    </a>
 <a name="527"><span class="lineNum">     527 </span>            :    double target =-1;</a>
 <a name="528"><span class="lineNum">     528 </span>            :    if( ipRecv.find(&quot;target&quot;) ) //Just not our stage.</a>
@@ -636,9 +636,9 @@
 <a name="574"><span class="lineNum">     574 </span>            : </a>
 <a name="575"><span class="lineNum">     575 </span>            : </a>
 <a name="576"><span class="lineNum">     576 </span>            : </a>
-<a name="577"><span class="lineNum">     577 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageState)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="577"><span class="lineNum">     577 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageState)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="578"><span class="lineNum">     578 </span>            : {</a>
-<a name="579"><span class="lineNum">     579 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageState, ipRecv); </span></a>
+<a name="579"><span class="lineNum">     579 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageState, ipRecv); </span></a>
 <a name="580"><span class="lineNum">     580 </span>            : </a>
 <a name="581"><span class="lineNum">     581 </span>            :    if( ipRecv.find(m_stageName) != true ) //Just not our stage.</a>
 <a name="582"><span class="lineNum">     582 </span>            :    {</a>
@@ -728,9 +728,9 @@
 <a name="666"><span class="lineNum">     666 </span>            :    return 0;</a>
 <a name="667"><span class="lineNum">     667 </span>            : }</a>
 <a name="668"><span class="lineNum">     668 </span>            : </a>
-<a name="669"><span class="lineNum">     669 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageMaxRawPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="669"><span class="lineNum">     669 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageMaxRawPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="670"><span class="lineNum">     670 </span>            : {</a>
-<a name="671"><span class="lineNum">     671 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageMaxRawPos, ipRecv);</span></a>
+<a name="671"><span class="lineNum">     671 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageMaxRawPos, ipRecv);</span></a>
 <a name="672"><span class="lineNum">     672 </span>            : </a>
 <a name="673"><span class="lineNum">     673 </span>            :    if( ipRecv.find(m_stageName) != true ) //Just not our stage.</a>
 <a name="674"><span class="lineNum">     674 </span>            :    {</a>
@@ -751,9 +751,9 @@
 <a name="689"><span class="lineNum">     689 </span>            :    return 0;</a>
 <a name="690"><span class="lineNum">     690 </span>            : }</a>
 <a name="691"><span class="lineNum">     691 </span>            : </a>
-<a name="692"><span class="lineNum">     692 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageRawPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="692"><span class="lineNum">     692 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageRawPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="693"><span class="lineNum">     693 </span>            : {</a>
-<a name="694"><span class="lineNum">     694 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageRawPos, ipRecv);</span></a>
+<a name="694"><span class="lineNum">     694 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageRawPos, ipRecv);</span></a>
 <a name="695"><span class="lineNum">     695 </span>            : </a>
 <a name="696"><span class="lineNum">     696 </span>            :    if( ipRecv.find(m_stageName) != true ) //Just not our stage.</a>
 <a name="697"><span class="lineNum">     697 </span>            :    {</a>
@@ -782,9 +782,9 @@
 <a name="720"><span class="lineNum">     720 </span>            :    return 0;</a>
 <a name="721"><span class="lineNum">     721 </span>            : }</a>
 <a name="722"><span class="lineNum">     722 </span>            : </a>
-<a name="723"><span class="lineNum">     723 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageTgtPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="723"><span class="lineNum">     723 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageTgtPos )(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="724"><span class="lineNum">     724 </span>            : {</a>
-<a name="725"><span class="lineNum">     725 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageTgtPos, ipRecv);</span></a>
+<a name="725"><span class="lineNum">     725 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageTgtPos, ipRecv);</span></a>
 <a name="726"><span class="lineNum">     726 </span>            : </a>
 <a name="727"><span class="lineNum">     727 </span>            :    if( ipRecv.find(m_stageName) != true ) //Just not our stage.</a>
 <a name="728"><span class="lineNum">     728 </span>            :    {</a>
@@ -818,9 +818,9 @@
 <a name="756"><span class="lineNum">     756 </span>            :    return 0;</a>
 <a name="757"><span class="lineNum">     757 </span>            : }</a>
 <a name="758"><span class="lineNum">     758 </span>            : </a>
-<a name="759"><span class="lineNum">     759 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageTemp )(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="759"><span class="lineNum">     759 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageTemp )(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="760"><span class="lineNum">     760 </span>            : {</a>
-<a name="761"><span class="lineNum">     761 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageTemp, ipRecv);</span></a>
+<a name="761"><span class="lineNum">     761 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stageTemp, ipRecv);</span></a>
 <a name="762"><span class="lineNum">     762 </span>            : </a>
 <a name="763"><span class="lineNum">     763 </span>            :     if( ipRecv.find(m_stageName) != true ) //Just not our stage.</a>
 <a name="764"><span class="lineNum">     764 </span>            :     {</a>

@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">13</td>
@@ -1252,54 +1252,54 @@
 <a name="1190"><span class="lineNum">    1190 </span>            : typename MagAOXApp&lt;_useINDI&gt;::logManagerT MagAOXApp&lt;_useINDI&gt;::m_log;</a>
 <a name="1191"><span class="lineNum">    1191 </span>            : </a>
 <a name="1192"><span class="lineNum">    1192 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="1193"><span class="lineNum">    1193 </span><span class="lineCov">       2190 : MagAOXApp&lt;_useINDI&gt;::MagAOXApp( const std::string &amp;git_sha1, const bool git_modified )</span></a>
+<a name="1193"><span class="lineNum">    1193 </span><span class="lineCov">        365 : MagAOXApp&lt;_useINDI&gt;::MagAOXApp( const std::string &amp;git_sha1, const bool git_modified )</span></a>
 <a name="1194"><span class="lineNum">    1194 </span>            : {</a>
-<a name="1195"><span class="lineNum">    1195 </span><span class="lineCov">       2190 :     if( m_self != nullptr )</span></a>
+<a name="1195"><span class="lineNum">    1195 </span><span class="lineCov">        365 :     if( m_self != nullptr )</span></a>
 <a name="1196"><span class="lineNum">    1196 </span>            :     {</a>
 <a name="1197"><span class="lineNum">    1197 </span><span class="lineNoCov">          0 :         std::cerr &lt;&lt; &quot;Attempt to instantiate 2nd MagAOXApp.  Exiting immediately.\n&quot;;</span></a>
 <a name="1198"><span class="lineNum">    1198 </span><span class="lineNoCov">          0 :         exit( -1 );</span></a>
 <a name="1199"><span class="lineNum">    1199 </span>            :     }</a>
 <a name="1200"><span class="lineNum">    1200 </span>            : </a>
-<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">       2190 :     m_self = this;</span></a>
+<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">        365 :     m_self = this;</span></a>
 <a name="1202"><span class="lineNum">    1202 </span>            : </a>
 <a name="1203"><span class="lineNum">    1203 </span>            :     // Get the uids of this process.</a>
-<a name="1204"><span class="lineNum">    1204 </span><span class="lineCov">       2190 :     getresuid( &amp;m_euidReal, &amp;m_euidCalled, &amp;m_suid );</span></a>
-<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">       2190 :     setEuidReal(); // immediately step down to unpriveleged uid.</span></a>
+<a name="1204"><span class="lineNum">    1204 </span><span class="lineCov">        365 :     getresuid( &amp;m_euidReal, &amp;m_euidCalled, &amp;m_suid );</span></a>
+<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">        365 :     setEuidReal(); // immediately step down to unpriveleged uid.</span></a>
 <a name="1206"><span class="lineNum">    1206 </span>            : </a>
-<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">       2190 :     m_log.parent( this );</span></a>
+<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">        365 :     m_log.parent( this );</span></a>
 <a name="1208"><span class="lineNum">    1208 </span>            : </a>
 <a name="1209"><span class="lineNum">    1209 </span>            :     // Set up config logging</a>
-<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">       2190 :     config.m_sources = true;</span></a>
-<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">       2190 :     config.configLog = configLog;</span></a>
+<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">        365 :     config.m_sources = true;</span></a>
+<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">        365 :     config.configLog = configLog;</span></a>
 <a name="1212"><span class="lineNum">    1212 </span>            : </a>
 <a name="1213"><span class="lineNum">    1213 </span>            :     // We log the current GIT status.</a>
-<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">       2190 :     logPrioT gl = logPrio::LOG_INFO;</span></a>
-<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">       2190 :     if( git_modified )</span></a>
+<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">        365 :     logPrioT gl = logPrio::LOG_INFO;</span></a>
+<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">        365 :     if( git_modified )</span></a>
 <a name="1216"><span class="lineNum">    1216 </span>            :     {</a>
-<a name="1217"><span class="lineNum">    1217 </span><span class="lineCov">       2190 :         gl = logPrio::LOG_WARNING;</span></a>
-<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">       2190 :         m_gitAlert = true;</span></a>
+<a name="1217"><span class="lineNum">    1217 </span><span class="lineCov">        365 :         gl = logPrio::LOG_WARNING;</span></a>
+<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">        365 :         m_gitAlert = true;</span></a>
 <a name="1219"><span class="lineNum">    1219 </span>            :     }</a>
-<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">       2190 :     log&lt;git_state&gt;( git_state::messageT( &quot;MagAOX&quot;, git_sha1, git_modified ), gl );</span></a>
+<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">        365 :     log&lt;git_state&gt;( git_state::messageT( &quot;MagAOX&quot;, git_sha1, git_modified ), gl );</span></a>
 <a name="1221"><span class="lineNum">    1221 </span>            : </a>
-<a name="1222"><span class="lineNum">    1222 </span><span class="lineCov">       2190 :     gl = logPrio::LOG_INFO;</span></a>
+<a name="1222"><span class="lineNum">    1222 </span><span class="lineCov">        365 :     gl = logPrio::LOG_INFO;</span></a>
 <a name="1223"><span class="lineNum">    1223 </span>            :     if( MXLIB_UNCOMP_REPO_MODIFIED )</a>
 <a name="1224"><span class="lineNum">    1224 </span>            :     {</a>
 <a name="1225"><span class="lineNum">    1225 </span>            :         gl = logPrio::LOG_WARNING;</a>
 <a name="1226"><span class="lineNum">    1226 </span>            :         m_gitAlert = true;</a>
 <a name="1227"><span class="lineNum">    1227 </span>            :     }</a>
 <a name="1228"><span class="lineNum">    1228 </span>            : </a>
-<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">       2190 :     log&lt;git_state&gt;( git_state::messageT( &quot;mxlib&quot;, MXLIB_UNCOMP_CURRENT_SHA1, MXLIB_UNCOMP_REPO_MODIFIED ), gl );</span></a>
-<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">       2190 : }</span></a>
+<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">        365 :     log&lt;git_state&gt;( git_state::messageT( &quot;mxlib&quot;, MXLIB_UNCOMP_CURRENT_SHA1, MXLIB_UNCOMP_REPO_MODIFIED ), gl );</span></a>
+<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">        365 : }</span></a>
 <a name="1231"><span class="lineNum">    1231 </span>            : </a>
 <a name="1232"><span class="lineNum">    1232 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">       2190 : MagAOXApp&lt;_useINDI&gt;::~MagAOXApp() noexcept( true )</span></a>
+<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">        365 : MagAOXApp&lt;_useINDI&gt;::~MagAOXApp() noexcept( true )</span></a>
 <a name="1234"><span class="lineNum">    1234 </span>            : {</a>
-<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">       2190 :     if( m_indiDriver )</span></a>
+<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">        365 :     if( m_indiDriver )</span></a>
 <a name="1236"><span class="lineNum">    1236 </span><span class="lineNoCov">          0 :         delete m_indiDriver;</span></a>
-<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">       2190 :     m_log.parent( nullptr );</span></a>
+<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">        365 :     m_log.parent( nullptr );</span></a>
 <a name="1238"><span class="lineNum">    1238 </span>            : </a>
-<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">       2190 :     MagAOXApp&lt;_useINDI&gt;::m_self = nullptr;</span></a>
-<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">       4380 : }</span></a>
+<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">        365 :     MagAOXApp&lt;_useINDI&gt;::m_self = nullptr;</span></a>
+<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">        730 : }</span></a>
 <a name="1241"><span class="lineNum">    1241 </span>            : </a>
 <a name="1242"><span class="lineNum">    1242 </span>            : template &lt;bool _useINDI&gt;</a>
 <a name="1243"><span class="lineNum">    1243 </span><span class="lineNoCov">          0 : int MagAOXApp&lt;_useINDI&gt;::shutdown()</span></a>
@@ -1924,10 +1924,10 @@
 <a name="1862"><span class="lineNum">    1862 </span>            : </a>
 <a name="1863"><span class="lineNum">    1863 </span>            : template &lt;bool _useINDI&gt;</a>
 <a name="1864"><span class="lineNum">    1864 </span>            : template &lt;typename logT, int retval&gt;</a>
-<a name="1865"><span class="lineNum">    1865 </span><span class="lineCov">       4516 : int MagAOXApp&lt;_useINDI&gt;::log( const typename logT::messageT &amp;msg, logPrioT level )</span></a>
+<a name="1865"><span class="lineNum">    1865 </span><span class="lineCov">        798 : int MagAOXApp&lt;_useINDI&gt;::log( const typename logT::messageT &amp;msg, logPrioT level )</span></a>
 <a name="1866"><span class="lineNum">    1866 </span>            : {</a>
-<a name="1867"><span class="lineNum">    1867 </span><span class="lineCov">       4516 :     m_log.template log&lt;logT&gt;( msg, level );</span></a>
-<a name="1868"><span class="lineNum">    1868 </span><span class="lineCov">       4516 :     return retval;</span></a>
+<a name="1867"><span class="lineNum">    1867 </span><span class="lineCov">        798 :     m_log.template log&lt;logT&gt;( msg, level );</span></a>
+<a name="1868"><span class="lineNum">    1868 </span><span class="lineCov">        798 :     return retval;</span></a>
 <a name="1869"><span class="lineNum">    1869 </span>            : }</a>
 <a name="1870"><span class="lineNum">    1870 </span>            : </a>
 <a name="1871"><span class="lineNum">    1871 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -2100,10 +2100,10 @@
 <a name="2038"><span class="lineNum">    2038 </span>            : }</a>
 <a name="2039"><span class="lineNum">    2039 </span>            : </a>
 <a name="2040"><span class="lineNum">    2040 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="2041"><span class="lineNum">    2041 </span><span class="lineCov">       2190 : int MagAOXApp&lt;_useINDI&gt;::setEuidReal()</span></a>
+<a name="2041"><span class="lineNum">    2041 </span><span class="lineCov">        365 : int MagAOXApp&lt;_useINDI&gt;::setEuidReal()</span></a>
 <a name="2042"><span class="lineNum">    2042 </span>            : {</a>
-<a name="2043"><span class="lineNum">    2043 </span><span class="lineCov">       2190 :     errno = 0;</span></a>
-<a name="2044"><span class="lineNum">    2044 </span><span class="lineCov">       2190 :     if( sys::th_seteuid( m_euidReal ) &lt; 0 )</span></a>
+<a name="2043"><span class="lineNum">    2043 </span><span class="lineCov">        365 :     errno = 0;</span></a>
+<a name="2044"><span class="lineNum">    2044 </span><span class="lineCov">        365 :     if( sys::th_seteuid( m_euidReal ) &lt; 0 )</span></a>
 <a name="2045"><span class="lineNum">    2045 </span>            :     {</a>
 <a name="2046"><span class="lineNum">    2046 </span><span class="lineNoCov">          0 :         std::string logss = &quot;Setting effective user id to euidReal (&quot;;</span></a>
 <a name="2047"><span class="lineNum">    2047 </span><span class="lineNoCov">          0 :         logss += mx::ioutils::convertToString&lt;int&gt;( m_euidReal );</span></a>
@@ -2115,7 +2115,7 @@
 <a name="2053"><span class="lineNum">    2053 </span><span class="lineNoCov">          0 :         return -1;</span></a>
 <a name="2054"><span class="lineNum">    2054 </span><span class="lineNoCov">          0 :     }</span></a>
 <a name="2055"><span class="lineNum">    2055 </span>            : </a>
-<a name="2056"><span class="lineNum">    2056 </span><span class="lineCov">       2190 :     return 0;</span></a>
+<a name="2056"><span class="lineNum">    2056 </span><span class="lineCov">        365 :     return 0;</span></a>
 <a name="2057"><span class="lineNum">    2057 </span>            : }</a>
 <a name="2058"><span class="lineNum">    2058 </span>            : </a>
 <a name="2059"><span class="lineNum">    2059 </span>            : template &lt;bool _useINDI&gt;</a>

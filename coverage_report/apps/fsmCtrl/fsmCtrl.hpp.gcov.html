@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">11</td>
@@ -234,9 +234,9 @@
 <a name="172"><span class="lineNum">     172 </span>            :       fsmCtrl();</a>
 <a name="173"><span class="lineNum">     173 </span>            : </a>
 <a name="174"><span class="lineNum">     174 </span>            :       /// D'tor, declared and defined for noexcept.</a>
-<a name="175"><span class="lineNum">     175 </span><span class="lineCov">         54 :       ~fsmCtrl() noexcept</span></a>
-<a name="176"><span class="lineNum">     176 </span><span class="lineCov">        432 :       {</span></a>
-<a name="177"><span class="lineNum">     177 </span><span class="lineCov">         54 :       }</span></a>
+<a name="175"><span class="lineNum">     175 </span><span class="lineCov">         27 :       ~fsmCtrl() noexcept</span></a>
+<a name="176"><span class="lineNum">     176 </span><span class="lineCov">        216 :       {</span></a>
+<a name="177"><span class="lineNum">     177 </span><span class="lineCov">         27 :       }</span></a>
 <a name="178"><span class="lineNum">     178 </span>            : </a>
 <a name="179"><span class="lineNum">     179 </span>            :       virtual void setupConfig();</a>
 <a name="180"><span class="lineNum">     180 </span>            : </a>
@@ -443,11 +443,11 @@
 <a name="381"><span class="lineNum">     381 </span>            :     };</a>
 <a name="382"><span class="lineNum">     382 </span>            : </a>
 <a name="383"><span class="lineNum">     383 </span>            :     // fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)</a>
-<a name="384"><span class="lineNum">     384 </span><span class="lineCov">         54 :     fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="384"><span class="lineNum">     384 </span><span class="lineCov">         27 :     fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="385"><span class="lineNum">     385 </span>            :     {</a>
-<a name="386"><span class="lineNum">     386 </span><span class="lineCov">         54 :       m_powerMgtEnabled = true;</span></a>
-<a name="387"><span class="lineNum">     387 </span><span class="lineCov">         54 :       m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)</span></a>
-<a name="388"><span class="lineNum">     388 </span><span class="lineCov">         54 :       return;</span></a>
+<a name="386"><span class="lineNum">     386 </span><span class="lineCov">         27 :       m_powerMgtEnabled = true;</span></a>
+<a name="387"><span class="lineNum">     387 </span><span class="lineCov">         27 :       m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)</span></a>
+<a name="388"><span class="lineNum">     388 </span><span class="lineCov">         27 :       return;</span></a>
 <a name="389"><span class="lineNum">     389 </span><span class="lineNoCov">          0 :     }</span></a>
 <a name="390"><span class="lineNum">     390 </span>            : </a>
 <a name="391"><span class="lineNum">     391 </span><span class="lineNoCov">          0 :     void fsmCtrl::setupConfig()</span></a>
@@ -1111,10 +1111,10 @@
 <a name="1049"><span class="lineNum">    1049 </span>            : </a>
 <a name="1050"><span class="lineNum">    1050 </span>            :     // callback from setting m_indiP_val1</a>
 <a name="1051"><span class="lineNum">    1051 </span>            :     // only 'target' is editable ('current' should be updated by code)</a>
-<a name="1052"><span class="lineNum">    1052 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val1)</span></a>
+<a name="1052"><span class="lineNum">    1052 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val1)</span></a>
 <a name="1053"><span class="lineNum">    1053 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1054"><span class="lineNum">    1054 </span>            :     {</a>
-<a name="1055"><span class="lineNum">    1055 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val1, ipRecv);</span></a>
+<a name="1055"><span class="lineNum">    1055 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val1, ipRecv);</span></a>
 <a name="1056"><span class="lineNum">    1056 </span>            : </a>
 <a name="1057"><span class="lineNum">    1057 </span>            :       float current = -999999, target = -999999;</a>
 <a name="1058"><span class="lineNum">    1058 </span>            : </a>
@@ -1170,10 +1170,10 @@
 <a name="1108"><span class="lineNum">    1108 </span>            : </a>
 <a name="1109"><span class="lineNum">    1109 </span>            :     // callback from setting m_indiP_val2</a>
 <a name="1110"><span class="lineNum">    1110 </span>            :     // only 'target' is editable ('current' should be updated by code)</a>
-<a name="1111"><span class="lineNum">    1111 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val2)</span></a>
+<a name="1111"><span class="lineNum">    1111 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val2)</span></a>
 <a name="1112"><span class="lineNum">    1112 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1113"><span class="lineNum">    1113 </span>            :     {</a>
-<a name="1114"><span class="lineNum">    1114 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val2, ipRecv);</span></a>
+<a name="1114"><span class="lineNum">    1114 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val2, ipRecv);</span></a>
 <a name="1115"><span class="lineNum">    1115 </span>            :       float current = -999999, target = -999999;</a>
 <a name="1116"><span class="lineNum">    1116 </span>            : </a>
 <a name="1117"><span class="lineNum">    1117 </span>            :       if (ipRecv.find(&quot;current&quot;))</a>
@@ -1230,10 +1230,10 @@
 <a name="1168"><span class="lineNum">    1168 </span>            : </a>
 <a name="1169"><span class="lineNum">    1169 </span>            :     // callback from setting m_indiP_val3</a>
 <a name="1170"><span class="lineNum">    1170 </span>            :     // only 'target' is editable ('current' should be updated by code)</a>
-<a name="1171"><span class="lineNum">    1171 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val3)</span></a>
+<a name="1171"><span class="lineNum">    1171 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val3)</span></a>
 <a name="1172"><span class="lineNum">    1172 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1173"><span class="lineNum">    1173 </span>            :     {</a>
-<a name="1174"><span class="lineNum">    1174 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val3, ipRecv);</span></a>
+<a name="1174"><span class="lineNum">    1174 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val3, ipRecv);</span></a>
 <a name="1175"><span class="lineNum">    1175 </span>            :       float current = -999999, target = -999999;</a>
 <a name="1176"><span class="lineNum">    1176 </span>            : </a>
 <a name="1177"><span class="lineNum">    1177 </span>            :       if (ipRecv.find(&quot;current&quot;))</a>
@@ -1289,10 +1289,10 @@
 <a name="1227"><span class="lineNum">    1227 </span>            :     }</a>
 <a name="1228"><span class="lineNum">    1228 </span>            : </a>
 <a name="1229"><span class="lineNum">    1229 </span>            :     // callback from setting conversion_factors</a>
-<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_conversion_factors)</span></a>
+<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_conversion_factors)</span></a>
 <a name="1231"><span class="lineNum">    1231 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1232"><span class="lineNum">    1232 </span>            :     {</a>
-<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_conversion_factors, ipRecv);</span></a>
+<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_conversion_factors, ipRecv);</span></a>
 <a name="1234"><span class="lineNum">    1234 </span>            :       if (ipRecv.find(&quot;B&quot;))</a>
 <a name="1235"><span class="lineNum">    1235 </span>            :       {</a>
 <a name="1236"><span class="lineNum">    1236 </span>            :         m_B = ipRecv[&quot;B&quot;].get&lt;float&gt;();</a>
@@ -1329,10 +1329,10 @@
 <a name="1267"><span class="lineNum">    1267 </span>            :     }</a>
 <a name="1268"><span class="lineNum">    1268 </span>            : </a>
 <a name="1269"><span class="lineNum">    1269 </span>            :     // callback from setting m_indiP_input (dacs, voltages, ttp)</a>
-<a name="1270"><span class="lineNum">    1270 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_input)</span></a>
+<a name="1270"><span class="lineNum">    1270 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_input)</span></a>
 <a name="1271"><span class="lineNum">    1271 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1272"><span class="lineNum">    1272 </span>            :     {</a>
-<a name="1273"><span class="lineNum">    1273 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_input, ipRecv);</span></a>
+<a name="1273"><span class="lineNum">    1273 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_input, ipRecv);</span></a>
 <a name="1274"><span class="lineNum">    1274 </span>            :       if (ipRecv.find(&quot;type&quot;))</a>
 <a name="1275"><span class="lineNum">    1275 </span>            :       {</a>
 <a name="1276"><span class="lineNum">    1276 </span>            :         std::string type = ipRecv[&quot;type&quot;].get&lt;std::string&gt;();</a>
@@ -1383,10 +1383,10 @@
 <a name="1321"><span class="lineNum">    1321 </span>            :     }</a>
 <a name="1322"><span class="lineNum">    1322 </span>            : </a>
 <a name="1323"><span class="lineNum">    1323 </span>            :     // callback from setting m_indiP_dac1 (min, max)</a>
-<a name="1324"><span class="lineNum">    1324 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac1)</span></a>
+<a name="1324"><span class="lineNum">    1324 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac1)</span></a>
 <a name="1325"><span class="lineNum">    1325 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1326"><span class="lineNum">    1326 </span>            :     {</a>
-<a name="1327"><span class="lineNum">    1327 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac1, ipRecv);</span></a>
+<a name="1327"><span class="lineNum">    1327 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac1, ipRecv);</span></a>
 <a name="1328"><span class="lineNum">    1328 </span>            : </a>
 <a name="1329"><span class="lineNum">    1329 </span>            :       std::ostringstream oss;</a>
 <a name="1330"><span class="lineNum">    1330 </span>            : </a>
@@ -1409,10 +1409,10 @@
 <a name="1347"><span class="lineNum">    1347 </span>            :     }</a>
 <a name="1348"><span class="lineNum">    1348 </span>            : </a>
 <a name="1349"><span class="lineNum">    1349 </span>            :     // callback from setting m_indiP_dac2 (min, max)</a>
-<a name="1350"><span class="lineNum">    1350 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac2)</span></a>
+<a name="1350"><span class="lineNum">    1350 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac2)</span></a>
 <a name="1351"><span class="lineNum">    1351 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1352"><span class="lineNum">    1352 </span>            :     {</a>
-<a name="1353"><span class="lineNum">    1353 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac2, ipRecv);</span></a>
+<a name="1353"><span class="lineNum">    1353 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac2, ipRecv);</span></a>
 <a name="1354"><span class="lineNum">    1354 </span>            : </a>
 <a name="1355"><span class="lineNum">    1355 </span>            :       std::ostringstream oss;</a>
 <a name="1356"><span class="lineNum">    1356 </span>            : </a>
@@ -1434,10 +1434,10 @@
 <a name="1372"><span class="lineNum">    1372 </span>            :     }</a>
 <a name="1373"><span class="lineNum">    1373 </span>            : </a>
 <a name="1374"><span class="lineNum">    1374 </span>            :     // callback from setting m_indiP_dac3 (min, max)</a>
-<a name="1375"><span class="lineNum">    1375 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac3)</span></a>
+<a name="1375"><span class="lineNum">    1375 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac3)</span></a>
 <a name="1376"><span class="lineNum">    1376 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1377"><span class="lineNum">    1377 </span>            :     {</a>
-<a name="1378"><span class="lineNum">    1378 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac3, ipRecv);</span></a>
+<a name="1378"><span class="lineNum">    1378 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac3, ipRecv);</span></a>
 <a name="1379"><span class="lineNum">    1379 </span>            : </a>
 <a name="1380"><span class="lineNum">    1380 </span>            :       std::ostringstream oss;</a>
 <a name="1381"><span class="lineNum">    1381 </span>            : </a>
@@ -1483,10 +1483,10 @@
 <a name="1421"><span class="lineNum">    1421 </span>            :     // }</a>
 <a name="1422"><span class="lineNum">    1422 </span>            : </a>
 <a name="1423"><span class="lineNum">    1423 </span>            :     // callback from setting m_indiP_query - trigger adc or dac query</a>
-<a name="1424"><span class="lineNum">    1424 </span><span class="lineCov">          6 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_query)</span></a>
+<a name="1424"><span class="lineNum">    1424 </span><span class="lineCov">          3 :     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_query)</span></a>
 <a name="1425"><span class="lineNum">    1425 </span>            :     (const pcf::IndiProperty &amp;ipRecv)</a>
 <a name="1426"><span class="lineNum">    1426 </span>            :     {</a>
-<a name="1427"><span class="lineNum">    1427 </span><span class="lineCov">          6 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_query, ipRecv);</span></a>
+<a name="1427"><span class="lineNum">    1427 </span><span class="lineCov">          3 :       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_query, ipRecv);</span></a>
 <a name="1428"><span class="lineNum">    1428 </span>            : </a>
 <a name="1429"><span class="lineNum">    1429 </span>            :       if (ipRecv.find(&quot;query&quot;))</a>
 <a name="1430"><span class="lineNum">    1430 </span>            :       {</a>

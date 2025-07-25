@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-25 18:35:20</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">8</td>
@@ -158,8 +158,8 @@
 <a name="96"><span class="lineNum">      96 </span>            :    adcTracker();</a>
 <a name="97"><span class="lineNum">      97 </span>            : </a>
 <a name="98"><span class="lineNum">      98 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="99"><span class="lineNum">      99 </span><span class="lineCov">         36 :    ~adcTracker() noexcept</span></a>
-<a name="100"><span class="lineNum">     100 </span><span class="lineCov">         36 :    {}</span></a>
+<a name="99"><span class="lineNum">      99 </span><span class="lineCov">         18 :    ~adcTracker() noexcept</span></a>
+<a name="100"><span class="lineNum">     100 </span><span class="lineCov">         18 :    {}</span></a>
 <a name="101"><span class="lineNum">     101 </span>            : </a>
 <a name="102"><span class="lineNum">     102 </span>            :    virtual void setupConfig();</a>
 <a name="103"><span class="lineNum">     103 </span>            : </a>
@@ -227,10 +227,10 @@
 <a name="165"><span class="lineNum">     165 </span>            :    ///@}</a>
 <a name="166"><span class="lineNum">     166 </span>            : };</a>
 <a name="167"><span class="lineNum">     167 </span>            : </a>
-<a name="168"><span class="lineNum">     168 </span><span class="lineCov">         36 : adcTracker::adcTracker() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="168"><span class="lineNum">     168 </span><span class="lineCov">         18 : adcTracker::adcTracker() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="169"><span class="lineNum">     169 </span>            : {</a>
 <a name="170"><span class="lineNum">     170 </span>            :    </a>
-<a name="171"><span class="lineNum">     171 </span><span class="lineCov">         36 :    return;</span></a>
+<a name="171"><span class="lineNum">     171 </span><span class="lineCov">         18 :    return;</span></a>
 <a name="172"><span class="lineNum">     172 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="173"><span class="lineNum">     173 </span>            : </a>
 <a name="174"><span class="lineNum">     174 </span><span class="lineNoCov">          0 : void adcTracker::setupConfig()</span></a>
@@ -402,9 +402,9 @@
 <a name="340"><span class="lineNum">     340 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="341"><span class="lineNum">     341 </span>            : }</a>
 <a name="342"><span class="lineNum">     342 </span>            : </a>
-<a name="343"><span class="lineNum">     343 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_tracking)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="343"><span class="lineNum">     343 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_tracking)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="344"><span class="lineNum">     344 </span>            : {</a>
-<a name="345"><span class="lineNum">     345 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tracking, ipRecv);</span></a>
+<a name="345"><span class="lineNum">     345 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tracking, ipRecv);</span></a>
 <a name="346"><span class="lineNum">     346 </span>            :    </a>
 <a name="347"><span class="lineNum">     347 </span>            :    if(!ipRecv.find(&quot;toggle&quot;)) return 0;</a>
 <a name="348"><span class="lineNum">     348 </span>            :    </a>
@@ -428,9 +428,9 @@
 <a name="366"><span class="lineNum">     366 </span>            :    return 0;</a>
 <a name="367"><span class="lineNum">     367 </span>            : }</a>
 <a name="368"><span class="lineNum">     368 </span>            : </a>
-<a name="369"><span class="lineNum">     369 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaAngle)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="369"><span class="lineNum">     369 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaAngle)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="370"><span class="lineNum">     370 </span>            : {</a>
-<a name="371"><span class="lineNum">     371 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaAngle, ipRecv);</span></a>
+<a name="371"><span class="lineNum">     371 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaAngle, ipRecv);</span></a>
 <a name="372"><span class="lineNum">     372 </span>            : </a>
 <a name="373"><span class="lineNum">     373 </span>            :    float target;</a>
 <a name="374"><span class="lineNum">     374 </span>            :    </a>
@@ -451,9 +451,9 @@
 <a name="389"><span class="lineNum">     389 </span>            :    return 0;</a>
 <a name="390"><span class="lineNum">     390 </span>            : }</a>
 <a name="391"><span class="lineNum">     391 </span>            : </a>
-<a name="392"><span class="lineNum">     392 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaADC1)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="392"><span class="lineNum">     392 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaADC1)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="393"><span class="lineNum">     393 </span>            : {</a>
-<a name="394"><span class="lineNum">     394 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaADC1, ipRecv);</span></a>
+<a name="394"><span class="lineNum">     394 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaADC1, ipRecv);</span></a>
 <a name="395"><span class="lineNum">     395 </span>            : </a>
 <a name="396"><span class="lineNum">     396 </span>            :    float target;</a>
 <a name="397"><span class="lineNum">     397 </span>            :    </a>
@@ -474,9 +474,9 @@
 <a name="412"><span class="lineNum">     412 </span>            :    return 0;</a>
 <a name="413"><span class="lineNum">     413 </span>            : }</a>
 <a name="414"><span class="lineNum">     414 </span>            : </a>
-<a name="415"><span class="lineNum">     415 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaADC2)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="415"><span class="lineNum">     415 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_deltaADC2)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="416"><span class="lineNum">     416 </span>            : {</a>
-<a name="417"><span class="lineNum">     417 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaADC2, ipRecv);</span></a>
+<a name="417"><span class="lineNum">     417 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_deltaADC2, ipRecv);</span></a>
 <a name="418"><span class="lineNum">     418 </span>            : </a>
 <a name="419"><span class="lineNum">     419 </span>            :    float target;</a>
 <a name="420"><span class="lineNum">     420 </span>            :    </a>
@@ -497,9 +497,9 @@
 <a name="435"><span class="lineNum">     435 </span>            :    return 0;</a>
 <a name="436"><span class="lineNum">     436 </span>            : }</a>
 <a name="437"><span class="lineNum">     437 </span>            : </a>
-<a name="438"><span class="lineNum">     438 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_minZD)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="438"><span class="lineNum">     438 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(adcTracker, m_indiP_minZD)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="439"><span class="lineNum">     439 </span>            : {</a>
-<a name="440"><span class="lineNum">     440 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_minZD, ipRecv);</span></a>
+<a name="440"><span class="lineNum">     440 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_minZD, ipRecv);</span></a>
 <a name="441"><span class="lineNum">     441 </span>            : </a>
 <a name="442"><span class="lineNum">     442 </span>            :    float target;</a>
 <a name="443"><span class="lineNum">     443 </span>            :    </a>
@@ -520,9 +520,9 @@
 <a name="458"><span class="lineNum">     458 </span>            :    return 0;</a>
 <a name="459"><span class="lineNum">     459 </span>            : }</a>
 <a name="460"><span class="lineNum">     460 </span>            : </a>
-<a name="461"><span class="lineNum">     461 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN(adcTracker, m_indiP_teldata)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="461"><span class="lineNum">     461 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN(adcTracker, m_indiP_teldata)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="462"><span class="lineNum">     462 </span>            : {</a>
-<a name="463"><span class="lineNum">     463 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_teldata, ipRecv);</span></a>
+<a name="463"><span class="lineNum">     463 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_teldata, ipRecv);</span></a>
 <a name="464"><span class="lineNum">     464 </span>            : </a>
 <a name="465"><span class="lineNum">     465 </span>            :    </a>
 <a name="466"><span class="lineNum">     466 </span>            :    if(!ipRecv.find(&quot;zd&quot;)) return 0;</a>
