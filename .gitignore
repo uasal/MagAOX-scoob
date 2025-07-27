@@ -95,11 +95,12 @@ apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
 #m
+apps/mcp3008Ctrl/mcp3008Ctrl
+apps/modalGainOpt/modalGainOpt
+apps/modalPSDs/modalPSDs
 apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
-
 apps/mzmqClient/mzmqClient
-apps/modalPSDs/modalPSDs
 
 #o
 apps/observerCtrl/observerCtrl
@@ -169,10 +170,12 @@ apps/zylaCtrl/zylaCtrl
 #Executables and util specifics to ignore:
 
 
+utils/instGraph/instGraph
 utils/logdump/logdump
 utils/logsurgeon/logsurgeon
 utils/cursesINDI/cursesINDI
 utils/logstream/logstream
+utils/shmimPlot/shmimPlot
 utils/xrif2shmim/xrif2shmim
 utils/xrif2fits/xrif2fits
 

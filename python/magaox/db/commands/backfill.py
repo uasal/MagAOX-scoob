@@ -27,6 +27,8 @@ from magaox.utils import parse_iso_datetime_as_utc, utcnow, xfilename_to_utc_tim
 
 log = logging.getLogger(__name__)
 
+class LogDumpError(Exception):
+    pass
 
 @xconf.config
 class Backfill(BaseDbCommand):
@@ -65,7 +67,9 @@ class Backfill(BaseDbCommand):
             message = Telem.from_json(name, line)
             records.append(message)
         p.wait()
-        if p.returncode != 0:
+        if p.returncode == 255:
+            raise LogDumpError(f"{name} logdump exited with {p.returncode} ({repr(' '.join(args))})")
+        elif p.returncode != 0:
             raise RuntimeError(
                 f"{name} logdump exited with {p.returncode} ({repr(' '.join(args))})"
             )
@@ -126,6 +130,8 @@ class Backfill(BaseDbCommand):
             for ft in concurrent.futures.as_completed(futures_to_paths.keys()):
                 try:
                     log.debug(f"Finished {ft.result()}")
+                except LogDumpError as e:
+                    log.error(f"logdump exited with exit code 255 on {futures_to_paths[ft]}")
                 except Exception as e:
                     log.exception(f"Failed to process telem file {futures_to_paths[ft]}")
                 pbar.update()

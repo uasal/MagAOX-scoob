@@ -1,11 +1,7 @@
 /** \file magAOXApp.hpp
- * \brief The basic MagAO-X Application
- * \author Jared R. Males (jaredmales@gmail.com)
- *
- * History:
- * - 2017-12-24 created by JRM
- *
- * \ingroup app_files
+ *  \brief The basic MagAO-X Application
+ *  \author Jared R. Males (jaredmales@gmail.com)
+ *  \ingroup app_files
  */
 
 #ifndef app_MagAOXApp_hpp
@@ -53,18 +49,75 @@ namespace MagAOX
 namespace app
 {
 
-/// The base-class for MagAO-X applications.
+/** \addtogroup magaoxapp
+ *
+ * A typical XWCApp is the interface to a single piece of hardware, such as a camera or a filter wheel.
+ * Through various optional CRTP base classes, many different standard functionalities can be included.
+ * The following figure illustrates the facilities provided by a typical app.
+ *
+ * \image html xwcapp.png "Block diagram of a typical XWCApp. Note that ImageStreamIO (ISIO) is not included by default, but there are several ways to interface with 'image streams' provided in XWCTk.  Many different hardware device interfaces are similarly provided."
+ *
+ * The following figure illustrates the logic of the XWCApp finite state machine (FSM).
+ *
+ * \image html xwcapp_fsm.png "The XWCApp FSM. The blue sequence highlights the normal 'appLogic' loop."
+
+ *
+ *
+ *
+*/
+
+
+/// The base-class for XWCTk applications.
 /**
+ * This class implements the standard logic for an XWCTk application, including PID locking,
+ * privilege management, configuration, logging, INDI communications, and a finite state machine (FSM).
+ *
+ *
+ *
+ * This class is inherited using standard virtual inheritance. The virtual interface consists of the
+ * following functions:
+ *
+ *  - \ref virtual void loadConfig();
+ *
+ * \code
+ *     /// Setup the configuration system (called by MagAOXApp::setup())
+ *     virtual void setupConfig();
+ *
+ *     /// load the configuration system results (called by MagAOXApp::setup())
+ *     virtual void loadConfig();
+ *
+ *     /// Startup functions
+ *
+ *     /// Sets up the INDI vars, starts any threads, and other preparatory tasks.
+ *     virtual int appStartup();
+ *
+ *     /// Implementation of the FSM specific to the application
+ *     virtual int appLogic();
+ *
+ *     /// Implementation of the on-power-off logic (called once on change to POWEROFF)
+ *     virtual int onPowerOff();
+ *
+ *     /// Implementation of the while-powered-off logic (called every loop while powered off)
+ *     virtual int whilePowerOff();
+ *
+ *     /// Do any needed shutdown tasks.
+ *     virtual int appShutdown();
+ *
+ * \endcode
+ *
+ *
+ * Standard configurable options are set in \ref setupBasicConfig().  See either the source code for that function
+ * or run an application with `-h`.
+ *
  * You can define a base configuration file for this class by defining
  * \code
- *  m_configBase = "base_name";
- *  \endcode
+ *     m_configBase = "base_name";
+ * \endcode
  * in the derived class constructor. This would be used, for instance to have a config common to
  * all filter wheels.
  *
  *
- * \todo make m_powerMgtEnabled a template parameter, and static_assert check if _useINDI== false and power management
- * is true
+ * \todo add a check if _useINDI== false and power management is true
  *
  * \ingroup magaoxapp
  */
@@ -469,8 +522,8 @@ class MagAOXApp : public application
      * @{
      */
   private:
-    stateCodes::stateCodeT m_state{ stateCodes::UNINITIALIZED }; ///< The application's state.  Never ever set this
-                                                                 ///< directly, use state(const stateCodeT & s).
+    stateCodes::stateCodeT m_state{ stateCodes::UNINITIALIZED }; /**< The application's state.  Never ever set this
+                                                                      directly, use state(const stateCodeT & s).*/
 
     bool m_stateAlert{ false }; // Flag to control whether the FSM is in an alert state.  Once set, only user
                                 // acknowledgement can change this.
@@ -927,6 +980,14 @@ class MagAOXApp : public application
     template <typename T>
     void updateIfChanged( pcf::IndiProperty &p, ///< [in/out] The property containing the element to possibly update
                           const std::vector<std::string> &els, ///< [in] String vector of element names
+                          const std::vector<T> &newVals,       ///< [in] the new values
+                          pcf::IndiProperty::PropertyStateType newState =
+                              pcf::IndiProperty::Ok ///< [in] [optional] The state of the property
+    );
+
+    template <typename T>
+    void updatesIfChanged( pcf::IndiProperty &p, ///< [in/out] The property containing the element to possibly update
+                          const std::vector<const char *> &els, ///< [in] String vector of element names
                           const std::vector<T> &newVals,       ///< [in] the new values
                           pcf::IndiProperty::PropertyStateType newState =
                               pcf::IndiProperty::Ok ///< [in] [optional] The state of the property
@@ -2273,11 +2334,11 @@ int MagAOXApp<_useINDI>::threadStart( std::thread &thrd,
                 return log<software_error, -1>( { __FILE__, __LINE__, errno, "error from open for " + cpuFile } );
             }
 
-            char pids[16];
+            char pids[128];
             snprintf( pids, sizeof( pids ), "%d", tpid );
 
             int w = write( wfd, pids, strnlen( pids, sizeof( pids ) ) );
-            if( w != (int)strlen( pids ) )
+            if( w != (int)strnlen( pids, sizeof(pids) ) )
             {
                 return log<software_error, -1>( { __FILE__, __LINE__, errno, "error on write" } );
             }
@@ -3194,6 +3255,26 @@ void MagAOXApp<_useINDI>::updateIfChanged( pcf::IndiProperty &p,
 
 template <bool _useINDI>
 template <typename T>
+void MagAOXApp<_useINDI>::updatesIfChanged( pcf::IndiProperty &p,
+                                           const std::vector<const char *> &els,
+                                           const std::vector<T> &newVals,
+                                           pcf::IndiProperty::PropertyStateType newState )
+{
+    if( !_useINDI )
+    {
+        return;
+    }
+
+    if( !m_indiDriver )
+    {
+        return;
+    }
+
+    indi::updatesIfChanged( p, els, newVals, m_indiDriver, newState );
+}
+
+template <bool _useINDI>
+template <typename T>
 int MagAOXApp<_useINDI>::indiTargetUpdate( pcf::IndiProperty &localProperty,
                                            T &localTarget,
                                            const pcf::IndiProperty &remoteProperty,
@@ -3397,7 +3478,9 @@ template <bool _useINDI>
 bool MagAOXApp<_useINDI>::powerOnWaitElapsed()
 {
     if( !m_powerMgtEnabled || m_powerOnWait == 0 || m_powerOnCounter < 0 )
+    {
         return true;
+    }
 
     if( m_powerOnCounter * m_loopPause > ( (double)m_powerOnWait ) * 1e9 )
     {
