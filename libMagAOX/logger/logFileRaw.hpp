@@ -3,7 +3,7 @@
   * \author Jared R. Males (jaredmales@gmail.com)
   *
   * \ingroup logger_files
-  * 
+  *
   * History:
   * - 2017-08-28 created by JRM
   */
@@ -138,8 +138,7 @@ public:
      * \returns 0 on success
      * \returns -1 on error
      */
-   int writeLog( flatlogs::bufferPtrT & data ///< [in] the log entry to write to disk
-               );
+   int writeLog( flatlogs::bufferPtrT & data /**< [in] the log entry to write to disk */ );
 
    /// Flush the stream
    /**
