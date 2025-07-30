@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">7</td>
@@ -127,8 +127,8 @@
 <a name="65"><span class="lineNum">      65 </span>            :    zaberLowLevel();</a>
 <a name="66"><span class="lineNum">      66 </span>            : </a>
 <a name="67"><span class="lineNum">      67 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="68"><span class="lineNum">      68 </span><span class="lineCov">         42 :    ~zaberLowLevel() noexcept</span></a>
-<a name="69"><span class="lineNum">      69 </span><span class="lineCov">         42 :    {}</span></a>
+<a name="68"><span class="lineNum">      68 </span><span class="lineCov">         21 :    ~zaberLowLevel() noexcept</span></a>
+<a name="69"><span class="lineNum">      69 </span><span class="lineCov">         21 :    {}</span></a>
 <a name="70"><span class="lineNum">      70 </span>            : </a>
 <a name="71"><span class="lineNum">      71 </span>            :    virtual void setupConfig();</a>
 <a name="72"><span class="lineNum">      72 </span>            : </a>
@@ -196,11 +196,11 @@
 <a name="134"><span class="lineNum">     134 </span>            :    </a>
 <a name="135"><span class="lineNum">     135 </span>            : };</a>
 <a name="136"><span class="lineNum">     136 </span>            : </a>
-<a name="137"><span class="lineNum">     137 </span><span class="lineCov">         42 : zaberLowLevel::zaberLowLevel() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="137"><span class="lineNum">     137 </span><span class="lineCov">         21 : zaberLowLevel::zaberLowLevel() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="138"><span class="lineNum">     138 </span>            : {</a>
-<a name="139"><span class="lineNum">     139 </span><span class="lineCov">         42 :    m_powerMgtEnabled = true;</span></a>
+<a name="139"><span class="lineNum">     139 </span><span class="lineCov">         21 :    m_powerMgtEnabled = true;</span></a>
 <a name="140"><span class="lineNum">     140 </span>            :    </a>
-<a name="141"><span class="lineNum">     141 </span><span class="lineCov">         42 :    return;</span></a>
+<a name="141"><span class="lineNum">     141 </span><span class="lineCov">         21 :    return;</span></a>
 <a name="142"><span class="lineNum">     142 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="143"><span class="lineNum">     143 </span>            : </a>
 <a name="144"><span class="lineNum">     144 </span><span class="lineNoCov">          0 : void zaberLowLevel::setupConfig()</span></a>
@@ -809,9 +809,9 @@
 <a name="747"><span class="lineNum">     747 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="748"><span class="lineNum">     748 </span>            : }</a>
 <a name="749"><span class="lineNum">     749 </span>            : </a>
-<a name="750"><span class="lineNum">     750 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_tgt_pos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="750"><span class="lineNum">     750 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_tgt_pos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="751"><span class="lineNum">     751 </span>            : {</a>
-<a name="752"><span class="lineNum">     752 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tgt_pos, ipRecv);</span></a>
+<a name="752"><span class="lineNum">     752 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tgt_pos, ipRecv);</span></a>
 <a name="753"><span class="lineNum">     753 </span>            : </a>
 <a name="754"><span class="lineNum">     754 </span><span class="lineNoCov">          0 :     for(size_t n=0; n &lt; m_stages.size(); ++n)</span></a>
 <a name="755"><span class="lineNum">     755 </span>            :     {</a>
@@ -835,9 +835,9 @@
 <a name="773"><span class="lineNum">     773 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="774"><span class="lineNum">     774 </span>            : }</a>
 <a name="775"><span class="lineNum">     775 </span>            : </a>
-<a name="776"><span class="lineNum">     776 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_tgt_relpos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="776"><span class="lineNum">     776 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_tgt_relpos)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="777"><span class="lineNum">     777 </span>            : {</a>
-<a name="778"><span class="lineNum">     778 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tgt_relpos, ipRecv);</span></a>
+<a name="778"><span class="lineNum">     778 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tgt_relpos, ipRecv);</span></a>
 <a name="779"><span class="lineNum">     779 </span>            : </a>
 <a name="780"><span class="lineNum">     780 </span><span class="lineNoCov">          0 :     for(size_t n=0; n &lt; m_stages.size(); ++n)</span></a>
 <a name="781"><span class="lineNum">     781 </span>            :     {</a>
@@ -862,9 +862,9 @@
 <a name="800"><span class="lineNum">     800 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="801"><span class="lineNum">     801 </span>            : }</a>
 <a name="802"><span class="lineNum">     802 </span>            : </a>
-<a name="803"><span class="lineNum">     803 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_home)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="803"><span class="lineNum">     803 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_home)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="804"><span class="lineNum">     804 </span>            : {</a>
-<a name="805"><span class="lineNum">     805 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_home, ipRecv);</span></a>
+<a name="805"><span class="lineNum">     805 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_home, ipRecv);</span></a>
 <a name="806"><span class="lineNum">     806 </span>            : </a>
 <a name="807"><span class="lineNum">     807 </span><span class="lineNoCov">          0 :     for(size_t n=0; n &lt; m_stages.size(); ++n)</span></a>
 <a name="808"><span class="lineNum">     808 </span>            :     {</a>
@@ -886,9 +886,9 @@
 <a name="824"><span class="lineNum">     824 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="825"><span class="lineNum">     825 </span>            : }</a>
 <a name="826"><span class="lineNum">     826 </span>            : </a>
-<a name="827"><span class="lineNum">     827 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_halt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="827"><span class="lineNum">     827 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_halt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="828"><span class="lineNum">     828 </span>            : {</a>
-<a name="829"><span class="lineNum">     829 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_halt, ipRecv);</span></a>
+<a name="829"><span class="lineNum">     829 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_halt, ipRecv);</span></a>
 <a name="830"><span class="lineNum">     830 </span>            : </a>
 <a name="831"><span class="lineNum">     831 </span>            : </a>
 <a name="832"><span class="lineNum">     832 </span><span class="lineNoCov">          0 :     for(size_t n=0; n &lt; m_stages.size(); ++n)</span></a>
@@ -912,9 +912,9 @@
 <a name="850"><span class="lineNum">     850 </span><span class="lineNoCov">          0 :    return 0;</span></a>
 <a name="851"><span class="lineNum">     851 </span>            : }</a>
 <a name="852"><span class="lineNum">     852 </span>            : </a>
-<a name="853"><span class="lineNum">     853 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_ehalt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="853"><span class="lineNum">     853 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(zaberLowLevel, m_indiP_req_ehalt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="854"><span class="lineNum">     854 </span>            : {</a>
-<a name="855"><span class="lineNum">     855 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_ehalt, ipRecv);</span></a>
+<a name="855"><span class="lineNum">     855 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_req_ehalt, ipRecv);</span></a>
 <a name="856"><span class="lineNum">     856 </span>            : </a>
 <a name="857"><span class="lineNum">     857 </span><span class="lineNoCov">          0 :     for(size_t n=0; n &lt; m_stages.size(); ++n)</span></a>
 <a name="858"><span class="lineNum">     858 </span>            :     {</a>

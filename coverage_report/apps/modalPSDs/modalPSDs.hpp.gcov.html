@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">5</td>
@@ -222,9 +222,9 @@
 <a name="160"><span class="lineNum">     160 </span>            :     modalPSDs();</a>
 <a name="161"><span class="lineNum">     161 </span>            : </a>
 <a name="162"><span class="lineNum">     162 </span>            :     /// D'tor, declared and defined for noexcept.</a>
-<a name="163"><span class="lineNum">     163 </span><span class="lineCov">         18 :     ~modalPSDs() noexcept</span></a>
-<a name="164"><span class="lineNum">     164 </span><span class="lineCov">         18 :     {</span></a>
-<a name="165"><span class="lineNum">     165 </span><span class="lineCov">         18 :     }</span></a>
+<a name="163"><span class="lineNum">     163 </span><span class="lineCov">          9 :     ~modalPSDs() noexcept</span></a>
+<a name="164"><span class="lineNum">     164 </span><span class="lineCov">          9 :     {</span></a>
+<a name="165"><span class="lineNum">     165 </span><span class="lineCov">          9 :     }</span></a>
 <a name="166"><span class="lineNum">     166 </span>            : </a>
 <a name="167"><span class="lineNum">     167 </span>            :     virtual void setupConfig();</a>
 <a name="168"><span class="lineNum">     168 </span>            : </a>
@@ -280,9 +280,9 @@
 <a name="218"><span class="lineNum">     218 </span><span class="lineNoCov">          0 :     INDI_SETCALLBACK_DECL( modalPSDs, m_indiP_fpsSource );</span></a>
 <a name="219"><span class="lineNum">     219 </span>            : };</a>
 <a name="220"><span class="lineNum">     220 </span>            : </a>
-<a name="221"><span class="lineNum">     221 </span><span class="lineCov">         18 : modalPSDs::modalPSDs() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )</span></a>
+<a name="221"><span class="lineNum">     221 </span><span class="lineCov">          9 : modalPSDs::modalPSDs() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )</span></a>
 <a name="222"><span class="lineNum">     222 </span>            : {</a>
-<a name="223"><span class="lineNum">     223 </span><span class="lineCov">         18 :     return;</span></a>
+<a name="223"><span class="lineNum">     223 </span><span class="lineCov">          9 :     return;</span></a>
 <a name="224"><span class="lineNum">     224 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="225"><span class="lineNum">     225 </span>            : </a>
 <a name="226"><span class="lineNum">     226 </span><span class="lineNoCov">          0 : void modalPSDs::setupConfig()</span></a>
@@ -968,9 +968,9 @@
 <a name="906"><span class="lineNum">     906 </span>            :     }</a>
 <a name="907"><span class="lineNum">     907 </span>            : }</a>
 <a name="908"><span class="lineNum">     908 </span>            : </a>
-<a name="909"><span class="lineNum">     909 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdTime )( const pcf::IndiProperty &amp;ipRecv )</span></a>
+<a name="909"><span class="lineNum">     909 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdTime )( const pcf::IndiProperty &amp;ipRecv )</span></a>
 <a name="910"><span class="lineNum">     910 </span>            : {</a>
-<a name="911"><span class="lineNum">     911 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdTime, ipRecv );</span></a>
+<a name="911"><span class="lineNum">     911 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdTime, ipRecv );</span></a>
 <a name="912"><span class="lineNum">     912 </span>            : </a>
 <a name="913"><span class="lineNum">     913 </span>            :     realT target;</a>
 <a name="914"><span class="lineNum">     914 </span>            : </a>
@@ -997,9 +997,9 @@
 <a name="935"><span class="lineNum">     935 </span>            :     return 0;</a>
 <a name="936"><span class="lineNum">     936 </span>            : } // INDI_NEWCALLBACK_DEFN(modalPSDs, m_indiP_psdTime)</a>
 <a name="937"><span class="lineNum">     937 </span>            : </a>
-<a name="938"><span class="lineNum">     938 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdAvgTime )( const pcf::IndiProperty &amp;ipRecv )</span></a>
+<a name="938"><span class="lineNum">     938 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN( modalPSDs, m_indiP_psdAvgTime )( const pcf::IndiProperty &amp;ipRecv )</span></a>
 <a name="939"><span class="lineNum">     939 </span>            : {</a>
-<a name="940"><span class="lineNum">     940 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdAvgTime, ipRecv );</span></a>
+<a name="940"><span class="lineNum">     940 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psdAvgTime, ipRecv );</span></a>
 <a name="941"><span class="lineNum">     941 </span>            : </a>
 <a name="942"><span class="lineNum">     942 </span>            :     realT target;</a>
 <a name="943"><span class="lineNum">     943 </span>            : </a>
@@ -1024,9 +1024,9 @@
 <a name="962"><span class="lineNum">     962 </span>            :     return 0;</a>
 <a name="963"><span class="lineNum">     963 </span>            : } // INDI_NEWCALLBACK_DEFN(modalPSDs, m_indiP_psdAvgTime)</a>
 <a name="964"><span class="lineNum">     964 </span>            : </a>
-<a name="965"><span class="lineNum">     965 </span><span class="lineCov">          6 : INDI_SETCALLBACK_DEFN( modalPSDs, m_indiP_fpsSource )( const pcf::IndiProperty &amp;ipRecv )</span></a>
+<a name="965"><span class="lineNum">     965 </span><span class="lineCov">          3 : INDI_SETCALLBACK_DEFN( modalPSDs, m_indiP_fpsSource )( const pcf::IndiProperty &amp;ipRecv )</span></a>
 <a name="966"><span class="lineNum">     966 </span>            : {</a>
-<a name="967"><span class="lineNum">     967 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_fpsSource, ipRecv );</span></a>
+<a name="967"><span class="lineNum">     967 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_fpsSource, ipRecv );</span></a>
 <a name="968"><span class="lineNum">     968 </span>            : </a>
 <a name="969"><span class="lineNum">     969 </span>            :     if( ipRecv.find( m_fpsElement ) != true ) // this isn't valid</a>
 <a name="970"><span class="lineNum">     970 </span>            :     {</a>

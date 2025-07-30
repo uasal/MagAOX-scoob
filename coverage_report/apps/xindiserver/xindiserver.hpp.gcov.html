@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">6</td>
@@ -118,48 +118,48 @@
 <a name="56"><span class="lineNum">      56 </span>            :   * \returns SSHTUNNEL_E_NOTUNNELS if no tunnels are found (&lt; 0).</a>
 <a name="57"><span class="lineNum">      57 </span>            :   */ </a>
 <a name="58"><span class="lineNum">      58 </span>            : inline </a>
-<a name="59"><span class="lineNum">      59 </span><span class="lineCov">         20 : int loadSSHTunnelConfigs( tunnelMapT &amp; tmap, ///&lt; [out] the tunnel map which will be populated</span></a>
+<a name="59"><span class="lineNum">      59 </span><span class="lineCov">         10 : int loadSSHTunnelConfigs( tunnelMapT &amp; tmap, ///&lt; [out] the tunnel map which will be populated</span></a>
 <a name="60"><span class="lineNum">      60 </span>            :                           mx::app::appConfigurator &amp; config ///&lt; [in] the configurator which contains tunnel specifications.</a>
 <a name="61"><span class="lineNum">      61 </span>            :                         )</a>
 <a name="62"><span class="lineNum">      62 </span>            : {</a>
-<a name="63"><span class="lineNum">      63 </span><span class="lineCov">         20 :    std::vector&lt;std::string&gt; sections;</span></a>
+<a name="63"><span class="lineNum">      63 </span><span class="lineCov">         10 :    std::vector&lt;std::string&gt; sections;</span></a>
 <a name="64"><span class="lineNum">      64 </span>            : </a>
-<a name="65"><span class="lineNum">      65 </span><span class="lineCov">         20 :    config.unusedSections(sections);</span></a>
+<a name="65"><span class="lineNum">      65 </span><span class="lineCov">         10 :    config.unusedSections(sections);</span></a>
 <a name="66"><span class="lineNum">      66 </span>            : </a>
-<a name="67"><span class="lineNum">      67 </span><span class="lineCov">         20 :    if( sections.size() == 0 )</span></a>
+<a name="67"><span class="lineNum">      67 </span><span class="lineCov">         10 :    if( sections.size() == 0 )</span></a>
 <a name="68"><span class="lineNum">      68 </span>            :    {</a>
 <a name="69"><span class="lineNum">      69 </span><span class="lineNoCov">          0 :       return SSHTUNNEL_E_NOTUNNELS;</span></a>
 <a name="70"><span class="lineNum">      70 </span>            :    }</a>
 <a name="71"><span class="lineNum">      71 </span>            : </a>
-<a name="72"><span class="lineNum">      72 </span><span class="lineCov">         20 :    size_t matched = 0;</span></a>
+<a name="72"><span class="lineNum">      72 </span><span class="lineCov">         10 :    size_t matched = 0;</span></a>
 <a name="73"><span class="lineNum">      73 </span>            :    </a>
 <a name="74"><span class="lineNum">      74 </span>            :    //Now see if any sections match a tunnel specification</a>
-<a name="75"><span class="lineNum">      75 </span><span class="lineCov">         52 :    for(size_t i=0; i&lt; sections.size(); ++i)</span></a>
+<a name="75"><span class="lineNum">      75 </span><span class="lineCov">         26 :    for(size_t i=0; i&lt; sections.size(); ++i)</span></a>
 <a name="76"><span class="lineNum">      76 </span>            :    {</a>
 <a name="77"><span class="lineNum">      77 </span>            :       //A tunnel as remoteHost, localPort, and remotePort.</a>
-<a name="78"><span class="lineNum">      78 </span><span class="lineCov">         64 :       if( config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;remoteHost&quot; )) &amp;&amp;</span></a>
-<a name="79"><span class="lineNum">      79 </span><span class="lineCov">        128 :              config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;localPort&quot; )) &amp;&amp;</span></a>
-<a name="80"><span class="lineNum">      80 </span><span class="lineCov">         64 :                 config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;remotePort&quot; )) )</span></a>
+<a name="78"><span class="lineNum">      78 </span><span class="lineCov">         32 :       if( config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;remoteHost&quot; )) &amp;&amp;</span></a>
+<a name="79"><span class="lineNum">      79 </span><span class="lineCov">         64 :              config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;localPort&quot; )) &amp;&amp;</span></a>
+<a name="80"><span class="lineNum">      80 </span><span class="lineCov">         32 :                 config.isSetUnused(mx::app::iniFile::makeKey(sections[i], &quot;remotePort&quot; )) )</span></a>
 <a name="81"><span class="lineNum">      81 </span>            :       {</a>
 <a name="82"><span class="lineNum">      82 </span>            :          </a>
-<a name="83"><span class="lineNum">      83 </span><span class="lineCov">         30 :          std::string remoteHost;</span></a>
-<a name="84"><span class="lineNum">      84 </span><span class="lineCov">         30 :          int localPort = 0;</span></a>
-<a name="85"><span class="lineNum">      85 </span><span class="lineCov">         30 :          bool compress = false;</span></a>
+<a name="83"><span class="lineNum">      83 </span><span class="lineCov">         15 :          std::string remoteHost;</span></a>
+<a name="84"><span class="lineNum">      84 </span><span class="lineCov">         15 :          int localPort = 0;</span></a>
+<a name="85"><span class="lineNum">      85 </span><span class="lineCov">         15 :          bool compress = false;</span></a>
 <a name="86"><span class="lineNum">      86 </span>            : </a>
-<a name="87"><span class="lineNum">      87 </span><span class="lineCov">         30 :          config.configUnused( remoteHost, mx::app::iniFile::makeKey(sections[i], &quot;remoteHost&quot; ) );</span></a>
-<a name="88"><span class="lineNum">      88 </span><span class="lineCov">         30 :          config.configUnused( localPort, mx::app::iniFile::makeKey(sections[i], &quot;localPort&quot; ) );</span></a>
-<a name="89"><span class="lineNum">      89 </span><span class="lineCov">         30 :          config.configUnused( compress, mx::app::iniFile::makeKey(sections[i], &quot;compress&quot; ) );</span></a>
+<a name="87"><span class="lineNum">      87 </span><span class="lineCov">         15 :          config.configUnused( remoteHost, mx::app::iniFile::makeKey(sections[i], &quot;remoteHost&quot; ) );</span></a>
+<a name="88"><span class="lineNum">      88 </span><span class="lineCov">         15 :          config.configUnused( localPort, mx::app::iniFile::makeKey(sections[i], &quot;localPort&quot; ) );</span></a>
+<a name="89"><span class="lineNum">      89 </span><span class="lineCov">         15 :          config.configUnused( compress, mx::app::iniFile::makeKey(sections[i], &quot;compress&quot; ) );</span></a>
 <a name="90"><span class="lineNum">      90 </span>            : </a>
-<a name="91"><span class="lineNum">      91 </span><span class="lineCov">         30 :          tmap[sections[i]] = sshTunnel({remoteHost, localPort});</span></a>
+<a name="91"><span class="lineNum">      91 </span><span class="lineCov">         15 :          tmap[sections[i]] = sshTunnel({remoteHost, localPort});</span></a>
 <a name="92"><span class="lineNum">      92 </span>            :       </a>
-<a name="93"><span class="lineNum">      93 </span><span class="lineCov">         30 :          ++matched;</span></a>
-<a name="94"><span class="lineNum">      94 </span><span class="lineCov">         30 :       }</span></a>
+<a name="93"><span class="lineNum">      93 </span><span class="lineCov">         15 :          ++matched;</span></a>
+<a name="94"><span class="lineNum">      94 </span><span class="lineCov">         15 :       }</span></a>
 <a name="95"><span class="lineNum">      95 </span>            :    }</a>
 <a name="96"><span class="lineNum">      96 </span>            : </a>
-<a name="97"><span class="lineNum">      97 </span><span class="lineCov">         20 :    if(matched == 0) return SSHTUNNEL_E_NOTUNNELS;</span></a>
+<a name="97"><span class="lineNum">      97 </span><span class="lineCov">         10 :    if(matched == 0) return SSHTUNNEL_E_NOTUNNELS;</span></a>
 <a name="98"><span class="lineNum">      98 </span>            :    </a>
-<a name="99"><span class="lineNum">      99 </span><span class="lineCov">         20 :    return 0;</span></a>
-<a name="100"><span class="lineNum">     100 </span><span class="lineCov">         20 : }</span></a>
+<a name="99"><span class="lineNum">      99 </span><span class="lineCov">         10 :    return 0;</span></a>
+<a name="100"><span class="lineNum">     100 </span><span class="lineCov">         10 : }</span></a>
 <a name="101"><span class="lineNum">     101 </span>            : </a>
 <a name="102"><span class="lineNum">     102 </span>            : </a>
 <a name="103"><span class="lineNum">     103 </span>            : #define XINDISERVER_E_BADDRIVERSPEC (-100)</a>
@@ -214,8 +214,8 @@
 <a name="152"><span class="lineNum">     152 </span>            :    xindiserver();</a>
 <a name="153"><span class="lineNum">     153 </span>            : </a>
 <a name="154"><span class="lineNum">     154 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="155"><span class="lineNum">     155 </span><span class="lineCov">         54 :    ~xindiserver() noexcept</span></a>
-<a name="156"><span class="lineNum">     156 </span><span class="lineCov">         54 :    {}</span></a>
+<a name="155"><span class="lineNum">     155 </span><span class="lineCov">         27 :    ~xindiserver() noexcept</span></a>
+<a name="156"><span class="lineNum">     156 </span><span class="lineCov">         27 :    {}</span></a>
 <a name="157"><span class="lineNum">     157 </span>            :    </a>
 <a name="158"><span class="lineNum">     158 </span>            :    virtual void setupConfig();</a>
 <a name="159"><span class="lineNum">     159 </span>            : </a>
@@ -293,12 +293,12 @@
 <a name="231"><span class="lineNum">     231 </span>            : };</a>
 <a name="232"><span class="lineNum">     232 </span>            : </a>
 <a name="233"><span class="lineNum">     233 </span>            : inline</a>
-<a name="234"><span class="lineNum">     234 </span><span class="lineCov">         54 : xindiserver::xindiserver() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="234"><span class="lineNum">     234 </span><span class="lineCov">         27 : xindiserver::xindiserver() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="235"><span class="lineNum">     235 </span>            : {</a>
 <a name="236"><span class="lineNum">     236 </span>            :    //Use the sshTunnels.conf config file</a>
-<a name="237"><span class="lineNum">     237 </span><span class="lineCov">         54 :    m_configBase = &quot;sshTunnels&quot;;</span></a>
+<a name="237"><span class="lineNum">     237 </span><span class="lineCov">         27 :    m_configBase = &quot;sshTunnels&quot;;</span></a>
 <a name="238"><span class="lineNum">     238 </span>            :    </a>
-<a name="239"><span class="lineNum">     239 </span><span class="lineCov">         54 :    return;</span></a>
+<a name="239"><span class="lineNum">     239 </span><span class="lineCov">         27 :    return;</span></a>
 <a name="240"><span class="lineNum">     240 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="241"><span class="lineNum">     241 </span>            : </a>
 <a name="242"><span class="lineNum">     242 </span>            : inline</a>
@@ -339,33 +339,33 @@
 <a name="277"><span class="lineNum">     277 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="278"><span class="lineNum">     278 </span>            : </a>
 <a name="279"><span class="lineNum">     279 </span>            : inline</a>
-<a name="280"><span class="lineNum">     280 </span><span class="lineCov">         20 : int xindiserver::constructIndiserverCommand( std::vector&lt;std::string&gt; &amp; indiserverCommand)</span></a>
+<a name="280"><span class="lineNum">     280 </span><span class="lineCov">         10 : int xindiserver::constructIndiserverCommand( std::vector&lt;std::string&gt; &amp; indiserverCommand)</span></a>
 <a name="281"><span class="lineNum">     281 </span>            : {</a>
 <a name="282"><span class="lineNum">     282 </span>            :    try</a>
 <a name="283"><span class="lineNum">     283 </span>            :    {</a>
-<a name="284"><span class="lineNum">     284 </span><span class="lineCov">         20 :       indiserverCommand.push_back(&quot;indiserver&quot;);</span></a>
+<a name="284"><span class="lineNum">     284 </span><span class="lineCov">         10 :       indiserverCommand.push_back(&quot;indiserver&quot;);</span></a>
 <a name="285"><span class="lineNum">     285 </span>            :         </a>
-<a name="286"><span class="lineNum">     286 </span><span class="lineCov">         20 :       if(indiserver_m &gt; 0) </span></a>
+<a name="286"><span class="lineNum">     286 </span><span class="lineCov">         10 :       if(indiserver_m &gt; 0) </span></a>
 <a name="287"><span class="lineNum">     287 </span>            :       {</a>
-<a name="288"><span class="lineNum">     288 </span><span class="lineCov">          4 :          indiserverCommand.push_back(&quot;-m&quot;);</span></a>
-<a name="289"><span class="lineNum">     289 </span><span class="lineCov">          4 :          indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_m));</span></a>
+<a name="288"><span class="lineNum">     288 </span><span class="lineCov">          2 :          indiserverCommand.push_back(&quot;-m&quot;);</span></a>
+<a name="289"><span class="lineNum">     289 </span><span class="lineCov">          2 :          indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_m));</span></a>
 <a name="290"><span class="lineNum">     290 </span>            :       }</a>
 <a name="291"><span class="lineNum">     291 </span>            :       </a>
-<a name="292"><span class="lineNum">     292 </span><span class="lineCov">         20 :       if(indiserver_n == true) indiserverCommand.push_back(&quot;-n&quot;);</span></a>
+<a name="292"><span class="lineNum">     292 </span><span class="lineCov">         10 :       if(indiserver_n == true) indiserverCommand.push_back(&quot;-n&quot;);</span></a>
 <a name="293"><span class="lineNum">     293 </span>            :       </a>
-<a name="294"><span class="lineNum">     294 </span><span class="lineCov">         20 :       if(indiserver_p &gt; 0) </span></a>
+<a name="294"><span class="lineNum">     294 </span><span class="lineCov">         10 :       if(indiserver_p &gt; 0) </span></a>
 <a name="295"><span class="lineNum">     295 </span>            :       {</a>
-<a name="296"><span class="lineNum">     296 </span><span class="lineCov">          4 :          indiserverCommand.push_back(&quot;-p&quot;);</span></a>
-<a name="297"><span class="lineNum">     297 </span><span class="lineCov">          4 :          indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_p));</span></a>
+<a name="296"><span class="lineNum">     296 </span><span class="lineCov">          2 :          indiserverCommand.push_back(&quot;-p&quot;);</span></a>
+<a name="297"><span class="lineNum">     297 </span><span class="lineCov">          2 :          indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_p));</span></a>
 <a name="298"><span class="lineNum">     298 </span>            :       }</a>
 <a name="299"><span class="lineNum">     299 </span>            :       </a>
-<a name="300"><span class="lineNum">     300 </span><span class="lineCov">         20 :       if(indiserver_v == 1) indiserverCommand.push_back(&quot;-v&quot;);</span></a>
+<a name="300"><span class="lineNum">     300 </span><span class="lineCov">         10 :       if(indiserver_v == 1) indiserverCommand.push_back(&quot;-v&quot;);</span></a>
 <a name="301"><span class="lineNum">     301 </span>            :       </a>
-<a name="302"><span class="lineNum">     302 </span><span class="lineCov">         20 :       if(indiserver_v == 2) indiserverCommand.push_back(&quot;-vv&quot;);</span></a>
+<a name="302"><span class="lineNum">     302 </span><span class="lineCov">         10 :       if(indiserver_v == 2) indiserverCommand.push_back(&quot;-vv&quot;);</span></a>
 <a name="303"><span class="lineNum">     303 </span>            :       </a>
-<a name="304"><span class="lineNum">     304 </span><span class="lineCov">         20 :       if(indiserver_v &gt;= 3) indiserverCommand.push_back(&quot;-vvv&quot;);</span></a>
+<a name="304"><span class="lineNum">     304 </span><span class="lineCov">         10 :       if(indiserver_v &gt;= 3) indiserverCommand.push_back(&quot;-vvv&quot;);</span></a>
 <a name="305"><span class="lineNum">     305 </span>            :       </a>
-<a name="306"><span class="lineNum">     306 </span><span class="lineCov">         20 :       if(indiserver_x == true) indiserverCommand.push_back(&quot;-x&quot;);</span></a>
+<a name="306"><span class="lineNum">     306 </span><span class="lineCov">         10 :       if(indiserver_x == true) indiserverCommand.push_back(&quot;-x&quot;);</span></a>
 <a name="307"><span class="lineNum">     307 </span>            :    }</a>
 <a name="308"><span class="lineNum">     308 </span><span class="lineNoCov">          0 :    catch(...)</span></a>
 <a name="309"><span class="lineNum">     309 </span>            :    {</a>
@@ -373,107 +373,107 @@
 <a name="311"><span class="lineNum">     311 </span><span class="lineNoCov">          0 :       return -1;</span></a>
 <a name="312"><span class="lineNum">     312 </span><span class="lineNoCov">          0 :    }</span></a>
 <a name="313"><span class="lineNum">     313 </span>            :    </a>
-<a name="314"><span class="lineNum">     314 </span><span class="lineCov">         20 :    return 0;</span></a>
+<a name="314"><span class="lineNum">     314 </span><span class="lineCov">         10 :    return 0;</span></a>
 <a name="315"><span class="lineNum">     315 </span>            : }</a>
 <a name="316"><span class="lineNum">     316 </span>            :  </a>
 <a name="317"><span class="lineNum">     317 </span>            : inline</a>
-<a name="318"><span class="lineNum">     318 </span><span class="lineCov">         18 : int xindiserver::addLocalDrivers( std::vector&lt;std::string&gt; &amp; driverArgs )</span></a>
+<a name="318"><span class="lineNum">     318 </span><span class="lineCov">          9 : int xindiserver::addLocalDrivers( std::vector&lt;std::string&gt; &amp; driverArgs )</span></a>
 <a name="319"><span class="lineNum">     319 </span>            : {</a>
-<a name="320"><span class="lineNum">     320 </span><span class="lineCov">         18 :    m_driverPath = MAGAOX_path;</span></a>
-<a name="321"><span class="lineNum">     321 </span><span class="lineCov">         18 :    m_driverPath += &quot;/&quot;;</span></a>
-<a name="322"><span class="lineNum">     322 </span><span class="lineCov">         18 :    m_driverPath += MAGAOX_driverRelPath;</span></a>
-<a name="323"><span class="lineNum">     323 </span><span class="lineCov">         18 :    m_driverPath += &quot;/&quot;;</span></a>
+<a name="320"><span class="lineNum">     320 </span><span class="lineCov">          9 :    m_driverPath = MAGAOX_path;</span></a>
+<a name="321"><span class="lineNum">     321 </span><span class="lineCov">          9 :    m_driverPath += &quot;/&quot;;</span></a>
+<a name="322"><span class="lineNum">     322 </span><span class="lineCov">          9 :    m_driverPath += MAGAOX_driverRelPath;</span></a>
+<a name="323"><span class="lineNum">     323 </span><span class="lineCov">          9 :    m_driverPath += &quot;/&quot;;</span></a>
 <a name="324"><span class="lineNum">     324 </span>            :    </a>
-<a name="325"><span class="lineNum">     325 </span><span class="lineCov">         42 :    for(size_t i=0; i&lt; m_local.size(); ++i)</span></a>
+<a name="325"><span class="lineNum">     325 </span><span class="lineCov">         21 :    for(size_t i=0; i&lt; m_local.size(); ++i)</span></a>
 <a name="326"><span class="lineNum">     326 </span>            :    {</a>
-<a name="327"><span class="lineNum">     327 </span><span class="lineCov">         34 :       size_t bad = m_local[i].find_first_of(&quot;@:/&quot;, 0);</span></a>
+<a name="327"><span class="lineNum">     327 </span><span class="lineCov">         17 :       size_t bad = m_local[i].find_first_of(&quot;@:/&quot;, 0);</span></a>
 <a name="328"><span class="lineNum">     328 </span>            :       </a>
-<a name="329"><span class="lineNum">     329 </span><span class="lineCov">         34 :       if(bad != std::string::npos)</span></a>
+<a name="329"><span class="lineNum">     329 </span><span class="lineCov">         17 :       if(bad != std::string::npos)</span></a>
 <a name="330"><span class="lineNum">     330 </span>            :       {</a>
-<a name="331"><span class="lineNum">     331 </span><span class="lineCov">          6 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Local driver can't have host spec or path(@,:,/): &quot; + m_local[i]});</span></a>
+<a name="331"><span class="lineNum">     331 </span><span class="lineCov">          3 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Local driver can't have host spec or path(@,:,/): &quot; + m_local[i]});</span></a>
 <a name="332"><span class="lineNum">     332 </span>            :          </a>
-<a name="333"><span class="lineNum">     333 </span><span class="lineCov">         10 :          return XINDISERVER_E_BADDRIVERSPEC;</span></a>
+<a name="333"><span class="lineNum">     333 </span><span class="lineCov">          5 :          return XINDISERVER_E_BADDRIVERSPEC;</span></a>
 <a name="334"><span class="lineNum">     334 </span>            :       }</a>
 <a name="335"><span class="lineNum">     335 </span>            :       </a>
-<a name="336"><span class="lineNum">     336 </span><span class="lineCov">         28 :       if( m_driverNames.count(m_local[i]) &gt; 0)</span></a>
+<a name="336"><span class="lineNum">     336 </span><span class="lineCov">         14 :       if( m_driverNames.count(m_local[i]) &gt; 0)</span></a>
 <a name="337"><span class="lineNum">     337 </span>            :       {</a>
-<a name="338"><span class="lineNum">     338 </span><span class="lineCov">          4 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Duplicate driver name: &quot; + m_local[i]});</span></a>
-<a name="339"><span class="lineNum">     339 </span><span class="lineCov">          4 :          return XINDISERVER_E_DUPLICATEDRIVER;</span></a>
+<a name="338"><span class="lineNum">     338 </span><span class="lineCov">          2 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Duplicate driver name: &quot; + m_local[i]});</span></a>
+<a name="339"><span class="lineNum">     339 </span><span class="lineCov">          2 :          return XINDISERVER_E_DUPLICATEDRIVER;</span></a>
 <a name="340"><span class="lineNum">     340 </span>            :       }</a>
 <a name="341"><span class="lineNum">     341 </span>            :       </a>
-<a name="342"><span class="lineNum">     342 </span><span class="lineCov">         24 :       m_driverNames.insert(m_local[i]);</span></a>
+<a name="342"><span class="lineNum">     342 </span><span class="lineCov">         12 :       m_driverNames.insert(m_local[i]);</span></a>
 <a name="343"><span class="lineNum">     343 </span>            :       </a>
-<a name="344"><span class="lineNum">     344 </span><span class="lineCov">         24 :       std::string dname = m_driverPath + m_local[i];</span></a>
+<a name="344"><span class="lineNum">     344 </span><span class="lineCov">         12 :       std::string dname = m_driverPath + m_local[i];</span></a>
 <a name="345"><span class="lineNum">     345 </span>            :       </a>
 <a name="346"><span class="lineNum">     346 </span>            :       try</a>
 <a name="347"><span class="lineNum">     347 </span>            :       {</a>
-<a name="348"><span class="lineNum">     348 </span><span class="lineCov">         24 :          driverArgs.push_back(dname);</span></a>
+<a name="348"><span class="lineNum">     348 </span><span class="lineCov">         12 :          driverArgs.push_back(dname);</span></a>
 <a name="349"><span class="lineNum">     349 </span>            :       }</a>
 <a name="350"><span class="lineNum">     350 </span><span class="lineNoCov">          0 :       catch(...)</span></a>
 <a name="351"><span class="lineNum">     351 </span>            :       {</a>
 <a name="352"><span class="lineNum">     352 </span><span class="lineNoCov">          0 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Exception thrown by std::vector&quot;});</span></a>
 <a name="353"><span class="lineNum">     353 </span><span class="lineNoCov">          0 :          return XINDISERVER_E_VECTOREXCEPT;</span></a>
 <a name="354"><span class="lineNum">     354 </span><span class="lineNoCov">          0 :       }</span></a>
-<a name="355"><span class="lineNum">     355 </span><span class="lineCov">         24 :    }</span></a>
+<a name="355"><span class="lineNum">     355 </span><span class="lineCov">         12 :    }</span></a>
 <a name="356"><span class="lineNum">     356 </span>            :    </a>
-<a name="357"><span class="lineNum">     357 </span><span class="lineCov">          8 :    return 0;</span></a>
+<a name="357"><span class="lineNum">     357 </span><span class="lineCov">          4 :    return 0;</span></a>
 <a name="358"><span class="lineNum">     358 </span>            : }</a>
 <a name="359"><span class="lineNum">     359 </span>            : </a>
 <a name="360"><span class="lineNum">     360 </span>            : inline</a>
-<a name="361"><span class="lineNum">     361 </span><span class="lineCov">         20 : int xindiserver::addRemoteDrivers( std::vector&lt;std::string&gt; &amp; driverArgs )</span></a>
+<a name="361"><span class="lineNum">     361 </span><span class="lineCov">         10 : int xindiserver::addRemoteDrivers( std::vector&lt;std::string&gt; &amp; driverArgs )</span></a>
 <a name="362"><span class="lineNum">     362 </span>            : {</a>
-<a name="363"><span class="lineNum">     363 </span><span class="lineCov">         50 :    for(size_t i=0; i &lt; m_remote.size(); ++i)</span></a>
+<a name="363"><span class="lineNum">     363 </span><span class="lineCov">         25 :    for(size_t i=0; i &lt; m_remote.size(); ++i)</span></a>
 <a name="364"><span class="lineNum">     364 </span>            :    {</a>
-<a name="365"><span class="lineNum">     365 </span><span class="lineCov">         36 :       std::string driver;</span></a>
-<a name="366"><span class="lineNum">     366 </span><span class="lineCov">         36 :       std::string tunnel;</span></a>
+<a name="365"><span class="lineNum">     365 </span><span class="lineCov">         18 :       std::string driver;</span></a>
+<a name="366"><span class="lineNum">     366 </span><span class="lineCov">         18 :       std::string tunnel;</span></a>
 <a name="367"><span class="lineNum">     367 </span>            :       </a>
-<a name="368"><span class="lineNum">     368 </span><span class="lineCov">         36 :       size_t p = m_remote[i].find('@');</span></a>
+<a name="368"><span class="lineNum">     368 </span><span class="lineCov">         18 :       size_t p = m_remote[i].find('@');</span></a>
 <a name="369"><span class="lineNum">     369 </span>            :       </a>
-<a name="370"><span class="lineNum">     370 </span><span class="lineCov">         36 :       if(p == 0 || p == std::string::npos)</span></a>
+<a name="370"><span class="lineNum">     370 </span><span class="lineCov">         18 :       if(p == 0 || p == std::string::npos)</span></a>
 <a name="371"><span class="lineNum">     371 </span>            :       {</a>
-<a name="372"><span class="lineNum">     372 </span><span class="lineCov">          2 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Error parsing remote driver specification: &quot; + m_remote[i] + &quot;\n&quot;});         </span></a>
-<a name="373"><span class="lineNum">     373 </span><span class="lineCov">          2 :          return XINDISERVER_E_BADDRIVERSPEC;</span></a>
+<a name="372"><span class="lineNum">     372 </span><span class="lineCov">          1 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Error parsing remote driver specification: &quot; + m_remote[i] + &quot;\n&quot;});         </span></a>
+<a name="373"><span class="lineNum">     373 </span><span class="lineCov">          1 :          return XINDISERVER_E_BADDRIVERSPEC;</span></a>
 <a name="374"><span class="lineNum">     374 </span>            :       }</a>
 <a name="375"><span class="lineNum">     375 </span>            :       </a>
-<a name="376"><span class="lineNum">     376 </span><span class="lineCov">         34 :       driver = m_remote[i].substr(0, p);</span></a>
-<a name="377"><span class="lineNum">     377 </span><span class="lineCov">         34 :       tunnel = m_remote[i].substr(p+1);</span></a>
+<a name="376"><span class="lineNum">     376 </span><span class="lineCov">         17 :       driver = m_remote[i].substr(0, p);</span></a>
+<a name="377"><span class="lineNum">     377 </span><span class="lineCov">         17 :       tunnel = m_remote[i].substr(p+1);</span></a>
 <a name="378"><span class="lineNum">     378 </span>            :       </a>
-<a name="379"><span class="lineNum">     379 </span><span class="lineCov">         34 :       if( m_driverNames.count(driver) &gt; 0)</span></a>
+<a name="379"><span class="lineNum">     379 </span><span class="lineCov">         17 :       if( m_driverNames.count(driver) &gt; 0)</span></a>
 <a name="380"><span class="lineNum">     380 </span>            :       {</a>
-<a name="381"><span class="lineNum">     381 </span><span class="lineCov">          2 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Duplicate driver name: &quot; + driver});</span></a>
-<a name="382"><span class="lineNum">     382 </span><span class="lineCov">          2 :          return XINDISERVER_E_DUPLICATEDRIVER;</span></a>
+<a name="381"><span class="lineNum">     381 </span><span class="lineCov">          1 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Duplicate driver name: &quot; + driver});</span></a>
+<a name="382"><span class="lineNum">     382 </span><span class="lineCov">          1 :          return XINDISERVER_E_DUPLICATEDRIVER;</span></a>
 <a name="383"><span class="lineNum">     383 </span>            :       }</a>
 <a name="384"><span class="lineNum">     384 </span>            :       </a>
-<a name="385"><span class="lineNum">     385 </span><span class="lineCov">         32 :       std::ostringstream oss;</span></a>
+<a name="385"><span class="lineNum">     385 </span><span class="lineCov">         16 :       std::ostringstream oss;</span></a>
 <a name="386"><span class="lineNum">     386 </span>            :       </a>
-<a name="387"><span class="lineNum">     387 </span><span class="lineCov">         32 :       if(m_tunnels.size() == 0)</span></a>
+<a name="387"><span class="lineNum">     387 </span><span class="lineCov">         16 :       if(m_tunnels.size() == 0)</span></a>
 <a name="388"><span class="lineNum">     388 </span>            :       {</a>
 <a name="389"><span class="lineNum">     389 </span><span class="lineNoCov">          0 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;No tunnels specified.\n&quot;});         </span></a>
 <a name="390"><span class="lineNum">     390 </span><span class="lineNoCov">          0 :          return XINDISERVER_E_NOTUNNELS;</span></a>
 <a name="391"><span class="lineNum">     391 </span>            :       }</a>
 <a name="392"><span class="lineNum">     392 </span>            :       </a>
-<a name="393"><span class="lineNum">     393 </span><span class="lineCov">         32 :       if(m_tunnels.count(tunnel) != 1)</span></a>
+<a name="393"><span class="lineNum">     393 </span><span class="lineCov">         16 :       if(m_tunnels.count(tunnel) != 1)</span></a>
 <a name="394"><span class="lineNum">     394 </span>            :       {</a>
-<a name="395"><span class="lineNum">     395 </span><span class="lineCov">          2 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Tunnel not found for: &quot; + m_remote[i] + &quot;\n&quot;});         </span></a>
-<a name="396"><span class="lineNum">     396 </span><span class="lineCov">          2 :          return XINDISERVER_E_TUNNELNOTFOUND;</span></a>
+<a name="395"><span class="lineNum">     395 </span><span class="lineCov">          1 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Tunnel not found for: &quot; + m_remote[i] + &quot;\n&quot;});         </span></a>
+<a name="396"><span class="lineNum">     396 </span><span class="lineCov">          1 :          return XINDISERVER_E_TUNNELNOTFOUND;</span></a>
 <a name="397"><span class="lineNum">     397 </span>            :       }</a>
 <a name="398"><span class="lineNum">     398 </span>            :       </a>
-<a name="399"><span class="lineNum">     399 </span><span class="lineCov">         30 :       m_driverNames.insert(driver);</span></a>
+<a name="399"><span class="lineNum">     399 </span><span class="lineCov">         15 :       m_driverNames.insert(driver);</span></a>
 <a name="400"><span class="lineNum">     400 </span>            :       </a>
-<a name="401"><span class="lineNum">     401 </span><span class="lineCov">         30 :       oss &lt;&lt; driver &lt;&lt; &quot;@localhost:&quot; &lt;&lt; m_tunnels[tunnel].m_localPort;</span></a>
+<a name="401"><span class="lineNum">     401 </span><span class="lineCov">         15 :       oss &lt;&lt; driver &lt;&lt; &quot;@localhost:&quot; &lt;&lt; m_tunnels[tunnel].m_localPort;</span></a>
 <a name="402"><span class="lineNum">     402 </span>            :       </a>
 <a name="403"><span class="lineNum">     403 </span>            :       try</a>
 <a name="404"><span class="lineNum">     404 </span>            :       {</a>
-<a name="405"><span class="lineNum">     405 </span><span class="lineCov">         30 :          driverArgs.push_back(oss.str());</span></a>
+<a name="405"><span class="lineNum">     405 </span><span class="lineCov">         15 :          driverArgs.push_back(oss.str());</span></a>
 <a name="406"><span class="lineNum">     406 </span>            :       }</a>
 <a name="407"><span class="lineNum">     407 </span><span class="lineNoCov">          0 :       catch(...)</span></a>
 <a name="408"><span class="lineNum">     408 </span>            :       {</a>
 <a name="409"><span class="lineNum">     409 </span><span class="lineNoCov">          0 :          log&lt;software_critical&gt;({__FILE__, __LINE__, &quot;Exception thrown by vector::push_back.&quot;});</span></a>
 <a name="410"><span class="lineNum">     410 </span><span class="lineNoCov">          0 :          return XINDISERVER_E_VECTOREXCEPT;</span></a>
 <a name="411"><span class="lineNum">     411 </span><span class="lineNoCov">          0 :       }</span></a>
-<a name="412"><span class="lineNum">     412 </span><span class="lineCov">         44 :    }</span></a>
+<a name="412"><span class="lineNum">     412 </span><span class="lineCov">         22 :    }</span></a>
 <a name="413"><span class="lineNum">     413 </span>            :    </a>
-<a name="414"><span class="lineNum">     414 </span><span class="lineCov">         14 :    return 0;</span></a>
+<a name="414"><span class="lineNum">     414 </span><span class="lineCov">          7 :    return 0;</span></a>
 <a name="415"><span class="lineNum">     415 </span>            : </a>
 <a name="416"><span class="lineNum">     416 </span>            : }</a>
 <a name="417"><span class="lineNum">     417 </span>            : </a>

@@ -32,12 +32,12 @@
             <td></td>
             <td class="headerItem">Lines:</td>
             <td class="headerCovTableEntry">0</td>
-            <td class="headerCovTableEntry">74</td>
+            <td class="headerCovTableEntry">71</td>
             <td class="headerCovTableEntryLo">0.0 %</td>
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">0</td>
@@ -153,37 +153,34 @@
 <a name="91"><span class="lineNum">      91 </span><span class="lineNoCov">          0 :       case 384000:</span></a>
 <a name="92"><span class="lineNum">      92 </span><span class="lineNoCov">          0 :          m_baudRate = B38400;</span></a>
 <a name="93"><span class="lineNum">      93 </span><span class="lineNoCov">          0 :          break;</span></a>
-<a name="94"><span class="lineNum">      94 </span><span class="lineNoCov">          0 :       case 921600:</span></a>
-<a name="95"><span class="lineNum">      95 </span><span class="lineNoCov">          0 :          m_baudRate = B921600;</span></a>
-<a name="96"><span class="lineNum">      96 </span><span class="lineNoCov">          0 :          break;</span></a>
-<a name="97"><span class="lineNum">      97 </span><span class="lineNoCov">          0 :       default:</span></a>
-<a name="98"><span class="lineNum">      98 </span><span class="lineNoCov">          0 :          break;</span></a>
-<a name="99"><span class="lineNum">      99 </span>            :    }</a>
-<a name="100"><span class="lineNum">     100 </span>            : </a>
-<a name="101"><span class="lineNum">     101 </span><span class="lineNoCov">          0 :    if(m_baudRate == 0) return TTY_E_BADBAUDRATE;</span></a>
+<a name="94"><span class="lineNum">      94 </span><span class="lineNoCov">          0 :       default:</span></a>
+<a name="95"><span class="lineNum">      95 </span><span class="lineNoCov">          0 :          break;</span></a>
+<a name="96"><span class="lineNum">      96 </span>            :    }</a>
+<a name="97"><span class="lineNum">      97 </span>            : </a>
+<a name="98"><span class="lineNum">      98 </span><span class="lineNoCov">          0 :    if(m_baudRate == 0) return TTY_E_BADBAUDRATE;</span></a>
+<a name="99"><span class="lineNum">      99 </span>            : </a>
+<a name="100"><span class="lineNum">     100 </span><span class="lineNoCov">          0 :    return getDeviceName();</span></a>
+<a name="101"><span class="lineNum">     101 </span>            : }</a>
 <a name="102"><span class="lineNum">     102 </span>            : </a>
-<a name="103"><span class="lineNum">     103 </span><span class="lineNoCov">          0 :    return getDeviceName();</span></a>
-<a name="104"><span class="lineNum">     104 </span>            : }</a>
-<a name="105"><span class="lineNum">     105 </span>            : </a>
-<a name="106"><span class="lineNum">     106 </span><span class="lineNoCov">          0 : int usbDevice::getDeviceName()</span></a>
-<a name="107"><span class="lineNum">     107 </span>            : {</a>
-<a name="108"><span class="lineNum">     108 </span><span class="lineNoCov">          0 :    return ttyUSBDevName( m_deviceName, m_idVendor, m_idProduct, m_serial );</span></a>
-<a name="109"><span class="lineNum">     109 </span>            : }</a>
-<a name="110"><span class="lineNum">     110 </span>            : </a>
-<a name="111"><span class="lineNum">     111 </span><span class="lineNoCov">          0 : int usbDevice::connect()</span></a>
-<a name="112"><span class="lineNum">     112 </span>            : {</a>
-<a name="113"><span class="lineNum">     113 </span><span class="lineNoCov">          0 :    if(m_fileDescrip)</span></a>
-<a name="114"><span class="lineNum">     114 </span>            :    {</a>
-<a name="115"><span class="lineNum">     115 </span><span class="lineNoCov">          0 :       ::close(m_fileDescrip);</span></a>
-<a name="116"><span class="lineNum">     116 </span><span class="lineNoCov">          0 :       m_fileDescrip = 0;</span></a>
-<a name="117"><span class="lineNum">     117 </span>            :    }</a>
-<a name="118"><span class="lineNum">     118 </span>            :    </a>
-<a name="119"><span class="lineNum">     119 </span><span class="lineNoCov">          0 :    return ttyOpenRaw( m_fileDescrip, m_deviceName, m_baudRate );</span></a>
-<a name="120"><span class="lineNum">     120 </span>            : }</a>
+<a name="103"><span class="lineNum">     103 </span><span class="lineNoCov">          0 : int usbDevice::getDeviceName()</span></a>
+<a name="104"><span class="lineNum">     104 </span>            : {</a>
+<a name="105"><span class="lineNum">     105 </span><span class="lineNoCov">          0 :    return ttyUSBDevName( m_deviceName, m_idVendor, m_idProduct, m_serial );</span></a>
+<a name="106"><span class="lineNum">     106 </span>            : }</a>
+<a name="107"><span class="lineNum">     107 </span>            : </a>
+<a name="108"><span class="lineNum">     108 </span><span class="lineNoCov">          0 : int usbDevice::connect()</span></a>
+<a name="109"><span class="lineNum">     109 </span>            : {</a>
+<a name="110"><span class="lineNum">     110 </span><span class="lineNoCov">          0 :    if(m_fileDescrip)</span></a>
+<a name="111"><span class="lineNum">     111 </span>            :    {</a>
+<a name="112"><span class="lineNum">     112 </span><span class="lineNoCov">          0 :       ::close(m_fileDescrip);</span></a>
+<a name="113"><span class="lineNum">     113 </span><span class="lineNoCov">          0 :       m_fileDescrip = 0;</span></a>
+<a name="114"><span class="lineNum">     114 </span>            :    }</a>
+<a name="115"><span class="lineNum">     115 </span>            :    </a>
+<a name="116"><span class="lineNum">     116 </span><span class="lineNoCov">          0 :    return ttyOpenRaw( m_fileDescrip, m_deviceName, m_baudRate );</span></a>
+<a name="117"><span class="lineNum">     117 </span>            : }</a>
+<a name="118"><span class="lineNum">     118 </span>            : </a>
+<a name="119"><span class="lineNum">     119 </span>            : } //namespace tty</a>
+<a name="120"><span class="lineNum">     120 </span>            : } //namespace MagAOX</a>
 <a name="121"><span class="lineNum">     121 </span>            : </a>
-<a name="122"><span class="lineNum">     122 </span>            : } //namespace tty</a>
-<a name="123"><span class="lineNum">     123 </span>            : } //namespace MagAOX</a>
-<a name="124"><span class="lineNum">     124 </span>            : </a>
 </pre>
       </td>
     </tr>

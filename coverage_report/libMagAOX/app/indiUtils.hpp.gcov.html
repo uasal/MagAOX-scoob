@@ -31,18 +31,18 @@
             <td class="headerValue">MagAOX</td>
             <td></td>
             <td class="headerItem">Lines:</td>
-            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">19</td>
             <td class="headerCovTableEntry">127</td>
-            <td class="headerCovTableEntryLo">0.0 %</td>
+            <td class="headerCovTableEntryLo">15.0 %</td>
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
-            <td class="headerCovTableEntry">0</td>
+            <td class="headerCovTableEntry">1</td>
             <td class="headerCovTableEntry">24</td>
-            <td class="headerCovTableEntryLo">0.0 %</td>
+            <td class="headerCovTableEntryLo">4.2 %</td>
           </tr>
           <tr><td><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
         </table>
@@ -482,43 +482,43 @@
 <a name="420"><span class="lineNum">     420 </span>            :  * \returns -3 if '.' is the first character</a>
 <a name="421"><span class="lineNum">     421 </span>            :  * \returns -4 if '.' is the last character</a>
 <a name="422"><span class="lineNum">     422 </span>            :  */</a>
-<a name="423"><span class="lineNum">     423 </span><span class="lineNoCov">          0 : inline int parseIndiKey( std::string       &amp;devName,  ///&lt; [out] the device name</span></a>
+<a name="423"><span class="lineNum">     423 </span><span class="lineCov">          6 : inline int parseIndiKey( std::string       &amp;devName,  ///&lt; [out] the device name</span></a>
 <a name="424"><span class="lineNum">     424 </span>            :                          std::string       &amp;propName, ///&lt; [out] the property name</a>
 <a name="425"><span class="lineNum">     425 </span>            :                          const std::string &amp;key       ///&lt; [in] the key to parse</a>
 <a name="426"><span class="lineNum">     426 </span>            : )</a>
 <a name="427"><span class="lineNum">     427 </span>            : {</a>
-<a name="428"><span class="lineNum">     428 </span><span class="lineNoCov">          0 :     if( key.size() &lt; 3 )</span></a>
+<a name="428"><span class="lineNum">     428 </span><span class="lineCov">          6 :     if( key.size() &lt; 3 )</span></a>
 <a name="429"><span class="lineNum">     429 </span>            :     {</a>
-<a name="430"><span class="lineNum">     430 </span><span class="lineNoCov">          0 :         return -1;</span></a>
+<a name="430"><span class="lineNum">     430 </span><span class="lineCov">          2 :         return -1;</span></a>
 <a name="431"><span class="lineNum">     431 </span>            :     }</a>
 <a name="432"><span class="lineNum">     432 </span>            : </a>
-<a name="433"><span class="lineNum">     433 </span><span class="lineNoCov">          0 :     size_t p = key.find( '.' );</span></a>
+<a name="433"><span class="lineNum">     433 </span><span class="lineCov">          4 :     size_t p = key.find( '.' );</span></a>
 <a name="434"><span class="lineNum">     434 </span>            : </a>
-<a name="435"><span class="lineNum">     435 </span><span class="lineNoCov">          0 :     if( p == std::string::npos )</span></a>
+<a name="435"><span class="lineNum">     435 </span><span class="lineCov">          4 :     if( p == std::string::npos )</span></a>
 <a name="436"><span class="lineNum">     436 </span>            :     {</a>
-<a name="437"><span class="lineNum">     437 </span><span class="lineNoCov">          0 :         devName  = &quot;&quot;;</span></a>
-<a name="438"><span class="lineNum">     438 </span><span class="lineNoCov">          0 :         propName = &quot;&quot;;</span></a>
-<a name="439"><span class="lineNum">     439 </span><span class="lineNoCov">          0 :         return -2;</span></a>
+<a name="437"><span class="lineNum">     437 </span><span class="lineCov">          1 :         devName  = &quot;&quot;;</span></a>
+<a name="438"><span class="lineNum">     438 </span><span class="lineCov">          1 :         propName = &quot;&quot;;</span></a>
+<a name="439"><span class="lineNum">     439 </span><span class="lineCov">          1 :         return -2;</span></a>
 <a name="440"><span class="lineNum">     440 </span>            :     }</a>
 <a name="441"><span class="lineNum">     441 </span>            : </a>
-<a name="442"><span class="lineNum">     442 </span><span class="lineNoCov">          0 :     if( p == 0 )</span></a>
+<a name="442"><span class="lineNum">     442 </span><span class="lineCov">          3 :     if( p == 0 )</span></a>
 <a name="443"><span class="lineNum">     443 </span>            :     {</a>
-<a name="444"><span class="lineNum">     444 </span><span class="lineNoCov">          0 :         devName  = &quot;&quot;;</span></a>
-<a name="445"><span class="lineNum">     445 </span><span class="lineNoCov">          0 :         propName = &quot;&quot;;</span></a>
-<a name="446"><span class="lineNum">     446 </span><span class="lineNoCov">          0 :         return -3;</span></a>
+<a name="444"><span class="lineNum">     444 </span><span class="lineCov">          1 :         devName  = &quot;&quot;;</span></a>
+<a name="445"><span class="lineNum">     445 </span><span class="lineCov">          1 :         propName = &quot;&quot;;</span></a>
+<a name="446"><span class="lineNum">     446 </span><span class="lineCov">          1 :         return -3;</span></a>
 <a name="447"><span class="lineNum">     447 </span>            :     }</a>
 <a name="448"><span class="lineNum">     448 </span>            : </a>
-<a name="449"><span class="lineNum">     449 </span><span class="lineNoCov">          0 :     if( p == key.size() - 1 )</span></a>
+<a name="449"><span class="lineNum">     449 </span><span class="lineCov">          2 :     if( p == key.size() - 1 )</span></a>
 <a name="450"><span class="lineNum">     450 </span>            :     {</a>
-<a name="451"><span class="lineNum">     451 </span><span class="lineNoCov">          0 :         devName  = &quot;&quot;;</span></a>
-<a name="452"><span class="lineNum">     452 </span><span class="lineNoCov">          0 :         propName = &quot;&quot;;</span></a>
-<a name="453"><span class="lineNum">     453 </span><span class="lineNoCov">          0 :         return -4;</span></a>
+<a name="451"><span class="lineNum">     451 </span><span class="lineCov">          1 :         devName  = &quot;&quot;;</span></a>
+<a name="452"><span class="lineNum">     452 </span><span class="lineCov">          1 :         propName = &quot;&quot;;</span></a>
+<a name="453"><span class="lineNum">     453 </span><span class="lineCov">          1 :         return -4;</span></a>
 <a name="454"><span class="lineNum">     454 </span>            :     }</a>
 <a name="455"><span class="lineNum">     455 </span>            : </a>
-<a name="456"><span class="lineNum">     456 </span><span class="lineNoCov">          0 :     devName  = key.substr( 0, p );</span></a>
-<a name="457"><span class="lineNum">     457 </span><span class="lineNoCov">          0 :     propName = key.substr( p + 1 );</span></a>
+<a name="456"><span class="lineNum">     456 </span><span class="lineCov">          1 :     devName  = key.substr( 0, p );</span></a>
+<a name="457"><span class="lineNum">     457 </span><span class="lineCov">          1 :     propName = key.substr( p + 1 );</span></a>
 <a name="458"><span class="lineNum">     458 </span>            : </a>
-<a name="459"><span class="lineNum">     459 </span><span class="lineNoCov">          0 :     return 0;</span></a>
+<a name="459"><span class="lineNum">     459 </span><span class="lineCov">          1 :     return 0;</span></a>
 <a name="460"><span class="lineNum">     460 </span>            : }</a>
 <a name="461"><span class="lineNum">     461 </span>            : </a>
 <a name="462"><span class="lineNum">     462 </span>            : } // namespace indi</a>

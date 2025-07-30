@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">18</td>
@@ -167,8 +167,8 @@
 <a name="105"><span class="lineNum">     105 </span>            :    siglentSDG();</a>
 <a name="106"><span class="lineNum">     106 </span>            : </a>
 <a name="107"><span class="lineNum">     107 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="108"><span class="lineNum">     108 </span><span class="lineCov">         96 :    ~siglentSDG() noexcept</span></a>
-<a name="109"><span class="lineNum">     109 </span><span class="lineCov">         96 :    {}</span></a>
+<a name="108"><span class="lineNum">     108 </span><span class="lineCov">         48 :    ~siglentSDG() noexcept</span></a>
+<a name="109"><span class="lineNum">     109 </span><span class="lineCov">         48 :    {}</span></a>
 <a name="110"><span class="lineNum">     110 </span>            : </a>
 <a name="111"><span class="lineNum">     111 </span>            :    /// Setup the configuration system (called by MagAOXApp::setup())</a>
 <a name="112"><span class="lineNum">     112 </span>            :    virtual void setupConfig();</a>
@@ -503,11 +503,11 @@
 <a name="441"><span class="lineNum">     441 </span>            : };</a>
 <a name="442"><span class="lineNum">     442 </span>            : </a>
 <a name="443"><span class="lineNum">     443 </span>            : inline</a>
-<a name="444"><span class="lineNum">     444 </span><span class="lineCov">         96 : siglentSDG::siglentSDG() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="444"><span class="lineNum">     444 </span><span class="lineCov">         48 : siglentSDG::siglentSDG() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="445"><span class="lineNum">     445 </span>            : {</a>
-<a name="446"><span class="lineNum">     446 </span><span class="lineCov">         96 :    m_powerMgtEnabled = true;</span></a>
-<a name="447"><span class="lineNum">     447 </span><span class="lineCov">         96 :    m_telnetConn.m_prompt = &quot;\n&quot;;</span></a>
-<a name="448"><span class="lineNum">     448 </span><span class="lineCov">         96 :    return;</span></a>
+<a name="446"><span class="lineNum">     446 </span><span class="lineCov">         48 :    m_powerMgtEnabled = true;</span></a>
+<a name="447"><span class="lineNum">     447 </span><span class="lineCov">         48 :    m_telnetConn.m_prompt = &quot;\n&quot;;</span></a>
+<a name="448"><span class="lineNum">     448 </span><span class="lineCov">         48 :    return;</span></a>
 <a name="449"><span class="lineNum">     449 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="450"><span class="lineNum">     450 </span>            : </a>
 <a name="451"><span class="lineNum">     451 </span>            : inline</a>
@@ -2398,115 +2398,115 @@
 <a name="2336"><span class="lineNum">    2336 </span>            :    return rv;</a>
 <a name="2337"><span class="lineNum">    2337 </span>            : }</a>
 <a name="2338"><span class="lineNum">    2338 </span>            : </a>
-<a name="2339"><span class="lineNum">    2339 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1outp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2339"><span class="lineNum">    2339 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1outp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2340"><span class="lineNum">    2340 </span>            : {</a>
-<a name="2341"><span class="lineNum">    2341 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1outp, ipRecv);</span></a>
+<a name="2341"><span class="lineNum">    2341 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1outp, ipRecv);</span></a>
 <a name="2342"><span class="lineNum">    2342 </span>            :    </a>
 <a name="2343"><span class="lineNum">    2343 </span>            :     return changeOutp(1, ipRecv);</a>
 <a name="2344"><span class="lineNum">    2344 </span>            :    </a>
 <a name="2345"><span class="lineNum">    2345 </span>            : }</a>
 <a name="2346"><span class="lineNum">    2346 </span>            : </a>
-<a name="2347"><span class="lineNum">    2347 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1freq)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2347"><span class="lineNum">    2347 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1freq)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2348"><span class="lineNum">    2348 </span>            : {</a>
-<a name="2349"><span class="lineNum">    2349 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1freq, ipRecv);</span></a>
+<a name="2349"><span class="lineNum">    2349 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1freq, ipRecv);</span></a>
 <a name="2350"><span class="lineNum">    2350 </span>            : </a>
 <a name="2351"><span class="lineNum">    2351 </span>            :     return changeFreq(1, ipRecv);</a>
 <a name="2352"><span class="lineNum">    2352 </span>            : }</a>
 <a name="2353"><span class="lineNum">    2353 </span>            : </a>
-<a name="2354"><span class="lineNum">    2354 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1amp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2354"><span class="lineNum">    2354 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1amp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2355"><span class="lineNum">    2355 </span>            : {</a>
-<a name="2356"><span class="lineNum">    2356 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1amp, ipRecv);</span></a>
+<a name="2356"><span class="lineNum">    2356 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1amp, ipRecv);</span></a>
 <a name="2357"><span class="lineNum">    2357 </span>            : </a>
 <a name="2358"><span class="lineNum">    2358 </span>            :     return changeAmp(1, ipRecv);</a>
 <a name="2359"><span class="lineNum">    2359 </span>            : }</a>
 <a name="2360"><span class="lineNum">    2360 </span>            : </a>
-<a name="2361"><span class="lineNum">    2361 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1ofst)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2361"><span class="lineNum">    2361 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1ofst)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2362"><span class="lineNum">    2362 </span>            : {</a>
-<a name="2363"><span class="lineNum">    2363 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1ofst, ipRecv);</span></a>
+<a name="2363"><span class="lineNum">    2363 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1ofst, ipRecv);</span></a>
 <a name="2364"><span class="lineNum">    2364 </span>            : </a>
 <a name="2365"><span class="lineNum">    2365 </span>            :     return changeOfst(1, ipRecv);</a>
 <a name="2366"><span class="lineNum">    2366 </span>            : }</a>
 <a name="2367"><span class="lineNum">    2367 </span>            : </a>
-<a name="2368"><span class="lineNum">    2368 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1phse)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2368"><span class="lineNum">    2368 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1phse)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2369"><span class="lineNum">    2369 </span>            : {</a>
-<a name="2370"><span class="lineNum">    2370 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1phse, ipRecv);</span></a>
+<a name="2370"><span class="lineNum">    2370 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1phse, ipRecv);</span></a>
 <a name="2371"><span class="lineNum">    2371 </span>            : </a>
 <a name="2372"><span class="lineNum">    2372 </span>            :     return changePhse(1, ipRecv);</a>
 <a name="2373"><span class="lineNum">    2373 </span>            : }</a>
 <a name="2374"><span class="lineNum">    2374 </span>            : </a>
-<a name="2375"><span class="lineNum">    2375 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1wdth)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2375"><span class="lineNum">    2375 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1wdth)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2376"><span class="lineNum">    2376 </span>            : {</a>
-<a name="2377"><span class="lineNum">    2377 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1wdth, ipRecv);</span></a>
+<a name="2377"><span class="lineNum">    2377 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1wdth, ipRecv);</span></a>
 <a name="2378"><span class="lineNum">    2378 </span>            : </a>
 <a name="2379"><span class="lineNum">    2379 </span>            :     return changeWdth(1, ipRecv);</a>
 <a name="2380"><span class="lineNum">    2380 </span>            : }</a>
 <a name="2381"><span class="lineNum">    2381 </span>            : </a>
-<a name="2382"><span class="lineNum">    2382 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1wvtp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2382"><span class="lineNum">    2382 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1wvtp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2383"><span class="lineNum">    2383 </span>            : {</a>
-<a name="2384"><span class="lineNum">    2384 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1wvtp, ipRecv);</span></a>
+<a name="2384"><span class="lineNum">    2384 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1wvtp, ipRecv);</span></a>
 <a name="2385"><span class="lineNum">    2385 </span>            : </a>
 <a name="2386"><span class="lineNum">    2386 </span>            :     return changeWvtp(1, ipRecv);</a>
 <a name="2387"><span class="lineNum">    2387 </span>            : }</a>
 <a name="2388"><span class="lineNum">    2388 </span>            : </a>
-<a name="2389"><span class="lineNum">    2389 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1sync)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2389"><span class="lineNum">    2389 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C1sync)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2390"><span class="lineNum">    2390 </span>            : {</a>
-<a name="2391"><span class="lineNum">    2391 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1sync, ipRecv);</span></a>
+<a name="2391"><span class="lineNum">    2391 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C1sync, ipRecv);</span></a>
 <a name="2392"><span class="lineNum">    2392 </span>            : </a>
 <a name="2393"><span class="lineNum">    2393 </span>            :     return changeSync(1, ipRecv);</a>
 <a name="2394"><span class="lineNum">    2394 </span>            : }</a>
 <a name="2395"><span class="lineNum">    2395 </span>            : </a>
-<a name="2396"><span class="lineNum">    2396 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2outp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2396"><span class="lineNum">    2396 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2outp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2397"><span class="lineNum">    2397 </span>            : {</a>
-<a name="2398"><span class="lineNum">    2398 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2outp, ipRecv);</span></a>
+<a name="2398"><span class="lineNum">    2398 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2outp, ipRecv);</span></a>
 <a name="2399"><span class="lineNum">    2399 </span>            :  </a>
 <a name="2400"><span class="lineNum">    2400 </span>            :     return changeOutp(2, ipRecv);</a>
 <a name="2401"><span class="lineNum">    2401 </span>            : }</a>
 <a name="2402"><span class="lineNum">    2402 </span>            : </a>
-<a name="2403"><span class="lineNum">    2403 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2freq)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2403"><span class="lineNum">    2403 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2freq)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2404"><span class="lineNum">    2404 </span>            : {</a>
-<a name="2405"><span class="lineNum">    2405 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2freq, ipRecv);</span></a>
+<a name="2405"><span class="lineNum">    2405 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2freq, ipRecv);</span></a>
 <a name="2406"><span class="lineNum">    2406 </span>            : </a>
 <a name="2407"><span class="lineNum">    2407 </span>            :     return changeFreq(2, ipRecv);</a>
 <a name="2408"><span class="lineNum">    2408 </span>            : }</a>
 <a name="2409"><span class="lineNum">    2409 </span>            : </a>
-<a name="2410"><span class="lineNum">    2410 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2amp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2410"><span class="lineNum">    2410 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2amp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2411"><span class="lineNum">    2411 </span>            : {</a>
-<a name="2412"><span class="lineNum">    2412 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2amp, ipRecv);</span></a>
+<a name="2412"><span class="lineNum">    2412 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2amp, ipRecv);</span></a>
 <a name="2413"><span class="lineNum">    2413 </span>            : </a>
 <a name="2414"><span class="lineNum">    2414 </span>            :     return changeAmp(2, ipRecv);</a>
 <a name="2415"><span class="lineNum">    2415 </span>            : }</a>
 <a name="2416"><span class="lineNum">    2416 </span>            : </a>
-<a name="2417"><span class="lineNum">    2417 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2ofst)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2417"><span class="lineNum">    2417 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2ofst)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2418"><span class="lineNum">    2418 </span>            : {</a>
-<a name="2419"><span class="lineNum">    2419 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2ofst, ipRecv);</span></a>
+<a name="2419"><span class="lineNum">    2419 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2ofst, ipRecv);</span></a>
 <a name="2420"><span class="lineNum">    2420 </span>            :    </a>
 <a name="2421"><span class="lineNum">    2421 </span>            :     return changeOfst(2, ipRecv);</a>
 <a name="2422"><span class="lineNum">    2422 </span>            : }</a>
 <a name="2423"><span class="lineNum">    2423 </span>            : </a>
-<a name="2424"><span class="lineNum">    2424 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2phse)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2424"><span class="lineNum">    2424 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2phse)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2425"><span class="lineNum">    2425 </span>            : {</a>
-<a name="2426"><span class="lineNum">    2426 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2phse, ipRecv);</span></a>
+<a name="2426"><span class="lineNum">    2426 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2phse, ipRecv);</span></a>
 <a name="2427"><span class="lineNum">    2427 </span>            :   </a>
 <a name="2428"><span class="lineNum">    2428 </span>            :     return changePhse(2, ipRecv);</a>
 <a name="2429"><span class="lineNum">    2429 </span>            : }</a>
 <a name="2430"><span class="lineNum">    2430 </span>            : </a>
-<a name="2431"><span class="lineNum">    2431 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2wdth)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2431"><span class="lineNum">    2431 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2wdth)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2432"><span class="lineNum">    2432 </span>            : {</a>
-<a name="2433"><span class="lineNum">    2433 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2wdth, ipRecv);</span></a>
+<a name="2433"><span class="lineNum">    2433 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2wdth, ipRecv);</span></a>
 <a name="2434"><span class="lineNum">    2434 </span>            : </a>
 <a name="2435"><span class="lineNum">    2435 </span>            :     return changeWdth(2, ipRecv);</a>
 <a name="2436"><span class="lineNum">    2436 </span>            : }</a>
 <a name="2437"><span class="lineNum">    2437 </span>            : </a>
-<a name="2438"><span class="lineNum">    2438 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2wvtp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2438"><span class="lineNum">    2438 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2wvtp)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2439"><span class="lineNum">    2439 </span>            : {</a>
-<a name="2440"><span class="lineNum">    2440 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2wvtp, ipRecv);</span></a>
+<a name="2440"><span class="lineNum">    2440 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2wvtp, ipRecv);</span></a>
 <a name="2441"><span class="lineNum">    2441 </span>            : </a>
 <a name="2442"><span class="lineNum">    2442 </span>            :     return changeWvtp(2, ipRecv);</a>
 <a name="2443"><span class="lineNum">    2443 </span>            : }</a>
 <a name="2444"><span class="lineNum">    2444 </span>            : </a>
-<a name="2445"><span class="lineNum">    2445 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2sync)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2445"><span class="lineNum">    2445 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(siglentSDG, m_indiP_C2sync)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2446"><span class="lineNum">    2446 </span>            : {</a>
-<a name="2447"><span class="lineNum">    2447 </span><span class="lineCov">          6 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2sync, ipRecv);</span></a>
+<a name="2447"><span class="lineNum">    2447 </span><span class="lineCov">          3 :     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_C2sync, ipRecv);</span></a>
 <a name="2448"><span class="lineNum">    2448 </span>            : </a>
 <a name="2449"><span class="lineNum">    2449 </span>            :     return changeSync(2, ipRecv);</a>
 <a name="2450"><span class="lineNum">    2450 </span>            : }</a>

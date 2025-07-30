@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">24</td>
@@ -160,10 +160,10 @@
 <a name="98"><span class="lineNum">      98 </span>            : </a>
 <a name="99"><span class="lineNum">      99 </span>            :    zaberStage() = delete;</a>
 <a name="100"><span class="lineNum">     100 </span>            : </a>
-<a name="101"><span class="lineNum">     101 </span><span class="lineCov">         12 :    zaberStage( parentT * parent)</span></a>
-<a name="102"><span class="lineNum">     102 </span><span class="lineCov">         12 :    {</span></a>
-<a name="103"><span class="lineNum">     103 </span><span class="lineCov">         12 :       m_parent = parent;</span></a>
-<a name="104"><span class="lineNum">     104 </span><span class="lineCov">         12 :    }</span></a>
+<a name="101"><span class="lineNum">     101 </span><span class="lineCov">          6 :    zaberStage( parentT * parent)</span></a>
+<a name="102"><span class="lineNum">     102 </span><span class="lineCov">          6 :    {</span></a>
+<a name="103"><span class="lineNum">     103 </span><span class="lineCov">          6 :       m_parent = parent;</span></a>
+<a name="104"><span class="lineNum">     104 </span><span class="lineCov">          6 :    }</span></a>
 <a name="105"><span class="lineNum">     105 </span>            :    /// Get the device name</a>
 <a name="106"><span class="lineNum">     106 </span>            :    /**</a>
 <a name="107"><span class="lineNum">     107 </span>            :      * \returns the current value of m_name</a>
@@ -473,129 +473,129 @@
 <a name="411"><span class="lineNum">     411 </span>            : }</a>
 <a name="412"><span class="lineNum">     412 </span>            : </a>
 <a name="413"><span class="lineNum">     413 </span>            : template&lt;class parentT&gt;</a>
-<a name="414"><span class="lineNum">     414 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warningState()</span></a>
+<a name="414"><span class="lineNum">     414 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warningState()</span></a>
 <a name="415"><span class="lineNum">     415 </span>            : {</a>
-<a name="416"><span class="lineNum">     416 </span><span class="lineCov">         12 :    return m_warn;</span></a>
+<a name="416"><span class="lineNum">     416 </span><span class="lineCov">          6 :    return m_warn;</span></a>
 <a name="417"><span class="lineNum">     417 </span>            : }</a>
 <a name="418"><span class="lineNum">     418 </span>            : </a>
 <a name="419"><span class="lineNum">     419 </span>            : template&lt;class parentT&gt;</a>
-<a name="420"><span class="lineNum">     420 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFD()</span></a>
+<a name="420"><span class="lineNum">     420 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFD()</span></a>
 <a name="421"><span class="lineNum">     421 </span>            : {</a>
-<a name="422"><span class="lineNum">     422 </span><span class="lineCov">         12 :    return m_warnFD;</span></a>
+<a name="422"><span class="lineNum">     422 </span><span class="lineCov">          6 :    return m_warnFD;</span></a>
 <a name="423"><span class="lineNum">     423 </span>            : }</a>
 <a name="424"><span class="lineNum">     424 </span>            : </a>
 <a name="425"><span class="lineNum">     425 </span>            : template&lt;class parentT&gt;</a>
-<a name="426"><span class="lineNum">     426 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFQ()</span></a>
+<a name="426"><span class="lineNum">     426 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFQ()</span></a>
 <a name="427"><span class="lineNum">     427 </span>            : {</a>
-<a name="428"><span class="lineNum">     428 </span><span class="lineCov">         12 :    return m_warnFQ;</span></a>
+<a name="428"><span class="lineNum">     428 </span><span class="lineCov">          6 :    return m_warnFQ;</span></a>
 <a name="429"><span class="lineNum">     429 </span>            : }</a>
 <a name="430"><span class="lineNum">     430 </span>            : </a>
 <a name="431"><span class="lineNum">     431 </span>            : template&lt;class parentT&gt;</a>
-<a name="432"><span class="lineNum">     432 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFS()</span></a>
+<a name="432"><span class="lineNum">     432 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFS()</span></a>
 <a name="433"><span class="lineNum">     433 </span>            : {</a>
-<a name="434"><span class="lineNum">     434 </span><span class="lineCov">         12 :    return m_warnFS;</span></a>
+<a name="434"><span class="lineNum">     434 </span><span class="lineCov">          6 :    return m_warnFS;</span></a>
 <a name="435"><span class="lineNum">     435 </span>            : }</a>
 <a name="436"><span class="lineNum">     436 </span>            : </a>
 <a name="437"><span class="lineNum">     437 </span>            : template&lt;class parentT&gt;</a>
-<a name="438"><span class="lineNum">     438 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFT()</span></a>
+<a name="438"><span class="lineNum">     438 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFT()</span></a>
 <a name="439"><span class="lineNum">     439 </span>            : {</a>
-<a name="440"><span class="lineNum">     440 </span><span class="lineCov">         12 :    return m_warnFT;</span></a>
+<a name="440"><span class="lineNum">     440 </span><span class="lineCov">          6 :    return m_warnFT;</span></a>
 <a name="441"><span class="lineNum">     441 </span>            : }</a>
 <a name="442"><span class="lineNum">     442 </span>            : </a>
 <a name="443"><span class="lineNum">     443 </span>            : template&lt;class parentT&gt;</a>
-<a name="444"><span class="lineNum">     444 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFB()</span></a>
+<a name="444"><span class="lineNum">     444 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFB()</span></a>
 <a name="445"><span class="lineNum">     445 </span>            : {</a>
-<a name="446"><span class="lineNum">     446 </span><span class="lineCov">         12 :    return m_warnFB;</span></a>
+<a name="446"><span class="lineNum">     446 </span><span class="lineCov">          6 :    return m_warnFB;</span></a>
 <a name="447"><span class="lineNum">     447 </span>            : }</a>
 <a name="448"><span class="lineNum">     448 </span>            : </a>
 <a name="449"><span class="lineNum">     449 </span>            : template&lt;class parentT&gt;</a>
-<a name="450"><span class="lineNum">     450 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFP()</span></a>
+<a name="450"><span class="lineNum">     450 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFP()</span></a>
 <a name="451"><span class="lineNum">     451 </span>            : {</a>
-<a name="452"><span class="lineNum">     452 </span><span class="lineCov">         12 :    return m_warnFP;</span></a>
+<a name="452"><span class="lineNum">     452 </span><span class="lineCov">          6 :    return m_warnFP;</span></a>
 <a name="453"><span class="lineNum">     453 </span>            : }</a>
 <a name="454"><span class="lineNum">     454 </span>            : </a>
 <a name="455"><span class="lineNum">     455 </span>            : template&lt;class parentT&gt;</a>
-<a name="456"><span class="lineNum">     456 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnFE()</span></a>
+<a name="456"><span class="lineNum">     456 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnFE()</span></a>
 <a name="457"><span class="lineNum">     457 </span>            : {</a>
-<a name="458"><span class="lineNum">     458 </span><span class="lineCov">         12 :    return m_warnFE;</span></a>
+<a name="458"><span class="lineNum">     458 </span><span class="lineCov">          6 :    return m_warnFE;</span></a>
 <a name="459"><span class="lineNum">     459 </span>            : }</a>
 <a name="460"><span class="lineNum">     460 </span>            : </a>
 <a name="461"><span class="lineNum">     461 </span>            : template&lt;class parentT&gt;</a>
-<a name="462"><span class="lineNum">     462 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWH()</span></a>
+<a name="462"><span class="lineNum">     462 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWH()</span></a>
 <a name="463"><span class="lineNum">     463 </span>            : {</a>
-<a name="464"><span class="lineNum">     464 </span><span class="lineCov">         12 :    return m_warnWH;</span></a>
+<a name="464"><span class="lineNum">     464 </span><span class="lineCov">          6 :    return m_warnWH;</span></a>
 <a name="465"><span class="lineNum">     465 </span>            : }</a>
 <a name="466"><span class="lineNum">     466 </span>            : </a>
 <a name="467"><span class="lineNum">     467 </span>            : template&lt;class parentT&gt;</a>
-<a name="468"><span class="lineNum">     468 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWL()</span></a>
+<a name="468"><span class="lineNum">     468 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWL()</span></a>
 <a name="469"><span class="lineNum">     469 </span>            : {</a>
-<a name="470"><span class="lineNum">     470 </span><span class="lineCov">         12 :    return m_warnWL;</span></a>
+<a name="470"><span class="lineNum">     470 </span><span class="lineCov">          6 :    return m_warnWL;</span></a>
 <a name="471"><span class="lineNum">     471 </span>            : }</a>
 <a name="472"><span class="lineNum">     472 </span>            : </a>
 <a name="473"><span class="lineNum">     473 </span>            : template&lt;class parentT&gt;</a>
-<a name="474"><span class="lineNum">     474 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWP()</span></a>
+<a name="474"><span class="lineNum">     474 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWP()</span></a>
 <a name="475"><span class="lineNum">     475 </span>            : {</a>
-<a name="476"><span class="lineNum">     476 </span><span class="lineCov">         12 :    return m_warnWP;</span></a>
+<a name="476"><span class="lineNum">     476 </span><span class="lineCov">          6 :    return m_warnWP;</span></a>
 <a name="477"><span class="lineNum">     477 </span>            : }</a>
 <a name="478"><span class="lineNum">     478 </span>            : </a>
 <a name="479"><span class="lineNum">     479 </span>            : template&lt;class parentT&gt;</a>
-<a name="480"><span class="lineNum">     480 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWV()</span></a>
+<a name="480"><span class="lineNum">     480 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWV()</span></a>
 <a name="481"><span class="lineNum">     481 </span>            : {</a>
-<a name="482"><span class="lineNum">     482 </span><span class="lineCov">         12 :    return m_warnWV;</span></a>
+<a name="482"><span class="lineNum">     482 </span><span class="lineCov">          6 :    return m_warnWV;</span></a>
 <a name="483"><span class="lineNum">     483 </span>            : }</a>
 <a name="484"><span class="lineNum">     484 </span>            : </a>
 <a name="485"><span class="lineNum">     485 </span>            : template&lt;class parentT&gt;</a>
-<a name="486"><span class="lineNum">     486 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWT()</span></a>
+<a name="486"><span class="lineNum">     486 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWT()</span></a>
 <a name="487"><span class="lineNum">     487 </span>            : {</a>
-<a name="488"><span class="lineNum">     488 </span><span class="lineCov">         12 :    return m_warnWT;</span></a>
+<a name="488"><span class="lineNum">     488 </span><span class="lineCov">          6 :    return m_warnWT;</span></a>
 <a name="489"><span class="lineNum">     489 </span>            : }</a>
 <a name="490"><span class="lineNum">     490 </span>            : </a>
 <a name="491"><span class="lineNum">     491 </span>            : template&lt;class parentT&gt; </a>
-<a name="492"><span class="lineNum">     492 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnWM()</span></a>
+<a name="492"><span class="lineNum">     492 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnWM()</span></a>
 <a name="493"><span class="lineNum">     493 </span>            : {</a>
-<a name="494"><span class="lineNum">     494 </span><span class="lineCov">         12 :    return m_warnWM;</span></a>
+<a name="494"><span class="lineNum">     494 </span><span class="lineCov">          6 :    return m_warnWM;</span></a>
 <a name="495"><span class="lineNum">     495 </span>            : }</a>
 <a name="496"><span class="lineNum">     496 </span>            : </a>
 <a name="497"><span class="lineNum">     497 </span>            : template&lt;class parentT&gt;</a>
-<a name="498"><span class="lineNum">     498 </span><span class="lineCov">         14 : bool zaberStage&lt;parentT&gt;::warnWR()</span></a>
+<a name="498"><span class="lineNum">     498 </span><span class="lineCov">          7 : bool zaberStage&lt;parentT&gt;::warnWR()</span></a>
 <a name="499"><span class="lineNum">     499 </span>            : {</a>
-<a name="500"><span class="lineNum">     500 </span><span class="lineCov">         14 :    return m_warnWR;</span></a>
+<a name="500"><span class="lineNum">     500 </span><span class="lineCov">          7 :    return m_warnWR;</span></a>
 <a name="501"><span class="lineNum">     501 </span>            : }</a>
 <a name="502"><span class="lineNum">     502 </span>            : </a>
 <a name="503"><span class="lineNum">     503 </span>            : template&lt;class parentT&gt;</a>
-<a name="504"><span class="lineNum">     504 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnNC()</span></a>
+<a name="504"><span class="lineNum">     504 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnNC()</span></a>
 <a name="505"><span class="lineNum">     505 </span>            : {</a>
-<a name="506"><span class="lineNum">     506 </span><span class="lineCov">         12 :    return m_warnNC;</span></a>
+<a name="506"><span class="lineNum">     506 </span><span class="lineCov">          6 :    return m_warnNC;</span></a>
 <a name="507"><span class="lineNum">     507 </span>            : }</a>
 <a name="508"><span class="lineNum">     508 </span>            : </a>
 <a name="509"><span class="lineNum">     509 </span>            : template&lt;class parentT&gt;</a>
-<a name="510"><span class="lineNum">     510 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnNI()</span></a>
+<a name="510"><span class="lineNum">     510 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnNI()</span></a>
 <a name="511"><span class="lineNum">     511 </span>            : {</a>
-<a name="512"><span class="lineNum">     512 </span><span class="lineCov">         12 :    return m_warnNI;</span></a>
+<a name="512"><span class="lineNum">     512 </span><span class="lineCov">          6 :    return m_warnNI;</span></a>
 <a name="513"><span class="lineNum">     513 </span>            : }</a>
 <a name="514"><span class="lineNum">     514 </span>            : </a>
 <a name="515"><span class="lineNum">     515 </span>            : template&lt;class parentT&gt; </a>
-<a name="516"><span class="lineNum">     516 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnND()</span></a>
+<a name="516"><span class="lineNum">     516 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnND()</span></a>
 <a name="517"><span class="lineNum">     517 </span>            : {</a>
-<a name="518"><span class="lineNum">     518 </span><span class="lineCov">         12 :    return m_warnND;</span></a>
+<a name="518"><span class="lineNum">     518 </span><span class="lineCov">          6 :    return m_warnND;</span></a>
 <a name="519"><span class="lineNum">     519 </span>            : }</a>
 <a name="520"><span class="lineNum">     520 </span>            : </a>
 <a name="521"><span class="lineNum">     521 </span>            : template&lt;class parentT&gt;</a>
-<a name="522"><span class="lineNum">     522 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnNU()</span></a>
+<a name="522"><span class="lineNum">     522 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnNU()</span></a>
 <a name="523"><span class="lineNum">     523 </span>            : {</a>
-<a name="524"><span class="lineNum">     524 </span><span class="lineCov">         12 :    return m_warnNU;</span></a>
+<a name="524"><span class="lineNum">     524 </span><span class="lineCov">          6 :    return m_warnNU;</span></a>
 <a name="525"><span class="lineNum">     525 </span>            : }</a>
 <a name="526"><span class="lineNum">     526 </span>            : </a>
 <a name="527"><span class="lineNum">     527 </span>            : template&lt;class parentT&gt;</a>
-<a name="528"><span class="lineNum">     528 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnNJ()</span></a>
+<a name="528"><span class="lineNum">     528 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnNJ()</span></a>
 <a name="529"><span class="lineNum">     529 </span>            : {</a>
-<a name="530"><span class="lineNum">     530 </span><span class="lineCov">         12 :    return m_warnNJ;</span></a>
+<a name="530"><span class="lineNum">     530 </span><span class="lineCov">          6 :    return m_warnNJ;</span></a>
 <a name="531"><span class="lineNum">     531 </span>            : }</a>
 <a name="532"><span class="lineNum">     532 </span>            : </a>
 <a name="533"><span class="lineNum">     533 </span>            : template&lt;class parentT&gt;</a>
-<a name="534"><span class="lineNum">     534 </span><span class="lineCov">         12 : bool zaberStage&lt;parentT&gt;::warnUNK()</span></a>
+<a name="534"><span class="lineNum">     534 </span><span class="lineCov">          6 : bool zaberStage&lt;parentT&gt;::warnUNK()</span></a>
 <a name="535"><span class="lineNum">     535 </span>            : {</a>
-<a name="536"><span class="lineNum">     536 </span><span class="lineCov">         12 :    return m_warnUNK;</span></a>
+<a name="536"><span class="lineNum">     536 </span><span class="lineCov">          6 :    return m_warnUNK;</span></a>
 <a name="537"><span class="lineNum">     537 </span>            : }</a>
 <a name="538"><span class="lineNum">     538 </span>            : </a>
 <a name="539"><span class="lineNum">     539 </span>            : template&lt;class parentT&gt;</a>
@@ -1058,243 +1058,243 @@
 <a name="996"><span class="lineNum">     996 </span>            : }</a>
 <a name="997"><span class="lineNum">     997 </span>            : </a>
 <a name="998"><span class="lineNum">     998 </span>            : template&lt;class parentT&gt;</a>
-<a name="999"><span class="lineNum">     999 </span><span class="lineCov">         42 : int zaberStage&lt;parentT&gt;::processWarning( std::string &amp; warn )</span></a>
+<a name="999"><span class="lineNum">     999 </span><span class="lineCov">         21 : int zaberStage&lt;parentT&gt;::processWarning( std::string &amp; warn )</span></a>
 <a name="1000"><span class="lineNum">    1000 </span>            : {</a>
-<a name="1001"><span class="lineNum">    1001 </span><span class="lineCov">         42 :    if(warn == &quot;FD&quot;)</span></a>
+<a name="1001"><span class="lineNum">    1001 </span><span class="lineCov">         21 :    if(warn == &quot;FD&quot;)</span></a>
 <a name="1002"><span class="lineNum">    1002 </span>            :    {</a>
-<a name="1003"><span class="lineNum">    1003 </span><span class="lineCov">          2 :       if(!m_warnFDreported)</span></a>
+<a name="1003"><span class="lineNum">    1003 </span><span class="lineCov">          1 :       if(!m_warnFDreported)</span></a>
 <a name="1004"><span class="lineNum">    1004 </span>            :       {</a>
-<a name="1005"><span class="lineNum">    1005 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Driver Disabled (FD): The driver has disabled itself due to overheating.&quot; , logPrio::LOG_EMERGENCY);</span></a>
-<a name="1006"><span class="lineNum">    1006 </span><span class="lineCov">          2 :          m_warnFDreported = true;</span></a>
+<a name="1005"><span class="lineNum">    1005 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Driver Disabled (FD): The driver has disabled itself due to overheating.&quot; , logPrio::LOG_EMERGENCY);</span></a>
+<a name="1006"><span class="lineNum">    1006 </span><span class="lineCov">          1 :          m_warnFDreported = true;</span></a>
 <a name="1007"><span class="lineNum">    1007 </span>            :       }</a>
 <a name="1008"><span class="lineNum">    1008 </span>            : </a>
-<a name="1009"><span class="lineNum">    1009 </span><span class="lineCov">          2 :       m_warnFD = true;</span></a>
-<a name="1010"><span class="lineNum">    1010 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1009"><span class="lineNum">    1009 </span><span class="lineCov">          1 :       m_warnFD = true;</span></a>
+<a name="1010"><span class="lineNum">    1010 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1011"><span class="lineNum">    1011 </span>            :    }</a>
-<a name="1012"><span class="lineNum">    1012 </span><span class="lineCov">         40 :    else if(warn == &quot;FQ&quot;)</span></a>
+<a name="1012"><span class="lineNum">    1012 </span><span class="lineCov">         20 :    else if(warn == &quot;FQ&quot;)</span></a>
 <a name="1013"><span class="lineNum">    1013 </span>            :    {</a>
-<a name="1014"><span class="lineNum">    1014 </span><span class="lineCov">          2 :       if(!m_warnFQreported)</span></a>
+<a name="1014"><span class="lineNum">    1014 </span><span class="lineCov">          1 :       if(!m_warnFQreported)</span></a>
 <a name="1015"><span class="lineNum">    1015 </span>            :       {</a>
-<a name="1016"><span class="lineNum">    1016 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; warning FQ: you should probably check.&quot; , logPrio::LOG_EMERGENCY);</span></a>
-<a name="1017"><span class="lineNum">    1017 </span><span class="lineCov">          2 :          m_warnFQreported = true;</span></a>
+<a name="1016"><span class="lineNum">    1016 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; warning FQ: you should probably check.&quot; , logPrio::LOG_EMERGENCY);</span></a>
+<a name="1017"><span class="lineNum">    1017 </span><span class="lineCov">          1 :          m_warnFQreported = true;</span></a>
 <a name="1018"><span class="lineNum">    1018 </span>            :       }</a>
 <a name="1019"><span class="lineNum">    1019 </span>            : </a>
-<a name="1020"><span class="lineNum">    1020 </span><span class="lineCov">          2 :       m_warnFQ = true;</span></a>
-<a name="1021"><span class="lineNum">    1021 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1020"><span class="lineNum">    1020 </span><span class="lineCov">          1 :       m_warnFQ = true;</span></a>
+<a name="1021"><span class="lineNum">    1021 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1022"><span class="lineNum">    1022 </span>            :    }</a>
-<a name="1023"><span class="lineNum">    1023 </span><span class="lineCov">         38 :    else if(warn == &quot;FS&quot;)</span></a>
+<a name="1023"><span class="lineNum">    1023 </span><span class="lineCov">         19 :    else if(warn == &quot;FS&quot;)</span></a>
 <a name="1024"><span class="lineNum">    1024 </span>            :    {</a>
-<a name="1025"><span class="lineNum">    1025 </span><span class="lineCov">          2 :       if(!m_warnFSreported)</span></a>
+<a name="1025"><span class="lineNum">    1025 </span><span class="lineCov">          1 :       if(!m_warnFSreported)</span></a>
 <a name="1026"><span class="lineNum">    1026 </span>            :       {</a>
-<a name="1027"><span class="lineNum">    1027 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stalled and Stopped (FS): Stalling was detected and the axis has stopped itself. &quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1028"><span class="lineNum">    1028 </span><span class="lineCov">          2 :          m_warnFSreported = true;</span></a>
+<a name="1027"><span class="lineNum">    1027 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stalled and Stopped (FS): Stalling was detected and the axis has stopped itself. &quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1028"><span class="lineNum">    1028 </span><span class="lineCov">          1 :          m_warnFSreported = true;</span></a>
 <a name="1029"><span class="lineNum">    1029 </span>            :       }</a>
-<a name="1030"><span class="lineNum">    1030 </span><span class="lineCov">          2 :       m_warnFS = true;</span></a>
-<a name="1031"><span class="lineNum">    1031 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1030"><span class="lineNum">    1030 </span><span class="lineCov">          1 :       m_warnFS = true;</span></a>
+<a name="1031"><span class="lineNum">    1031 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1032"><span class="lineNum">    1032 </span>            :    }</a>
-<a name="1033"><span class="lineNum">    1033 </span><span class="lineCov">         36 :    else if(warn == &quot;FT&quot;)</span></a>
+<a name="1033"><span class="lineNum">    1033 </span><span class="lineCov">         18 :    else if(warn == &quot;FT&quot;)</span></a>
 <a name="1034"><span class="lineNum">    1034 </span>            :    {</a>
-<a name="1035"><span class="lineNum">    1035 </span><span class="lineCov">          2 :       if(!m_warnFTreported)</span></a>
+<a name="1035"><span class="lineNum">    1035 </span><span class="lineCov">          1 :       if(!m_warnFTreported)</span></a>
 <a name="1036"><span class="lineNum">    1036 </span>            :       {</a>
-<a name="1037"><span class="lineNum">    1037 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Excessive Twist (FT): The lockstep group has exceeded allowable twist and has stopped. &quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1038"><span class="lineNum">    1038 </span><span class="lineCov">          2 :          m_warnFTreported = true;</span></a>
+<a name="1037"><span class="lineNum">    1037 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Excessive Twist (FT): The lockstep group has exceeded allowable twist and has stopped. &quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1038"><span class="lineNum">    1038 </span><span class="lineCov">          1 :          m_warnFTreported = true;</span></a>
 <a name="1039"><span class="lineNum">    1039 </span>            :       }</a>
 <a name="1040"><span class="lineNum">    1040 </span>            :       </a>
-<a name="1041"><span class="lineNum">    1041 </span><span class="lineCov">          2 :       m_warnFT = true;</span></a>
-<a name="1042"><span class="lineNum">    1042 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1041"><span class="lineNum">    1041 </span><span class="lineCov">          1 :       m_warnFT = true;</span></a>
+<a name="1042"><span class="lineNum">    1042 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1043"><span class="lineNum">    1043 </span>            :    }</a>
-<a name="1044"><span class="lineNum">    1044 </span><span class="lineCov">         34 :    else if(warn == &quot;FB&quot;)</span></a>
+<a name="1044"><span class="lineNum">    1044 </span><span class="lineCov">         17 :    else if(warn == &quot;FB&quot;)</span></a>
 <a name="1045"><span class="lineNum">    1045 </span>            :    {</a>
-<a name="1046"><span class="lineNum">    1046 </span><span class="lineCov">          2 :       if(!m_warnFBreported)</span></a>
+<a name="1046"><span class="lineNum">    1046 </span><span class="lineCov">          1 :       if(!m_warnFBreported)</span></a>
 <a name="1047"><span class="lineNum">    1047 </span>            :       {</a>
-<a name="1048"><span class="lineNum">    1048 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stream Bounds Error (FB): A previous streamed motion could not be executed because it failed a precondition&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1049"><span class="lineNum">    1049 </span><span class="lineCov">          2 :          m_warnFBreported = true;</span></a>
+<a name="1048"><span class="lineNum">    1048 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stream Bounds Error (FB): A previous streamed motion could not be executed because it failed a precondition&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1049"><span class="lineNum">    1049 </span><span class="lineCov">          1 :          m_warnFBreported = true;</span></a>
 <a name="1050"><span class="lineNum">    1050 </span>            :       }</a>
 <a name="1051"><span class="lineNum">    1051 </span>            :       </a>
-<a name="1052"><span class="lineNum">    1052 </span><span class="lineCov">          2 :       m_warnFB = true;</span></a>
-<a name="1053"><span class="lineNum">    1053 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1052"><span class="lineNum">    1052 </span><span class="lineCov">          1 :       m_warnFB = true;</span></a>
+<a name="1053"><span class="lineNum">    1053 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1054"><span class="lineNum">    1054 </span>            :    }</a>
-<a name="1055"><span class="lineNum">    1055 </span><span class="lineCov">         32 :    else if(warn == &quot;FP&quot;)</span></a>
+<a name="1055"><span class="lineNum">    1055 </span><span class="lineCov">         16 :    else if(warn == &quot;FP&quot;)</span></a>
 <a name="1056"><span class="lineNum">    1056 </span>            :    {</a>
-<a name="1057"><span class="lineNum">    1057 </span><span class="lineCov">          2 :       if(!m_warnFPreported)</span></a>
+<a name="1057"><span class="lineNum">    1057 </span><span class="lineCov">          1 :       if(!m_warnFPreported)</span></a>
 <a name="1058"><span class="lineNum">    1058 </span>            :       {</a>
-<a name="1059"><span class="lineNum">    1059 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Interpolated Path Deviation (FP): Streamed or sinusoidal motion was terminated because an axis slipped and thus the device deviated from the requested path. &quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1060"><span class="lineNum">    1060 </span><span class="lineCov">          2 :          m_warnFPreported = true;</span></a>
+<a name="1059"><span class="lineNum">    1059 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Interpolated Path Deviation (FP): Streamed or sinusoidal motion was terminated because an axis slipped and thus the device deviated from the requested path. &quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1060"><span class="lineNum">    1060 </span><span class="lineCov">          1 :          m_warnFPreported = true;</span></a>
 <a name="1061"><span class="lineNum">    1061 </span>            :       }</a>
 <a name="1062"><span class="lineNum">    1062 </span>            :       </a>
-<a name="1063"><span class="lineNum">    1063 </span><span class="lineCov">          2 :       m_warnFP = true;</span></a>
-<a name="1064"><span class="lineNum">    1064 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1063"><span class="lineNum">    1063 </span><span class="lineCov">          1 :       m_warnFP = true;</span></a>
+<a name="1064"><span class="lineNum">    1064 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1065"><span class="lineNum">    1065 </span>            :    }</a>
-<a name="1066"><span class="lineNum">    1066 </span><span class="lineCov">         30 :    else if(warn == &quot;FE&quot;)</span></a>
+<a name="1066"><span class="lineNum">    1066 </span><span class="lineCov">         15 :    else if(warn == &quot;FE&quot;)</span></a>
 <a name="1067"><span class="lineNum">    1067 </span>            :    {</a>
-<a name="1068"><span class="lineNum">    1068 </span><span class="lineCov">          2 :       if(!m_warnFEreported)</span></a>
+<a name="1068"><span class="lineNum">    1068 </span><span class="lineCov">          1 :       if(!m_warnFEreported)</span></a>
 <a name="1069"><span class="lineNum">    1069 </span>            :       {</a>
-<a name="1070"><span class="lineNum">    1070 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Limit Error (FE): The target limit sensor cannot be reached or is faulty. &quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1071"><span class="lineNum">    1071 </span><span class="lineCov">          2 :          m_warnFEreported = true;</span></a>
+<a name="1070"><span class="lineNum">    1070 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Limit Error (FE): The target limit sensor cannot be reached or is faulty. &quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1071"><span class="lineNum">    1071 </span><span class="lineCov">          1 :          m_warnFEreported = true;</span></a>
 <a name="1072"><span class="lineNum">    1072 </span>            :       }</a>
 <a name="1073"><span class="lineNum">    1073 </span>            :       </a>
-<a name="1074"><span class="lineNum">    1074 </span><span class="lineCov">          2 :       m_warnFE = true;</span></a>
-<a name="1075"><span class="lineNum">    1075 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1074"><span class="lineNum">    1074 </span><span class="lineCov">          1 :       m_warnFE = true;</span></a>
+<a name="1075"><span class="lineNum">    1075 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1076"><span class="lineNum">    1076 </span>            :    }</a>
-<a name="1077"><span class="lineNum">    1077 </span><span class="lineCov">         28 :    else if(warn == &quot;WH&quot;)</span></a>
+<a name="1077"><span class="lineNum">    1077 </span><span class="lineCov">         14 :    else if(warn == &quot;WH&quot;)</span></a>
 <a name="1078"><span class="lineNum">    1078 </span>            :    {</a>
-<a name="1079"><span class="lineNum">    1079 </span><span class="lineCov">          2 :       if(m_warnWHreported == false)</span></a>
+<a name="1079"><span class="lineNum">    1079 </span><span class="lineCov">          1 :       if(m_warnWHreported == false)</span></a>
 <a name="1080"><span class="lineNum">    1080 </span>            :       {</a>
-<a name="1081"><span class="lineNum">    1081 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Device not homed (WH): The device has a position reference, but has not been homed.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1082"><span class="lineNum">    1082 </span><span class="lineCov">          2 :          m_warnWHreported = true;</span></a>
+<a name="1081"><span class="lineNum">    1081 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Device not homed (WH): The device has a position reference, but has not been homed.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1082"><span class="lineNum">    1082 </span><span class="lineCov">          1 :          m_warnWHreported = true;</span></a>
 <a name="1083"><span class="lineNum">    1083 </span>            :       }</a>
 <a name="1084"><span class="lineNum">    1084 </span>            : </a>
-<a name="1085"><span class="lineNum">    1085 </span><span class="lineCov">          2 :       m_warnWH = true;</span></a>
-<a name="1086"><span class="lineNum">    1086 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1085"><span class="lineNum">    1085 </span><span class="lineCov">          1 :       m_warnWH = true;</span></a>
+<a name="1086"><span class="lineNum">    1086 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1087"><span class="lineNum">    1087 </span>            :    }</a>
-<a name="1088"><span class="lineNum">    1088 </span><span class="lineCov">         26 :    else if(warn == &quot;WL&quot;)</span></a>
+<a name="1088"><span class="lineNum">    1088 </span><span class="lineCov">         13 :    else if(warn == &quot;WL&quot;)</span></a>
 <a name="1089"><span class="lineNum">    1089 </span>            :    {</a>
-<a name="1090"><span class="lineNum">    1090 </span><span class="lineCov">          2 :       if(!m_warnWLreported)</span></a>
+<a name="1090"><span class="lineNum">    1090 </span><span class="lineCov">          1 :       if(!m_warnWLreported)</span></a>
 <a name="1091"><span class="lineNum">    1091 </span>            :       {</a>
-<a name="1092"><span class="lineNum">    1092 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Unexpected Limit Trigger warning (WL): A movement operation did not complete due to a triggered limit sensor.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1093"><span class="lineNum">    1093 </span><span class="lineCov">          2 :          m_warnWLreported = true;</span></a>
+<a name="1092"><span class="lineNum">    1092 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Unexpected Limit Trigger warning (WL): A movement operation did not complete due to a triggered limit sensor.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1093"><span class="lineNum">    1093 </span><span class="lineCov">          1 :          m_warnWLreported = true;</span></a>
 <a name="1094"><span class="lineNum">    1094 </span>            :       }</a>
 <a name="1095"><span class="lineNum">    1095 </span>            :       </a>
-<a name="1096"><span class="lineNum">    1096 </span><span class="lineCov">          2 :       m_warnWL = true;</span></a>
-<a name="1097"><span class="lineNum">    1097 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1096"><span class="lineNum">    1096 </span><span class="lineCov">          1 :       m_warnWL = true;</span></a>
+<a name="1097"><span class="lineNum">    1097 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1098"><span class="lineNum">    1098 </span>            :    }</a>
-<a name="1099"><span class="lineNum">    1099 </span><span class="lineCov">         24 :    else if(warn == &quot;WP&quot;)</span></a>
+<a name="1099"><span class="lineNum">    1099 </span><span class="lineCov">         12 :    else if(warn == &quot;WP&quot;)</span></a>
 <a name="1100"><span class="lineNum">    1100 </span>            :    {</a>
-<a name="1101"><span class="lineNum">    1101 </span><span class="lineCov">          2 :       if(!m_warnWPreported)</span></a>
+<a name="1101"><span class="lineNum">    1101 </span><span class="lineCov">          1 :       if(!m_warnWPreported)</span></a>
 <a name="1102"><span class="lineNum">    1102 </span>            :       {</a>
-<a name="1103"><span class="lineNum">    1103 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Invalid calibration type (WP): The saved calibration data type is unsupported&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1104"><span class="lineNum">    1104 </span><span class="lineCov">          2 :          m_warnWPreported = true;</span></a>
+<a name="1103"><span class="lineNum">    1103 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Invalid calibration type (WP): The saved calibration data type is unsupported&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1104"><span class="lineNum">    1104 </span><span class="lineCov">          1 :          m_warnWPreported = true;</span></a>
 <a name="1105"><span class="lineNum">    1105 </span>            :       }</a>
 <a name="1106"><span class="lineNum">    1106 </span>            :       </a>
-<a name="1107"><span class="lineNum">    1107 </span><span class="lineCov">          2 :       m_warnWP = true;</span></a>
-<a name="1108"><span class="lineNum">    1108 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1107"><span class="lineNum">    1107 </span><span class="lineCov">          1 :       m_warnWP = true;</span></a>
+<a name="1108"><span class="lineNum">    1108 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1109"><span class="lineNum">    1109 </span>            :    }</a>
-<a name="1110"><span class="lineNum">    1110 </span><span class="lineCov">         22 :    else if(warn == &quot;WV&quot;)</span></a>
+<a name="1110"><span class="lineNum">    1110 </span><span class="lineCov">         11 :    else if(warn == &quot;WV&quot;)</span></a>
 <a name="1111"><span class="lineNum">    1111 </span>            :    {</a>
-<a name="1112"><span class="lineNum">    1112 </span><span class="lineCov">          2 :       if(!m_warnWVreported)</span></a>
+<a name="1112"><span class="lineNum">    1112 </span><span class="lineCov">          1 :       if(!m_warnWVreported)</span></a>
 <a name="1113"><span class="lineNum">    1113 </span>            :       {</a>
-<a name="1114"><span class="lineNum">    1114 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Voltage Out of Range (WV): The supply voltage is outside the recommended operating range of the device&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1115"><span class="lineNum">    1115 </span><span class="lineCov">          2 :          m_warnWVreported = true;</span></a>
+<a name="1114"><span class="lineNum">    1114 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Voltage Out of Range (WV): The supply voltage is outside the recommended operating range of the device&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1115"><span class="lineNum">    1115 </span><span class="lineCov">          1 :          m_warnWVreported = true;</span></a>
 <a name="1116"><span class="lineNum">    1116 </span>            :       }</a>
 <a name="1117"><span class="lineNum">    1117 </span>            :       </a>
-<a name="1118"><span class="lineNum">    1118 </span><span class="lineCov">          2 :       m_warnWV = true;</span></a>
-<a name="1119"><span class="lineNum">    1119 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1118"><span class="lineNum">    1118 </span><span class="lineCov">          1 :       m_warnWV = true;</span></a>
+<a name="1119"><span class="lineNum">    1119 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1120"><span class="lineNum">    1120 </span>            :    }</a>
-<a name="1121"><span class="lineNum">    1121 </span><span class="lineCov">         20 :    else if(warn == &quot;WT&quot;)</span></a>
+<a name="1121"><span class="lineNum">    1121 </span><span class="lineCov">         10 :    else if(warn == &quot;WT&quot;)</span></a>
 <a name="1122"><span class="lineNum">    1122 </span>            :    {</a>
-<a name="1123"><span class="lineNum">    1123 </span><span class="lineCov">          2 :       if(!m_warnWTreported)</span></a>
+<a name="1123"><span class="lineNum">    1123 </span><span class="lineCov">          1 :       if(!m_warnWTreported)</span></a>
 <a name="1124"><span class="lineNum">    1124 </span>            :       {</a>
-<a name="1125"><span class="lineNum">    1125 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Controller Temperature High (WT): The internal temperature of the controller has exceeded the recommended limit for the device.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1126"><span class="lineNum">    1126 </span><span class="lineCov">          2 :          m_warnWTreported = true;</span></a>
+<a name="1125"><span class="lineNum">    1125 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Controller Temperature High (WT): The internal temperature of the controller has exceeded the recommended limit for the device.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1126"><span class="lineNum">    1126 </span><span class="lineCov">          1 :          m_warnWTreported = true;</span></a>
 <a name="1127"><span class="lineNum">    1127 </span>            :       }</a>
 <a name="1128"><span class="lineNum">    1128 </span>            :       </a>
-<a name="1129"><span class="lineNum">    1129 </span><span class="lineCov">          2 :       m_warnWT = true;</span></a>
-<a name="1130"><span class="lineNum">    1130 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1129"><span class="lineNum">    1129 </span><span class="lineCov">          1 :       m_warnWT = true;</span></a>
+<a name="1130"><span class="lineNum">    1130 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1131"><span class="lineNum">    1131 </span>            :    }</a>
-<a name="1132"><span class="lineNum">    1132 </span><span class="lineCov">         18 :    else if(warn == &quot;WM&quot;)</span></a>
+<a name="1132"><span class="lineNum">    1132 </span><span class="lineCov">          9 :    else if(warn == &quot;WM&quot;)</span></a>
 <a name="1133"><span class="lineNum">    1133 </span>            :    {</a>
-<a name="1134"><span class="lineNum">    1134 </span><span class="lineCov">          2 :       if(m_warnWMreported == false)</span></a>
+<a name="1134"><span class="lineNum">    1134 </span><span class="lineCov">          1 :       if(m_warnWMreported == false)</span></a>
 <a name="1135"><span class="lineNum">    1135 </span>            :       {</a>
-<a name="1136"><span class="lineNum">    1136 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Displaced when Stationary (WM): While not in motion, the axis has been forced out of its position.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1137"><span class="lineNum">    1137 </span><span class="lineCov">          2 :          m_warnWMreported = true;</span></a>
+<a name="1136"><span class="lineNum">    1136 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Displaced when Stationary (WM): While not in motion, the axis has been forced out of its position.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1137"><span class="lineNum">    1137 </span><span class="lineCov">          1 :          m_warnWMreported = true;</span></a>
 <a name="1138"><span class="lineNum">    1138 </span>            :       }</a>
 <a name="1139"><span class="lineNum">    1139 </span>            :       </a>
-<a name="1140"><span class="lineNum">    1140 </span><span class="lineCov">          2 :       m_warnWM = true;</span></a>
-<a name="1141"><span class="lineNum">    1141 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1140"><span class="lineNum">    1140 </span><span class="lineCov">          1 :       m_warnWM = true;</span></a>
+<a name="1141"><span class="lineNum">    1141 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1142"><span class="lineNum">    1142 </span>            :    }</a>
-<a name="1143"><span class="lineNum">    1143 </span><span class="lineCov">         16 :    else if(warn == &quot;WR&quot;)</span></a>
+<a name="1143"><span class="lineNum">    1143 </span><span class="lineCov">          8 :    else if(warn == &quot;WR&quot;)</span></a>
 <a name="1144"><span class="lineNum">    1144 </span>            :    {</a>
-<a name="1145"><span class="lineNum">    1145 </span><span class="lineCov">          4 :       if(m_warnWRreported == false)</span></a>
+<a name="1145"><span class="lineNum">    1145 </span><span class="lineCov">          2 :       if(m_warnWRreported == false)</span></a>
 <a name="1146"><span class="lineNum">    1146 </span>            :       {</a>
-<a name="1147"><span class="lineNum">    1147 </span><span class="lineCov">          4 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; No Reference Position (WR): Axis has not had a reference position established. [homing required]&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1148"><span class="lineNum">    1148 </span><span class="lineCov">          4 :          m_warnWRreported = true;</span></a>
+<a name="1147"><span class="lineNum">    1147 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; No Reference Position (WR): Axis has not had a reference position established. [homing required]&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1148"><span class="lineNum">    1148 </span><span class="lineCov">          2 :          m_warnWRreported = true;</span></a>
 <a name="1149"><span class="lineNum">    1149 </span>            :       }</a>
 <a name="1150"><span class="lineNum">    1150 </span>            : </a>
-<a name="1151"><span class="lineNum">    1151 </span><span class="lineCov">          4 :       m_warnWR = true;</span></a>
-<a name="1152"><span class="lineNum">    1152 </span><span class="lineCov">          4 :       return 0;</span></a>
+<a name="1151"><span class="lineNum">    1151 </span><span class="lineCov">          2 :       m_warnWR = true;</span></a>
+<a name="1152"><span class="lineNum">    1152 </span><span class="lineCov">          2 :       return 0;</span></a>
 <a name="1153"><span class="lineNum">    1153 </span>            :    }</a>
-<a name="1154"><span class="lineNum">    1154 </span><span class="lineCov">         12 :    else if(warn == &quot;NC&quot;)</span></a>
+<a name="1154"><span class="lineNum">    1154 </span><span class="lineCov">          6 :    else if(warn == &quot;NC&quot;)</span></a>
 <a name="1155"><span class="lineNum">    1155 </span>            :    {</a>
-<a name="1156"><span class="lineNum">    1156 </span><span class="lineCov">          2 :       if(!m_warnNCreported)</span></a>
+<a name="1156"><span class="lineNum">    1156 </span><span class="lineCov">          1 :       if(!m_warnNCreported)</span></a>
 <a name="1157"><span class="lineNum">    1157 </span>            :       {</a>
-<a name="1158"><span class="lineNum">    1158 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Manual Control (NC): Axis is busy due to manual control via the knob.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1159"><span class="lineNum">    1159 </span><span class="lineCov">          2 :          m_warnNCreported = true;</span></a>
+<a name="1158"><span class="lineNum">    1158 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Manual Control (NC): Axis is busy due to manual control via the knob.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1159"><span class="lineNum">    1159 </span><span class="lineCov">          1 :          m_warnNCreported = true;</span></a>
 <a name="1160"><span class="lineNum">    1160 </span>            :       }</a>
 <a name="1161"><span class="lineNum">    1161 </span>            :       </a>
-<a name="1162"><span class="lineNum">    1162 </span><span class="lineCov">          2 :       m_warnNC = true;</span></a>
-<a name="1163"><span class="lineNum">    1163 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1162"><span class="lineNum">    1162 </span><span class="lineCov">          1 :       m_warnNC = true;</span></a>
+<a name="1163"><span class="lineNum">    1163 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1164"><span class="lineNum">    1164 </span>            :    }</a>
-<a name="1165"><span class="lineNum">    1165 </span><span class="lineCov">         10 :    else if(warn == &quot;NI&quot;)</span></a>
+<a name="1165"><span class="lineNum">    1165 </span><span class="lineCov">          5 :    else if(warn == &quot;NI&quot;)</span></a>
 <a name="1166"><span class="lineNum">    1166 </span>            :    {</a>
-<a name="1167"><span class="lineNum">    1167 </span><span class="lineCov">          2 :       if(m_parent)</span></a>
+<a name="1167"><span class="lineNum">    1167 </span><span class="lineCov">          1 :       if(m_parent)</span></a>
 <a name="1168"><span class="lineNum">    1168 </span>            :       {</a>
-<a name="1169"><span class="lineNum">    1169 </span><span class="lineCov">          2 :          if(m_homing == true || warnWR()) return 0; //ignore this during homing</span></a>
+<a name="1169"><span class="lineNum">    1169 </span><span class="lineCov">          1 :          if(m_homing == true || warnWR()) return 0; //ignore this during homing</span></a>
 <a name="1170"><span class="lineNum">    1170 </span>            :       }</a>
 <a name="1171"><span class="lineNum">    1171 </span>            : </a>
-<a name="1172"><span class="lineNum">    1172 </span><span class="lineCov">          2 :       if(!m_warnNIreported)</span></a>
+<a name="1172"><span class="lineNum">    1172 </span><span class="lineCov">          1 :       if(!m_warnNIreported)</span></a>
 <a name="1173"><span class="lineNum">    1173 </span>            :       {</a>
-<a name="1174"><span class="lineNum">    1174 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Command Interrupted (NI): A movement operation (command or manual control) was requested while the axis was executing another movement command.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1175"><span class="lineNum">    1175 </span><span class="lineCov">          2 :          m_warnNIreported = true;</span></a>
+<a name="1174"><span class="lineNum">    1174 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Command Interrupted (NI): A movement operation (command or manual control) was requested while the axis was executing another movement command.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1175"><span class="lineNum">    1175 </span><span class="lineCov">          1 :          m_warnNIreported = true;</span></a>
 <a name="1176"><span class="lineNum">    1176 </span>            :       }</a>
 <a name="1177"><span class="lineNum">    1177 </span>            :       </a>
-<a name="1178"><span class="lineNum">    1178 </span><span class="lineCov">          2 :       m_warnNI = true;</span></a>
-<a name="1179"><span class="lineNum">    1179 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1178"><span class="lineNum">    1178 </span><span class="lineCov">          1 :       m_warnNI = true;</span></a>
+<a name="1179"><span class="lineNum">    1179 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1180"><span class="lineNum">    1180 </span>            :    }</a>
-<a name="1181"><span class="lineNum">    1181 </span><span class="lineCov">          8 :    else if(warn == &quot;ND&quot;)</span></a>
+<a name="1181"><span class="lineNum">    1181 </span><span class="lineCov">          4 :    else if(warn == &quot;ND&quot;)</span></a>
 <a name="1182"><span class="lineNum">    1182 </span>            :    {</a>
-<a name="1183"><span class="lineNum">    1183 </span><span class="lineCov">          2 :       if(!m_warnNDreported)</span></a>
+<a name="1183"><span class="lineNum">    1183 </span><span class="lineCov">          1 :       if(!m_warnNDreported)</span></a>
 <a name="1184"><span class="lineNum">    1184 </span>            :       {</a>
-<a name="1185"><span class="lineNum">    1185 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stream Discontinuity (ND): The device has slowed down while following a streamed motion path because it has run out of queued motions.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1186"><span class="lineNum">    1186 </span><span class="lineCov">          2 :          m_warnNDreported = true;</span></a>
+<a name="1185"><span class="lineNum">    1185 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Stream Discontinuity (ND): The device has slowed down while following a streamed motion path because it has run out of queued motions.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1186"><span class="lineNum">    1186 </span><span class="lineCov">          1 :          m_warnNDreported = true;</span></a>
 <a name="1187"><span class="lineNum">    1187 </span>            :       }</a>
 <a name="1188"><span class="lineNum">    1188 </span>            :       </a>
-<a name="1189"><span class="lineNum">    1189 </span><span class="lineCov">          2 :       m_warnND = true;</span></a>
-<a name="1190"><span class="lineNum">    1190 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1189"><span class="lineNum">    1189 </span><span class="lineCov">          1 :       m_warnND = true;</span></a>
+<a name="1190"><span class="lineNum">    1190 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1191"><span class="lineNum">    1191 </span>            :    }</a>
-<a name="1192"><span class="lineNum">    1192 </span><span class="lineCov">          6 :    else if(warn == &quot;NU&quot;)</span></a>
+<a name="1192"><span class="lineNum">    1192 </span><span class="lineCov">          3 :    else if(warn == &quot;NU&quot;)</span></a>
 <a name="1193"><span class="lineNum">    1193 </span>            :    {</a>
-<a name="1194"><span class="lineNum">    1194 </span><span class="lineCov">          2 :       if(!m_warnNUreported)</span></a>
+<a name="1194"><span class="lineNum">    1194 </span><span class="lineCov">          1 :       if(!m_warnNUreported)</span></a>
 <a name="1195"><span class="lineNum">    1195 </span>            :       {</a>
-<a name="1196"><span class="lineNum">    1196 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Setting Update Pending (NU): A setting is pending to be updated or a reset is pending.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1197"><span class="lineNum">    1197 </span><span class="lineCov">          2 :          m_warnNUreported = true;</span></a>
+<a name="1196"><span class="lineNum">    1196 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Setting Update Pending (NU): A setting is pending to be updated or a reset is pending.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1197"><span class="lineNum">    1197 </span><span class="lineCov">          1 :          m_warnNUreported = true;</span></a>
 <a name="1198"><span class="lineNum">    1198 </span>            :       }</a>
 <a name="1199"><span class="lineNum">    1199 </span>            :       </a>
-<a name="1200"><span class="lineNum">    1200 </span><span class="lineCov">          2 :       m_warnNU = true;</span></a>
-<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1200"><span class="lineNum">    1200 </span><span class="lineCov">          1 :       m_warnNU = true;</span></a>
+<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1202"><span class="lineNum">    1202 </span>            :    }</a>
-<a name="1203"><span class="lineNum">    1203 </span><span class="lineCov">          4 :    else if(warn == &quot;NJ&quot;)</span></a>
+<a name="1203"><span class="lineNum">    1203 </span><span class="lineCov">          2 :    else if(warn == &quot;NJ&quot;)</span></a>
 <a name="1204"><span class="lineNum">    1204 </span>            :    {</a>
-<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">          2 :       if(!m_warnNJreported)</span></a>
+<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">          1 :       if(!m_warnNJreported)</span></a>
 <a name="1206"><span class="lineNum">    1206 </span>            :       {</a>
-<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">          2 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Joystick Calibrating (NJ): Joystick calibration is in progress.&quot; , logPrio::LOG_WARNING);</span></a>
-<a name="1208"><span class="lineNum">    1208 </span><span class="lineCov">          2 :          m_warnNJreported = true;</span></a>
+<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">          1 :          MagAOXAppT::log&lt;text_log&gt;(m_name + &quot; Joystick Calibrating (NJ): Joystick calibration is in progress.&quot; , logPrio::LOG_WARNING);</span></a>
+<a name="1208"><span class="lineNum">    1208 </span><span class="lineCov">          1 :          m_warnNJreported = true;</span></a>
 <a name="1209"><span class="lineNum">    1209 </span>            :       }</a>
 <a name="1210"><span class="lineNum">    1210 </span>            :       </a>
-<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">          2 :       m_warnNJ = true;</span></a>
-<a name="1212"><span class="lineNum">    1212 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">          1 :       m_warnNJ = true;</span></a>
+<a name="1212"><span class="lineNum">    1212 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1213"><span class="lineNum">    1213 </span>            :    }</a>
 <a name="1214"><span class="lineNum">    1214 </span>            :    else</a>
 <a name="1215"><span class="lineNum">    1215 </span>            :    {</a>
-<a name="1216"><span class="lineNum">    1216 </span><span class="lineCov">          2 :       MagAOXAppT::log&lt;software_warning&gt;({__FILE__, __LINE__, m_name + &quot; unknown stage warning: &quot; + warn});</span></a>
+<a name="1216"><span class="lineNum">    1216 </span><span class="lineCov">          1 :       MagAOXAppT::log&lt;software_warning&gt;({__FILE__, __LINE__, m_name + &quot; unknown stage warning: &quot; + warn});</span></a>
 <a name="1217"><span class="lineNum">    1217 </span>            :       </a>
-<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">          2 :       m_warnUNK = true;</span></a>
+<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">          1 :       m_warnUNK = true;</span></a>
 <a name="1219"><span class="lineNum">    1219 </span>            : </a>
-<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">          2 :       return 0;</span></a>
+<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">          1 :       return 0;</span></a>
 <a name="1221"><span class="lineNum">    1221 </span>            :    }</a>
 <a name="1222"><span class="lineNum">    1222 </span>            :    </a>
 <a name="1223"><span class="lineNum">    1223 </span>            :    return -1;</a>
 <a name="1224"><span class="lineNum">    1224 </span>            : }</a>
 <a name="1225"><span class="lineNum">    1225 </span>            : </a>
 <a name="1226"><span class="lineNum">    1226 </span>            : template&lt;class parentT&gt;</a>
-<a name="1227"><span class="lineNum">    1227 </span><span class="lineCov">         12 : int zaberStage&lt;parentT&gt;::parseWarnings( std::string &amp; response )</span></a>
+<a name="1227"><span class="lineNum">    1227 </span><span class="lineCov">          6 : int zaberStage&lt;parentT&gt;::parseWarnings( std::string &amp; response )</span></a>
 <a name="1228"><span class="lineNum">    1228 </span>            : {</a>
-<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">         12 :    size_t nwarn = std::stoi( response.substr(0, 2));</span></a>
+<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">          6 :    size_t nwarn = std::stoi( response.substr(0, 2));</span></a>
 <a name="1230"><span class="lineNum">    1230 </span>            :       </a>
-<a name="1231"><span class="lineNum">    1231 </span><span class="lineCov">         12 :    if(nwarn &gt; 0) m_warn = true;</span></a>
+<a name="1231"><span class="lineNum">    1231 </span><span class="lineCov">          6 :    if(nwarn &gt; 0) m_warn = true;</span></a>
 <a name="1232"><span class="lineNum">    1232 </span>            :    </a>
-<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">         96 :    for(size_t n =0; n&lt; nwarn; ++n)</span></a>
+<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">         48 :    for(size_t n =0; n&lt; nwarn; ++n)</span></a>
 <a name="1234"><span class="lineNum">    1234 </span>            :    {</a>
-<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">         42 :       if(response.size() &lt; 3 + n*3)</span></a>
+<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">         21 :       if(response.size() &lt; 3 + n*3)</span></a>
 <a name="1236"><span class="lineNum">    1236 </span>            :       {</a>
 <a name="1237"><span class="lineNum">    1237 </span><span class="lineNoCov">          0 :          if(m_parent)</span></a>
 <a name="1238"><span class="lineNum">    1238 </span>            :          {</a>
@@ -1305,10 +1305,10 @@
 <a name="1243"><span class="lineNum">    1243 </span><span class="lineNoCov">          0 :          return -1;</span></a>
 <a name="1244"><span class="lineNum">    1244 </span>            :       }</a>
 <a name="1245"><span class="lineNum">    1245 </span>            :       </a>
-<a name="1246"><span class="lineNum">    1246 </span><span class="lineCov">         42 :       std::string warn = response.substr(3 + n*3, 2);</span></a>
+<a name="1246"><span class="lineNum">    1246 </span><span class="lineCov">         21 :       std::string warn = response.substr(3 + n*3, 2);</span></a>
 <a name="1247"><span class="lineNum">    1247 </span>            :       </a>
-<a name="1248"><span class="lineNum">    1248 </span><span class="lineCov">         42 :       int rv = processWarning(warn);</span></a>
-<a name="1249"><span class="lineNum">    1249 </span><span class="lineCov">         42 :       if(rv &lt; 0)</span></a>
+<a name="1248"><span class="lineNum">    1248 </span><span class="lineCov">         21 :       int rv = processWarning(warn);</span></a>
+<a name="1249"><span class="lineNum">    1249 </span><span class="lineCov">         21 :       if(rv &lt; 0)</span></a>
 <a name="1250"><span class="lineNum">    1250 </span>            :       {</a>
 <a name="1251"><span class="lineNum">    1251 </span><span class="lineNoCov">          0 :          if(m_parent)</span></a>
 <a name="1252"><span class="lineNum">    1252 </span>            :          {</a>
@@ -1320,159 +1320,159 @@
 <a name="1258"><span class="lineNum">    1258 </span>            :       }</a>
 <a name="1259"><span class="lineNum">    1259 </span>            :    }</a>
 <a name="1260"><span class="lineNum">    1260 </span>            :    </a>
-<a name="1261"><span class="lineNum">    1261 </span><span class="lineCov">         12 :    if(m_warnFDreported)</span></a>
+<a name="1261"><span class="lineNum">    1261 </span><span class="lineCov">          6 :    if(m_warnFDreported)</span></a>
 <a name="1262"><span class="lineNum">    1262 </span>            :    {</a>
-<a name="1263"><span class="lineNum">    1263 </span><span class="lineCov">          2 :       if(!m_warnFD) </span></a>
+<a name="1263"><span class="lineNum">    1263 </span><span class="lineCov">          1 :       if(!m_warnFD) </span></a>
 <a name="1264"><span class="lineNum">    1264 </span>            :       {</a>
 <a name="1265"><span class="lineNum">    1265 </span><span class="lineNoCov">          0 :          m_warnFDreported = false;</span></a>
 <a name="1266"><span class="lineNum">    1266 </span>            :       }</a>
 <a name="1267"><span class="lineNum">    1267 </span>            :    }</a>
 <a name="1268"><span class="lineNum">    1268 </span>            : </a>
-<a name="1269"><span class="lineNum">    1269 </span><span class="lineCov">         12 :    if(m_warnFQreported)</span></a>
+<a name="1269"><span class="lineNum">    1269 </span><span class="lineCov">          6 :    if(m_warnFQreported)</span></a>
 <a name="1270"><span class="lineNum">    1270 </span>            :    {</a>
-<a name="1271"><span class="lineNum">    1271 </span><span class="lineCov">          2 :       if(!m_warnFQ) </span></a>
+<a name="1271"><span class="lineNum">    1271 </span><span class="lineCov">          1 :       if(!m_warnFQ) </span></a>
 <a name="1272"><span class="lineNum">    1272 </span>            :       {</a>
 <a name="1273"><span class="lineNum">    1273 </span><span class="lineNoCov">          0 :          m_warnFQreported = false;</span></a>
 <a name="1274"><span class="lineNum">    1274 </span>            :       }</a>
 <a name="1275"><span class="lineNum">    1275 </span>            :    }</a>
 <a name="1276"><span class="lineNum">    1276 </span>            : </a>
-<a name="1277"><span class="lineNum">    1277 </span><span class="lineCov">         12 :    if(m_warnFSreported)</span></a>
+<a name="1277"><span class="lineNum">    1277 </span><span class="lineCov">          6 :    if(m_warnFSreported)</span></a>
 <a name="1278"><span class="lineNum">    1278 </span>            :    {</a>
-<a name="1279"><span class="lineNum">    1279 </span><span class="lineCov">          2 :       if(!m_warnFS) </span></a>
+<a name="1279"><span class="lineNum">    1279 </span><span class="lineCov">          1 :       if(!m_warnFS) </span></a>
 <a name="1280"><span class="lineNum">    1280 </span>            :       {</a>
 <a name="1281"><span class="lineNum">    1281 </span><span class="lineNoCov">          0 :          m_warnFSreported = false;</span></a>
 <a name="1282"><span class="lineNum">    1282 </span>            :       }</a>
 <a name="1283"><span class="lineNum">    1283 </span>            :    }</a>
 <a name="1284"><span class="lineNum">    1284 </span>            : </a>
-<a name="1285"><span class="lineNum">    1285 </span><span class="lineCov">         12 :    if(m_warnFTreported)</span></a>
+<a name="1285"><span class="lineNum">    1285 </span><span class="lineCov">          6 :    if(m_warnFTreported)</span></a>
 <a name="1286"><span class="lineNum">    1286 </span>            :    {</a>
-<a name="1287"><span class="lineNum">    1287 </span><span class="lineCov">          2 :       if(!m_warnFT) </span></a>
+<a name="1287"><span class="lineNum">    1287 </span><span class="lineCov">          1 :       if(!m_warnFT) </span></a>
 <a name="1288"><span class="lineNum">    1288 </span>            :       {</a>
 <a name="1289"><span class="lineNum">    1289 </span><span class="lineNoCov">          0 :          m_warnFTreported = false;</span></a>
 <a name="1290"><span class="lineNum">    1290 </span>            :       }</a>
 <a name="1291"><span class="lineNum">    1291 </span>            :    }</a>
 <a name="1292"><span class="lineNum">    1292 </span>            : </a>
-<a name="1293"><span class="lineNum">    1293 </span><span class="lineCov">         12 :    if(m_warnFBreported)</span></a>
+<a name="1293"><span class="lineNum">    1293 </span><span class="lineCov">          6 :    if(m_warnFBreported)</span></a>
 <a name="1294"><span class="lineNum">    1294 </span>            :    {</a>
-<a name="1295"><span class="lineNum">    1295 </span><span class="lineCov">          2 :       if(!m_warnFB) </span></a>
+<a name="1295"><span class="lineNum">    1295 </span><span class="lineCov">          1 :       if(!m_warnFB) </span></a>
 <a name="1296"><span class="lineNum">    1296 </span>            :       {</a>
 <a name="1297"><span class="lineNum">    1297 </span><span class="lineNoCov">          0 :          m_warnFBreported = false;</span></a>
 <a name="1298"><span class="lineNum">    1298 </span>            :       }</a>
 <a name="1299"><span class="lineNum">    1299 </span>            :    }</a>
 <a name="1300"><span class="lineNum">    1300 </span>            : </a>
-<a name="1301"><span class="lineNum">    1301 </span><span class="lineCov">         12 :    if(m_warnFPreported)</span></a>
+<a name="1301"><span class="lineNum">    1301 </span><span class="lineCov">          6 :    if(m_warnFPreported)</span></a>
 <a name="1302"><span class="lineNum">    1302 </span>            :    {</a>
-<a name="1303"><span class="lineNum">    1303 </span><span class="lineCov">          2 :       if(!m_warnFP) </span></a>
+<a name="1303"><span class="lineNum">    1303 </span><span class="lineCov">          1 :       if(!m_warnFP) </span></a>
 <a name="1304"><span class="lineNum">    1304 </span>            :       {</a>
 <a name="1305"><span class="lineNum">    1305 </span><span class="lineNoCov">          0 :          m_warnFPreported = false;</span></a>
 <a name="1306"><span class="lineNum">    1306 </span>            :       }</a>
 <a name="1307"><span class="lineNum">    1307 </span>            :    }</a>
 <a name="1308"><span class="lineNum">    1308 </span>            : </a>
-<a name="1309"><span class="lineNum">    1309 </span><span class="lineCov">         12 :    if(m_warnFEreported)</span></a>
+<a name="1309"><span class="lineNum">    1309 </span><span class="lineCov">          6 :    if(m_warnFEreported)</span></a>
 <a name="1310"><span class="lineNum">    1310 </span>            :    {</a>
-<a name="1311"><span class="lineNum">    1311 </span><span class="lineCov">          2 :       if(!m_warnFE) </span></a>
+<a name="1311"><span class="lineNum">    1311 </span><span class="lineCov">          1 :       if(!m_warnFE) </span></a>
 <a name="1312"><span class="lineNum">    1312 </span>            :       {</a>
 <a name="1313"><span class="lineNum">    1313 </span><span class="lineNoCov">          0 :          m_warnFEreported = false;</span></a>
 <a name="1314"><span class="lineNum">    1314 </span>            :       }</a>
 <a name="1315"><span class="lineNum">    1315 </span>            :    }</a>
 <a name="1316"><span class="lineNum">    1316 </span>            : </a>
-<a name="1317"><span class="lineNum">    1317 </span><span class="lineCov">         12 :    if(m_warnWHreported)</span></a>
+<a name="1317"><span class="lineNum">    1317 </span><span class="lineCov">          6 :    if(m_warnWHreported)</span></a>
 <a name="1318"><span class="lineNum">    1318 </span>            :    {</a>
-<a name="1319"><span class="lineNum">    1319 </span><span class="lineCov">          2 :       if(!m_warnWH) </span></a>
+<a name="1319"><span class="lineNum">    1319 </span><span class="lineCov">          1 :       if(!m_warnWH) </span></a>
 <a name="1320"><span class="lineNum">    1320 </span>            :       {</a>
 <a name="1321"><span class="lineNum">    1321 </span><span class="lineNoCov">          0 :          m_warnWHreported = false;</span></a>
 <a name="1322"><span class="lineNum">    1322 </span>            :       }</a>
 <a name="1323"><span class="lineNum">    1323 </span>            :    }</a>
 <a name="1324"><span class="lineNum">    1324 </span>            : </a>
-<a name="1325"><span class="lineNum">    1325 </span><span class="lineCov">         12 :    if(m_warnWLreported)</span></a>
+<a name="1325"><span class="lineNum">    1325 </span><span class="lineCov">          6 :    if(m_warnWLreported)</span></a>
 <a name="1326"><span class="lineNum">    1326 </span>            :    {</a>
-<a name="1327"><span class="lineNum">    1327 </span><span class="lineCov">          2 :       if(!m_warnWL) </span></a>
+<a name="1327"><span class="lineNum">    1327 </span><span class="lineCov">          1 :       if(!m_warnWL) </span></a>
 <a name="1328"><span class="lineNum">    1328 </span>            :       {</a>
 <a name="1329"><span class="lineNum">    1329 </span><span class="lineNoCov">          0 :          m_warnWLreported = false;</span></a>
 <a name="1330"><span class="lineNum">    1330 </span>            :       }</a>
 <a name="1331"><span class="lineNum">    1331 </span>            :    }</a>
 <a name="1332"><span class="lineNum">    1332 </span>            : </a>
-<a name="1333"><span class="lineNum">    1333 </span><span class="lineCov">         12 :    if(m_warnWPreported)</span></a>
+<a name="1333"><span class="lineNum">    1333 </span><span class="lineCov">          6 :    if(m_warnWPreported)</span></a>
 <a name="1334"><span class="lineNum">    1334 </span>            :    {</a>
-<a name="1335"><span class="lineNum">    1335 </span><span class="lineCov">          2 :       if(!m_warnWP) </span></a>
+<a name="1335"><span class="lineNum">    1335 </span><span class="lineCov">          1 :       if(!m_warnWP) </span></a>
 <a name="1336"><span class="lineNum">    1336 </span>            :       {</a>
 <a name="1337"><span class="lineNum">    1337 </span><span class="lineNoCov">          0 :          m_warnWPreported = false;</span></a>
 <a name="1338"><span class="lineNum">    1338 </span>            :       }</a>
 <a name="1339"><span class="lineNum">    1339 </span>            :    }</a>
 <a name="1340"><span class="lineNum">    1340 </span>            : </a>
-<a name="1341"><span class="lineNum">    1341 </span><span class="lineCov">         12 :    if(m_warnWVreported)</span></a>
+<a name="1341"><span class="lineNum">    1341 </span><span class="lineCov">          6 :    if(m_warnWVreported)</span></a>
 <a name="1342"><span class="lineNum">    1342 </span>            :    {</a>
-<a name="1343"><span class="lineNum">    1343 </span><span class="lineCov">          2 :       if(!m_warnWV) </span></a>
+<a name="1343"><span class="lineNum">    1343 </span><span class="lineCov">          1 :       if(!m_warnWV) </span></a>
 <a name="1344"><span class="lineNum">    1344 </span>            :       {</a>
 <a name="1345"><span class="lineNum">    1345 </span><span class="lineNoCov">          0 :          m_warnWVreported = false;</span></a>
 <a name="1346"><span class="lineNum">    1346 </span>            :       }</a>
 <a name="1347"><span class="lineNum">    1347 </span>            :    }</a>
 <a name="1348"><span class="lineNum">    1348 </span>            : </a>
-<a name="1349"><span class="lineNum">    1349 </span><span class="lineCov">         12 :    if(m_warnWTreported)</span></a>
+<a name="1349"><span class="lineNum">    1349 </span><span class="lineCov">          6 :    if(m_warnWTreported)</span></a>
 <a name="1350"><span class="lineNum">    1350 </span>            :    {</a>
-<a name="1351"><span class="lineNum">    1351 </span><span class="lineCov">          2 :       if(!m_warnWT) </span></a>
+<a name="1351"><span class="lineNum">    1351 </span><span class="lineCov">          1 :       if(!m_warnWT) </span></a>
 <a name="1352"><span class="lineNum">    1352 </span>            :       {</a>
 <a name="1353"><span class="lineNum">    1353 </span><span class="lineNoCov">          0 :          m_warnWTreported = false;</span></a>
 <a name="1354"><span class="lineNum">    1354 </span>            :       }</a>
 <a name="1355"><span class="lineNum">    1355 </span>            :    }</a>
 <a name="1356"><span class="lineNum">    1356 </span>            :    </a>
-<a name="1357"><span class="lineNum">    1357 </span><span class="lineCov">         12 :    if(m_warnWMreported)</span></a>
+<a name="1357"><span class="lineNum">    1357 </span><span class="lineCov">          6 :    if(m_warnWMreported)</span></a>
 <a name="1358"><span class="lineNum">    1358 </span>            :    {</a>
-<a name="1359"><span class="lineNum">    1359 </span><span class="lineCov">          2 :       if(!m_warnWM) </span></a>
+<a name="1359"><span class="lineNum">    1359 </span><span class="lineCov">          1 :       if(!m_warnWM) </span></a>
 <a name="1360"><span class="lineNum">    1360 </span>            :       {</a>
 <a name="1361"><span class="lineNum">    1361 </span><span class="lineNoCov">          0 :          m_warnWMreported = false;</span></a>
 <a name="1362"><span class="lineNum">    1362 </span>            :       }</a>
 <a name="1363"><span class="lineNum">    1363 </span>            :    }</a>
 <a name="1364"><span class="lineNum">    1364 </span>            : </a>
-<a name="1365"><span class="lineNum">    1365 </span><span class="lineCov">         12 :    if(m_warnWRreported)</span></a>
+<a name="1365"><span class="lineNum">    1365 </span><span class="lineCov">          6 :    if(m_warnWRreported)</span></a>
 <a name="1366"><span class="lineNum">    1366 </span>            :    {</a>
-<a name="1367"><span class="lineNum">    1367 </span><span class="lineCov">          4 :       if(!m_warnWR) </span></a>
+<a name="1367"><span class="lineNum">    1367 </span><span class="lineCov">          2 :       if(!m_warnWR) </span></a>
 <a name="1368"><span class="lineNum">    1368 </span>            :       {</a>
 <a name="1369"><span class="lineNum">    1369 </span><span class="lineNoCov">          0 :          m_warnWRreported = false;</span></a>
 <a name="1370"><span class="lineNum">    1370 </span>            :       }</a>
 <a name="1371"><span class="lineNum">    1371 </span>            :    }</a>
 <a name="1372"><span class="lineNum">    1372 </span>            : </a>
-<a name="1373"><span class="lineNum">    1373 </span><span class="lineCov">         12 :    if(m_warnNCreported)</span></a>
+<a name="1373"><span class="lineNum">    1373 </span><span class="lineCov">          6 :    if(m_warnNCreported)</span></a>
 <a name="1374"><span class="lineNum">    1374 </span>            :    {</a>
-<a name="1375"><span class="lineNum">    1375 </span><span class="lineCov">          2 :       if(!m_warnNC) </span></a>
+<a name="1375"><span class="lineNum">    1375 </span><span class="lineCov">          1 :       if(!m_warnNC) </span></a>
 <a name="1376"><span class="lineNum">    1376 </span>            :       {</a>
 <a name="1377"><span class="lineNum">    1377 </span><span class="lineNoCov">          0 :          m_warnNCreported = false;</span></a>
 <a name="1378"><span class="lineNum">    1378 </span>            :       }</a>
 <a name="1379"><span class="lineNum">    1379 </span>            :    }</a>
 <a name="1380"><span class="lineNum">    1380 </span>            : </a>
-<a name="1381"><span class="lineNum">    1381 </span><span class="lineCov">         12 :    if(m_warnNIreported)</span></a>
+<a name="1381"><span class="lineNum">    1381 </span><span class="lineCov">          6 :    if(m_warnNIreported)</span></a>
 <a name="1382"><span class="lineNum">    1382 </span>            :    {</a>
-<a name="1383"><span class="lineNum">    1383 </span><span class="lineCov">          2 :       if(!m_warnNI) </span></a>
+<a name="1383"><span class="lineNum">    1383 </span><span class="lineCov">          1 :       if(!m_warnNI) </span></a>
 <a name="1384"><span class="lineNum">    1384 </span>            :       {</a>
 <a name="1385"><span class="lineNum">    1385 </span><span class="lineNoCov">          0 :          m_warnNIreported = false;</span></a>
 <a name="1386"><span class="lineNum">    1386 </span>            :       }</a>
 <a name="1387"><span class="lineNum">    1387 </span>            :    }</a>
 <a name="1388"><span class="lineNum">    1388 </span>            : </a>
-<a name="1389"><span class="lineNum">    1389 </span><span class="lineCov">         12 :    if(m_warnNDreported)</span></a>
+<a name="1389"><span class="lineNum">    1389 </span><span class="lineCov">          6 :    if(m_warnNDreported)</span></a>
 <a name="1390"><span class="lineNum">    1390 </span>            :    {</a>
-<a name="1391"><span class="lineNum">    1391 </span><span class="lineCov">          2 :       if(!m_warnND) </span></a>
+<a name="1391"><span class="lineNum">    1391 </span><span class="lineCov">          1 :       if(!m_warnND) </span></a>
 <a name="1392"><span class="lineNum">    1392 </span>            :       {</a>
 <a name="1393"><span class="lineNum">    1393 </span><span class="lineNoCov">          0 :          m_warnNDreported = false;</span></a>
 <a name="1394"><span class="lineNum">    1394 </span>            :       }</a>
 <a name="1395"><span class="lineNum">    1395 </span>            :    }</a>
 <a name="1396"><span class="lineNum">    1396 </span>            : </a>
-<a name="1397"><span class="lineNum">    1397 </span><span class="lineCov">         12 :    if(m_warnNUreported)</span></a>
+<a name="1397"><span class="lineNum">    1397 </span><span class="lineCov">          6 :    if(m_warnNUreported)</span></a>
 <a name="1398"><span class="lineNum">    1398 </span>            :    {</a>
-<a name="1399"><span class="lineNum">    1399 </span><span class="lineCov">          2 :       if(!m_warnNU) </span></a>
+<a name="1399"><span class="lineNum">    1399 </span><span class="lineCov">          1 :       if(!m_warnNU) </span></a>
 <a name="1400"><span class="lineNum">    1400 </span>            :       {</a>
 <a name="1401"><span class="lineNum">    1401 </span><span class="lineNoCov">          0 :          m_warnNUreported = false;</span></a>
 <a name="1402"><span class="lineNum">    1402 </span>            :       }</a>
 <a name="1403"><span class="lineNum">    1403 </span>            :    }</a>
 <a name="1404"><span class="lineNum">    1404 </span>            : </a>
-<a name="1405"><span class="lineNum">    1405 </span><span class="lineCov">         12 :    if(m_warnNJreported)</span></a>
+<a name="1405"><span class="lineNum">    1405 </span><span class="lineCov">          6 :    if(m_warnNJreported)</span></a>
 <a name="1406"><span class="lineNum">    1406 </span>            :    {</a>
-<a name="1407"><span class="lineNum">    1407 </span><span class="lineCov">          2 :       if(!m_warnNJ) </span></a>
+<a name="1407"><span class="lineNum">    1407 </span><span class="lineCov">          1 :       if(!m_warnNJ) </span></a>
 <a name="1408"><span class="lineNum">    1408 </span>            :       {</a>
 <a name="1409"><span class="lineNum">    1409 </span><span class="lineNoCov">          0 :          m_warnNJreported = false;</span></a>
 <a name="1410"><span class="lineNum">    1410 </span>            :       }</a>
 <a name="1411"><span class="lineNum">    1411 </span>            :    }</a>
 <a name="1412"><span class="lineNum">    1412 </span>            :    </a>
-<a name="1413"><span class="lineNum">    1413 </span><span class="lineCov">         12 :    return 0;</span></a>
+<a name="1413"><span class="lineNum">    1413 </span><span class="lineCov">          6 :    return 0;</span></a>
 <a name="1414"><span class="lineNum">    1414 </span>            :    </a>
 <a name="1415"><span class="lineNum">    1415 </span>            : }</a>
 <a name="1416"><span class="lineNum">    1416 </span>            : </a>

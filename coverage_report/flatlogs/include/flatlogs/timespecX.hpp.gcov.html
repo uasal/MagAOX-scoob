@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">6</td>
@@ -99,9 +99,9 @@
 <a name="37"><span class="lineNum">      37 </span>            :    nanosecT time_ns {0}; ///&lt; Nanoseconds.  </a>
 <a name="38"><span class="lineNum">      38 </span>            : </a>
 <a name="39"><span class="lineNum">      39 </span>            :    ///Default c'tor</a>
-<a name="40"><span class="lineNum">      40 </span><span class="lineCov">       2462 :    timespecX()</span></a>
-<a name="41"><span class="lineNum">      41 </span><span class="lineCov">       2462 :    {</span></a>
-<a name="42"><span class="lineNum">      42 </span><span class="lineCov">       2462 :    }</span></a>
+<a name="40"><span class="lineNum">      40 </span><span class="lineCov">       1154 :    timespecX()</span></a>
+<a name="41"><span class="lineNum">      41 </span><span class="lineCov">       1154 :    {</span></a>
+<a name="42"><span class="lineNum">      42 </span><span class="lineCov">       1154 :    }</span></a>
 <a name="43"><span class="lineNum">      43 </span>            :    </a>
 <a name="44"><span class="lineNum">      44 </span>            :    ///Construct with time values</a>
 <a name="45"><span class="lineNum">      45 </span><span class="lineNoCov">          0 :    timespecX( secT s, nanosecT ns ) : time_s {s}, time_ns {ns}</span></a>
@@ -118,20 +118,20 @@
 <a name="56"><span class="lineNum">      56 </span>            :    /**</a>
 <a name="57"><span class="lineNum">      57 </span>            :      * \returns this reference, if values are 0 and 0 then the input was too big or negative. </a>
 <a name="58"><span class="lineNum">      58 </span>            :      */</a>
-<a name="59"><span class="lineNum">      59 </span><span class="lineCov">       1596 :    timespecX &amp; operator=( const timespec &amp; ts /**&lt; [in] the native timespec from which to get values */)</span></a>
+<a name="59"><span class="lineNum">      59 </span><span class="lineCov">        747 :    timespecX &amp; operator=( const timespec &amp; ts /**&lt; [in] the native timespec from which to get values */)</span></a>
 <a name="60"><span class="lineNum">      60 </span>            :    {</a>
-<a name="61"><span class="lineNum">      61 </span><span class="lineCov">       1596 :       if(ts.tv_sec &lt; 0 || ts.tv_sec &gt; 4294967295) ///\todo make this use minval and maxval</span></a>
+<a name="61"><span class="lineNum">      61 </span><span class="lineCov">        747 :       if(ts.tv_sec &lt; 0 || ts.tv_sec &gt; 4294967295) ///\todo make this use minval and maxval</span></a>
 <a name="62"><span class="lineNum">      62 </span>            :       {</a>
 <a name="63"><span class="lineNum">      63 </span><span class="lineNoCov">          0 :          time_s = 0;</span></a>
 <a name="64"><span class="lineNum">      64 </span><span class="lineNoCov">          0 :          time_ns = 0;</span></a>
 <a name="65"><span class="lineNum">      65 </span>            :       }</a>
 <a name="66"><span class="lineNum">      66 </span>            :       else </a>
 <a name="67"><span class="lineNum">      67 </span>            :       {</a>
-<a name="68"><span class="lineNum">      68 </span><span class="lineCov">       1596 :          time_s = ts.tv_sec;</span></a>
-<a name="69"><span class="lineNum">      69 </span><span class="lineCov">       1596 :          time_ns = ts.tv_nsec;</span></a>
+<a name="68"><span class="lineNum">      68 </span><span class="lineCov">        747 :          time_s = ts.tv_sec;</span></a>
+<a name="69"><span class="lineNum">      69 </span><span class="lineCov">        747 :          time_ns = ts.tv_nsec;</span></a>
 <a name="70"><span class="lineNum">      70 </span>            :       }</a>
 <a name="71"><span class="lineNum">      71 </span>            :       </a>
-<a name="72"><span class="lineNum">      72 </span><span class="lineCov">       1596 :       return *this;</span></a>
+<a name="72"><span class="lineNum">      72 </span><span class="lineCov">        747 :       return *this;</span></a>
 <a name="73"><span class="lineNum">      73 </span>            :    }</a>
 <a name="74"><span class="lineNum">      74 </span>            :    </a>
 <a name="75"><span class="lineNum">      75 </span>            :    ///Get a native timespec from this custom one.</a>
@@ -153,12 +153,12 @@
 <a name="91"><span class="lineNum">      91 </span>            :      * \tparam clk_id specifies the type.</a>
 <a name="92"><span class="lineNum">      92 </span>            :      */ </a>
 <a name="93"><span class="lineNum">      93 </span>            :    template&lt;clockid_t clk_id=CLOCK_REALTIME&gt;</a>
-<a name="94"><span class="lineNum">      94 </span><span class="lineCov">       1596 :    void gettime()</span></a>
+<a name="94"><span class="lineNum">      94 </span><span class="lineCov">        747 :    void gettime()</span></a>
 <a name="95"><span class="lineNum">      95 </span>            :    {</a>
 <a name="96"><span class="lineNum">      96 </span>            :       struct timespec ts;</a>
-<a name="97"><span class="lineNum">      97 </span><span class="lineCov">       1596 :       clock_gettime(clk_id, &amp;ts);</span></a>
-<a name="98"><span class="lineNum">      98 </span><span class="lineCov">       1596 :       (*this) = ts; //see operator=</span></a>
-<a name="99"><span class="lineNum">      99 </span><span class="lineCov">       1596 :    }</span></a>
+<a name="97"><span class="lineNum">      97 </span><span class="lineCov">        747 :       clock_gettime(clk_id, &amp;ts);</span></a>
+<a name="98"><span class="lineNum">      98 </span><span class="lineCov">        747 :       (*this) = ts; //see operator=</span></a>
+<a name="99"><span class="lineNum">      99 </span><span class="lineCov">        747 :    }</span></a>
 <a name="100"><span class="lineNum">     100 </span>            :    </a>
 <a name="101"><span class="lineNum">     101 </span>            :    ///Get the filename timestamp for this timespecX.</a>
 <a name="102"><span class="lineNum">     102 </span>            :    /** Fills in a string with the timestamp encoded as</a>
@@ -167,13 +167,13 @@
 <a name="105"><span class="lineNum">     105 </span>            :        \endverbatim</a>
 <a name="106"><span class="lineNum">     106 </span>            :      *</a>
 <a name="107"><span class="lineNum">     107 </span>            :      */ </a>
-<a name="108"><span class="lineNum">     108 </span><span class="lineCov">         96 :    int timeStamp(std::string &amp; tstamp /**&lt; [out] the string to hold the formatted time */)</span></a>
+<a name="108"><span class="lineNum">     108 </span><span class="lineCov">         16 :    int timeStamp(std::string &amp; tstamp /**&lt; [out] the string to hold the formatted time */)</span></a>
 <a name="109"><span class="lineNum">     109 </span>            :    {</a>
 <a name="110"><span class="lineNum">     110 </span>            :       tm uttime;//The broken down time.</a>
 <a name="111"><span class="lineNum">     111 </span>            :    </a>
-<a name="112"><span class="lineNum">     112 </span><span class="lineCov">         96 :       time_t t0 = time_s;</span></a>
+<a name="112"><span class="lineNum">     112 </span><span class="lineCov">         16 :       time_t t0 = time_s;</span></a>
 <a name="113"><span class="lineNum">     113 </span>            : </a>
-<a name="114"><span class="lineNum">     114 </span><span class="lineCov">         96 :       if(gmtime_r(&amp;t0, &amp;uttime) == 0)</span></a>
+<a name="114"><span class="lineNum">     114 </span><span class="lineCov">         16 :       if(gmtime_r(&amp;t0, &amp;uttime) == 0)</span></a>
 <a name="115"><span class="lineNum">     115 </span>            :       {</a>
 <a name="116"><span class="lineNum">     116 </span><span class="lineNoCov">          0 :          std::cerr &lt;&lt; &quot;Error getting UT time (gmtime_r returned 0). At: &quot; &lt;&lt;  __FILE__ &lt;&lt; &quot; &quot; &lt;&lt; __LINE__ &lt;&lt; &quot;\n&quot;;</span></a>
 <a name="117"><span class="lineNum">     117 </span><span class="lineNoCov">          0 :          return -1;</span></a>
@@ -181,11 +181,11 @@
 <a name="119"><span class="lineNum">     119 </span>            :    </a>
 <a name="120"><span class="lineNum">     120 </span>            :       char buffer[48];</a>
 <a name="121"><span class="lineNum">     121 </span>            : </a>
-<a name="122"><span class="lineNum">     122 </span><span class="lineCov">         96 :       snprintf(buffer, sizeof(buffer), &quot;%04i%02i%02i%02i%02i%02i%09i&quot;, uttime.tm_year+1900, uttime.tm_mon+1, uttime.tm_mday, uttime.tm_hour, uttime.tm_min, uttime.tm_sec, static_cast&lt;int&gt;(time_ns)); //casting in case we switch type of time_ns.</span></a>
+<a name="122"><span class="lineNum">     122 </span><span class="lineCov">         16 :       snprintf(buffer, sizeof(buffer), &quot;%04i%02i%02i%02i%02i%02i%09i&quot;, uttime.tm_year+1900, uttime.tm_mon+1, uttime.tm_mday, uttime.tm_hour, uttime.tm_min, uttime.tm_sec, static_cast&lt;int&gt;(time_ns)); //casting in case we switch type of time_ns.</span></a>
 <a name="123"><span class="lineNum">     123 </span>            :    </a>
-<a name="124"><span class="lineNum">     124 </span><span class="lineCov">         96 :       tstamp = buffer;</span></a>
+<a name="124"><span class="lineNum">     124 </span><span class="lineCov">         16 :       tstamp = buffer;</span></a>
 <a name="125"><span class="lineNum">     125 </span>            : </a>
-<a name="126"><span class="lineNum">     126 </span><span class="lineCov">         96 :       return 0;   </span></a>
+<a name="126"><span class="lineNum">     126 </span><span class="lineCov">         16 :       return 0;   </span></a>
 <a name="127"><span class="lineNum">     127 </span>            :    }</a>
 <a name="128"><span class="lineNum">     128 </span>            :    </a>
 <a name="129"><span class="lineNum">     129 </span>            :     ///Get the filname timestamp for this timespecX.</a>
@@ -195,11 +195,11 @@
 <a name="133"><span class="lineNum">     133 </span>            :        \endverbatim</a>
 <a name="134"><span class="lineNum">     134 </span>            :      *</a>
 <a name="135"><span class="lineNum">     135 </span>            :      */ </a>
-<a name="136"><span class="lineNum">     136 </span><span class="lineCov">         96 :    std::string timeStamp()</span></a>
+<a name="136"><span class="lineNum">     136 </span><span class="lineCov">         16 :    std::string timeStamp()</span></a>
 <a name="137"><span class="lineNum">     137 </span>            :    {</a>
-<a name="138"><span class="lineNum">     138 </span><span class="lineCov">         96 :       std::string tstamp;</span></a>
-<a name="139"><span class="lineNum">     139 </span><span class="lineCov">         96 :       timeStamp(tstamp);</span></a>
-<a name="140"><span class="lineNum">     140 </span><span class="lineCov">         96 :       return tstamp;</span></a>
+<a name="138"><span class="lineNum">     138 </span><span class="lineCov">         16 :       std::string tstamp;</span></a>
+<a name="139"><span class="lineNum">     139 </span><span class="lineCov">         16 :       timeStamp(tstamp);</span></a>
+<a name="140"><span class="lineNum">     140 </span><span class="lineCov">         16 :       return tstamp;</span></a>
 <a name="141"><span class="lineNum">     141 </span><span class="lineNoCov">          0 :    }</span></a>
 <a name="142"><span class="lineNum">     142 </span>            :    </a>
 <a name="143"><span class="lineNum">     143 </span>            :    /// Get a date-time string in ISO 8601 format for timespecX</a>
@@ -212,21 +212,21 @@
 <a name="150"><span class="lineNum">     150 </span>            :      * \retval std::string containing the formated date/time </a>
 <a name="151"><span class="lineNum">     151 </span>            :      * </a>
 <a name="152"><span class="lineNum">     152 </span>            :      */ </a>
-<a name="153"><span class="lineNum">     153 </span><span class="lineCov">       1554 :    std::string ISO8601DateTimeStrX()</span></a>
+<a name="153"><span class="lineNum">     153 </span><span class="lineCov">        407 :    std::string ISO8601DateTimeStrX()</span></a>
 <a name="154"><span class="lineNum">     154 </span>            :    {</a>
 <a name="155"><span class="lineNum">     155 </span>            :       tm bdt; //broken down time</a>
-<a name="156"><span class="lineNum">     156 </span><span class="lineCov">       1554 :       time_t tt = time_s;</span></a>
-<a name="157"><span class="lineNum">     157 </span><span class="lineCov">       1554 :       gmtime_r( &amp;tt, &amp;bdt);</span></a>
+<a name="156"><span class="lineNum">     156 </span><span class="lineCov">        407 :       time_t tt = time_s;</span></a>
+<a name="157"><span class="lineNum">     157 </span><span class="lineCov">        407 :       gmtime_r( &amp;tt, &amp;bdt);</span></a>
 <a name="158"><span class="lineNum">     158 </span>            :       </a>
 <a name="159"><span class="lineNum">     159 </span>            :       char tstr1[25];</a>
 <a name="160"><span class="lineNum">     160 </span>            :       </a>
-<a name="161"><span class="lineNum">     161 </span><span class="lineCov">       1554 :       strftime(tstr1, 25, &quot;%FT%H:%M:%S&quot;, &amp;bdt);</span></a>
+<a name="161"><span class="lineNum">     161 </span><span class="lineCov">        407 :       strftime(tstr1, 25, &quot;%FT%H:%M:%S&quot;, &amp;bdt);</span></a>
 <a name="162"><span class="lineNum">     162 </span>            :       </a>
 <a name="163"><span class="lineNum">     163 </span>            :       char tstr2[11];</a>
 <a name="164"><span class="lineNum">     164 </span>            :       </a>
-<a name="165"><span class="lineNum">     165 </span><span class="lineCov">       1554 :       snprintf(tstr2, 11, &quot;.%09i&quot;, static_cast&lt;int&gt;(time_ns)); //casting in case we switch to int64_t</span></a>
+<a name="165"><span class="lineNum">     165 </span><span class="lineCov">        407 :       snprintf(tstr2, 11, &quot;.%09i&quot;, static_cast&lt;int&gt;(time_ns)); //casting in case we switch to int64_t</span></a>
 <a name="166"><span class="lineNum">     166 </span>            :       </a>
-<a name="167"><span class="lineNum">     167 </span><span class="lineCov">       3108 :       return std::string(tstr1) + std::string(tstr2);</span></a>
+<a name="167"><span class="lineNum">     167 </span><span class="lineCov">        814 :       return std::string(tstr1) + std::string(tstr2);</span></a>
 <a name="168"><span class="lineNum">     168 </span>            :    }</a>
 <a name="169"><span class="lineNum">     169 </span>            :    </a>
 <a name="170"><span class="lineNum">     170 </span>            :    std::string ISO8601DateTimeStr2MinX()</a>

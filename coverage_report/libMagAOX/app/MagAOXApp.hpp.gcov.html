@@ -31,18 +31,18 @@
             <td class="headerValue">MagAOX</td>
             <td></td>
             <td class="headerItem">Lines:</td>
-            <td class="headerCovTableEntry">28</td>
+            <td class="headerCovTableEntry">54</td>
             <td class="headerCovTableEntry">1020</td>
-            <td class="headerCovTableEntryLo">2.7 %</td>
+            <td class="headerCovTableEntryLo">5.3 %</td>
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
-            <td class="headerCovTableEntry">13</td>
-            <td class="headerCovTableEntry">245</td>
-            <td class="headerCovTableEntryLo">5.3 %</td>
+            <td class="headerCovTableEntry">19</td>
+            <td class="headerCovTableEntry">242</td>
+            <td class="headerCovTableEntryLo">7.9 %</td>
           </tr>
           <tr><td><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
         </table>
@@ -1252,54 +1252,54 @@
 <a name="1190"><span class="lineNum">    1190 </span>            : typename MagAOXApp&lt;_useINDI&gt;::logManagerT MagAOXApp&lt;_useINDI&gt;::m_log;</a>
 <a name="1191"><span class="lineNum">    1191 </span>            : </a>
 <a name="1192"><span class="lineNum">    1192 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="1193"><span class="lineNum">    1193 </span><span class="lineCov">       2190 : MagAOXApp&lt;_useINDI&gt;::MagAOXApp( const std::string &amp;git_sha1, const bool git_modified )</span></a>
+<a name="1193"><span class="lineNum">    1193 </span><span class="lineCov">        339 : MagAOXApp&lt;_useINDI&gt;::MagAOXApp( const std::string &amp;git_sha1, const bool git_modified )</span></a>
 <a name="1194"><span class="lineNum">    1194 </span>            : {</a>
-<a name="1195"><span class="lineNum">    1195 </span><span class="lineCov">       2190 :     if( m_self != nullptr )</span></a>
+<a name="1195"><span class="lineNum">    1195 </span><span class="lineCov">        339 :     if( m_self != nullptr )</span></a>
 <a name="1196"><span class="lineNum">    1196 </span>            :     {</a>
 <a name="1197"><span class="lineNum">    1197 </span><span class="lineNoCov">          0 :         std::cerr &lt;&lt; &quot;Attempt to instantiate 2nd MagAOXApp.  Exiting immediately.\n&quot;;</span></a>
 <a name="1198"><span class="lineNum">    1198 </span><span class="lineNoCov">          0 :         exit( -1 );</span></a>
 <a name="1199"><span class="lineNum">    1199 </span>            :     }</a>
 <a name="1200"><span class="lineNum">    1200 </span>            : </a>
-<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">       2190 :     m_self = this;</span></a>
+<a name="1201"><span class="lineNum">    1201 </span><span class="lineCov">        339 :     m_self = this;</span></a>
 <a name="1202"><span class="lineNum">    1202 </span>            : </a>
 <a name="1203"><span class="lineNum">    1203 </span>            :     // Get the uids of this process.</a>
-<a name="1204"><span class="lineNum">    1204 </span><span class="lineCov">       2190 :     getresuid( &amp;m_euidReal, &amp;m_euidCalled, &amp;m_suid );</span></a>
-<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">       2190 :     setEuidReal(); // immediately step down to unpriveleged uid.</span></a>
+<a name="1204"><span class="lineNum">    1204 </span><span class="lineCov">        339 :     getresuid( &amp;m_euidReal, &amp;m_euidCalled, &amp;m_suid );</span></a>
+<a name="1205"><span class="lineNum">    1205 </span><span class="lineCov">        339 :     setEuidReal(); // immediately step down to unpriveleged uid.</span></a>
 <a name="1206"><span class="lineNum">    1206 </span>            : </a>
-<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">       2190 :     m_log.parent( this );</span></a>
+<a name="1207"><span class="lineNum">    1207 </span><span class="lineCov">        339 :     m_log.parent( this );</span></a>
 <a name="1208"><span class="lineNum">    1208 </span>            : </a>
 <a name="1209"><span class="lineNum">    1209 </span>            :     // Set up config logging</a>
-<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">       2190 :     config.m_sources = true;</span></a>
-<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">       2190 :     config.configLog = configLog;</span></a>
+<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">        339 :     config.m_sources = true;</span></a>
+<a name="1211"><span class="lineNum">    1211 </span><span class="lineCov">        339 :     config.configLog = configLog;</span></a>
 <a name="1212"><span class="lineNum">    1212 </span>            : </a>
 <a name="1213"><span class="lineNum">    1213 </span>            :     // We log the current GIT status.</a>
-<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">       2190 :     logPrioT gl = logPrio::LOG_INFO;</span></a>
-<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">       2190 :     if( git_modified )</span></a>
+<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">        339 :     logPrioT gl = logPrio::LOG_INFO;</span></a>
+<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">        339 :     if( git_modified )</span></a>
 <a name="1216"><span class="lineNum">    1216 </span>            :     {</a>
-<a name="1217"><span class="lineNum">    1217 </span><span class="lineCov">       2190 :         gl = logPrio::LOG_WARNING;</span></a>
-<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">       2190 :         m_gitAlert = true;</span></a>
+<a name="1217"><span class="lineNum">    1217 </span><span class="lineCov">        338 :         gl = logPrio::LOG_WARNING;</span></a>
+<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">        338 :         m_gitAlert = true;</span></a>
 <a name="1219"><span class="lineNum">    1219 </span>            :     }</a>
-<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">       2190 :     log&lt;git_state&gt;( git_state::messageT( &quot;MagAOX&quot;, git_sha1, git_modified ), gl );</span></a>
+<a name="1220"><span class="lineNum">    1220 </span><span class="lineCov">        339 :     log&lt;git_state&gt;( git_state::messageT( &quot;MagAOX&quot;, git_sha1, git_modified ), gl );</span></a>
 <a name="1221"><span class="lineNum">    1221 </span>            : </a>
-<a name="1222"><span class="lineNum">    1222 </span><span class="lineCov">       2190 :     gl = logPrio::LOG_INFO;</span></a>
+<a name="1222"><span class="lineNum">    1222 </span><span class="lineCov">        339 :     gl = logPrio::LOG_INFO;</span></a>
 <a name="1223"><span class="lineNum">    1223 </span>            :     if( MXLIB_UNCOMP_REPO_MODIFIED )</a>
 <a name="1224"><span class="lineNum">    1224 </span>            :     {</a>
 <a name="1225"><span class="lineNum">    1225 </span>            :         gl = logPrio::LOG_WARNING;</a>
 <a name="1226"><span class="lineNum">    1226 </span>            :         m_gitAlert = true;</a>
 <a name="1227"><span class="lineNum">    1227 </span>            :     }</a>
 <a name="1228"><span class="lineNum">    1228 </span>            : </a>
-<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">       2190 :     log&lt;git_state&gt;( git_state::messageT( &quot;mxlib&quot;, MXLIB_UNCOMP_CURRENT_SHA1, MXLIB_UNCOMP_REPO_MODIFIED ), gl );</span></a>
-<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">       2190 : }</span></a>
+<a name="1229"><span class="lineNum">    1229 </span><span class="lineCov">        339 :     log&lt;git_state&gt;( git_state::messageT( &quot;mxlib&quot;, MXLIB_UNCOMP_CURRENT_SHA1, MXLIB_UNCOMP_REPO_MODIFIED ), gl );</span></a>
+<a name="1230"><span class="lineNum">    1230 </span><span class="lineCov">        339 : }</span></a>
 <a name="1231"><span class="lineNum">    1231 </span>            : </a>
 <a name="1232"><span class="lineNum">    1232 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">       2190 : MagAOXApp&lt;_useINDI&gt;::~MagAOXApp() noexcept( true )</span></a>
+<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">        339 : MagAOXApp&lt;_useINDI&gt;::~MagAOXApp() noexcept( true )</span></a>
 <a name="1234"><span class="lineNum">    1234 </span>            : {</a>
-<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">       2190 :     if( m_indiDriver )</span></a>
-<a name="1236"><span class="lineNum">    1236 </span><span class="lineNoCov">          0 :         delete m_indiDriver;</span></a>
-<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">       2190 :     m_log.parent( nullptr );</span></a>
+<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">        339 :     if( m_indiDriver )</span></a>
+<a name="1236"><span class="lineNum">    1236 </span><span class="lineCov">          1 :         delete m_indiDriver;</span></a>
+<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">        339 :     m_log.parent( nullptr );</span></a>
 <a name="1238"><span class="lineNum">    1238 </span>            : </a>
-<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">       2190 :     MagAOXApp&lt;_useINDI&gt;::m_self = nullptr;</span></a>
-<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">       4380 : }</span></a>
+<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">        339 :     MagAOXApp&lt;_useINDI&gt;::m_self = nullptr;</span></a>
+<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">        678 : }</span></a>
 <a name="1241"><span class="lineNum">    1241 </span>            : </a>
 <a name="1242"><span class="lineNum">    1242 </span>            : template &lt;bool _useINDI&gt;</a>
 <a name="1243"><span class="lineNum">    1243 </span><span class="lineNoCov">          0 : int MagAOXApp&lt;_useINDI&gt;::shutdown()</span></a>
@@ -1924,10 +1924,10 @@
 <a name="1862"><span class="lineNum">    1862 </span>            : </a>
 <a name="1863"><span class="lineNum">    1863 </span>            : template &lt;bool _useINDI&gt;</a>
 <a name="1864"><span class="lineNum">    1864 </span>            : template &lt;typename logT, int retval&gt;</a>
-<a name="1865"><span class="lineNum">    1865 </span><span class="lineCov">       4516 : int MagAOXApp&lt;_useINDI&gt;::log( const typename logT::messageT &amp;msg, logPrioT level )</span></a>
+<a name="1865"><span class="lineNum">    1865 </span><span class="lineCov">        749 : int MagAOXApp&lt;_useINDI&gt;::log( const typename logT::messageT &amp;msg, logPrioT level )</span></a>
 <a name="1866"><span class="lineNum">    1866 </span>            : {</a>
-<a name="1867"><span class="lineNum">    1867 </span><span class="lineCov">       4516 :     m_log.template log&lt;logT&gt;( msg, level );</span></a>
-<a name="1868"><span class="lineNum">    1868 </span><span class="lineCov">       4516 :     return retval;</span></a>
+<a name="1867"><span class="lineNum">    1867 </span><span class="lineCov">        749 :     m_log.template log&lt;logT&gt;( msg, level );</span></a>
+<a name="1868"><span class="lineNum">    1868 </span><span class="lineCov">        749 :     return retval;</span></a>
 <a name="1869"><span class="lineNum">    1869 </span>            : }</a>
 <a name="1870"><span class="lineNum">    1870 </span>            : </a>
 <a name="1871"><span class="lineNum">    1871 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -2100,10 +2100,10 @@
 <a name="2038"><span class="lineNum">    2038 </span>            : }</a>
 <a name="2039"><span class="lineNum">    2039 </span>            : </a>
 <a name="2040"><span class="lineNum">    2040 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="2041"><span class="lineNum">    2041 </span><span class="lineCov">       2190 : int MagAOXApp&lt;_useINDI&gt;::setEuidReal()</span></a>
+<a name="2041"><span class="lineNum">    2041 </span><span class="lineCov">        339 : int MagAOXApp&lt;_useINDI&gt;::setEuidReal()</span></a>
 <a name="2042"><span class="lineNum">    2042 </span>            : {</a>
-<a name="2043"><span class="lineNum">    2043 </span><span class="lineCov">       2190 :     errno = 0;</span></a>
-<a name="2044"><span class="lineNum">    2044 </span><span class="lineCov">       2190 :     if( sys::th_seteuid( m_euidReal ) &lt; 0 )</span></a>
+<a name="2043"><span class="lineNum">    2043 </span><span class="lineCov">        339 :     errno = 0;</span></a>
+<a name="2044"><span class="lineNum">    2044 </span><span class="lineCov">        339 :     if( sys::th_seteuid( m_euidReal ) &lt; 0 )</span></a>
 <a name="2045"><span class="lineNum">    2045 </span>            :     {</a>
 <a name="2046"><span class="lineNum">    2046 </span><span class="lineNoCov">          0 :         std::string logss = &quot;Setting effective user id to euidReal (&quot;;</span></a>
 <a name="2047"><span class="lineNum">    2047 </span><span class="lineNoCov">          0 :         logss += mx::ioutils::convertToString&lt;int&gt;( m_euidReal );</span></a>
@@ -2115,7 +2115,7 @@
 <a name="2053"><span class="lineNum">    2053 </span><span class="lineNoCov">          0 :         return -1;</span></a>
 <a name="2054"><span class="lineNum">    2054 </span><span class="lineNoCov">          0 :     }</span></a>
 <a name="2055"><span class="lineNum">    2055 </span>            : </a>
-<a name="2056"><span class="lineNum">    2056 </span><span class="lineCov">       2190 :     return 0;</span></a>
+<a name="2056"><span class="lineNum">    2056 </span><span class="lineCov">        339 :     return 0;</span></a>
 <a name="2057"><span class="lineNum">    2057 </span>            : }</a>
 <a name="2058"><span class="lineNum">    2058 </span>            : </a>
 <a name="2059"><span class="lineNum">    2059 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -2841,7 +2841,7 @@
 <a name="2779"><span class="lineNum">    2779 </span>            : }</a>
 <a name="2780"><span class="lineNum">    2780 </span>            : </a>
 <a name="2781"><span class="lineNum">    2781 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="2782"><span class="lineNum">    2782 </span><span class="lineNoCov">          0 : int MagAOXApp&lt;_useINDI&gt;::registerIndiPropertyNew( pcf::IndiProperty &amp;prop,</span></a>
+<a name="2782"><span class="lineNum">    2782 </span><span class="lineCov">          1 : int MagAOXApp&lt;_useINDI&gt;::registerIndiPropertyNew( pcf::IndiProperty &amp;prop,</span></a>
 <a name="2783"><span class="lineNum">    2783 </span>            :                                                   int ( *callBack )( void *, const pcf::IndiProperty &amp;ipRecv ) )</a>
 <a name="2784"><span class="lineNum">    2784 </span>            : {</a>
 <a name="2785"><span class="lineNum">    2785 </span>            :     if( !m_useINDI )</a>
@@ -2850,9 +2850,9 @@
 <a name="2788"><span class="lineNum">    2788 </span>            :     try</a>
 <a name="2789"><span class="lineNum">    2789 </span>            :     {</a>
 <a name="2790"><span class="lineNum">    2790 </span>            :         callBackInsertResult result =</a>
-<a name="2791"><span class="lineNum">    2791 </span><span class="lineNoCov">          0 :             m_indiNewCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &amp;prop, callBack } ) );</span></a>
+<a name="2791"><span class="lineNum">    2791 </span><span class="lineCov">          1 :             m_indiNewCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &amp;prop, callBack } ) );</span></a>
 <a name="2792"><span class="lineNum">    2792 </span>            : </a>
-<a name="2793"><span class="lineNum">    2793 </span><span class="lineNoCov">          0 :         if( !result.second )</span></a>
+<a name="2793"><span class="lineNum">    2793 </span><span class="lineCov">          1 :         if( !result.second )</span></a>
 <a name="2794"><span class="lineNum">    2794 </span>            :         {</a>
 <a name="2795"><span class="lineNum">    2795 </span><span class="lineNoCov">          0 :             return log&lt;software_error, -1&gt;(</span></a>
 <a name="2796"><span class="lineNum">    2796 </span><span class="lineNoCov">          0 :                 { __FILE__, __LINE__, &quot;failed to insert INDI property: &quot; + prop.createUniqueKey() } );</span></a>
@@ -2867,11 +2867,11 @@
 <a name="2805"><span class="lineNum">    2805 </span><span class="lineNoCov">          0 :         return log&lt;software_error, -1&gt;( { __FILE__, __LINE__, &quot;Unknown exception caught.&quot; } );</span></a>
 <a name="2806"><span class="lineNum">    2806 </span>            :     }</a>
 <a name="2807"><span class="lineNum">    2807 </span>            : </a>
-<a name="2808"><span class="lineNum">    2808 </span><span class="lineNoCov">          0 :     return 0;</span></a>
+<a name="2808"><span class="lineNum">    2808 </span><span class="lineCov">          1 :     return 0;</span></a>
 <a name="2809"><span class="lineNum">    2809 </span>            : }</a>
 <a name="2810"><span class="lineNum">    2810 </span>            : </a>
 <a name="2811"><span class="lineNum">    2811 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="2812"><span class="lineNum">    2812 </span><span class="lineNoCov">          0 : int MagAOXApp&lt;_useINDI&gt;::registerIndiPropertyNew( pcf::IndiProperty &amp;prop,</span></a>
+<a name="2812"><span class="lineNum">    2812 </span><span class="lineCov">          1 : int MagAOXApp&lt;_useINDI&gt;::registerIndiPropertyNew( pcf::IndiProperty &amp;prop,</span></a>
 <a name="2813"><span class="lineNum">    2813 </span>            :                                                   const std::string &amp;propName,</a>
 <a name="2814"><span class="lineNum">    2814 </span>            :                                                   const pcf::IndiProperty::Type &amp;propType,</a>
 <a name="2815"><span class="lineNum">    2815 </span>            :                                                   const pcf::IndiProperty::PropertyPermType &amp;propPerm,</a>
@@ -2881,13 +2881,13 @@
 <a name="2819"><span class="lineNum">    2819 </span>            :     if( !m_useINDI )</a>
 <a name="2820"><span class="lineNum">    2820 </span><span class="lineNoCov">          0 :         return 0;</span></a>
 <a name="2821"><span class="lineNum">    2821 </span>            : </a>
-<a name="2822"><span class="lineNum">    2822 </span><span class="lineNoCov">          0 :     prop = pcf::IndiProperty( propType );</span></a>
-<a name="2823"><span class="lineNum">    2823 </span><span class="lineNoCov">          0 :     prop.setDevice( m_configName );</span></a>
-<a name="2824"><span class="lineNum">    2824 </span><span class="lineNoCov">          0 :     prop.setName( propName );</span></a>
-<a name="2825"><span class="lineNum">    2825 </span><span class="lineNoCov">          0 :     prop.setPerm( propPerm );</span></a>
-<a name="2826"><span class="lineNum">    2826 </span><span class="lineNoCov">          0 :     prop.setState( propState );</span></a>
+<a name="2822"><span class="lineNum">    2822 </span><span class="lineCov">          1 :     prop = pcf::IndiProperty( propType );</span></a>
+<a name="2823"><span class="lineNum">    2823 </span><span class="lineCov">          1 :     prop.setDevice( m_configName );</span></a>
+<a name="2824"><span class="lineNum">    2824 </span><span class="lineCov">          1 :     prop.setName( propName );</span></a>
+<a name="2825"><span class="lineNum">    2825 </span><span class="lineCov">          1 :     prop.setPerm( propPerm );</span></a>
+<a name="2826"><span class="lineNum">    2826 </span><span class="lineCov">          1 :     prop.setState( propState );</span></a>
 <a name="2827"><span class="lineNum">    2827 </span>            : </a>
-<a name="2828"><span class="lineNum">    2828 </span><span class="lineNoCov">          0 :     return registerIndiPropertyNew( prop, callBack );</span></a>
+<a name="2828"><span class="lineNum">    2828 </span><span class="lineCov">          1 :     return registerIndiPropertyNew( prop, callBack );</span></a>
 <a name="2829"><span class="lineNum">    2829 </span>            : }</a>
 <a name="2830"><span class="lineNum">    2830 </span>            : </a>
 <a name="2831"><span class="lineNum">    2831 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -3184,28 +3184,28 @@
 <a name="3122"><span class="lineNum">    3122 </span>            : }</a>
 <a name="3123"><span class="lineNum">    3123 </span>            : </a>
 <a name="3124"><span class="lineNum">    3124 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="3125"><span class="lineNum">    3125 </span><span class="lineNoCov">          0 : void MagAOXApp&lt;_useINDI&gt;::handleNewProperty( const pcf::IndiProperty &amp;ipRecv )</span></a>
+<a name="3125"><span class="lineNum">    3125 </span><span class="lineCov">          2 : void MagAOXApp&lt;_useINDI&gt;::handleNewProperty( const pcf::IndiProperty &amp;ipRecv )</span></a>
 <a name="3126"><span class="lineNum">    3126 </span>            : {</a>
 <a name="3127"><span class="lineNum">    3127 </span>            :     if( !m_useINDI )</a>
 <a name="3128"><span class="lineNum">    3128 </span><span class="lineNoCov">          0 :         return;</span></a>
-<a name="3129"><span class="lineNum">    3129 </span><span class="lineNoCov">          0 :     if( m_indiDriver == nullptr )</span></a>
+<a name="3129"><span class="lineNum">    3129 </span><span class="lineCov">          2 :     if( m_indiDriver == nullptr )</span></a>
 <a name="3130"><span class="lineNum">    3130 </span><span class="lineNoCov">          0 :         return;</span></a>
 <a name="3131"><span class="lineNum">    3131 </span>            : </a>
 <a name="3132"><span class="lineNum">    3132 </span>            :     // Check if this is a valid name for us.</a>
-<a name="3133"><span class="lineNum">    3133 </span><span class="lineNoCov">          0 :     if( m_indiNewCallBacks.count( ipRecv.createUniqueKey() ) == 0 )</span></a>
+<a name="3133"><span class="lineNum">    3133 </span><span class="lineCov">          2 :     if( m_indiNewCallBacks.count( ipRecv.createUniqueKey() ) == 0 )</span></a>
 <a name="3134"><span class="lineNum">    3134 </span>            :     {</a>
-<a name="3135"><span class="lineNum">    3135 </span><span class="lineNoCov">          0 :         log&lt;software_debug&gt;( { __FILE__, __LINE__, &quot;invalid NewProperty request for &quot; + ipRecv.createUniqueKey() } );</span></a>
-<a name="3136"><span class="lineNum">    3136 </span><span class="lineNoCov">          0 :         return;</span></a>
+<a name="3135"><span class="lineNum">    3135 </span><span class="lineCov">          1 :         log&lt;software_debug&gt;( { __FILE__, __LINE__, &quot;invalid NewProperty request for &quot; + ipRecv.createUniqueKey() } );</span></a>
+<a name="3136"><span class="lineNum">    3136 </span><span class="lineCov">          1 :         return;</span></a>
 <a name="3137"><span class="lineNum">    3137 </span>            :     }</a>
 <a name="3138"><span class="lineNum">    3138 </span>            : </a>
-<a name="3139"><span class="lineNum">    3139 </span><span class="lineNoCov">          0 :     int ( *callBack )( void *, const pcf::IndiProperty &amp; ) = m_indiNewCallBacks[ipRecv.createUniqueKey()].callBack;</span></a>
+<a name="3139"><span class="lineNum">    3139 </span><span class="lineCov">          1 :     int ( *callBack )( void *, const pcf::IndiProperty &amp; ) = m_indiNewCallBacks[ipRecv.createUniqueKey()].callBack;</span></a>
 <a name="3140"><span class="lineNum">    3140 </span>            : </a>
-<a name="3141"><span class="lineNum">    3141 </span><span class="lineNoCov">          0 :     if( callBack )</span></a>
-<a name="3142"><span class="lineNum">    3142 </span><span class="lineNoCov">          0 :         callBack( this, ipRecv );</span></a>
+<a name="3141"><span class="lineNum">    3141 </span><span class="lineCov">          1 :     if( callBack )</span></a>
+<a name="3142"><span class="lineNum">    3142 </span><span class="lineCov">          1 :         callBack( this, ipRecv );</span></a>
 <a name="3143"><span class="lineNum">    3143 </span>            : </a>
-<a name="3144"><span class="lineNum">    3144 </span><span class="lineNoCov">          0 :     log&lt;software_debug&gt;( { __FILE__, __LINE__, &quot;NewProperty callback null for &quot; + ipRecv.createUniqueKey() } );</span></a>
+<a name="3144"><span class="lineNum">    3144 </span><span class="lineCov">          1 :     log&lt;software_debug&gt;( { __FILE__, __LINE__, &quot;NewProperty callback null for &quot; + ipRecv.createUniqueKey() } );</span></a>
 <a name="3145"><span class="lineNum">    3145 </span>            : </a>
-<a name="3146"><span class="lineNum">    3146 </span><span class="lineNoCov">          0 :     return;</span></a>
+<a name="3146"><span class="lineNum">    3146 </span><span class="lineCov">          1 :     return;</span></a>
 <a name="3147"><span class="lineNum">    3147 </span>            : }</a>
 <a name="3148"><span class="lineNum">    3148 </span>            : </a>
 <a name="3149"><span class="lineNum">    3149 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -3619,9 +3619,9 @@
 <a name="3557"><span class="lineNum">    3557 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="3558"><span class="lineNum">    3558 </span>            : </a>
 <a name="3559"><span class="lineNum">    3559 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="3560"><span class="lineNum">    3560 </span><span class="lineNoCov">          0 : std::string MagAOXApp&lt;_useINDI&gt;::configName()</span></a>
+<a name="3560"><span class="lineNum">    3560 </span><span class="lineCov">          1 : std::string MagAOXApp&lt;_useINDI&gt;::configName()</span></a>
 <a name="3561"><span class="lineNum">    3561 </span>            : {</a>
-<a name="3562"><span class="lineNum">    3562 </span><span class="lineNoCov">          0 :     return m_configName;</span></a>
+<a name="3562"><span class="lineNum">    3562 </span><span class="lineCov">          1 :     return m_configName;</span></a>
 <a name="3563"><span class="lineNum">    3563 </span>            : }</a>
 <a name="3564"><span class="lineNum">    3564 </span>            : </a>
 <a name="3565"><span class="lineNum">    3565 </span>            : template &lt;bool _useINDI&gt;</a>
@@ -3631,9 +3631,9 @@
 <a name="3569"><span class="lineNum">    3569 </span>            : }</a>
 <a name="3570"><span class="lineNum">    3570 </span>            : </a>
 <a name="3571"><span class="lineNum">    3571 </span>            : template &lt;bool _useINDI&gt;</a>
-<a name="3572"><span class="lineNum">    3572 </span><span class="lineNoCov">          0 : std::string MagAOXApp&lt;_useINDI&gt;::driverInName()</span></a>
+<a name="3572"><span class="lineNum">    3572 </span><span class="lineCov">          1 : std::string MagAOXApp&lt;_useINDI&gt;::driverInName()</span></a>
 <a name="3573"><span class="lineNum">    3573 </span>            : {</a>
-<a name="3574"><span class="lineNum">    3574 </span><span class="lineNoCov">          0 :     return m_driverInName;</span></a>
+<a name="3574"><span class="lineNum">    3574 </span><span class="lineCov">          1 :     return m_driverInName;</span></a>
 <a name="3575"><span class="lineNum">    3575 </span>            : }</a>
 <a name="3576"><span class="lineNum">    3576 </span>            : </a>
 <a name="3577"><span class="lineNum">    3577 </span>            : template &lt;bool _useINDI&gt;</a>

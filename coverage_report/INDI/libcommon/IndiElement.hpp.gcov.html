@@ -31,18 +31,18 @@
             <td class="headerValue">MagAOX</td>
             <td></td>
             <td class="headerItem">Lines:</td>
-            <td class="headerCovTableEntry">28</td>
+            <td class="headerCovTableEntry">34</td>
             <td class="headerCovTableEntry">56</td>
-            <td class="headerCovTableEntryLo">50.0 %</td>
+            <td class="headerCovTableEntryLo">60.7 %</td>
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
-            <td class="headerCovTableEntry">4</td>
+            <td class="headerCovTableEntry">6</td>
             <td class="headerCovTableEntry">50</td>
-            <td class="headerCovTableEntryLo">8.0 %</td>
+            <td class="headerCovTableEntryLo">12.0 %</td>
           </tr>
           <tr><td><img src="../../glass.png" width=3 height=3 alt=""></td></tr>
         </table>
@@ -300,27 +300,27 @@
 <a name="238"><span class="lineNum">     238 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="239"><span class="lineNum">     239 </span>            : /// Constructor with a name and a TT value.</a>
 <a name="240"><span class="lineNum">     240 </span>            : </a>
-<a name="241"><span class="lineNum">     241 </span><span class="lineNoCov">          0 : template &lt;class TT&gt; pcf::IndiElement::IndiElement( const std::string &amp;szName,</span></a>
-<a name="242"><span class="lineNum">     242 </span><span class="lineNoCov">          0 :                                                    const TT &amp;ttValue ) : m_szName(szName)</span></a>
+<a name="241"><span class="lineNum">     241 </span><span class="lineCov">          2 : template &lt;class TT&gt; pcf::IndiElement::IndiElement( const std::string &amp;szName,</span></a>
+<a name="242"><span class="lineNum">     242 </span><span class="lineCov">          2 :                                                    const TT &amp;ttValue ) : m_szName(szName)</span></a>
 <a name="243"><span class="lineNum">     243 </span>            : {</a>
-<a name="244"><span class="lineNum">     244 </span><span class="lineNoCov">          0 :   std::stringstream ssValue;</span></a>
-<a name="245"><span class="lineNum">     245 </span><span class="lineNoCov">          0 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
-<a name="246"><span class="lineNum">     246 </span><span class="lineNoCov">          0 :   m_szValue = ssValue.str();</span></a>
-<a name="247"><span class="lineNum">     247 </span><span class="lineNoCov">          0 : }</span></a>
+<a name="244"><span class="lineNum">     244 </span><span class="lineCov">          2 :   std::stringstream ssValue;</span></a>
+<a name="245"><span class="lineNum">     245 </span><span class="lineCov">          2 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
+<a name="246"><span class="lineNum">     246 </span><span class="lineCov">          2 :   m_szValue = ssValue.str();</span></a>
+<a name="247"><span class="lineNum">     247 </span><span class="lineCov">          2 : }</span></a>
 <a name="248"><span class="lineNum">     248 </span>            : </a>
 <a name="249"><span class="lineNum">     249 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="250"><span class="lineNum">     250 </span>            : /// Get the value as type TT.</a>
 <a name="251"><span class="lineNum">     251 </span>            : </a>
-<a name="252"><span class="lineNum">     252 </span><span class="lineCov">         36 : template &lt;class TT&gt; TT pcf::IndiElement::get() const</span></a>
+<a name="252"><span class="lineNum">     252 </span><span class="lineCov">         18 : template &lt;class TT&gt; TT pcf::IndiElement::get() const</span></a>
 <a name="253"><span class="lineNum">     253 </span>            : {</a>
-<a name="254"><span class="lineNum">     254 </span><span class="lineCov">         36 :   pcf::ReadWriteLock::AutoRLock rwAuto( &amp;m_rwData );</span></a>
+<a name="254"><span class="lineNum">     254 </span><span class="lineCov">         18 :   pcf::ReadWriteLock::AutoRLock rwAuto( &amp;m_rwData );</span></a>
 <a name="255"><span class="lineNum">     255 </span>            : </a>
 <a name="256"><span class="lineNum">     256 </span><span class="lineNoCov">          0 :   TT tValue;</span></a>
 <a name="257"><span class="lineNum">     257 </span>            :   //  stream the data into the variable.</a>
-<a name="258"><span class="lineNum">     258 </span><span class="lineCov">         36 :   std::stringstream ssValue( m_szValue );</span></a>
-<a name="259"><span class="lineNum">     259 </span><span class="lineCov">         36 :   ssValue &gt;&gt; std::boolalpha &gt;&gt; tValue;</span></a>
-<a name="260"><span class="lineNum">     260 </span><span class="lineCov">         36 :   return tValue;</span></a>
-<a name="261"><span class="lineNum">     261 </span><span class="lineCov">         36 : }</span></a>
+<a name="258"><span class="lineNum">     258 </span><span class="lineCov">         18 :   std::stringstream ssValue( m_szValue );</span></a>
+<a name="259"><span class="lineNum">     259 </span><span class="lineCov">         18 :   ssValue &gt;&gt; std::boolalpha &gt;&gt; tValue;</span></a>
+<a name="260"><span class="lineNum">     260 </span><span class="lineCov">         18 :   return tValue;</span></a>
+<a name="261"><span class="lineNum">     261 </span><span class="lineCov">         18 : }</span></a>
 <a name="262"><span class="lineNum">     262 </span>            : </a>
 <a name="263"><span class="lineNum">     263 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="264"><span class="lineNum">     264 </span>            : /// Get an value of type TT from the element.</a>
@@ -340,42 +340,42 @@
 <a name="278"><span class="lineNum">     278 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="279"><span class="lineNum">     279 </span>            : ///  set an value of type TT in the element using the &quot;=&quot; operator.</a>
 <a name="280"><span class="lineNum">     280 </span>            : </a>
-<a name="281"><span class="lineNum">     281 </span><span class="lineCov">         88 : template &lt;class TT&gt; const TT &amp;pcf::IndiElement::operator= ( const TT &amp;ttValue )</span></a>
+<a name="281"><span class="lineNum">     281 </span><span class="lineCov">         44 : template &lt;class TT&gt; const TT &amp;pcf::IndiElement::operator= ( const TT &amp;ttValue )</span></a>
 <a name="282"><span class="lineNum">     282 </span>            : {</a>
-<a name="283"><span class="lineNum">     283 </span><span class="lineCov">         88 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
+<a name="283"><span class="lineNum">     283 </span><span class="lineCov">         44 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
 <a name="284"><span class="lineNum">     284 </span>            : </a>
-<a name="285"><span class="lineNum">     285 </span><span class="lineCov">         88 :   std::stringstream ssValue;</span></a>
-<a name="286"><span class="lineNum">     286 </span><span class="lineCov">         88 :   ssValue.precision( 15 );</span></a>
-<a name="287"><span class="lineNum">     287 </span><span class="lineCov">         88 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
-<a name="288"><span class="lineNum">     288 </span><span class="lineCov">         88 :   m_szValue = ssValue.str();</span></a>
-<a name="289"><span class="lineNum">     289 </span><span class="lineCov">         88 :   return ttValue;</span></a>
-<a name="290"><span class="lineNum">     290 </span><span class="lineCov">         88 : }</span></a>
+<a name="285"><span class="lineNum">     285 </span><span class="lineCov">         44 :   std::stringstream ssValue;</span></a>
+<a name="286"><span class="lineNum">     286 </span><span class="lineCov">         44 :   ssValue.precision( 15 );</span></a>
+<a name="287"><span class="lineNum">     287 </span><span class="lineCov">         44 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
+<a name="288"><span class="lineNum">     288 </span><span class="lineCov">         44 :   m_szValue = ssValue.str();</span></a>
+<a name="289"><span class="lineNum">     289 </span><span class="lineCov">         44 :   return ttValue;</span></a>
+<a name="290"><span class="lineNum">     290 </span><span class="lineCov">         44 : }</span></a>
 <a name="291"><span class="lineNum">     291 </span>            : </a>
 <a name="292"><span class="lineNum">     292 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="293"><span class="lineNum">     293 </span>            : ///  set the value from type TT.</a>
 <a name="294"><span class="lineNum">     294 </span>            : </a>
-<a name="295"><span class="lineNum">     295 </span><span class="lineCov">          8 : template &lt;class TT&gt; void pcf::IndiElement::set( const TT &amp;ttValue )</span></a>
+<a name="295"><span class="lineNum">     295 </span><span class="lineCov">          4 : template &lt;class TT&gt; void pcf::IndiElement::set( const TT &amp;ttValue )</span></a>
 <a name="296"><span class="lineNum">     296 </span>            : {</a>
-<a name="297"><span class="lineNum">     297 </span><span class="lineCov">          8 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
+<a name="297"><span class="lineNum">     297 </span><span class="lineCov">          4 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
 <a name="298"><span class="lineNum">     298 </span>            : </a>
-<a name="299"><span class="lineNum">     299 </span><span class="lineCov">          8 :   std::stringstream ssValue;</span></a>
-<a name="300"><span class="lineNum">     300 </span><span class="lineCov">          8 :   ssValue.precision( 15 );</span></a>
-<a name="301"><span class="lineNum">     301 </span><span class="lineCov">          8 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
-<a name="302"><span class="lineNum">     302 </span><span class="lineCov">          8 :   m_szValue = ssValue.str();</span></a>
-<a name="303"><span class="lineNum">     303 </span><span class="lineCov">          8 : }</span></a>
+<a name="299"><span class="lineNum">     299 </span><span class="lineCov">          4 :   std::stringstream ssValue;</span></a>
+<a name="300"><span class="lineNum">     300 </span><span class="lineCov">          4 :   ssValue.precision( 15 );</span></a>
+<a name="301"><span class="lineNum">     301 </span><span class="lineCov">          4 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
+<a name="302"><span class="lineNum">     302 </span><span class="lineCov">          4 :   m_szValue = ssValue.str();</span></a>
+<a name="303"><span class="lineNum">     303 </span><span class="lineCov">          4 : }</span></a>
 <a name="304"><span class="lineNum">     304 </span>            : </a>
 <a name="305"><span class="lineNum">     305 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="306"><span class="lineNum">     306 </span>            : ///  set an value of type TT in the element.</a>
 <a name="307"><span class="lineNum">     307 </span>            : </a>
-<a name="308"><span class="lineNum">     308 </span><span class="lineCov">         56 : template &lt;class TT&gt; void pcf::IndiElement::setValue( const TT &amp;ttValue )</span></a>
+<a name="308"><span class="lineNum">     308 </span><span class="lineCov">         28 : template &lt;class TT&gt; void pcf::IndiElement::setValue( const TT &amp;ttValue )</span></a>
 <a name="309"><span class="lineNum">     309 </span>            : {</a>
-<a name="310"><span class="lineNum">     310 </span><span class="lineCov">         56 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
+<a name="310"><span class="lineNum">     310 </span><span class="lineCov">         28 :   pcf::ReadWriteLock::AutoWLock rwAuto( &amp;m_rwData );</span></a>
 <a name="311"><span class="lineNum">     311 </span>            : </a>
-<a name="312"><span class="lineNum">     312 </span><span class="lineCov">         56 :   std::stringstream ssValue;</span></a>
-<a name="313"><span class="lineNum">     313 </span><span class="lineCov">         56 :   ssValue.precision( 15 );</span></a>
-<a name="314"><span class="lineNum">     314 </span><span class="lineCov">         56 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
-<a name="315"><span class="lineNum">     315 </span><span class="lineCov">         56 :   m_szValue = ssValue.str();</span></a>
-<a name="316"><span class="lineNum">     316 </span><span class="lineCov">         56 : }</span></a>
+<a name="312"><span class="lineNum">     312 </span><span class="lineCov">         28 :   std::stringstream ssValue;</span></a>
+<a name="313"><span class="lineNum">     313 </span><span class="lineCov">         28 :   ssValue.precision( 15 );</span></a>
+<a name="314"><span class="lineNum">     314 </span><span class="lineCov">         28 :   ssValue &lt;&lt; std::boolalpha &lt;&lt; ttValue;</span></a>
+<a name="315"><span class="lineNum">     315 </span><span class="lineCov">         28 :   m_szValue = ssValue.str();</span></a>
+<a name="316"><span class="lineNum">     316 </span><span class="lineCov">         28 : }</span></a>
 <a name="317"><span class="lineNum">     317 </span>            : </a>
 <a name="318"><span class="lineNum">     318 </span>            : ////////////////////////////////////////////////////////////////////////////////</a>
 <a name="319"><span class="lineNum">     319 </span>            : ///  set a max of type TT in the element.</a>

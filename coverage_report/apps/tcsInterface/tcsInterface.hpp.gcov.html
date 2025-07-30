@@ -37,7 +37,7 @@
           </tr>
           <tr>
             <td class="headerItem">Date:</td>
-            <td class="headerValue">2025-07-25 18:06:09</td>
+            <td class="headerValue">2025-07-30 17:45:31</td>
             <td></td>
             <td class="headerItem">Functions:</td>
             <td class="headerCovTableEntry">15</td>
@@ -238,8 +238,8 @@
 <a name="176"><span class="lineNum">     176 </span>            :    tcsInterface();</a>
 <a name="177"><span class="lineNum">     177 </span>            : </a>
 <a name="178"><span class="lineNum">     178 </span>            :    /// D'tor, declared and defined for noexcept.</a>
-<a name="179"><span class="lineNum">     179 </span><span class="lineCov">        104 :    ~tcsInterface() noexcept</span></a>
-<a name="180"><span class="lineNum">     180 </span><span class="lineCov">        104 :    {}</span></a>
+<a name="179"><span class="lineNum">     179 </span><span class="lineCov">         52 :    ~tcsInterface() noexcept</span></a>
+<a name="180"><span class="lineNum">     180 </span><span class="lineCov">         52 :    {}</span></a>
 <a name="181"><span class="lineNum">     181 </span>            : </a>
 <a name="182"><span class="lineNum">     182 </span>            :    virtual void setupConfig();</a>
 <a name="183"><span class="lineNum">     183 </span>            : </a>
@@ -482,9 +482,9 @@
 <a name="420"><span class="lineNum">     420 </span>            : };</a>
 <a name="421"><span class="lineNum">     421 </span>            : </a>
 <a name="422"><span class="lineNum">     422 </span>            : inline</a>
-<a name="423"><span class="lineNum">     423 </span><span class="lineCov">        104 : tcsInterface::tcsInterface() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
+<a name="423"><span class="lineNum">     423 </span><span class="lineCov">         52 : tcsInterface::tcsInterface() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)</span></a>
 <a name="424"><span class="lineNum">     424 </span>            : {</a>
-<a name="425"><span class="lineNum">     425 </span><span class="lineCov">        104 :    return;</span></a>
+<a name="425"><span class="lineNum">     425 </span><span class="lineCov">         52 :    return;</span></a>
 <a name="426"><span class="lineNum">     426 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="427"><span class="lineNum">     427 </span>            : </a>
 <a name="428"><span class="lineNum">     428 </span>            : inline</a>
@@ -1178,7 +1178,7 @@
 <a name="1116"><span class="lineNum">    1116 </span><span class="lineNoCov">          0 : }</span></a>
 <a name="1117"><span class="lineNum">    1117 </span>            : </a>
 <a name="1118"><span class="lineNum">    1118 </span>            : inline</a>
-<a name="1119"><span class="lineNum">    1119 </span><span class="lineCov">         32 : int tcsInterface::parse_xms( double &amp;x, </span></a>
+<a name="1119"><span class="lineNum">    1119 </span><span class="lineCov">         16 : int tcsInterface::parse_xms( double &amp;x, </span></a>
 <a name="1120"><span class="lineNum">    1120 </span>            :                              double &amp;m, </a>
 <a name="1121"><span class="lineNum">    1121 </span>            :                              double &amp;s,</a>
 <a name="1122"><span class="lineNum">    1122 </span>            :                              const std::string &amp; xmsstr</a>
@@ -1186,29 +1186,29 @@
 <a name="1124"><span class="lineNum">    1124 </span>            : {</a>
 <a name="1125"><span class="lineNum">    1125 </span>            :    size_t st, en;</a>
 <a name="1126"><span class="lineNum">    1126 </span>            : </a>
-<a name="1127"><span class="lineNum">    1127 </span><span class="lineCov">         32 :    int sgn = 1;</span></a>
+<a name="1127"><span class="lineNum">    1127 </span><span class="lineCov">         16 :    int sgn = 1;</span></a>
 <a name="1128"><span class="lineNum">    1128 </span>            : </a>
-<a name="1129"><span class="lineNum">    1129 </span><span class="lineCov">         32 :    st = 0;</span></a>
-<a name="1130"><span class="lineNum">    1130 </span><span class="lineCov">         32 :    en = xmsstr.find(':', st);</span></a>
+<a name="1129"><span class="lineNum">    1129 </span><span class="lineCov">         16 :    st = 0;</span></a>
+<a name="1130"><span class="lineNum">    1130 </span><span class="lineCov">         16 :    en = xmsstr.find(':', st);</span></a>
 <a name="1131"><span class="lineNum">    1131 </span>            :    </a>
 <a name="1132"><span class="lineNum">    1132 </span>            :    //Check not found</a>
-<a name="1133"><span class="lineNum">    1133 </span><span class="lineCov">         32 :    if(en == std::string::npos)</span></a>
+<a name="1133"><span class="lineNum">    1133 </span><span class="lineCov">         16 :    if(en == std::string::npos)</span></a>
 <a name="1134"><span class="lineNum">    1134 </span>            :    {</a>
-<a name="1135"><span class="lineNum">    1135 </span><span class="lineCov">          4 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
-<a name="1136"><span class="lineNum">    1136 </span><span class="lineCov">          4 :       return -1;</span></a>
+<a name="1135"><span class="lineNum">    1135 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
+<a name="1136"><span class="lineNum">    1136 </span><span class="lineCov">          2 :       return -1;</span></a>
 <a name="1137"><span class="lineNum">    1137 </span>            :    }</a>
 <a name="1138"><span class="lineNum">    1138 </span>            : </a>
 <a name="1139"><span class="lineNum">    1139 </span>            :    //Check 0 length or invalid</a>
-<a name="1140"><span class="lineNum">    1140 </span><span class="lineCov">         28 :    if(en - st &lt; 2 || en &lt; st)</span></a>
+<a name="1140"><span class="lineNum">    1140 </span><span class="lineCov">         14 :    if(en - st &lt; 2 || en &lt; st)</span></a>
 <a name="1141"><span class="lineNum">    1141 </span>            :    {</a>
-<a name="1142"><span class="lineNum">    1142 </span><span class="lineCov">          4 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
-<a name="1143"><span class="lineNum">    1143 </span><span class="lineCov">          4 :       return -1;</span></a>
+<a name="1142"><span class="lineNum">    1142 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
+<a name="1143"><span class="lineNum">    1143 </span><span class="lineCov">          2 :       return -1;</span></a>
 <a name="1144"><span class="lineNum">    1144 </span>            :    }</a>
 <a name="1145"><span class="lineNum">    1145 </span>            : </a>
-<a name="1146"><span class="lineNum">    1146 </span><span class="lineCov">         24 :    std::string xstr;</span></a>
+<a name="1146"><span class="lineNum">    1146 </span><span class="lineCov">         12 :    std::string xstr;</span></a>
 <a name="1147"><span class="lineNum">    1147 </span>            :    try</a>
 <a name="1148"><span class="lineNum">    1148 </span>            :    {</a>
-<a name="1149"><span class="lineNum">    1149 </span><span class="lineCov">         24 :       xstr = xmsstr.substr(st, en-st);</span></a>
+<a name="1149"><span class="lineNum">    1149 </span><span class="lineCov">         12 :       xstr = xmsstr.substr(st, en-st);</span></a>
 <a name="1150"><span class="lineNum">    1150 </span>            :    }</a>
 <a name="1151"><span class="lineNum">    1151 </span><span class="lineNoCov">          0 :    catch(const std::exception &amp; e)</span></a>
 <a name="1152"><span class="lineNum">    1152 </span>            :    {</a>
@@ -1218,40 +1218,40 @@
 <a name="1156"><span class="lineNum">    1156 </span>            : </a>
 <a name="1157"><span class="lineNum">    1157 </span>            :    try</a>
 <a name="1158"><span class="lineNum">    1158 </span>            :    {</a>
-<a name="1159"><span class="lineNum">    1159 </span><span class="lineCov">         24 :       x = std::stod(xstr);</span></a>
+<a name="1159"><span class="lineNum">    1159 </span><span class="lineCov">         12 :       x = std::stod(xstr);</span></a>
 <a name="1160"><span class="lineNum">    1160 </span>            :    }</a>
-<a name="1161"><span class="lineNum">    1161 </span><span class="lineCov">          2 :    catch(const std::exception &amp; e)</span></a>
+<a name="1161"><span class="lineNum">    1161 </span><span class="lineCov">          1 :    catch(const std::exception &amp; e)</span></a>
 <a name="1162"><span class="lineNum">    1162 </span>            :    {</a>
-<a name="1163"><span class="lineNum">    1163 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, e.what()});</span></a>
-<a name="1164"><span class="lineNum">    1164 </span><span class="lineCov">          2 :       return -1;</span></a>
-<a name="1165"><span class="lineNum">    1165 </span><span class="lineCov">          2 :    }</span></a>
+<a name="1163"><span class="lineNum">    1163 </span><span class="lineCov">          1 :       log&lt;software_error&gt;({__FILE__, __LINE__, e.what()});</span></a>
+<a name="1164"><span class="lineNum">    1164 </span><span class="lineCov">          1 :       return -1;</span></a>
+<a name="1165"><span class="lineNum">    1165 </span><span class="lineCov">          1 :    }</span></a>
 <a name="1166"><span class="lineNum">    1166 </span>            : </a>
 <a name="1167"><span class="lineNum">    1167 </span>            :    //Check for negative</a>
-<a name="1168"><span class="lineNum">    1168 </span><span class="lineCov">         22 :    if(std::signbit(x)) sgn = -1;</span></a>
-<a name="1169"><span class="lineNum">    1169 </span><span class="lineCov">         22 :    if(xmsstr[0] == '-') sgn = -1;</span></a>
+<a name="1168"><span class="lineNum">    1168 </span><span class="lineCov">         11 :    if(std::signbit(x)) sgn = -1;</span></a>
+<a name="1169"><span class="lineNum">    1169 </span><span class="lineCov">         11 :    if(xmsstr[0] == '-') sgn = -1;</span></a>
 <a name="1170"><span class="lineNum">    1170 </span>            : </a>
-<a name="1171"><span class="lineNum">    1171 </span><span class="lineCov">         22 :    st = en + 1;</span></a>
+<a name="1171"><span class="lineNum">    1171 </span><span class="lineCov">         11 :    st = en + 1;</span></a>
 <a name="1172"><span class="lineNum">    1172 </span>            :    </a>
-<a name="1173"><span class="lineNum">    1173 </span><span class="lineCov">         22 :    en = xmsstr.find(':', st);</span></a>
+<a name="1173"><span class="lineNum">    1173 </span><span class="lineCov">         11 :    en = xmsstr.find(':', st);</span></a>
 <a name="1174"><span class="lineNum">    1174 </span>            :    </a>
 <a name="1175"><span class="lineNum">    1175 </span>            :    //Check not found</a>
-<a name="1176"><span class="lineNum">    1176 </span><span class="lineCov">         22 :    if(en == std::string::npos)</span></a>
+<a name="1176"><span class="lineNum">    1176 </span><span class="lineCov">         11 :    if(en == std::string::npos)</span></a>
 <a name="1177"><span class="lineNum">    1177 </span>            :    {</a>
-<a name="1178"><span class="lineNum">    1178 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
-<a name="1179"><span class="lineNum">    1179 </span><span class="lineCov">          2 :       return -1;</span></a>
+<a name="1178"><span class="lineNum">    1178 </span><span class="lineCov">          1 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
+<a name="1179"><span class="lineNum">    1179 </span><span class="lineCov">          1 :       return -1;</span></a>
 <a name="1180"><span class="lineNum">    1180 </span>            :    }</a>
 <a name="1181"><span class="lineNum">    1181 </span>            : </a>
 <a name="1182"><span class="lineNum">    1182 </span>            :    //Check 0 length or invalid</a>
-<a name="1183"><span class="lineNum">    1183 </span><span class="lineCov">         20 :    if(en - st &lt; 2 || en &lt; st)</span></a>
+<a name="1183"><span class="lineNum">    1183 </span><span class="lineCov">         10 :    if(en - st &lt; 2 || en &lt; st)</span></a>
 <a name="1184"><span class="lineNum">    1184 </span>            :    {</a>
-<a name="1185"><span class="lineNum">    1185 </span><span class="lineCov">          6 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
-<a name="1186"><span class="lineNum">    1186 </span><span class="lineCov">          6 :       return -1;</span></a>
+<a name="1185"><span class="lineNum">    1185 </span><span class="lineCov">          3 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
+<a name="1186"><span class="lineNum">    1186 </span><span class="lineCov">          3 :       return -1;</span></a>
 <a name="1187"><span class="lineNum">    1187 </span>            :    }</a>
 <a name="1188"><span class="lineNum">    1188 </span>            : </a>
-<a name="1189"><span class="lineNum">    1189 </span><span class="lineCov">         14 :    std::string mstr;</span></a>
+<a name="1189"><span class="lineNum">    1189 </span><span class="lineCov">          7 :    std::string mstr;</span></a>
 <a name="1190"><span class="lineNum">    1190 </span>            :    try</a>
 <a name="1191"><span class="lineNum">    1191 </span>            :    {</a>
-<a name="1192"><span class="lineNum">    1192 </span><span class="lineCov">         14 :       mstr = xmsstr.substr(st, en-st);</span></a>
+<a name="1192"><span class="lineNum">    1192 </span><span class="lineCov">          7 :       mstr = xmsstr.substr(st, en-st);</span></a>
 <a name="1193"><span class="lineNum">    1193 </span>            :    }</a>
 <a name="1194"><span class="lineNum">    1194 </span><span class="lineNoCov">          0 :    catch(const std::exception &amp; e)</span></a>
 <a name="1195"><span class="lineNum">    1195 </span>            :    {</a>
@@ -1261,7 +1261,7 @@
 <a name="1199"><span class="lineNum">    1199 </span>            : </a>
 <a name="1200"><span class="lineNum">    1200 </span>            :    try</a>
 <a name="1201"><span class="lineNum">    1201 </span>            :    {</a>
-<a name="1202"><span class="lineNum">    1202 </span><span class="lineCov">         14 :       m = sgn*std::stod(mstr);</span></a>
+<a name="1202"><span class="lineNum">    1202 </span><span class="lineCov">          7 :       m = sgn*std::stod(mstr);</span></a>
 <a name="1203"><span class="lineNum">    1203 </span>            :    }</a>
 <a name="1204"><span class="lineNum">    1204 </span><span class="lineNoCov">          0 :    catch(const std::exception &amp; e)</span></a>
 <a name="1205"><span class="lineNum">    1205 </span>            :    {</a>
@@ -1269,18 +1269,18 @@
 <a name="1207"><span class="lineNum">    1207 </span><span class="lineNoCov">          0 :       return -1;</span></a>
 <a name="1208"><span class="lineNum">    1208 </span><span class="lineNoCov">          0 :    }</span></a>
 <a name="1209"><span class="lineNum">    1209 </span>            : </a>
-<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">         14 :    st = en+1;</span></a>
+<a name="1210"><span class="lineNum">    1210 </span><span class="lineCov">          7 :    st = en+1;</span></a>
 <a name="1211"><span class="lineNum">    1211 </span>            : </a>
-<a name="1212"><span class="lineNum">    1212 </span><span class="lineCov">         14 :    if(st &gt;= xmsstr.length() - 1)</span></a>
+<a name="1212"><span class="lineNum">    1212 </span><span class="lineCov">          7 :    if(st &gt;= xmsstr.length() - 1)</span></a>
 <a name="1213"><span class="lineNum">    1213 </span>            :    {</a>
-<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
-<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">          2 :       return -1;</span></a>
+<a name="1214"><span class="lineNum">    1214 </span><span class="lineCov">          1 :       log&lt;software_error&gt;({__FILE__, __LINE__, &quot;error parsing x:m:s&quot;});</span></a>
+<a name="1215"><span class="lineNum">    1215 </span><span class="lineCov">          1 :       return -1;</span></a>
 <a name="1216"><span class="lineNum">    1216 </span>            :    }</a>
 <a name="1217"><span class="lineNum">    1217 </span>            : </a>
-<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">         12 :    std::string sstr;</span></a>
+<a name="1218"><span class="lineNum">    1218 </span><span class="lineCov">          6 :    std::string sstr;</span></a>
 <a name="1219"><span class="lineNum">    1219 </span>            :    try</a>
 <a name="1220"><span class="lineNum">    1220 </span>            :    {</a>
-<a name="1221"><span class="lineNum">    1221 </span><span class="lineCov">         12 :       sstr = xmsstr.substr(st, xmsstr.length()-st);</span></a>
+<a name="1221"><span class="lineNum">    1221 </span><span class="lineCov">          6 :       sstr = xmsstr.substr(st, xmsstr.length()-st);</span></a>
 <a name="1222"><span class="lineNum">    1222 </span>            :    }</a>
 <a name="1223"><span class="lineNum">    1223 </span><span class="lineNoCov">          0 :    catch(const std::exception &amp; e)</span></a>
 <a name="1224"><span class="lineNum">    1224 </span>            :    {</a>
@@ -1290,16 +1290,16 @@
 <a name="1228"><span class="lineNum">    1228 </span>            :    </a>
 <a name="1229"><span class="lineNum">    1229 </span>            :    try</a>
 <a name="1230"><span class="lineNum">    1230 </span>            :    {</a>
-<a name="1231"><span class="lineNum">    1231 </span><span class="lineCov">         12 :       s = sgn*std::stod(sstr);</span></a>
+<a name="1231"><span class="lineNum">    1231 </span><span class="lineCov">          6 :       s = sgn*std::stod(sstr);</span></a>
 <a name="1232"><span class="lineNum">    1232 </span>            :    }</a>
-<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">          4 :    catch(const std::exception &amp; e)</span></a>
+<a name="1233"><span class="lineNum">    1233 </span><span class="lineCov">          2 :    catch(const std::exception &amp; e)</span></a>
 <a name="1234"><span class="lineNum">    1234 </span>            :    {</a>
-<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">          4 :       log&lt;software_error&gt;({__FILE__, __LINE__, e.what()});</span></a>
-<a name="1236"><span class="lineNum">    1236 </span><span class="lineCov">          4 :       return -1;</span></a>
-<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">          4 :    }</span></a>
+<a name="1235"><span class="lineNum">    1235 </span><span class="lineCov">          2 :       log&lt;software_error&gt;({__FILE__, __LINE__, e.what()});</span></a>
+<a name="1236"><span class="lineNum">    1236 </span><span class="lineCov">          2 :       return -1;</span></a>
+<a name="1237"><span class="lineNum">    1237 </span><span class="lineCov">          2 :    }</span></a>
 <a name="1238"><span class="lineNum">    1238 </span>            : </a>
-<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">          8 :    return 0;</span></a>
-<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">         24 : }</span></a>
+<a name="1239"><span class="lineNum">    1239 </span><span class="lineCov">          4 :    return 0;</span></a>
+<a name="1240"><span class="lineNum">    1240 </span><span class="lineCov">         12 : }</span></a>
 <a name="1241"><span class="lineNum">    1241 </span>            : </a>
 <a name="1242"><span class="lineNum">    1242 </span>            : inline</a>
 <a name="1243"><span class="lineNum">    1243 </span><span class="lineNoCov">          0 : int tcsInterface::getTelTime()</span></a>
@@ -2848,9 +2848,9 @@
 <a name="2786"><span class="lineNum">    2786 </span>            :    return 0;</a>
 <a name="2787"><span class="lineNum">    2787 </span>            : }</a>
 <a name="2788"><span class="lineNum">    2788 </span>            : </a>
-<a name="2789"><span class="lineNum">    2789 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_pyrNudge)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2789"><span class="lineNum">    2789 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_pyrNudge)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2790"><span class="lineNum">    2790 </span>            : {</a>
-<a name="2791"><span class="lineNum">    2791 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_pyrNudge, ipRecv);</span></a>
+<a name="2791"><span class="lineNum">    2791 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_pyrNudge, ipRecv);</span></a>
 <a name="2792"><span class="lineNum">    2792 </span>            :    </a>
 <a name="2793"><span class="lineNum">    2793 </span>            :    float x = 0;</a>
 <a name="2794"><span class="lineNum">    2794 </span>            :    float y = 0;</a>
@@ -2874,9 +2874,9 @@
 <a name="2812"><span class="lineNum">    2812 </span>            :    return sendPyrNudge(x, y, z);</a>
 <a name="2813"><span class="lineNum">    2813 </span>            : }</a>
 <a name="2814"><span class="lineNum">    2814 </span>            : </a>
-<a name="2815"><span class="lineNum">    2815 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_acqFromGuider)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2815"><span class="lineNum">    2815 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_acqFromGuider)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2816"><span class="lineNum">    2816 </span>            : {</a>
-<a name="2817"><span class="lineNum">    2817 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_acqFromGuider, ipRecv);</span></a>
+<a name="2817"><span class="lineNum">    2817 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_acqFromGuider, ipRecv);</span></a>
 <a name="2818"><span class="lineNum">    2818 </span>            :    </a>
 <a name="2819"><span class="lineNum">    2819 </span>            :    if(!ipRecv.find(&quot;request&quot;))</a>
 <a name="2820"><span class="lineNum">    2820 </span>            :    {</a>
@@ -2955,9 +2955,9 @@
 <a name="2893"><span class="lineNum">    2893 </span>            :    return 0;</a>
 <a name="2894"><span class="lineNum">    2894 </span>            : }</a>
 <a name="2895"><span class="lineNum">    2895 </span>            : </a>
-<a name="2896"><span class="lineNum">    2896 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTenable)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2896"><span class="lineNum">    2896 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTenable)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2897"><span class="lineNum">    2897 </span>            : {</a>
-<a name="2898"><span class="lineNum">    2898 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTenable, ipRecv);</span></a>
+<a name="2898"><span class="lineNum">    2898 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTenable, ipRecv);</span></a>
 <a name="2899"><span class="lineNum">    2899 </span>            : </a>
 <a name="2900"><span class="lineNum">    2900 </span>            :    if(ipRecv.getName() != m_indiP_offlTTenable.getName())</a>
 <a name="2901"><span class="lineNum">    2901 </span>            :    {</a>
@@ -2984,9 +2984,9 @@
 <a name="2922"><span class="lineNum">    2922 </span>            : </a>
 <a name="2923"><span class="lineNum">    2923 </span>            : }</a>
 <a name="2924"><span class="lineNum">    2924 </span>            : </a>
-<a name="2925"><span class="lineNum">    2925 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTdump)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2925"><span class="lineNum">    2925 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTdump)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2926"><span class="lineNum">    2926 </span>            : {</a>
-<a name="2927"><span class="lineNum">    2927 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTdump, ipRecv);</span></a>
+<a name="2927"><span class="lineNum">    2927 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTdump, ipRecv);</span></a>
 <a name="2928"><span class="lineNum">    2928 </span>            :    </a>
 <a name="2929"><span class="lineNum">    2929 </span>            :    if(!ipRecv.find(&quot;request&quot;)) return 0;</a>
 <a name="2930"><span class="lineNum">    2930 </span>            :    </a>
@@ -3001,9 +3001,9 @@
 <a name="2939"><span class="lineNum">    2939 </span>            : </a>
 <a name="2940"><span class="lineNum">    2940 </span>            : }</a>
 <a name="2941"><span class="lineNum">    2941 </span>            : </a>
-<a name="2942"><span class="lineNum">    2942 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTavgInt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2942"><span class="lineNum">    2942 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTavgInt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2943"><span class="lineNum">    2943 </span>            : {</a>
-<a name="2944"><span class="lineNum">    2944 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTavgInt, ipRecv);</span></a>
+<a name="2944"><span class="lineNum">    2944 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTavgInt, ipRecv);</span></a>
 <a name="2945"><span class="lineNum">    2945 </span>            : </a>
 <a name="2946"><span class="lineNum">    2946 </span>            :    int target;</a>
 <a name="2947"><span class="lineNum">    2947 </span>            :    </a>
@@ -3018,9 +3018,9 @@
 <a name="2956"><span class="lineNum">    2956 </span>            :    return 0;</a>
 <a name="2957"><span class="lineNum">    2957 </span>            : }</a>
 <a name="2958"><span class="lineNum">    2958 </span>            : </a>
-<a name="2959"><span class="lineNum">    2959 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTgain)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2959"><span class="lineNum">    2959 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTgain)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2960"><span class="lineNum">    2960 </span>            : {</a>
-<a name="2961"><span class="lineNum">    2961 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTgain, ipRecv);</span></a>
+<a name="2961"><span class="lineNum">    2961 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTgain, ipRecv);</span></a>
 <a name="2962"><span class="lineNum">    2962 </span>            : </a>
 <a name="2963"><span class="lineNum">    2963 </span>            :    float target;</a>
 <a name="2964"><span class="lineNum">    2964 </span>            :    </a>
@@ -3035,9 +3035,9 @@
 <a name="2973"><span class="lineNum">    2973 </span>            :    return 0;</a>
 <a name="2974"><span class="lineNum">    2974 </span>            : }</a>
 <a name="2975"><span class="lineNum">    2975 </span>            : </a>
-<a name="2976"><span class="lineNum">    2976 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTthresh)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2976"><span class="lineNum">    2976 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTthresh)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2977"><span class="lineNum">    2977 </span>            : {</a>
-<a name="2978"><span class="lineNum">    2978 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTthresh, ipRecv);</span></a>
+<a name="2978"><span class="lineNum">    2978 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTthresh, ipRecv);</span></a>
 <a name="2979"><span class="lineNum">    2979 </span>            : </a>
 <a name="2980"><span class="lineNum">    2980 </span>            :    float target;</a>
 <a name="2981"><span class="lineNum">    2981 </span>            :    </a>
@@ -3053,9 +3053,9 @@
 <a name="2991"><span class="lineNum">    2991 </span>            : }</a>
 <a name="2992"><span class="lineNum">    2992 </span>            : </a>
 <a name="2993"><span class="lineNum">    2993 </span>            : </a>
-<a name="2994"><span class="lineNum">    2994 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFenable)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="2994"><span class="lineNum">    2994 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFenable)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="2995"><span class="lineNum">    2995 </span>            : {</a>
-<a name="2996"><span class="lineNum">    2996 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFenable, ipRecv);</span></a>
+<a name="2996"><span class="lineNum">    2996 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFenable, ipRecv);</span></a>
 <a name="2997"><span class="lineNum">    2997 </span>            :    </a>
 <a name="2998"><span class="lineNum">    2998 </span>            :    if(!ipRecv.find(&quot;toggle&quot;)) return 0;</a>
 <a name="2999"><span class="lineNum">    2999 </span>            :    </a>
@@ -3076,9 +3076,9 @@
 <a name="3014"><span class="lineNum">    3014 </span>            : </a>
 <a name="3015"><span class="lineNum">    3015 </span>            : }</a>
 <a name="3016"><span class="lineNum">    3016 </span>            : </a>
-<a name="3017"><span class="lineNum">    3017 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFdump)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="3017"><span class="lineNum">    3017 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFdump)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="3018"><span class="lineNum">    3018 </span>            : {</a>
-<a name="3019"><span class="lineNum">    3019 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFdump, ipRecv);</span></a>
+<a name="3019"><span class="lineNum">    3019 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFdump, ipRecv);</span></a>
 <a name="3020"><span class="lineNum">    3020 </span>            :    </a>
 <a name="3021"><span class="lineNum">    3021 </span>            :    if(!ipRecv.find(&quot;request&quot;)) return 0;</a>
 <a name="3022"><span class="lineNum">    3022 </span>            :    </a>
@@ -3093,9 +3093,9 @@
 <a name="3031"><span class="lineNum">    3031 </span>            : </a>
 <a name="3032"><span class="lineNum">    3032 </span>            : }</a>
 <a name="3033"><span class="lineNum">    3033 </span>            : </a>
-<a name="3034"><span class="lineNum">    3034 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFavgInt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="3034"><span class="lineNum">    3034 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFavgInt)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="3035"><span class="lineNum">    3035 </span>            : {</a>
-<a name="3036"><span class="lineNum">    3036 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFavgInt, ipRecv);</span></a>
+<a name="3036"><span class="lineNum">    3036 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFavgInt, ipRecv);</span></a>
 <a name="3037"><span class="lineNum">    3037 </span>            : </a>
 <a name="3038"><span class="lineNum">    3038 </span>            :    int target;</a>
 <a name="3039"><span class="lineNum">    3039 </span>            :    </a>
@@ -3110,9 +3110,9 @@
 <a name="3048"><span class="lineNum">    3048 </span>            :    return 0;</a>
 <a name="3049"><span class="lineNum">    3049 </span>            : }</a>
 <a name="3050"><span class="lineNum">    3050 </span>            : </a>
-<a name="3051"><span class="lineNum">    3051 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFgain)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="3051"><span class="lineNum">    3051 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFgain)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="3052"><span class="lineNum">    3052 </span>            : {</a>
-<a name="3053"><span class="lineNum">    3053 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFgain, ipRecv);</span></a>
+<a name="3053"><span class="lineNum">    3053 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFgain, ipRecv);</span></a>
 <a name="3054"><span class="lineNum">    3054 </span>            : </a>
 <a name="3055"><span class="lineNum">    3055 </span>            :    float target;</a>
 <a name="3056"><span class="lineNum">    3056 </span>            :    </a>
@@ -3127,9 +3127,9 @@
 <a name="3065"><span class="lineNum">    3065 </span>            :    return 0;</a>
 <a name="3066"><span class="lineNum">    3066 </span>            : }</a>
 <a name="3067"><span class="lineNum">    3067 </span>            : </a>
-<a name="3068"><span class="lineNum">    3068 </span><span class="lineCov">          6 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFthresh)(const pcf::IndiProperty &amp;ipRecv)</span></a>
+<a name="3068"><span class="lineNum">    3068 </span><span class="lineCov">          3 : INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFthresh)(const pcf::IndiProperty &amp;ipRecv)</span></a>
 <a name="3069"><span class="lineNum">    3069 </span>            : {</a>
-<a name="3070"><span class="lineNum">    3070 </span><span class="lineCov">          6 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFthresh, ipRecv);</span></a>
+<a name="3070"><span class="lineNum">    3070 </span><span class="lineCov">          3 :    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFthresh, ipRecv);</span></a>
 <a name="3071"><span class="lineNum">    3071 </span>            : </a>
 <a name="3072"><span class="lineNum">    3072 </span>            :    float target;</a>
 <a name="3073"><span class="lineNum">    3073 </span>            :    </a>
