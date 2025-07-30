@@ -221,7 +221,6 @@ function verb_status {
 
   pns="${procnames#${delim}}"
   pns="${pns%${delim}}"
-  pns_="${pns//-/_}"
   __tmp="${pns//${delim}${delim}/=$__resu_default;}=$__resu_default"
   __tmp=$(echo "$__tmp" | tr \; \\n | awkfix)
   eval "$__tmp"
@@ -518,7 +517,11 @@ function find_all_procnames {
   || resu_failure "Readable process list file not found; exiting ..." \
   || return 1
 
-  cat "$proclist_txt" \
+  ### Ignore any driver name that comprises any characters other than
+  ### A-Z, a-z, 0-9. - (hyphen) or _ (underscore)
+  ### - but also allow for leading - or py: or similar
+  grep -E '^([a-zA-Z0-9_]*:|-)*[-A-Za-z0-9_ ][-A-Za-z0-9_ ][-A-Za-z0-9_ ]*$' "$proclist_txt" \
+  | sed -e 's/^-//' -e 's/^[A-Za-z0-9_]*://' \
   | while read procname exe cruft ; do
       ### Ignore any line with a token count less than or greater than 2
       [ ! "$exe" ] && continue

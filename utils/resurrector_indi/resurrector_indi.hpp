@@ -62,6 +62,20 @@ read_next_process(FILE* f, std::string& name, std::string& exec
         name = std::string(argname);
         prefix = std::string("");
     }
+    // Ignore any driver name that comprises any characters other than
+    // A-Z, a-z, 0-9. - (hyphen) or _ (underscore)
+    for (auto it=name.cbegin(); it!=name.cend(); ++it)
+    {
+        if (*it >= 'a' && *it <= 'z') { continue; }
+        if (*it >= 'A' && *it <= 'Z') { continue; }
+        if (*it >= '0' && *it <= '9') { continue; }
+        if (*it == '-' || *it == '_') { continue; }
+        std::cout << "Rejecting invalid driver name ["
+                  << name
+                  << "]"
+                  << std::endl;
+        return 1;
+    }
     exec = std::string(argexec);
     return 2;
 }
