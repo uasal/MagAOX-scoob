@@ -199,29 +199,56 @@ function verb_status {
 
   ripid=$(ps axo pid,exe | grep '/resurrector_indi$' | head -1 | sed -e 's/^ *//' -e 's,  *.*/resurrector_indi$,,' | grep '^[0-9][0-9]*$') || true
 
+  ### Each driver'state s will be represented by a BASH variable
+  ###   __resu_state_<fixedname>=<name>=<nCOLOR>=<descriptive text>
+
+  ### (i) Assume all drivers are not running
   [ "$ripid" ] \
   && __resu_default="'3magenta=resurrector exists, but process not started'" \
   || __resu_default="'2cyan=no resurrector, not started'"
 
-  ### Start with null variables __resu_state_<name> for process PIDs
+  ### AWK script to
+  ### (i) fix drivername in BASH variable name, and
+  ### (ii) add __resu_state_ prefix
+  function awkfix {
+    awk -F= '
+    {
+      onefix=$1
+      gsub(/-/,"_",onefix)
+      printf "%s","__resu_state_" onefix "=" $0 ";"
+    }'
+  }
+
   pns="${procnames#${delim}}"
   pns="${pns%${delim}}"
-  eval "_resu_pid_${pns//${delim}${delim}/=$__resu_default;__resu_state_}=$__resu_default"
-  __resu_knownpids=
+  pns_="${pns//-/_}"
+  __tmp="${pns//${delim}${delim}/=$__resu_default;}=$__resu_default"
+  __tmp=$(echo "$__tmp" | tr \; \\n | awkfix)
+  eval "$__tmp"
 
-  ### Replace with PID from file /opt/MagAOX/sys/<name>/pid
-  ### Also create null variables __resu_name_<pid>
-  eval $(eval "grep '^[0-9][0-9]*\$' /opt/MagAOX/sys/{${procnames//${delim}/,}}/pid 2>/dev/null | sed -e s,/pid:,=, -e 's=.*/==' -e 's/^/__resu_state_/' -e 's/^__resu_state_\([^=]*\)=\(..*\)\$/__resu_state_\1=\"0green=running (pid: \2)\";__resu_name_\2=\1;__resu_knownpids=\"\${__resu_knownpids}\2 \"/'")
+  ### (ii) Replace default "not running" with provisional "running"
+  ###      if PID file, opt/MagAOX/sys/<drivername>/pid, is found
+  ### Also create variables __resu_name_<pid>=drivername
+  ### Also create variable __resu_knownpids
+  __resu_knownpids=
+  eval $(eval "grep '^[0-9][0-9]*$' /opt/MagAOX/sys/{${pns//${delim}${delim}/,}}/pid" 2>/dev/null \
+  | sed -e s,/pid:,=, \
+        -e 's=.*/==' \
+	-e 's/^\([^=]*\)=\(..*\)$/\1="0green=running (pid: \2)";__resu_name_\2=\1;__resu_knownpids="\${__resu_knownpids}\2 "/' \
+  | awkfix)
 
   __resu_knownpids="$__resu_knownpids"
 
+  ### (iii) Replace provisional "running" with "dead" where [kill -0]
+  ###       of known PIDs throws a "no such process" error
   [ "$ripid" ] \
   && __resu_resu="resurrector exists" \
   || __resu_resu="no resurrector"
 
   for missingpid in $(kill -0 $__resu_knownpids 2>&1 | grep -i no.such.process| sed -e 's/[)].*$//' -e 's/[^(]*(//' || true) ; do
     eval "missingname=\$__resu_name_$missingpid"
-    eval "__resu_state_$missingname='4red=dead ($__resu_resu, stale PID file)'"
+    eval "missingfixname=\${missingname//-/_}"
+    eval "__resu_state_$missingfixname='$missingname=4red=dead ($__resu_resu, stale PID file)'"
   done
 
   ### Find any processes that are in base proclist,
@@ -230,15 +257,23 @@ function verb_status {
   && ripath="$(find_resurrector_indi_path)" \
   && proclist_base="$($ripath -r $ROLE -cs - -pn)" \
   && proclist_cached="$($ripath -r $ROLE $CACHESUFFIXargs -pn)" \
-  && eval $(diff "$proclist_cached" "$proclist_base" -tdbwyW200 --suppress-common-lines --strip-trailing-cr | awk '{h4="#" $4}NF==5&&$2==$5&&$3=="|"&&h4==$1{print "__resu_state_" $4 "=1yellow=\"disabled (probably)\""}')
+  && eval $(diff "$proclist_cached" "$proclist_base" -tdbwyW200 --suppress-common-lines --strip-trailing-cr \
+     | awk '
+       {h4="#" $4}
+       NF==5 && $2==$5 && $3=="|" && h4==$1 {
+         four=$4
+	 gsub(/-/,"_",four)
+         print "__resu_state_" four "=" $4"=1yellow=\"disabled (probably)\""
+       }')
 
-  ### Outuput status of all processes
-  set|grep -E '^__resu_state_' | sort -t= -k2,2 -k1,1 | tr -d \' \
-  | sed -e "/=[0-9]green=/s/__resu_state_/$GREEN_SEQ/" \
-        -e "/=[0-9]yellow=/s/__resu_state_/$YELLOW_SEQ/" \
-        -e "/=[0-9]cyan=/s/__resu_state_/$CYAN_SEQ/" \
-        -e "/=[0-9]magenta=/s/__resu_state_/$MAGENTA_SEQ/" \
-        -e "/=[0-9]red=/s/__resu_state_/$RED_SEQ/" \
+  ### Outuput statuses of all processes, which are contained in BASH
+  ### variables __resu_state_<drivername>
+  set|grep -E '^__resu_state_' | sort -t= -k3,3 -k1,1 | tr -d \' \
+  | sed -e "/=[0-9]green=/s/__resu_state_[^=]*=/$GREEN_SEQ/" \
+        -e "/=[0-9]yellow=/s/__resu_state_[^=]*=/$YELLOW_SEQ/" \
+        -e "/=[0-9]cyan=/s/__resu_state_[^=]*=/$CYAN_SEQ/" \
+        -e "/=[0-9]magenta=/s/__resu_state_[^=]*=/$MAGENTA_SEQ/" \
+        -e "/=[0-9]red=/s/__resu_state_[^=]*=/$RED_SEQ/" \
         -e "s/=[0-9][grencyamgtylowbud]*=/: /" \
         -e "s/$/$RESET_SEQ/"
   return 0
