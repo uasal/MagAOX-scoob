@@ -12,6 +12,10 @@
 namespace fileTimes_test
 {
 
+/** \test Scenario: Getting timestamp string and broken-down time for a given time
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_timestamp_bdtime
+ */
 SCENARIO( "Getting timestamp string and broken-down time for a given time", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A time with 0 sec and 0 nsec" )
@@ -99,6 +103,10 @@ SCENARIO( "Getting timestamp string and broken-down time for a given time", "[li
     }
 }
 
+/** \test Scenario: Getting timestamp string only for a given time
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_timestamp_only
+ */
 SCENARIO( "Getting timestamp string only for a given time", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A time with 0 sec and 0 nsec" )
@@ -153,6 +161,10 @@ SCENARIO( "Getting timestamp string only for a given time", "[libMagAOX::sys::fi
     }
 }
 
+/** \test Scenario: Getting filename and relative path for a given time
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_filename_relpath_time
+ */
 SCENARIO( "Getting filename and relative path for a given time", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A time with 0 sec and 0 nsec" )
@@ -169,5 +181,264 @@ SCENARIO( "Getting filename and relative path for a given time", "[libMagAOX::sy
         REQUIRE( relPath == "tdevice/2024_11_21" );
     }
 }
+
+/** \test Scenario: Parsing filenames, paths and timestamps
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps
+ */
+SCENARIO( "Parsing filenames, paths and timestamps", "[libMagAOX::sys::fileTimes]" )
+{
+    GIVEN( "A valid MagAO-X filename" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "device_20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "device" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath(
+            devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "device" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filename without extension" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "device_20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "device" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath without extension" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath(
+            devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "device" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filename without device, no _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath without device, no _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filename without device or extension, no _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath without device or extension, no _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filename without device, with _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "_20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath without device, with _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath(
+            devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/_20241121063300000000000.txt" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filename without device or extension, with _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv = MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "_20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "A valid MagAO-X filepath without device or extension, with _" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/_20241121063300000000000" );
+
+        REQUIRE( rv == 0 );
+        REQUIRE( devName == "" );
+        REQUIRE( YYYY == "2024" );
+        REQUIRE( MM == "11" );
+        REQUIRE( DD == "21" );
+        REQUIRE( hh == "06" );
+        REQUIRE( mm == "33" );
+        REQUIRE( ss == "00" );
+        REQUIRE( nn == "000000000" );
+    }
+
+    GIVEN( "An invalid MagAO-X filepath with too short timestamp" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_2024112106330000000000.txt" );
+
+        REQUIRE( rv == -1 );
+    }
+
+    GIVEN( "An invalid MagAO-X filepath with too long timestamp" )
+    {
+        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_202411210633000000000001.txt" );
+
+        REQUIRE( rv == -1 );
+    }
+
+    GIVEN( "An invalid MagAO-X timestamp, too short" )
+    {
+        std::string YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, "202411210633000000000" );
+
+        REQUIRE( rv == -1 );
+    }
+
+    GIVEN( "An invalid MagAO-X timestamp, too long" )
+    {
+        std::string YYYY, MM, DD, hh, mm, ss, nn;
+
+        int rv =
+            MagAOX::sys::parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, "202411210633000000000001" );
+
+        REQUIRE( rv == -1 );
+    }
+}
+
 
 } // namespace fileTimes_test

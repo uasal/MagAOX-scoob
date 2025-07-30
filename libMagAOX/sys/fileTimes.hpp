@@ -55,6 +55,12 @@ void initbdtime( tm &bt )
  * \returns -2 if snprintf returns an error
  * \returns -3 if snprintf does not write enough characters
  *
+ * \b Tests
+ *     - Getting timestamp string and broken-down time for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_bdtime "[test doc]"
+ *     - Getting timestamp and broken-down time with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_bdtime_errors "[test doc]"
+ *     - Getting timestamp string only for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_only "[test doc]"
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
+ *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
  */
 int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                tm          &uttime, /**< [out] the broken down time*/
@@ -110,6 +116,9 @@ int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns -2 if snprintf returns an error
  * \returns -3 if snprintf does not write enough characters
  *
+ * \b Tests
+ *     - Getting timestamp string only for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_only "[test doc]"
+ *     - Getting timestamp only with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_only_errors "[test doc]"
  */
 int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                time_t       ts_sec, /**< [in] the unix time second*/
@@ -138,6 +147,9 @@ int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns -3 if snprintf does not write enough characters to tstamp (from \ref timestamp)
  * \returns -4 if snprintf returns an error writing relPath
  * \returns -5 if snprintf does not write enough characters to relPath
+ *
+ * \b Tests
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
  */
 int fileTimeRelPath( std::string &tstamp,  /**< [out] */
                      std::string &relPath, /**< [out] */
@@ -195,6 +207,11 @@ int fileTimeRelPath( std::string &tstamp,  /**< [out] */
  * \returns -3 if snprintf does not write enough characters to tstamp (from \ref timestamp)
  * \returns -4 if snprintf returns an error writing relPath
  * \returns -5 if snprintf does not write enough characters to relPath
+ *
+ * \b Tests
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
+ *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
+ *     - Getting filename and relative path for a given time with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_relpath_errors "[test doc]"
  */
 int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
                      std::string       &relPath,  /**< [out] the resulting relative path*/
@@ -217,6 +234,138 @@ int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file 
     fileName = devName + '_' + tstamp + '.' + ext;
 
     return 0;
+}
+
+/// Parse a standard XWCTk timestamp string
+/** Extracts the date components.
+ *
+ * The input muse be exactly 23 characters long.
+ *
+ * No validity checks are done on the components.
+ *
+ * \returns 0 on success
+ * \returns -1 on error
+ *
+ * \b Tests
+ *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
+ */
+int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
+                    std::string       &MM,    /**< [out] the 2 digit month*/
+                    std::string       &DD,    /**< [out] the 2 digit day*/
+                    std::string       &hh,    /**< [out] the 2 digit hour*/
+                    std::string       &mm,    /**< [out] the 2 digit minute*/
+                    std::string       &ss,    /**< [out] the 2 digit second*/
+                    std::string       &nn,    /**< [out] the 9 digit nanosecond*/
+                    const std::string &tstamp /**< [in] the 23-digit timestamp */
+)
+{
+    if( tstamp.length() != 23 )
+    {
+        std::cerr << "MagAOX::sys::parseTimestamp: timestamp does not have 23 characters.\n";
+        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
+        return -1;
+    }
+
+    YYYY = tstamp.substr( 0, 4 );
+    MM   = tstamp.substr( 4, 2 );
+    DD   = tstamp.substr( 6, 2 );
+    hh   = tstamp.substr( 8, 2 );
+    mm   = tstamp.substr( 10, 2 );
+    ss   = tstamp.substr( 12, 2 );
+    nn   = tstamp.substr( 14, 9 );
+
+    return 0;
+}
+
+/// Parse a standard XWCTk timestamp filepath
+/** Extracts the device name and the date components.
+ * The only restriction on the input \fname is that be at least 23 characters long.
+ * In this case it contains only the timestamp.
+ *
+ * No validity checks are done on the components (i.e. no check that the timestamp
+ * is all numeric, no check on device name format).
+ *
+ * Examples of valid inputs are:
+ * - `device_20241121063300000000000.txt`
+ * - `/path/to/device_20241121063300000000000.txt`
+ * - `20241121063300000000000`
+ *
+ * \returns 0 on success
+ * \returns -1 on error
+ *
+ * \b Tests
+ *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
+ */
+int parseFilePath( std::string       &devName, /**< [out] the device name */
+                   std::string       &YYYY,    /**< [out] the 4 digit year*/
+                   std::string       &MM,      /**< [out] the 2 digit month*/
+                   std::string       &DD,      /**< [out] the 2 digit day*/
+                   std::string       &hh,      /**< [out] the 2 digit hour*/
+                   std::string       &mm,      /**< [out] the 2 digit minute*/
+                   std::string       &ss,      /**< [out] the 2 digit second*/
+                   std::string       &nn,      /**< [out] the 9 digit nanosecond*/
+                   const std::string &fname    /**< [in] the filename, which can include a path */
+)
+{
+    size_t est = fname.rfind( '.' );
+    if( est == std::string::npos )
+    {
+        est = fname.size(); // no extension
+    }
+
+    size_t dst;
+    size_t dend = fname.rfind( '_', est );
+
+    if( dend == std::string::npos ) // no device name, just a timestamp
+    {
+        dst = fname.rfind( '/', est );
+        if( dst == std::string::npos ) // no path
+        {
+            dst = 0;
+        }
+        else
+        {
+            ++dst; // move past the '/'
+        }
+
+        dend = est;
+
+        devName = "";
+    }
+    else
+    {
+        dst = fname.rfind( '/', dend );
+        if( dst == std::string::npos ) // no path
+        {
+            dst = 0;
+        }
+        else
+        {
+            ++dst; // move past the '/'
+        }
+
+        if( dst >= dend ) // This is '/_YYYY....'
+        {
+            devName = ""; // no device
+        }
+        else // finally, we have a device name
+        {
+            devName = fname.substr( dst, dend - dst );
+        }
+
+        dst  = dend + 1; // now move to beginning of timestamp
+        dend = est;      // and one-past-the-end of the timestamp
+    }
+
+    // Here dst...dend should be just the timestamp
+    if( dend - dst != 23 )
+    {
+        std::cerr << "MagAOX::sys::parseFilePath: timestamp does not have 23 characters.\n";
+        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
+        return -1;
+    }
+
+    return parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, fname.substr( dst, dend - dst ) );
 }
 
 } // namespace sys

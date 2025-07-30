@@ -15,6 +15,12 @@
 namespace fileTimes_errors_test
 {
 
+/** \test Scenario: Getting timestamp and broken-down time with errors
+ *
+ * This is in a separate file due to need to define a buffer size too small to generate errors
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_bdtime_errors
+ */
 SCENARIO( "Getting timestamp and broken-down time with errors", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A year that's too big (gmtime_r error)" )
@@ -54,6 +60,12 @@ SCENARIO( "Getting timestamp and broken-down time with errors", "[libMagAOX::sys
     }
 }
 
+/** \test Scenario: Getting timestamp only with errors
+ *
+ * This is in a separate file due to need to define a buffer size too small to generate errors
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_only_errors
+ */
 SCENARIO( "Getting timestamp only with errors", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A year that's too big (gmtime_r error)" )
@@ -83,6 +95,12 @@ SCENARIO( "Getting timestamp only with errors", "[libMagAOX::sys::fileTimes]" )
     }
 }
 
+/** \test Scenario: Getting filename and relative path with errors
+ *
+ * This is in a separate file due to need to define a buffer size too small to generate errors
+ *
+ * \anchor tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors
+ */
 SCENARIO( "Getting filename and relative path for a given time with errors", "[libMagAOX::sys::fileTimes]" )
 {
     GIVEN( "A year that's too big (gmtime_r error)" )
