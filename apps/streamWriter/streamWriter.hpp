@@ -9,6 +9,8 @@
 #ifndef streamWriter_hpp
 #define streamWriter_hpp
 
+#include <filesystem>
+
 #include <ImageStreamIO/ImageStruct.h>
 #include <ImageStreamIO/ImageStreamIO.h>
 
@@ -263,12 +265,6 @@ class streamWriter : public MagAOXApp<>, public dev::telemeter<streamWriter>
     pid_t m_swThreadID{ 0 }; ///< S.w. thread pid.
 
     pcf::IndiProperty m_swThreadProp; ///< The property to hold the s.w. thread details.
-
-    size_t m_fnameSz{ 0 };
-
-    char *m_fname{ nullptr };
-
-    std::string m_fnameBase;
 
     /// Thread starter, called by swThreadStart on thread construction.  Calls swThreadExec.
     static void swThreadStart( streamWriter *s /**< [in] a pointer to an streamWriter instance (normally this) */ );
@@ -526,7 +522,7 @@ void streamWriter::loadConfig()
 
     // Set some defaults
     // Setup default log path
-    m_rawimageDir = MagAOXPath + "/" + MAGAOX_rawimageRelPath + "/" + m_outName;
+    m_rawimageDir = MagAOXPath + "/" + MAGAOX_rawimageRelPath;
     config( m_rawimageDir, "writer.savePath" );
 
     if( telemeterT::loadConfig( config ) < 0 )
@@ -1704,11 +1700,6 @@ void streamWriter::swThreadExec()
     {
         while( !shutdown() && ( !( state() == stateCodes::READY || state() == stateCodes::OPERATING ) ) )
         {
-            if( m_fname )
-            {
-                free( m_fname );
-                m_fname = nullptr;
-            }
             sleep( 1 );
         }
 
@@ -1717,28 +1708,11 @@ void streamWriter::swThreadExec()
             break;
         }
 
-        // This will happen after a reconnection, and could update m_shmimName, etc.
-        if( m_fname == nullptr )
-        {
-            m_fnameBase = m_rawimageDir + "/" + m_outName + "_";
-
-            m_fnameSz = m_fnameBase.size() + sizeof( "YYYYMMDDHHMMSSNNNNNNNNN.xrif" ); // the sizeof includes the \0
-            m_fname   = reinterpret_cast< char *>(malloc( m_fnameSz ));
-
-            snprintf( m_fname, m_fnameSz, "%sYYYYMMDDHHMMSSNNNNNNNNN.xrif", m_fnameBase.c_str() );
-        }
-
-        // at this point fname is not null.
-
         timespec ts;
 
         if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
         {
             log<software_critical>( { __FILE__, __LINE__, errno, 0, "clock_gettime" } );
-
-            free( m_fname );
-            m_fname = nullptr;
-
             return; // will trigger a shutdown
         }
 
@@ -1771,11 +1745,6 @@ void streamWriter::swThreadExec()
         }
     } // outer loop, will exit if m_shutdown==true
 
-    if( m_fname )
-    {
-        free( m_fname );
-        m_fname = nullptr;
-    }
 }
 
 int streamWriter::doEncode()
@@ -1885,48 +1854,40 @@ int streamWriter::doEncode()
     }
 
     // Now break down the acq time of the first image in the buffer for use in file name
-    tm        uttime; // The broken down time.
+    //tm        uttime; // The broken down time.
     timespec *fts = reinterpret_cast< timespec *>( m_timingCircBuff + saveStart * 5 + 1 );
 
-    if( gmtime_r( &fts->tv_sec, &uttime ) == 0 )
+    std::string fileName;
+    std::string relPath;
+    sys::fileTimeRelPath(fileName, relPath, m_outName, "xrif", fts->tv_sec, fts->tv_nsec);
+
+    std::string fullPath = m_rawimageDir + '/' + relPath;
+
+    try
     {
-        // Yell at operator but keep going
-        log<software_alert>(
-            { __FILE__, __LINE__, errno, 0, "gmtime_r error.  possible loss of timing information." } );
+        std::filesystem::create_directories( fullPath ); // this does nothing if fname already exists
+    }
+    catch( const std::filesystem::filesystem_error &e )
+    {
+        std::string msg = "filesystem_error from std::create_directories. ";
+        msg += e.what();
+        msg += " code: ";
+        msg += e.code().value();
+        return log<software_critical, -1>({__FILE__, __LINE__, msg});
+    }
+    catch( const std::exception &e )
+    {
+        std::string msg = "exception from std::create_directories. ";
+        msg += e.what();
+        return log<software_critical, -1>({__FILE__, __LINE__, msg});
     }
 
-    // Available size = m_fnameSz-m_fnameBase.size(), rather than assuming sizeof("YYYYMMDDHHMMSSNNNNNNNNN"), in case we
-    // screwed up somewhere.
-    rv = snprintf( m_fname + m_fnameBase.size(),
-                   m_fnameSz - m_fnameBase.size(),
-                   "%04i%02i%02i%02i%02i%02i%09i",
-                   uttime.tm_year + 1900,
-                   uttime.tm_mon + 1,
-                   uttime.tm_mday,
-                   uttime.tm_hour,
-                   uttime.tm_min,
-                   uttime.tm_sec,
-                   static_cast<int>( fts->tv_nsec ) );
-
-    if( rv != sizeof( "YYYYMMDDHHMMSSNNNNNNNNN" ) - 1 )
-    {
-        // Something is very wrong.  Keep going to try to get it on disk.
-        log<software_alert>( { __FILE__, __LINE__, errno, rv, "did not write enough chars to timestamp" } );
-    }
-
-    // Cover up the \0 inserted by snprintf
-    ( m_fname + m_fnameBase.size() )[23] = '.';
-
-    FILE *fp_xrif = fopen( m_fname, "wb" );
+    fullPath += '/' + fileName;
+    FILE *fp_xrif = fopen( fullPath.c_str(), "wb" );
     if( fp_xrif == NULL )
     {
         // This is it.  If we can't write data to disk need to fix.
-        log<software_alert>( { __FILE__, __LINE__, errno, 0, "failed to open file for writing" } );
-
-        free( m_fname );
-        m_fname = nullptr;
-
-        return -1; // will trigger a shutdown
+        return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "failed to open file for writing" } );
     }
 
     size_t bw = fwrite( m_xrif_header, sizeof( uint8_t ), XRIF_HEADER_SIZE, fp_xrif );
