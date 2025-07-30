@@ -2,6 +2,8 @@
 ../libMagAOX/app/tests/MagAOXApp_test
 ../libMagAOX/app/tests/stateCodes_test
 ../libMagAOX/app/dev/tests/outletController_test
+../libMagAOX/logger/tests/logFileRaw_test
+../libMagAOX/logger/tests/logFileRaw_fileTime_error_test
 ../libMagAOX/sys/tests/fileTimes_test
 ../libMagAOX/sys/tests/fileTimes_errors_test
 ../libMagAOX/sys/tests/fileTimes_relPath_errors_test

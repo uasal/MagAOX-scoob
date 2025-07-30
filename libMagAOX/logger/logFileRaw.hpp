@@ -1,21 +1,14 @@
 /** \file logFileRaw.hpp
-  * \brief Manage a raw log file.
-  * \author Jared R. Males (jaredmales@gmail.com)
-  *
-  * \ingroup logger_files
-  *
-  * History:
-  * - 2017-08-28 created by JRM
-  */
+ * \brief Manage a raw log file.
+ * \ingroup logger_files
+ */
 
 #ifndef logger_logFileRaw_hpp
 #define logger_logFileRaw_hpp
 
-
 #include <iostream>
 
 #include <string>
-
 
 #include <mx/ioutils/stringUtils.hpp>
 
@@ -29,149 +22,145 @@ namespace logger
 
 /// A class to manage raw binary log files
 /** Manages a binary file containing MagAO-X logs.
-  *
-  * The log entries are written as a binary stream of a configurable
-  * maximum size.  If this size will be exceed by the next entry, then a new file is created.
-  *
-  * Filenames have a standard form of: [path]/[name]_YYYYMMDDHHMMSSNNNNNNNNN.[ext] where fields in [] are configurable.
-  *
-  * The timestamp is from the first entry of the file.
-  *
-  */
+ *
+ * The log entries are written as a binary stream of a configurable
+ * maximum size.  If this size will be exceed by the next entry, then a new file is created.
+ *
+ * Filenames have a standard form of: `[path]/[name]/[name]_YYYYMMDDHHMMSSNNNNNNNNN.[ext]` where fields in [] are
+ * configurable.
+ *
+ * The timestamp in the file name is from the first entry of the file.
+ *
+ */
 class logFileRaw
 {
 
-protected:
-
-   /** \name Configurable Parameters
+  protected:
+    /** \name Configurable Parameters
      *@{
      */
-   std::string m_logPath {"."}; ///< The base path for the log files.
-   std::string m_logName {"xlog"}; ///< The base name for the log files.
-   std::string m_logExt {MAGAOX_default_logExt}; ///< The extension for the log files.
+    std::string m_logPath{ "." };                  ///< The base path for the log files.
+    std::string m_logName{ "xlog" };               ///< The base name for the log files.
+    std::string m_logExt{ MAGAOX_default_logExt }; ///< The extension for the log files.
 
-   size_t m_maxLogSize {MAGAOX_default_max_logSize}; ///< The maximum file size in bytes. Default is 10 MB.
-   ///@}
+    size_t m_maxLogSize{ MAGAOX_default_max_logSize }; ///< The maximum file size in bytes. Default is 10 MB.
+    ///@}
 
-   /** \name Internal State
+    /** \name Internal State
      *@{
      */
 
-   FILE * m_fout {0}; ///< The file pointer
+    FILE *m_fout{ 0 }; ///< The file pointer
 
-   size_t m_currFileSize {0}; ///< The current file size.
+    size_t m_currFileSize{ 0 }; ///< The current file size.
 
-   ///@}
+    ///@}
 
-public:
-
-   /// Default constructor
-   /** Currently does nothing.
+  public:
+    /// Default constructor
+    /** Currently does nothing.
      */
-   logFileRaw();
+    logFileRaw();
 
-   ///Destructor
-   /** Closes the file if open
+    /// Destructor
+    /** Closes the file if open
      */
-   ~logFileRaw();
+    ~logFileRaw();
 
-   /// Set the path.
-   /**
+    /// Set the path.
+    /**
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int logPath( const std::string & newPath /**< [in] the new value of _path */ );
+    int logPath( const std::string &newPath /**< [in] the new value of _path */ );
 
-   /// Get the path.
-   /**
+    /// Get the path.
+    /**
      * \returns the current value of m_logPath.
      */
-   std::string logPath();
+    std::string logPath();
 
-   /// Set the log name
-   /**
+    /// Set the log name
+    /**
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int logName( const std::string & newName /**< [in] the new value of m_logName */ );
+    int logName( const std::string &newName /**< [in] the new value of m_logName */ );
 
-   /// Get the name
-   /**
+    /// Get the name
+    /**
      * \returns the current value of _name.
      */
-   std::string logName();
+    std::string logName();
 
-   /// Set the log extension
-   /**
+    /// Set the log extension
+    /**
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int logExt( const std::string & newExt /**< [in] the new value of m_logExt */ );
+    int logExt( const std::string &newExt /**< [in] the new value of m_logExt */ );
 
-   /// Get the log extension
-   /**
+    /// Get the log extension
+    /**
      * \returns the current value of m_logExt.
      */
-   std::string logExt();
+    std::string logExt();
 
-   /// Set the maximum file size
-   /**
+    /// Set the maximum file size
+    /**
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int maxLogSize( size_t newMaxFileSize/**< [in] the new value of _maxLogSize */);
+    int maxLogSize( size_t newMaxFileSize /**< [in] the new value of _maxLogSize */ );
 
-   /// Get the maximum file size
-   /**
+    /// Get the maximum file size
+    /**
      * \returns the current value of m_maxLogSize
      */
-   size_t maxLogSize();
+    size_t maxLogSize();
 
-   ///Write a log entry to the file
-   /** Checks if this write will exceed m_maxLogSize, and if so opens a new file.
+    /// Write a log entry to the file
+    /** Checks if this write will exceed m_maxLogSize, and if so opens a new file.
      * The new file will have the timestamp of this log entry.
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int writeLog( flatlogs::bufferPtrT & data /**< [in] the log entry to write to disk */ );
+    int writeLog( flatlogs::bufferPtrT &data /**< [in] the log entry to write to disk */ );
 
-   /// Flush the stream
-   /**
+    /// Flush the stream
+    /** Calls `fflush`. See issue #192
+     *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int flush();
+    int flush();
 
-   ///Close the file pointer
-   /**
+    /// Close the file pointer
+    /** Sets \ref m_fout to nullptr after calling fclose regardless of error.
+     *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int close();
+    int close();
 
-protected:
-
-   ///Create a new file
-   /** Closes the current file if open.  Then creates a new file with a name of the form
-     * [path]/[name]_YYYYMMDDHHMMSSNNNNNNNNN.[ext]
+  protected:
+    /// Create a new file
+    /** Closes the current file if open.  Then creates a new file with a name of the form
+     * [path]/[name]/YYYY_MM_DD/[name]_YYYYMMDDHHMMSSNNNNNNNNN.[ext]
      *
      *
      * \returns 0 on success
      * \returns -1 on error
      */
-   int createFile(flatlogs::timespecX & ts /**< [in] A MagAOX timespec, used to set the timestamp */);
-
-
+    int createFile( flatlogs::timespecX &ts /**< [in] A MagAOX timespec, used to set the timestamp */ );
 };
 
+} // namespace logger
+} // namespace MagAOX
 
-
-} //namespace logger
-} //namespace MagAOX
-
-#endif //logger_logFileRaw_hpp
+#endif // logger_logFileRaw_hpp

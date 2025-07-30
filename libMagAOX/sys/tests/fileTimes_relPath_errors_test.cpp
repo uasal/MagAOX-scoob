@@ -17,7 +17,7 @@ namespace fileTimes_relPath_errors_test
 
 SCENARIO( "Getting filename and relative path for a given time with errors", "[libMagAOX::sys::fileTimes]" )
 {
-    //Other errors tested in fileTimes_errors_test.cpp
+    // Other errors tested in fileTimes_errors_test.cpp
 
     GIVEN( "relpath buffer that's too small" )
     {
