@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <cstring>
+#include <filesystem>
 
 #include <mx/ioutils/fileUtils.hpp>
 
@@ -162,22 +163,38 @@ int logdump::execute()
 
    if(m_file == "" && m_prefixes.size() !=1 ) return -1; //error message will have been printed in loadConfig.
 
-   std::vector<std::string> logs;
+   std::vector<std::string> subdirs, logs;
 
    if(m_file != "")
    {
       if(m_file.find('/') == std::string::npos)
       {
-         //-------- HERE STRIP DEV NAME AND ADD SUBDIR */
-         m_file = m_dir + '/' + m_file;
+
+      std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+      MagAOX::sys::parseFilePath(devName, YYYY, MM, DD, hh, mm, ss, nn, m_file);
+
+      m_file = m_dir + '/' + devName + '/' + YYYY + '_' + MM + '_' + DD + '/' + m_file;
       }
-      std::cerr << "m_file: " << m_file << "\n";
 
       logs.push_back(m_file);
    }
    else
    {
-      logs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], m_prefixes[0], "", m_ext);
+      subdirs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], "", "", "");
+
+      if(m_follow)
+      {
+          logs = mx::ioutils::getFileNames( subdirs.back(), m_prefixes[0], "", m_ext);
+      }
+      else
+      {
+         for(size_t d = 0; d < subdirs.size(); ++d)
+         {
+            //get subdir vectors one at a time and append to build the whole list
+            std::vector<std::string> tlogs = mx::ioutils::getFileNames( subdirs[d], m_prefixes[0], "", m_ext);
+            logs.insert(logs.end(), tlogs.begin(), tlogs.end());
+         }
+      }
    }
 
    ///\todo if follow is set, then should nfiles default to 1 unless explicitly set?
@@ -194,7 +211,7 @@ int logdump::execute()
    }
 
    bool firstRun = true; //for only showing latest entries on first run when following.
-   
+
    for(size_t i=logs.size() - m_nfiles; i < logs.size(); ++i)
    {
       std::string fname = logs[i];
@@ -208,18 +225,18 @@ int logdump::execute()
 
       //--> get size here!!
       off_t finSize = mx::ioutils::fileSize( fileno(fin) );
-      
+
       std::cerr << fname << "\n";
 
       off_t totNrd = 0;
-      
+
       size_t buffSz = 0;
       while(!feof(fin)) //<--This should be an exit condition controlled by loop logic, not feof.
       {
          int nrd;
 
          ///\todo check for errors on all reads . . .
-         
+
          //Read next header
          nrd = fread( head.get(), sizeof(char), logHeader::minHeadSize, fin);
          if(nrd == 0)
@@ -239,10 +256,19 @@ int logdump::execute()
                   ++check;
                   if(check >= m_fileCheckInterval)
                   {
+                     //Check if a new sub-directory exists now.
+                     size_t old_subdirs_sz = subdirs.size();
+                     subdirs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], "", "", "");
+                     if(subdirs.size() > old_subdirs_sz)
+                     {
+                        //new subdirs(s) detected;
+                        break;
+                     }
+
                      //Check if a new file exists now.
-                     size_t oldsz = logs.size();
-                     logs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], m_prefixes[0], "", m_ext);
-                     if(logs.size() > oldsz)
+                     size_t old_logs_sz = logs.size();
+                     logs = mx::ioutils::getFileNames(subdirs.back(), m_prefixes[0], "", m_ext);
+                     if(logs.size() > old_logs_sz)
                      {
                         //new file(s) detected;
                         break;
@@ -261,7 +287,7 @@ int logdump::execute()
          if(nrd == 0) break;
 
          totNrd += nrd;
-         
+
          if( logHeader::msgLen0(head) == logHeader::MAX_LEN0-1)
          {
             //Intermediate size message, read two more bytes
@@ -319,8 +345,8 @@ int logdump::execute()
          // If following, wait for it, but also be checking for new log file in case of crash
 
          totNrd += nrd;
-         
-         if(m_follow && firstRun && finSize > 512 && totNrd < finSize-512) 
+
+         if(m_follow && firstRun && finSize > 512 && totNrd < finSize-512)
          {
             //firstRun = false;
             continue;
@@ -332,11 +358,11 @@ int logdump::execute()
             return -1;
          }
 
-         if (m_jsonMode) 
+         if (m_jsonMode)
          {
             printLogJson(len, logBuff);
-         } 
-         else 
+         }
+         else
          {
             printLogBuff(lvl, ec, len, logBuff);
          }
@@ -436,10 +462,10 @@ int logdump::gettimes(std::vector<std::string> & logs)
 
       //--> get size here!!
       //off_t finSize = mx::ioutils::fileSize( fileno(fin) );
-      
-      
+
+
       off_t totNrd = 0;
-      
+
       //size_t buffSz = 0;
 
       //Read firs header
@@ -447,7 +473,7 @@ int logdump::gettimes(std::vector<std::string> & logs)
       int nrd;
 
       ///\todo check for errors on all reads . . .
-         
+
       //Read next header
       nrd = fread( head.get(), sizeof(char), logHeader::minHeadSize, fin);
       if(nrd == 0)
@@ -494,7 +520,7 @@ int logdump::gettimes(std::vector<std::string> & logs)
          if(nrd == 0) break;
 
          totNrd += nrd;
-         
+
          if( logHeader::msgLen0(head) == logHeader::MAX_LEN0-1)
          {
             //Intermediate size message, read two more bytes
@@ -511,7 +537,7 @@ int logdump::gettimes(std::vector<std::string> & logs)
          len = logHeader::msgLen(head);
          ts = logHeader::timespec(head);
          //hSz = logHeader::headerSize(head);
-         
+
          fseek(fin, len, SEEK_CUR);
 
 

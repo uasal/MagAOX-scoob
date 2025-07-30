@@ -27,7 +27,7 @@
 #include "app/dev/dm.hpp"
 #include "app/dev/telemeter.hpp"
 #include "app/dev/dmPokeWFS.hpp"
-#include "sys/runCommand.hpp"
+
 
 #include "common/config.hpp"
 #include "common/defaults.hpp"
@@ -48,6 +48,9 @@
 #include "logger/generated/logTypes.hpp"
 #include "logger/generated/logCodeValid.hpp"
 
+#include "sys/fileTimes.hpp"
+#include "sys/runCommand.hpp"
+#include "sys/thSetuid.hpp"
 
 //#define TTY_DEBUG
 

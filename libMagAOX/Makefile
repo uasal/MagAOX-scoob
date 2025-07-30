@@ -90,6 +90,7 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              logger/types/telem_usage.hpp \
              logger/types/telem_zaber.hpp \
              logger/types/text_log.hpp \
+			 sys/fileTimes.hpp \
              sys/thSetuid.hpp \
              sys/runCommand.hpp \
              tty/ttyErrors.hpp \
@@ -122,10 +123,10 @@ OBJS = app/MagAOXApp.o \
        tty/ttyUSB.o \
        tty/usbDevice.o
 
-              
-all: libMagAOX.hpp.gch libMagAOX.a  
 
-app/MagAOXApp.o: app/MagAOXApp.hpp app/indiDriver.hpp app/indiMacros.hpp app/indiUtils.hpp app/stateCodes.o 
+all: libMagAOX.hpp.gch libMagAOX.a
+
+app/MagAOXApp.o: app/MagAOXApp.hpp app/indiDriver.hpp app/indiMacros.hpp app/indiUtils.hpp app/stateCodes.o
 app/stateCodes.o: app/stateCodes.hpp
 
 libMagAOX.hpp.gch: libMagAOX.hpp $(INCLUDEDEPS) logger/generated/logTypes.hpp $(OBJS)
@@ -139,7 +140,7 @@ libMagAOX.a: libMagAOX.hpp.gch $(OBJS)
 	ar rvs libMagAOX.a $(OBJS)
 
 logger/logMeta.o: logger/logMap.hpp logger/logMap.cpp logger/logMeta.hpp logger/logMeta.cpp logger/generated/logTypes.hpp
-logger/logMap.o: logger/logMap.hpp logger/logMap.cpp logger/logFileName.hpp 
+logger/logMap.o: logger/logMap.hpp logger/logMap.cpp logger/logFileName.hpp
 
 clean:
 	rm -f libMagAOX.hpp.gch

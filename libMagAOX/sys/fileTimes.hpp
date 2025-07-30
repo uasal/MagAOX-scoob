@@ -27,6 +27,7 @@ namespace sys
 
 namespace internal
 {
+inline
 void initbdtime( tm &bt )
 {
     bt.tm_sec    = 0;
@@ -62,7 +63,7 @@ void initbdtime( tm &bt )
  *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
  *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
  */
-int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
+inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                tm          &uttime, /**< [out] the broken down time*/
                time_t       ts_sec, /**< [in] the unix time second*/
                long         ts_nsec /**< [in] the nanosecond*/
@@ -120,7 +121,7 @@ int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  *     - Getting timestamp string only for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_only "[test doc]"
  *     - Getting timestamp only with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_only_errors "[test doc]"
  */
-int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
+inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                time_t       ts_sec, /**< [in] the unix time second*/
                long         ts_nsec /**< [in] the nanosecond*/
 )
@@ -151,7 +152,7 @@ int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \b Tests
  *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
  */
-int fileTimeRelPath( std::string &tstamp,  /**< [out] */
+inline int fileTimeRelPath( std::string &tstamp,  /**< [out] */
                      std::string &relPath, /**< [out] */
                      time_t       ts_sec,  /**< [in] the unix time second*/
                      long         ts_nsec  /**< [in] the nanosecond*/
@@ -213,7 +214,7 @@ int fileTimeRelPath( std::string &tstamp,  /**< [out] */
  *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
  *     - Getting filename and relative path for a given time with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_relpath_errors "[test doc]"
  */
-int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
+inline int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
                      std::string       &relPath,  /**< [out] the resulting relative path*/
                      const std::string &devName,  /**< [in] the device name part of the path.  No '/'. */
                      const std::string &ext,      /**< [in] the extension part of the filename. No `.`. */
@@ -249,7 +250,7 @@ int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file 
  * \b Tests
  *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
  */
-int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
+inline int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
                     std::string       &MM,    /**< [out] the 2 digit month*/
                     std::string       &DD,    /**< [out] the 2 digit day*/
                     std::string       &hh,    /**< [out] the 2 digit hour*/
@@ -296,7 +297,7 @@ int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
  * \b Tests
  *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
  */
-int parseFilePath( std::string       &devName, /**< [out] the device name */
+inline int parseFilePath( std::string       &devName, /**< [out] the device name */
                    std::string       &YYYY,    /**< [out] the 4 digit year*/
                    std::string       &MM,      /**< [out] the 2 digit month*/
                    std::string       &DD,      /**< [out] the 2 digit day*/
