@@ -26,7 +26,7 @@
 #define WRITING ( 2 )
 #define STOP_WRITING ( 3 )
 
-//#define SW_DEBUG
+// #define SW_DEBUG
 
 namespace MagAOX
 {
@@ -805,7 +805,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno         = 0;
-    m_xrif_header = reinterpret_cast< char *>(malloc( XRIF_HEADER_SIZE * sizeof( char ) ));
+    m_xrif_header = reinterpret_cast<char *>( malloc( XRIF_HEADER_SIZE * sizeof( char ) ) );
     if( m_xrif_header == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "xrif header allocation failed." } );
@@ -826,7 +826,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno                = 0;
-    m_xrif_timing_header = reinterpret_cast< char *>(malloc( XRIF_HEADER_SIZE * sizeof( char ) ));
+    m_xrif_timing_header = reinterpret_cast<char *>( malloc( XRIF_HEADER_SIZE * sizeof( char ) ) );
     if( m_xrif_timing_header == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "xrif header allocation failed." } );
@@ -913,12 +913,12 @@ void streamWriter::getCircBuffLengths( size_t  &circBuffLength,
 
     circBuffLength = maxCircBuffSize * MB / ( width * height * typeSize );
 
-    if(circBuffLength % 2 == 1)
+    if( circBuffLength % 2 == 1 )
     {
         --circBuffLength;
     }
 
-    circBuffSize   = ( width * height * typeSize * circBuffLength ) / MB;
+    circBuffSize = ( width * height * typeSize * circBuffLength ) / MB;
 
     writeChunkLength = ( 1.0 * maxWriteChunkLength / maxCircBuffLength ) * circBuffLength;
 
@@ -982,7 +982,7 @@ int streamWriter::allocate_circbufs()
     }
 
     errno              = 0;
-    m_rawImageCircBuff = reinterpret_cast< char *>(malloc( m_width * m_height * m_typeSize * m_circBuffLength ));
+    m_rawImageCircBuff = reinterpret_cast<char *>( malloc( m_width * m_height * m_typeSize * m_circBuffLength ) );
 
     if( m_rawImageCircBuff == NULL )
     {
@@ -995,7 +995,7 @@ int streamWriter::allocate_circbufs()
     }
 
     errno            = 0;
-    m_timingCircBuff = reinterpret_cast<uint64_t *>(malloc( 5 * sizeof( uint64_t ) * m_circBuffLength ));
+    m_timingCircBuff = reinterpret_cast<uint64_t *>( malloc( 5 * sizeof( uint64_t ) * m_circBuffLength ) );
     if( m_timingCircBuff == NULL )
     {
         return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "buffer allocation failure" } );
@@ -1339,7 +1339,8 @@ void streamWriter::fgThreadExec()
                 last_cnt0 = new_cnt0;
 
                 char *curr_dest = m_rawImageCircBuff + m_currImage * m_width * m_height * m_typeSize;
-                char *curr_src  = reinterpret_cast< char *>(image.array.raw) + curr_image * m_width * m_height * m_typeSize;
+                char *curr_src =
+                    reinterpret_cast<char *>( image.array.raw ) + curr_image * m_width * m_height * m_typeSize;
 
                 memcpy( curr_dest, curr_src, m_width * m_height * m_typeSize );
 
@@ -1744,7 +1745,6 @@ void streamWriter::swThreadExec()
             }
         }
     } // outer loop, will exit if m_shutdown==true
-
 }
 
 int streamWriter::doEncode()
@@ -1766,11 +1766,11 @@ int streamWriter::doEncode()
     std::cerr << "nFrames: " << nFrames << "\n";
 #endif
 
-    if(nFrames == 0) //can happend during a stop.  just clean up but don't try to write nothting.
+    if( nFrames == 0 ) // can happend during a stop.  just clean up but don't try to write nothting.
     {
-        #ifdef SW_DEBUG
-            std::cerr << "nothing to write\n";
-        #endif
+#ifdef SW_DEBUG
+        std::cerr << "nothing to write\n";
+#endif
 
         recordSavingStats( true );
 
@@ -1854,12 +1854,12 @@ int streamWriter::doEncode()
     }
 
     // Now break down the acq time of the first image in the buffer for use in file name
-    //tm        uttime; // The broken down time.
-    timespec *fts = reinterpret_cast< timespec *>( m_timingCircBuff + saveStart * 5 + 1 );
+    // tm        uttime; // The broken down time.
+    timespec *fts = reinterpret_cast<timespec *>( m_timingCircBuff + saveStart * 5 + 1 );
 
     std::string fileName;
     std::string relPath;
-    sys::fileTimeRelPath(fileName, relPath, m_outName, "xrif", fts->tv_sec, fts->tv_nsec);
+    sys::fileTimeRelPath( fileName, relPath, m_outName, "xrif", fts->tv_sec, fts->tv_nsec );
 
     std::string fullPath = m_rawimageDir + '/' + relPath;
 
@@ -1873,13 +1873,13 @@ int streamWriter::doEncode()
         msg += e.what();
         msg += " code: ";
         msg += e.code().value();
-        return log<software_critical, -1>({__FILE__, __LINE__, msg});
+        return log<software_critical, -1>( { __FILE__, __LINE__, msg } );
     }
     catch( const std::exception &e )
     {
         std::string msg = "exception from std::create_directories. ";
         msg += e.what();
-        return log<software_critical, -1>({__FILE__, __LINE__, msg});
+        return log<software_critical, -1>( { __FILE__, __LINE__, msg } );
     }
 
     fullPath += '/' + fileName;
