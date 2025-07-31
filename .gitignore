@@ -146,8 +146,6 @@ apps/t2wOffloader/t2wOffloader
 apps/timeSeriesSimulator/timeSeriesSimulator
 apps/tcsInterface/tcsInterface
 apps/trippLitePDU/trippLitePDU
-apps/trippLitePDU/tests/
-
 apps/ttmModulator/ttmModulator
 
 #u
