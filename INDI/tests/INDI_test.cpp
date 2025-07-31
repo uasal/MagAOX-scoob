@@ -3,7 +3,7 @@
   *
   * History:
   */
-#include "../tests/catch2/catch.hpp"
+#include "../../tests/catch2/catch.hpp"
 
 #include "../INDI/connect_to.h"
 #include "../INDI/fq.h"

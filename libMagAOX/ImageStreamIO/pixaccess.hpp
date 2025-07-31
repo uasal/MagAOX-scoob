@@ -6,6 +6,7 @@
 #define pixaccess_h
 
 #include "ImageStruct.hpp"
+#include <iostream>
 
 ///Function to cast the data type to float.
 /** Accesses the imdata pointer at linear position idx, and then casts the result to float.

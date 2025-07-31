@@ -90,44 +90,6 @@ apps_tic = \
 apps_sim = \
 	trippLitePDU
 
-libs_to_build = libtelnet
-
-all_unbuildable_apps = \
-	acronameUsbHub \
-	adcCtrl \
-	alpaoCtrl \
-	andorCtrl \
-	asiCtrl \
-	audibleAlerts \
-	baslerCtrl \
-	bmcCtrl \
-	cameraSim \
-	cameratipSR \
-	corAlign \
-	dbIngest \
-	dlDataCollection \
-	efcControl \
-	hamCtrl \
-	hoPredCtrl \
-	hsfwCtrl \
-	irisaoCtrl \
-	kcubeCtrl \
-	mcp3008Ctrl \
-	nnReconstructor \
-	ocam2KCtrl \
-	photonCounter \
-	picamCtrl \
-	pixelinkCtrl \
-	po4ao \
-	pupilAlign \
-	pupilCorAlign \
-	pvcamCtrl \
-	pythonIndiExample \
-	qhyCtrl \
-	visxCtrl \
-	zylaCtrl 
-
-
 all_buildable_apps = \
 	acesxeCtrl \
 	adcTracker \
@@ -182,37 +144,47 @@ all_buildable_apps = \
 	zaberCtrl \
 	zaberLowLevel
 
-apps_to_build += $(all_buildable_apps)
+libs_to_build = libtelnet
 
-# ifeq ($(MAGAOX_ROLE),AOC)
-#   apps_to_build += $(apps_common)
-#   apps_to_build += $(apps_aoc)
-# else ifeq ($(MAGAOX_ROLE),ICC)
-#   apps_to_build += $(apps_common)
-#   apps_to_build += $(apps_rtcicc)
-#   apps_to_build += $(apps_icc)
-# else ifeq ($(MAGAOX_ROLE),RTC)
-#   apps_to_build += $(apps_common)
-#   apps_to_build += $(apps_rtcicc)
-#   apps_to_build += $(apps_rtc)
-# else ifeq ($(MAGAOX_ROLE),TIC)
-#   apps_to_build += $(apps_common)
-#   apps_to_build += $(apps_tic)
-# else ifeq ($(MAGAOX_ROLE),SS)
-#   apps_to_build += $(apps_sim)
-# endif
+ifeq ($(MAGAOX_ROLE),AOC)
+  apps_to_build += $(apps_common)
+  apps_to_build += $(apps_aoc)
+else ifeq ($(MAGAOX_ROLE),ICC)
+  apps_to_build += $(apps_common)
+  apps_to_build += $(apps_rtcicc)
+  apps_to_build += $(apps_icc)
+else ifeq ($(MAGAOX_ROLE),RTC)
+  apps_to_build += $(apps_common)
+  apps_to_build += $(apps_rtcicc)
+  apps_to_build += $(apps_rtc)
+else ifeq ($(MAGAOX_ROLE),TIC)
+  apps_to_build += $(apps_common)
+  apps_to_build += $(apps_tic)
+else ifeq ($(MAGAOX_ROLE),SS)
+  apps_to_build += $(apps_sim)
+endif
+
+# If building for coverage, build everything that you can.
+ifeq ($(COVERAGE),1)
+	apps_to_build :=  ${all_buildable_apps}
+endif
 
 all_guis = \
-	#roiGUI 
-	#cameraGUI \
-	#stageGUI
-	#dmModeGUI
-	#dmCtrlGUI
-	#pupilGuideGUI
-	#offloadCtrlGUI
-	#pwr
-	#coronAlignGUI
-	#loopCtrlGUI
+	dmCtrlGUI \
+	dmModeGUI \
+	offloadCtrlGUI \
+	pupilGuideGUI \
+	pwr \
+	coronAlignGUI \
+	loopCtrlGUI \
+	roiGUI \
+	cameraGUI \
+	stageGUI
+
+# If building for coverage, don't build guis for now
+ifeq ($(COVERAGE),1)
+	all_guis := 
+endif
 
 
 ifeq ($(MAGAOX_ROLE),RTC)
@@ -441,3 +413,13 @@ setup:
 .PHONY: print_role
 print_role:
 	@echo "MAGAOX_ROLE=$(MAGAOX_ROLE)"
+
+.PHONY: coverage
+coverage:
+	${MAKE} all COVERAGE=1
+
+coverage_clean:
+	find . -name '*.gcno' -delete
+	find . -name '*.gcda' -delete
+	find . -name '*.gcov' -delete
+	${MAKE} all_clean COVERAGE=1

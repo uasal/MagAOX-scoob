@@ -6,7 +6,7 @@
 #include "../../../tests/catch2/catch.hpp"
 
 #include "../ImageStruct.hpp"
-#include "../pxaccess.hpp"
+#include "../pixaccess.hpp"
 
 
 namespace template_test 
