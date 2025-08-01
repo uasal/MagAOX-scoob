@@ -59,6 +59,7 @@ class streamWriter : public MagAOXApp<>, public dev::telemeter<streamWriter>
 
     // Give the test harness access.
     friend class streamWriter_test;
+    friend class streamWriter_data_test;
 
   protected:
     /** \name configurable parameters
@@ -82,11 +83,11 @@ class streamWriter : public MagAOXApp<>, public dev::telemeter<streamWriter>
 
     int m_semaphoreNumber{ 7 }; ///< The image structure semaphore index.
 
-    unsigned m_semWaitSec{
-        0 }; ///< The time in whole sec to wait on the semaphore, to which m_semWaitNSec is added.  Default is 0 nsec.
+    unsigned m_semWaitSec{ 0 }; /**< The time in whole sec to wait on the semaphore,
+                                     to which m_semWaitNSec is added.  Default is 0 nsec.*/
 
-    unsigned m_semWaitNSec{ 500000000 }; ///< The time in nsec to wait on the semaphore, added to m_semWaitSec.  Max is
-                                         ///< 999999999. Default is 5e8 nsec.
+    unsigned m_semWaitNSec{ 500000000 }; /**< The time in nsec to wait on the semaphore, added to m_semWaitSec.
+                                              Max is 999999999. Default is 5e8 nsec. */
 
     int m_lz4accel{ 1 };
 
@@ -113,8 +114,8 @@ class streamWriter : public MagAOXApp<>, public dev::telemeter<streamWriter>
     double m_currChunkStartTime{ 0 }; ///< The write-time of the first image in the chunk
 
     // Writer book-keeping:
-    int m_writing{
-        NOT_WRITING }; ///< Controls whether or not images are being written, and sequences start and stop of writing.
+    int m_writing{ NOT_WRITING }; /**< Controls whether or not images are being written,
+                   and sequences start and stop of writing.*/
 
     uint64_t m_currChunkStart{ 0 }; ///< The circular buffer starting position of the current to-be-written chunk.
     uint64_t m_nextChunkStart{ 0 }; ///< The circular buffer starting position of the next to-be-written chunk.
@@ -135,6 +136,8 @@ class streamWriter : public MagAOXApp<>, public dev::telemeter<streamWriter>
 
     /// Storage for the xrif image data file header
     char *m_xrif_timing_header{ nullptr };
+
+    std::string m_outFilePath; ///< The full path for the latest output file
 
   public:
     /// Default c'tor
@@ -641,7 +644,9 @@ int streamWriter::appStartup()
     }
 
     if( initialize_xrif() < 0 )
+    {
         log<software_critical, -1>( { __FILE__, __LINE__ } );
+    }
 
     if( threadStart( m_fgThread,
                      m_fgThreadInit,
@@ -805,6 +810,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno         = 0;
+
     m_xrif_header = reinterpret_cast<char *>( malloc( XRIF_HEADER_SIZE * sizeof( char ) ) );
     if( m_xrif_header == NULL )
     {
@@ -826,6 +832,7 @@ int streamWriter::initialize_xrif()
     }
 
     errno                = 0;
+
     m_xrif_timing_header = reinterpret_cast<char *>( malloc( XRIF_HEADER_SIZE * sizeof( char ) ) );
     if( m_xrif_timing_header == NULL )
     {
@@ -1882,8 +1889,8 @@ int streamWriter::doEncode()
         return log<software_critical, -1>( { __FILE__, __LINE__, msg } );
     }
 
-    fullPath += '/' + fileName;
-    FILE *fp_xrif = fopen( fullPath.c_str(), "wb" );
+    m_outFilePath = fullPath + '/' + fileName;
+    FILE *fp_xrif = fopen( m_outFilePath.c_str(), "wb" );
     if( fp_xrif == NULL )
     {
         // This is it.  If we can't write data to disk need to fix.
