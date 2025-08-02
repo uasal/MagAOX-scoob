@@ -307,7 +307,7 @@ int logdump::execute()
         std::string fname = logs[i];
         FILE       *fin;
 
-        bufferPtrT head( new char[logHeader::maxHeadSize] );
+        bufferPtrT head( (char *) ::operator new(logHeader::maxHeadSize));
 
         bufferPtrT logBuff;
 
@@ -426,7 +426,7 @@ int logdump::execute()
 
             if( (size_t)hSz + (size_t)len > buffSz )
             {
-                logBuff = bufferPtrT( new char[hSz + len] );
+                logBuff = bufferPtrT( (char *) ::operator new(hSz + len));
             }
             memcpy( logBuff.get(), head.get(), hSz );
 
@@ -536,7 +536,7 @@ int logdump::gettimes( std::vector<std::string> &logs )
         std::string fname = logs[i];
         FILE       *fin;
 
-        bufferPtrT head( new char[logHeader::maxHeadSize] );
+        bufferPtrT head( (char *) ::operator new(logHeader::maxHeadSize) );
 
         fin = fopen( fname.c_str(), "rb" );
 
