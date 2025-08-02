@@ -4,6 +4,7 @@
 ../libMagAOX/app/dev/tests/outletController_test
 ../libMagAOX/logger/tests/logFileRaw_test
 ../libMagAOX/logger/tests/logFileRaw_fileTime_error_test
+../libMagAOX/logger/tests/logFileName_test
 ../libMagAOX/sys/tests/fileTimes_test
 ../libMagAOX/sys/tests/fileTimes_errors_test
 ../libMagAOX/sys/tests/fileTimes_relPath_errors_test
