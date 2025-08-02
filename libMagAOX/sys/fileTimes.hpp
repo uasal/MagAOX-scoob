@@ -27,8 +27,7 @@ namespace sys
 
 namespace internal
 {
-inline
-void initbdtime( tm &bt )
+inline void initbdtime( tm &bt )
 {
     bt.tm_sec    = 0;
     bt.tm_min    = 0;
@@ -57,16 +56,20 @@ void initbdtime( tm &bt )
  * \returns -3 if snprintf does not write enough characters
  *
  * \b Tests
- *     - Getting timestamp string and broken-down time for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_bdtime "[test doc]"
- *     - Getting timestamp and broken-down time with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_bdtime_errors "[test doc]"
+ *     - Getting timestamp string and broken-down time for a given time \ref
+ * tests_libMagAOX_sys_fileTimes_timestamp_bdtime "[test doc]"
+ *     - Getting timestamp and broken-down time with errors \ref
+ * tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_bdtime_errors "[test doc]"
  *     - Getting timestamp string only for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_only "[test doc]"
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
- *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time
+ * "[test doc]"
+ *     - Getting filename and relative path with errors \ref
+ * tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
  */
 inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
-               tm          &uttime, /**< [out] the broken down time*/
-               time_t       ts_sec, /**< [in] the unix time second*/
-               long         ts_nsec /**< [in] the nanosecond*/
+                      tm          &uttime, /**< [out] the broken down time*/
+                      time_t       ts_sec, /**< [in] the unix time second*/
+                      long         ts_nsec /**< [in] the nanosecond*/
 )
 {
     if( gmtime_r( &ts_sec, &uttime ) == 0 )
@@ -119,11 +122,12 @@ inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  *
  * \b Tests
  *     - Getting timestamp string only for a given time \ref tests_libMagAOX_sys_fileTimes_timestamp_only "[test doc]"
- *     - Getting timestamp only with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_only_errors "[test doc]"
+ *     - Getting timestamp only with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamp_only_errors
+ * "[test doc]"
  */
 inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
-               time_t       ts_sec, /**< [in] the unix time second*/
-               long         ts_nsec /**< [in] the nanosecond*/
+                      time_t       ts_sec, /**< [in] the unix time second*/
+                      long         ts_nsec /**< [in] the nanosecond*/
 )
 {
     tm uttime;
@@ -150,12 +154,13 @@ inline int timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns -5 if snprintf does not write enough characters to relPath
  *
  * \b Tests
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time
+ * "[test doc]"
  */
 inline int fileTimeRelPath( std::string &tstamp,  /**< [out] */
-                     std::string &relPath, /**< [out] */
-                     time_t       ts_sec,  /**< [in] the unix time second*/
-                     long         ts_nsec  /**< [in] the nanosecond*/
+                            std::string &relPath, /**< [out] */
+                            time_t       ts_sec,  /**< [in] the unix time second*/
+                            long         ts_nsec  /**< [in] the nanosecond*/
 )
 {
     tm uttime;
@@ -210,16 +215,19 @@ inline int fileTimeRelPath( std::string &tstamp,  /**< [out] */
  * \returns -5 if snprintf does not write enough characters to relPath
  *
  * \b Tests
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time "[test doc]"
- *     - Getting filename and relative path with errors \ref tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
- *     - Getting filename and relative path for a given time with errors \ref tests_libMagAOX_sys_fileTimes_parse_filenames_relpath_errors "[test doc]"
+ *     - Getting filename and relative path for a given time \ref tests_libMagAOX_sys_fileTimes_filename_relpath_time
+ * "[test doc]"
+ *     - Getting filename and relative path with errors \ref
+ * tests_libMagAOX_sys_fileTimes_parse_filename_relpath_only_errors "[test doc]"
+ *     - Getting filename and relative path for a given time with errors \ref
+ * tests_libMagAOX_sys_fileTimes_parse_filenames_relpath_errors "[test doc]"
  */
 inline int fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
-                     std::string       &relPath,  /**< [out] the resulting relative path*/
-                     const std::string &devName,  /**< [in] the device name part of the path.  No '/'. */
-                     const std::string &ext,      /**< [in] the extension part of the filename. No `.`. */
-                     time_t             ts_sec,   /**< [in] the unix time second*/
-                     long               ts_nsec   /**< [in] the nanosecond*/
+                            std::string       &relPath,  /**< [out] the resulting relative path*/
+                            const std::string &devName,  /**< [in] the device name part of the path.  No '/'. */
+                            const std::string &ext,      /**< [in] the extension part of the filename. No `.`. */
+                            time_t             ts_sec,   /**< [in] the unix time second*/
+                            long               ts_nsec   /**< [in] the nanosecond*/
 )
 {
     std::string tstamp, tmprelpath;
@@ -248,16 +256,17 @@ inline int fileTimeRelPath( std::string       &fileName, /**< [out] the resultin
  * \returns -1 on error
  *
  * \b Tests
- *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
+ *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test
+ * doc]"
  */
 inline int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
-                    std::string       &MM,    /**< [out] the 2 digit month*/
-                    std::string       &DD,    /**< [out] the 2 digit day*/
-                    std::string       &hh,    /**< [out] the 2 digit hour*/
-                    std::string       &mm,    /**< [out] the 2 digit minute*/
-                    std::string       &ss,    /**< [out] the 2 digit second*/
-                    std::string       &nn,    /**< [out] the 9 digit nanosecond*/
-                    const std::string &tstamp /**< [in] the 23-digit timestamp */
+                           std::string       &MM,    /**< [out] the 2 digit month*/
+                           std::string       &DD,    /**< [out] the 2 digit day*/
+                           std::string       &hh,    /**< [out] the 2 digit hour*/
+                           std::string       &mm,    /**< [out] the 2 digit minute*/
+                           std::string       &ss,    /**< [out] the 2 digit second*/
+                           std::string       &nn,    /**< [out] the 9 digit nanosecond*/
+                           const std::string &tstamp /**< [in] the 23-digit timestamp */
 )
 {
     if( tstamp.length() != 23 )
@@ -280,7 +289,7 @@ inline int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year
 
 /// Parse a standard XWCTk timestamp filepath
 /** Extracts the device name and the date components.
- * The only restriction on the input \fname is that be at least 23 characters long.
+ * The only restriction on the input \fname is that it be at least 23 characters long.
  * In this case it contains only the timestamp.
  *
  * No validity checks are done on the components (i.e. no check that the timestamp
@@ -295,17 +304,18 @@ inline int parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year
  * \returns -1 on error
  *
  * \b Tests
- *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test doc]"
+ *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_sys_fileTimes_parse_filenames_timestamps "[test
+ * doc]"
  */
 inline int parseFilePath( std::string       &devName, /**< [out] the device name */
-                   std::string       &YYYY,    /**< [out] the 4 digit year*/
-                   std::string       &MM,      /**< [out] the 2 digit month*/
-                   std::string       &DD,      /**< [out] the 2 digit day*/
-                   std::string       &hh,      /**< [out] the 2 digit hour*/
-                   std::string       &mm,      /**< [out] the 2 digit minute*/
-                   std::string       &ss,      /**< [out] the 2 digit second*/
-                   std::string       &nn,      /**< [out] the 9 digit nanosecond*/
-                   const std::string &fname    /**< [in] the filename, which can include a path */
+                          std::string       &YYYY,    /**< [out] the 4 digit year*/
+                          std::string       &MM,      /**< [out] the 2 digit month*/
+                          std::string       &DD,      /**< [out] the 2 digit day*/
+                          std::string       &hh,      /**< [out] the 2 digit hour*/
+                          std::string       &mm,      /**< [out] the 2 digit minute*/
+                          std::string       &ss,      /**< [out] the 2 digit second*/
+                          std::string       &nn,      /**< [out] the 9 digit nanosecond*/
+                          const std::string &fname    /**< [in] the filename, which can include a path */
 )
 {
     size_t est = fname.rfind( '.' );
