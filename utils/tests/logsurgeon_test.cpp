@@ -14,11 +14,9 @@ SCENARIO( "xxxx", "[template]" )
 {
    GIVEN("xxxxx")
    {
-      int rv;
-
       WHEN("xxxx")
       {
-         rv = 0;
+         int rv = 0;
 
          REQUIRE(rv == 0);
       }

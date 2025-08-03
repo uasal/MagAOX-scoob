@@ -10,11 +10,6 @@
 #include <set>
 #include <map>
 
-#include <thread>
-#include <mutex> 
-#include <chrono>
-#include <memory>
-
 #include <mx/ioutils/fileUtils.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp"
