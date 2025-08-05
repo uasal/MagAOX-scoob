@@ -35,10 +35,9 @@
 ../apps/smc100ccCtrl/tests/smc100ccCtrl_test
 ../apps/sparkleClock/tests/sparkleClock_test
 ../apps/sshDigger/tests/sshDigger_test
-../apps/stateRuleEngine/tests/stateRuleEngine_test
-../apps/stateRuleEngine/tests/indiCompEngine_test
-../apps/stateRuleEngine/tests/indiCompRules_test
 ../apps/stateRuleEngine/tests/indiCompRuleConfig_test
+../apps/stateRuleEngine/tests/indiCompRules_test
+../apps/stateRuleEngine/tests/stateRuleEngine_test
 ../apps/streamCircBuff/tests/streamCircBuff_test
 ../apps/streamWriter/tests/streamWriter_test
 ../apps/streamWriter/tests/streamWriterSizing_test

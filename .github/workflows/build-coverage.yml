@@ -20,10 +20,8 @@ jobs:
         run: git config --global --add safe.directory "$(pwd)"
       - name: Generate Coverage
         run: |
-          find /usr/local/lib/pkgconfig -name "libzmq.pc"
           export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
           pkg-config --modversion openblas
-          pkg-config --cflags --libs libzmq
           make coverage
           cd tests
           make coverage

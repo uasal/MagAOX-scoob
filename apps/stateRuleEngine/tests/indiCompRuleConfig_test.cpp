@@ -308,7 +308,7 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, rrkMap, config);(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(const mx::err::invalidconfig & e)
             {
@@ -445,12 +445,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
-            loadRuleConfig(maps, rrkMap, config);
-
+            std::map<std::string, ruleRuleKeys> rrkMap;
+            
             bool caught = false;
             try
             {
-                std::map<std::string, ruleRuleKeys> rrkMap;
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(...)
             {

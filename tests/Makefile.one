@@ -34,6 +34,10 @@ else ifeq ($(notdir $(t)),xrif2fits_test)
 	LDLIBS += -lcfitsio
 else ifeq ($(notdir $(t)),xrif2shmim_test)
 	LDLIBS += -lcfitsio
+else ifeq ($(notdir $(t)),mzmqClient_test)
+	LDLIBS += -lzmq
+else ifeq ($(notdir $(t)),mzmqServer_test)
+	LDLIBS += -lzmq
 endif
 
 LDLIBS+=$(TESTLIBS)
