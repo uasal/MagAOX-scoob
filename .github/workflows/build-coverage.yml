@@ -2,9 +2,7 @@ name: Coverage
 on:
   push:
       branches:
-        - 'MagAOX_coverage_test'
-          # - 'dev'
-          # - 'dev-sim'
+        - '**' # Any branch
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -37,18 +35,20 @@ jobs:
         with:
           name: coverage-report
           path: coverage_report/
-      # - name: Add SSH key
-      #   env:
-      #       SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-      #   run: |
-      #       mkdir -p /home/runner/.ssh
-      #       echo "xwcl.science ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqGanUWS9Wb34oCHCDX2xqhlCstMTN9c0oFoKJkYtZ3" >> /home/runner/.ssh/known_hosts
-      #       echo "${{ secrets.DEPLOY_GARY }}" > /home/runner/.ssh/github_actions
-      #       chmod 600 /home/runner/.ssh/github_actions
-      #       ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-      #       ssh-add /home/runner/.ssh/github_actions
-      # - name: Sync to magao-x.org
-      #   env:
-      #       SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-      #   run: |
-      #       rsync -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/
+      - name: When on dev, add SSH key
+        if: github.ref == 'refs/heads/dev' 
+        env:
+            SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+            mkdir -p /home/runner/.ssh
+            echo "xwcl.science ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqGanUWS9Wb34oCHCDX2xqhlCstMTN9c0oFoKJkYtZ3" >> /home/runner/.ssh/known_hosts
+            echo "${{ secrets.DEPLOY_GARY }}" > /home/runner/.ssh/github_actions
+            chmod 600 /home/runner/.ssh/github_actions
+            ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+            ssh-add /home/runner/.ssh/github_actions
+      - name: When on dev, sync to magao-x.org
+        if: github.ref == 'refs/heads/dev'
+        env:
+            SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+            rsync -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/
