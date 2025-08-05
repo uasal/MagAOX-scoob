@@ -7,6 +7,7 @@
 #ifndef modalGainOpt_hpp
 #define modalGainOpt_hpp
 
+#include <mx/mxException.hpp>
 #include <mx/ao/analysis/clGainOpt.hpp>
 #include <mx/ao/analysis/clAOLinearPredictor.hpp>
 
