@@ -6,7 +6,7 @@ import logging
 import xconf
 from magaox.indi.device import XDevice
 from magaox.constants import DEFAULT_PREFIX
-from magaox.db.config import BaseDeviceConfig
+from magaox.db.config import BaseDbDeviceConfig
 from magaox.db import Telem, FileOrigin, UserLog
 from magaox.db import ingest
 from magaox.utils import parse_iso_datetime_as_utc, creation_time_from_filename
@@ -89,7 +89,7 @@ def _run_logdump_thread(logger_name, logdump_dir, logdump_args, name, message_qu
             log.exception(f"Exception in log/telem follower for {name}")
 
 @xconf.config
-class dbIngestConfig(BaseDeviceConfig):
+class dbIngestConfig(BaseDbDeviceConfig):
     proclist : str = xconf.field(default="/opt/MagAOX/config/proclist_%s.txt", help="Path to process list file, %s will be replaced with the value of $MAGAOX_ROLE (or an empty string if absent from the environment)")
     logdump_exe : str = xconf.field(default="/opt/MagAOX/bin/logdump", help="logdump (a.k.a. teldump) executable to use")
 

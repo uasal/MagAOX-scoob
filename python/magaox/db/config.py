@@ -76,7 +76,7 @@ class BaseConfig:
     data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
 
 @xconf.config
-class BaseDeviceConfig(BaseConfig, IndiDeviceBaseConfig):
+class BaseDbDeviceConfig(BaseConfig, IndiDeviceBaseConfig):
     '''Base config for devices accessing the telem db
     '''
     pass
