@@ -1,5 +1,4 @@
 import os
-import typing
 import xconf
 import logging
 import pathlib
@@ -17,9 +16,8 @@ __all__ = [
     'DEFAULT_DATA_DIRS',
     'DbConfig',
     'BaseConfig',
-    'BaseDeviceConfig',
+    'BaseDbDeviceConfig',
 ]
-
 
 SETUP_USERS_SQL_PATH = pathlib.Path(__file__).parent / 'sql' / 'setup_users.sql'
 
@@ -38,7 +36,6 @@ class DbConfig:
                 password = open(self.password_file, 'r').read().strip()
             except Exception:
                 log.error(f"Tried to get password from {self.password_file}")
-
 
         try:
             conn = psycopg.connect(
@@ -71,9 +68,25 @@ See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
 class BaseConfig:
     '''Base class for telemdb commands providing a `db` config item
     '''
-    database : DbConfig = xconf.field(default=DbConfig(), help="PostgreSQL database connection")
+    databases : list[DbConfig] = xconf.field(default_factory=lambda: [DbConfig()], help="PostgreSQL database connections")
     hostname : str = xconf.field(default=socket.gethostname(), help="Hostname to identify this computer when running inventory or watch_files")
     data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
+
+    def connect_to_databases(self, existing_connections=None) -> list[psycopg.Connection]:
+        if existing_connections is None:
+            existing_connections = []
+        for conn in existing_connections:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        connections = []
+        for db in self.config.databases:
+            log.debug(f"Connecting to {db}...")
+            conn = db.connect()
+            connections.append(conn)
+            log.debug(f"Connected to {db}!")
+        return connections
 
 @xconf.config
 class BaseDbDeviceConfig(BaseConfig, IndiDeviceBaseConfig):
