@@ -123,7 +123,7 @@ WHERE
     return fns
 
 def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path]):
-    """Update the file inventory with any untracked local files (if any)"""
+    """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
     cur.execute("BEGIN")
     for prefix in data_dirs:
         for dirpath, dirnames, filenames in os.walk(prefix):

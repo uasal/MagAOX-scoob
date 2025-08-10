@@ -187,6 +187,9 @@ class dbIngest(XDevice):
         
         self.startup_ts_sec = time.time()
         
+        self._connections = self.config.connect_to_databases(existing_connections=self._connections)
+        self._should_connect = False
+
         # rescan for inventory
         self.rescan_files()
 
@@ -202,12 +205,27 @@ class dbIngest(XDevice):
             self.log.info(f"Watching {dirpath} for changes")
         self.fs_observer.start()
 
-        self._connections = []
+
 
     def rescan_files(self):
         search_paths = [self.config.common_path_prefix / name for name in self.config.data_dirs]
-        with self.conn.cursor() as cur:
-            ingest.update_file_inventory(cur, self.config.hostname, search_paths)
+        try:
+            for conn in self._connections:
+                with conn.cursor() as cur:
+                    # n.b. the state of the file inventory and which files
+                    # are 'new' can be different depending on which
+                    # database we're talking about, so we rescan once
+                    # per connection
+                    self.log.debug(f"Scanning for new files for {conn.info.dsn}")
+                    ingest.update_file_inventory(
+                        cur,
+                        self.config.hostname,
+                        search_paths
+                    )
+        except Exception:
+            self.log.exception(f"Failed to rescan/inventory files for {conn.info.dsn}, attempting to reconnect")
+            self._should_connect = True
+            return
         self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
     def ingest_line(self, line):
@@ -247,6 +265,7 @@ class dbIngest(XDevice):
 
         try:
             for conn in self._connections:
+                self.log.debug(f"Batching ingest for {conn.info.dsn}")
                 with conn.transaction():
                     cur = conn.cursor()
                     ingest.batch_telem(cur, telems)
