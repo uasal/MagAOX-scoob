@@ -1,19 +1,10 @@
-import xconf
 import pathlib
-from datetime import timezone
-import datetime
 import logging
-import os
-import os.path
-import psycopg
-import socket
-from tqdm import tqdm
-
-from magaox.db import FileOrigin, ingest
-from magaox.db.config import IgnorePatterns
-from magaox.constants import DEFAULT_PREFIX, DEFAULT_DATA_DIRS
 
 import xconf
+
+from magaox.db import ingest
+from magaox.constants import DEFAULT_PREFIX, DEFAULT_DATA_DIRS
 from ._base import BaseDbCommand
 
 log = logging.getLogger(__name__)
