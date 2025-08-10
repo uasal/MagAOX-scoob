@@ -3,6 +3,7 @@ from datetime import timezone
 import logging
 import os
 import pathlib
+import re
 
 from psycopg.types.json import Jsonb
 import orjson
@@ -122,11 +123,17 @@ WHERE
         fns.append(row['origin_path'])
     return fns
 
-def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path]):
+def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path],
+                          ignored_file_patterns: list[str], ignored_directory_patterns: list[str]):
     """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
     cur.execute("BEGIN")
+    file_pattern = re.compile('|'.join(ignored_file_patterns))
+    dir_pattern = re.compile('|'.join(ignored_file_patterns))
     for prefix in data_dirs:
         for dirpath, dirnames, filenames in os.walk(prefix):
+            if dir_pattern.match(dirpath):
+                log.debug(f"Skipping {dirpath} because it matches the ignored dirs pattern")
+                continue
             dirpath = pathlib.Path(dirpath)
             log.info(f"Checking for new files in {dirpath}")
             new_files = identify_new_files(cur, host, [dirpath / fn for fn in filenames])
@@ -136,6 +143,9 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
                 log.info(f"Found {len(new_files)} new files in {dirpath}")
             origin_records = []
             for fn in tqdm(new_files):
+                if file_pattern.match(fn):
+                    log.debug(f"Skipping {fn} because it matches the ignored files pattern")
+                    continue
                 try:
                     stat_result = os.stat(fn)
                 except FileNotFoundError:

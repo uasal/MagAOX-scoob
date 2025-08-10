@@ -220,7 +220,8 @@ class dbIngest(XDevice):
                     ingest.update_file_inventory(
                         cur,
                         self.config.hostname,
-                        search_paths
+                        search_paths,
+                        self.config.ignore_patterns.files, self.config.ignore_patterns.directories
                     )
         except Exception:
             self.log.exception(f"Failed to rescan/inventory files for {conn.info.dsn}, attempting to reconnect")

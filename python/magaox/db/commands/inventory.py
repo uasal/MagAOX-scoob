@@ -10,6 +10,7 @@ import socket
 from tqdm import tqdm
 
 from magaox.db import FileOrigin, ingest
+from magaox.db.config import IgnorePatterns
 from magaox.constants import DEFAULT_PREFIX, DEFAULT_DATA_DIRS
 
 import xconf
@@ -30,4 +31,4 @@ class Inventory(BaseDbCommand):
             log.info(f"Updating file inventory for {conn.info.dsn}")
             with conn.transaction():
                 cur = conn.cursor()
-                ingest.update_file_inventory(cur, self.hostname, self.data_dirs)
+                ingest.update_file_inventory(cur, self.hostname, self.data_dirs, self.ignore_patterns.files, self.ignore_patterns.directories)

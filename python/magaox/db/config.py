@@ -1,13 +1,14 @@
-import os
-import xconf
 import logging
+import os
 import pathlib
-import psycopg
-import psycopg.rows
+import re
 import socket
 
-from magaox.indi.device import BaseConfig as IndiDeviceBaseConfig
+import psycopg
+import psycopg.rows
+import xconf
 
+from magaox.indi.device import BaseConfig as IndiDeviceBaseConfig
 from ..constants import DEFAULT_DATA_DIRS
 
 log = logging.getLogger(__name__)
@@ -65,12 +66,18 @@ See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
         return self.connect().cursor()
 
 @xconf.config
+class IgnorePatternsConfig:
+    files : list[str] = xconf.field(default_factory=lambda: [r'.*\.DS_Store', r'.+\.swp', r'.+~'], help="Regular expression patterns to match against full file paths")
+    directories : list[str] = xconf.field(default_factory=lambda: [r'.*\.git'], help="Regular expression patterns to match against full directory paths")
+
+@xconf.config
 class BaseConfig:
     '''Base class for telemdb commands providing a `db` config item
     '''
     databases : list[DbConfig] = xconf.field(default_factory=lambda: [DbConfig()], help="PostgreSQL database connections")
     hostname : str = xconf.field(default=socket.gethostname(), help="Hostname to identify this computer when running inventory or watch_files")
     data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
+    ignore_patterns : IgnorePatternsConfig = xconf.field(default_factory=IgnorePatternsConfig, help="Patterns for files and directories to ignore in the inventory")
 
     def connect_to_databases(self, existing_connections=None) -> list[psycopg.Connection]:
         if existing_connections is None:
