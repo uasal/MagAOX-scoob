@@ -81,7 +81,7 @@ class BaseConfig:
             except Exception:
                 pass
         connections = []
-        for db in self.config.databases:
+        for db in self.databases:
             log.debug(f"Connecting to {db}...")
             conn = db.connect()
             connections.append(conn)
