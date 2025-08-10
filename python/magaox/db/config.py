@@ -68,7 +68,7 @@ See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
 @xconf.config
 class IgnorePatternsConfig:
     files : list[str] = xconf.field(default_factory=lambda: [r'.*\.DS_Store', r'.+\.swp', r'.+~'], help="Regular expression patterns to match against full file paths")
-    directories : list[str] = xconf.field(default_factory=lambda: [r'.*\.git'], help="Regular expression patterns to match against full directory paths")
+    directories : list[str] = xconf.field(default_factory=lambda: [r'.*\.git.*'], help="Regular expression patterns to match against full directory paths")
 
 @xconf.config
 class BaseConfig:
