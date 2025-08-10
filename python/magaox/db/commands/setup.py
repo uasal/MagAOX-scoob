@@ -32,7 +32,7 @@ class Setup(BaseDbCommand):
         return
 
     def main(self):
-        connections = self.config.connect_to_databases()
+        connections = self.connect_to_databases()
         for conn in connections:
             self.initialize(conn)
             log.info(f"Initialized {conn.info.dns}")

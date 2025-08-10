@@ -112,7 +112,7 @@ class Backfill(BaseDbCommand):
         return path
 
     def main(self):
-        connections = self.config.connect_to_databases()
+        connections = self.connect_to_databases()
         for conn in connections:
             paths = ingest.identify_non_ingested_telem(
                 conn.cursor(), self.hostname
