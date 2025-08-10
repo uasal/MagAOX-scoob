@@ -128,7 +128,7 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
     """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
     cur.execute("BEGIN")
     file_pattern = re.compile('|'.join(ignored_file_patterns))
-    dir_pattern = re.compile('|'.join(ignored_file_patterns))
+    dir_pattern = re.compile('|'.join(ignored_directory_patterns))
     for prefix in data_dirs:
         for dirpath, dirnames, filenames in os.walk(prefix):
             if dir_pattern.match(dirpath):
