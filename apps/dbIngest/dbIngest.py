@@ -187,7 +187,7 @@ class dbIngest(XDevice):
         
         self.startup_ts_sec = time.time()
         
-        self._connections = self.config.connect_to_databases(existing_connections=self._connections)
+        self._connections = self.config.connect_to_databases()
         self._should_connect = False
 
         # rescan for inventory
