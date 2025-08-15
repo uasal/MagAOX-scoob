@@ -23,43 +23,72 @@ stdFileName::stdFileName()
 
 stdFileName::stdFileName( const std::string &fn ) : m_fullName{ fn }
 {
-    parseName();
-}
-
-int stdFileName::fullName( const std::string &fn )
-{
-    m_fullName = fn;
-    return parseName();
+    try
+    {
+        parseName();
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error parsing filename: " + m_fullName ) );
+    }
 }
 
 stdFileName &stdFileName::operator=( const std::string &fn )
 {
-    fullName( fn );
+    try
+    {
+        fullName( fn );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error parsing name in std::fileName:operator=" ) );
+    }
 
     return *this;
 }
 
-std::string stdFileName::fullName() const
+void stdFileName::fullName( const std::string &fn )
+{
+    try
+    {
+        m_fullName = fn;
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std::string assignment" ) );
+    }
+
+    try
+    {
+        parseName();
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from parseName" ) );
+    }
+}
+
+const std::string &stdFileName::fullName() const
 {
     return m_fullName;
 }
 
-std::string stdFileName::baseName() const
+const std::string &stdFileName::baseName() const
 {
     return m_baseName;
 }
 
-std::string stdFileName::extension() const
+const std::string &stdFileName::extension() const
 {
     return m_extension;
 }
 
-std::string stdFileName::appName() const
+const std::string &stdFileName::appName() const
 {
     return m_appName;
 }
 
-std::string stdFileName::subDir() const
+const stdSubDir &stdFileName::subDir() const
 {
     return m_subDir;
 }
@@ -69,12 +98,12 @@ int stdFileName::year() const
     return m_year;
 }
 
-int stdFileName::month() const
+unsigned stdFileName::month() const
 {
     return m_month;
 }
 
-int stdFileName::day() const
+unsigned stdFileName::day() const
 {
     return m_day;
 }
@@ -104,34 +133,12 @@ flatlogs::timespecX stdFileName::timestamp() const
     return m_timestamp;
 }
 
-
 bool stdFileName::valid() const
 {
     return m_valid;
 }
 
-std::string stdFileName::previousSubdir()
-{
-    //Normalize the decrement using year_month_day to/from sys_days
-    std::chrono::year_month_day ymd{std::chrono::year(m_year), std::chrono::month(m_month), std::chrono::day(m_day)};
-    std::chrono::sys_days symd = ymd;
-    --symd;
-
-    return std::format("{:%Y_%m_%d}", symd);
-}
-
-std::string stdFileName::followingSubdir()
-{
-    //Normalize the decrement using year_month_day to/from sys_days
-    std::chrono::year_month_day ymd{std::chrono::year(m_year), std::chrono::month(m_month), std::chrono::day(m_day)};
-    std::chrono::sys_days symd = ymd;
-    ++symd;
-
-    return std::format("{:%Y_%m_%d}", symd);
-}
-
-
-int stdFileName::parseName()
+void stdFileName::parseName()
 {
     try
     {
@@ -140,41 +147,55 @@ int stdFileName::parseName()
         m_baseName  = p.filename();
         m_extension = p.extension();
     }
-    catch( const std::exception &e )
+    catch( ... )
     {
-        std::cerr << "stdFileName: filesystem exception: " << e.what() << '\n';
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
         m_valid = false;
-        return -1;
+
+        std::throw_with_nested( xwcException( "error extracting basename and extension" ) );
     }
 
     if( m_extension == "" )
     {
-        std::cerr << "No extension found in: " << m_fullName << "\n";
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
         m_valid = false;
-        return -1;
+        throw xwcException( "No extension found in: " + m_fullName );
     }
 
     std::string YYYY, MM, DD, hh, mm, ss, nn;
 
-    if( parseFilePath( m_appName, YYYY, MM, DD, hh, mm, ss, nn, m_baseName ) < 0 )
+    try
     {
-        std::cerr << "Error parsing filename: " << m_fullName << "\n";
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
+        parseFilePath( m_appName, YYYY, MM, DD, hh, mm, ss, nn, m_baseName );
+    }
+    catch( ... )
+    {
         m_valid = false;
-        return -1;
+
+        std::throw_with_nested( xwcException( "Error parsing filename" ) );
     }
 
-    m_subDir = YYYY + '_' + MM + '_' + DD;
+    try
+    {
+        m_year   = std::stoi( YYYY );
+        m_month  = std::stoi( MM );
+        m_day    = std::stoi( DD );
+        m_hour   = std::stoi( hh );
+        m_minute = std::stoi( mm );
+        m_second = std::stoi( ss );
+        m_nsec   = std::stoi( nn );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std:stoi" ) );
+    }
 
-    m_year   = std::stoi( YYYY );
-    m_month  = std::stoi( MM );
-    m_day    = std::stoi( DD );
-    m_hour   = std::stoi( hh );
-    m_minute = std::stoi( mm );
-    m_second = std::stoi( ss );
-    m_nsec   = std::stoi( nn );
+    try
+    {
+        m_subDir.ymd( m_year, m_month, m_day );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std::subDir::ymd" ) );
+    }
 
     tm tmst;
     tmst.tm_year = m_year - 1900;
@@ -184,12 +205,17 @@ int stdFileName::parseName()
     tmst.tm_min  = m_minute;
     tmst.tm_sec  = m_second;
 
-    m_timestamp.time_s  = timegm( &tmst );
+    time_t tgm = timegm( &tmst );
+
+    if( tgm == static_cast<time_t>( -1 ) )
+    {
+        throw xwcException( "error from timegm: " + std::string( strerror( errno ) ) );
+    }
+
+    m_timestamp.time_s  = tgm;
     m_timestamp.time_ns = m_nsec;
 
     m_valid = true;
-
-    return 0;
 }
 
 } // namespace file

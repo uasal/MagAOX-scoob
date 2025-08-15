@@ -116,9 +116,17 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::timespecX ts1( 1732170780, 1 );
 
-        int rv = lfr.test_createFile( ts1 );
+        bool caught = false;
+        try
+        {
+            lfr.test_createFile( ts1 );
+        }
+        catch( ... )
+        {
+            caught = true;
+        }
 
-        REQUIRE( rv == -1 );
+        REQUIRE( caught == true );
     }
 
     GIVEN( "2nd timestamp is the same as the first, file already exists" )
@@ -176,13 +184,11 @@ struct dummyLog
         return msg.size();
     }
 
-    static int format( void * msgBuffer,
-                       const messageT & msg )
+    static int format( void *msgBuffer, const messageT &msg )
     {
-        memcpy(msgBuffer, msg.data(), msg.size());
+        memcpy( msgBuffer, msg.data(), msg.size() );
         return 0;
     }
-
 };
 
 SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
@@ -214,22 +220,22 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         std::string fullPath = lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000001.";
         fullPath += lfr.logExt();
 
-        REQUIRE( std::filesystem::exists( fullPath ));
+        REQUIRE( std::filesystem::exists( fullPath ) );
 
         flatlogs::bufferPtrT logbuff;
-        flatlogs::timespecX ts2( 1732170780, 2 );
-        std::string msg(256,'t');
+        flatlogs::timespecX  ts2( 1732170780, 2 );
+        std::string          msg( 256, 't' );
 
-        flatlogs::logHeader::createLog<dummyLog>(logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        rv = lfr.writeLog(logbuff);
+        rv = lfr.writeLog( logbuff );
         REQUIRE( rv == 0 );
 
-        REQUIRE( lfr.close() == 0);
+        REQUIRE( lfr.close() == 0 );
 
         std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
-        REQUIRE(fsz == 1*(256+14));
+        REQUIRE( fsz == 1 * ( 256 + 14 ) );
     }
 
     GIVEN( "Write to log that doesn't exist yet" )
@@ -249,12 +255,12 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         std::filesystem::remove_all( lfr.testPath );
 
         flatlogs::bufferPtrT logbuff;
-        flatlogs::timespecX ts2( 1732170780, 2 );
-        std::string msg(256,'t');
+        flatlogs::timespecX  ts2( 1732170780, 2 );
+        std::string          msg( 256, 't' );
 
-        flatlogs::logHeader::createLog<dummyLog>(logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog(logbuff);
+        int rv = lfr.writeLog( logbuff );
         REQUIRE( rv == 0 );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
@@ -265,11 +271,11 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         REQUIRE( std::filesystem::exists( fullPath ) );
 
-        REQUIRE(lfr.close() == 0);
+        REQUIRE( lfr.close() == 0 );
 
-        std::uintmax_t fsz = std::filesystem::file_size(fullPath );
+        std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
-        REQUIRE(fsz == 1*(256+14));
+        REQUIRE( fsz == 1 * ( 256 + 14 ) );
     }
 
     GIVEN( "Write to log twice, does not exceed size" )
@@ -289,12 +295,12 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         std::filesystem::remove_all( lfr.testPath );
 
         flatlogs::bufferPtrT logbuff;
-        flatlogs::timespecX ts2( 1732170780, 2 );
-        std::string msg(256,'t');
+        flatlogs::timespecX  ts2( 1732170780, 2 );
+        std::string          msg( 256, 't' );
 
-        flatlogs::logHeader::createLog<dummyLog>(logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog(logbuff);
+        int rv = lfr.writeLog( logbuff );
         REQUIRE( rv == 0 );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
@@ -305,15 +311,14 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         REQUIRE( std::filesystem::exists( fullPath ) );
 
-
-        flatlogs::timespecX ts3( 1732170780, 50 );
+        flatlogs::timespecX  ts3( 1732170780, 50 );
         flatlogs::bufferPtrT logbuff3;
-        flatlogs::logHeader::createLog<dummyLog>(logbuff3, ts3, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff3, ts3, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        rv = lfr.writeLog(logbuff3);
+        rv = lfr.writeLog( logbuff3 );
         REQUIRE( rv == 0 );
 
-        //New file not created
+        // New file not created
         std::string fullPath2 = lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000050.";
         fullPath2 += lfr.logExt();
 
@@ -321,16 +326,15 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         lfr.close();
 
-        std::uintmax_t fsz = std::filesystem::file_size(fullPath);
+        std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
-        REQUIRE(fsz == 2*(256+14)); //has two logs in it
-
+        REQUIRE( fsz == 2 * ( 256 + 14 ) ); // has two logs in it
     }
 
     GIVEN( "Write to log twice, does exceed size" )
     {
         logFileRawTest lfr;
-        lfr.maxLogSize(256);
+        lfr.maxLogSize( 256 );
 
         // safety check to make sure we don't delete all of /tmp
         if( lfr.testPath == "/tmp" )
@@ -345,12 +349,12 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         std::filesystem::remove_all( lfr.testPath );
 
         flatlogs::bufferPtrT logbuff;
-        flatlogs::timespecX ts( 1732170780, 2 );
-        std::string msg(256,'t');
+        flatlogs::timespecX  ts( 1732170780, 2 );
+        std::string          msg( 256, 't' );
 
-        flatlogs::logHeader::createLog<dummyLog>(logbuff, ts, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff, ts, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog(logbuff);
+        int rv = lfr.writeLog( logbuff );
         REQUIRE( rv == 0 );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
@@ -361,30 +365,29 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         REQUIRE( std::filesystem::exists( fullPath ) );
 
-        flatlogs::timespecX ts2( 1732170780, 50 );
+        flatlogs::timespecX  ts2( 1732170780, 50 );
         flatlogs::bufferPtrT logbuff2;
-        flatlogs::logHeader::createLog<dummyLog>(logbuff2, ts2, msg, flatlogs::logPrio::LOG_NOTICE);
+        flatlogs::logHeader::createLog<dummyLog>( logbuff2, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        rv = lfr.writeLog(logbuff2);
+        rv = lfr.writeLog( logbuff2 );
         REQUIRE( rv == 0 );
 
-        //New file created
+        // New file created
         std::string fullPath2 = lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000050.";
         fullPath2 += lfr.logExt();
 
         REQUIRE( std::filesystem::exists( fullPath2 ) );
 
-        //Test this before closing, as this will probably only pass if the previous file was closed
-        std::uintmax_t fsz = std::filesystem::file_size(fullPath);
+        // Test this before closing, as this will probably only pass if the previous file was closed
+        std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
-        REQUIRE(fsz == 1*(256+14));
+        REQUIRE( fsz == 1 * ( 256 + 14 ) );
 
         lfr.close();
 
-        fsz = std::filesystem::file_size(fullPath2 );
+        fsz = std::filesystem::file_size( fullPath2 );
 
-        REQUIRE(fsz == 1*(256+14));
-
+        REQUIRE( fsz == 1 * ( 256 + 14 ) );
     }
 }
 

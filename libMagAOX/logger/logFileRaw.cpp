@@ -10,7 +10,7 @@
 #include <filesystem>
 
 #include "logFileRaw.hpp"
-#include "../sys/fileTimes.hpp"
+#include "../file/fileTimes.hpp"
 
 namespace MagAOX
 {
@@ -143,12 +143,13 @@ int logFileRaw::createFile( flatlogs::timespecX &ts )
     std::string fileName;
     std::string relPath;
 
-    int rv = sys::fileTimeRelPath( fileName, relPath, m_logName, m_logExt, ts.time_s, ts.time_ns );
-    if( rv < 0 )
+    try
     {
-        std::cerr << "logFileRaw::createFile: Error from fileTimePath. code: " << rv << ". ";
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
-        return -1;
+        file::fileTimeRelPath( fileName, relPath, m_logName, m_logExt, ts.time_s, ts.time_ns );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "logFileRaw::createFile: Error from fileTimePath" ) );
     }
 
     std::string fullPath = m_logPath + '/' + relPath + '/';
@@ -158,20 +159,9 @@ int logFileRaw::createFile( flatlogs::timespecX &ts )
     {
         std::filesystem::create_directories( fullPath ); // this does nothing if fname already exists
     }
-    catch( const std::filesystem::filesystem_error &e )
+    catch( ... )
     {
-        std::cerr << "logFileRaw::createFile: filesystem_error from std::create_directories.\n";
-        std::cerr << "    what: " << e.what() << '\n';
-        std::cerr << "    code: " << e.code() << '\n';
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
-        return -1;
-    }
-    catch( const std::exception &e )
-    {
-        std::cerr << "logFileRaw::createFile: exception from std::create_directories.\n";
-        std::cerr << "    what: " << e.what() << '\n';
-        std::cerr << __FILE__ << ' ' << __LINE__ << '\n';
-        return -1;
+        std::throw_with_nested(xwcException("logFileRaw::createFile: filesystem_error from std::create_directories"));
     }
 
     fullPath += fileName;

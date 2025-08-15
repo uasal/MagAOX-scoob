@@ -28,11 +28,13 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              common/config.hpp \
              common/defaults.hpp \
              common/environment.hpp \
+			 file/fileTimes.hpp \
+			 file/stdFileName.hpp \
+			 file/stdSubDir.hpp \
              ImageStreamIO/ImageStruct.hpp \
              ImageStreamIO/pixaccess.hpp \
              logger/logFileRaw.hpp \
              logger/logManager.hpp \
-             logger/logFileName.hpp \
              logger/logMap.hpp \
              logger/logMeta.hpp \
              logger/logBinarySchemata.hpp \
@@ -90,7 +92,6 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              logger/types/telem_usage.hpp \
              logger/types/telem_zaber.hpp \
              logger/types/text_log.hpp \
-			 sys/fileTimes.hpp \
              sys/thSetuid.hpp \
              sys/runCommand.hpp \
              tty/ttyErrors.hpp \
@@ -107,8 +108,9 @@ OBJS = app/MagAOXApp.o \
        app/dev/ioDevice.o \
        app/dev/outletController.o \
        app/dev/stdCamera.o \
+	   file/stdFileName.o \
+	   file/stdSubDir.o \
        logger/types/telem.o \
-       logger/logFileName.o \
        logger/logFileRaw.o \
        logger/logMap.o \
        logger/logMeta.o \
@@ -140,7 +142,7 @@ libMagAOX.a: libMagAOX.hpp.gch $(OBJS)
 	ar rvs libMagAOX.a $(OBJS)
 
 logger/logMeta.o: logger/logMap.hpp logger/logMap.cpp logger/logMeta.hpp logger/logMeta.cpp logger/generated/logTypes.hpp
-logger/logMap.o: logger/logMap.hpp logger/logMap.cpp logger/logFileName.hpp
+logger/logMap.o: logger/logMap.hpp logger/logMap.cpp
 
 clean:
 	rm -f libMagAOX.hpp.gch

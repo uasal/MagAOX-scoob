@@ -20,11 +20,12 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd;
 
+        //Test that access while invalid throws
         bool caught = false;
 
         try
         {
-            ssd.subDir();
+            ssd.path();
         }
         catch(const std::exception& e)
         {
@@ -34,10 +35,53 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         REQUIRE(caught == true);
 
-        ssd.subDir("2024_11_21");
+        caught = false;
+
+        try
+        {
+            ssd.year();
+        }
+        catch(const std::exception& e)
+        {
+            static_cast<void>(e);
+            caught = true;
+        }
+
+        REQUIRE(caught == true);
+
+        caught = false;
+
+        try
+        {
+            ssd.month();
+        }
+        catch(const std::exception& e)
+        {
+            static_cast<void>(e);
+            caught = true;
+        }
+
+        REQUIRE(caught == true);
+
+
+        caught = false;
+
+        try
+        {
+            ssd.day();
+        }
+        catch(const std::exception& e)
+        {
+            static_cast<void>(e);
+            caught = true;
+        }
+
+        REQUIRE(caught == true);
+
+        ssd.path("2024_11_21");
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_21");
+        REQUIRE(ssd.path() == "2024_11_21");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 21);
@@ -51,7 +95,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_11_2");
+            ssd.path("2024_11_2");
         }
         catch(const std::exception& e)
         {
@@ -65,7 +109,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024x11_21");
+            ssd.path("2024x11_21");
         }
         catch(const std::exception& e)
         {
@@ -79,7 +123,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_11x21");
+            ssd.path("2024_11x21");
         }
         catch(const std::exception& e)
         {
@@ -93,7 +137,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("Y024_11_24");
+            ssd.path("Y024_11_24");
         }
         catch(const std::exception& e)
         {
@@ -107,7 +151,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2Y24_11_24");
+            ssd.path("2Y24_11_24");
         }
         catch(const std::exception& e)
         {
@@ -121,7 +165,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("20Y4_11_24");
+            ssd.path("20Y4_11_24");
         }
         catch(const std::exception& e)
         {
@@ -135,7 +179,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("202Y_11_24");
+            ssd.path("202Y_11_24");
         }
         catch(const std::exception& e)
         {
@@ -149,7 +193,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_M1_24");
+            ssd.path("2024_M1_24");
         }
         catch(const std::exception& e)
         {
@@ -163,7 +207,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_2M_24");
+            ssd.path("2024_2M_24");
         }
         catch(const std::exception& e)
         {
@@ -177,7 +221,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_21_D4");
+            ssd.path("2024_21_D4");
         }
         catch(const std::exception& e)
         {
@@ -191,7 +235,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir("2024_21_2D");
+            ssd.path("2024_21_2D");
         }
         catch(const std::exception& e)
         {
@@ -211,7 +255,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         try
         {
-            ssd.subDir();
+            ssd.path();
         }
         catch(const std::exception& e)
         {
@@ -224,7 +268,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         ssd.ymd(2024, 11, 21);
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_21");
+        REQUIRE(ssd.path() == "2024_11_21");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 21);
@@ -235,7 +279,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         MagAOX::file::stdSubDir ssd(2024,11,21);
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_21");
+        REQUIRE(ssd.path() == "2024_11_21");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 21);
@@ -246,7 +290,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         MagAOX::file::stdSubDir ssd(2024,1,1);
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_01_01");
+        REQUIRE(ssd.path() == "2024_01_01");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 1);
         REQUIRE(ssd.day() == 1);
@@ -257,7 +301,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         MagAOX::file::stdSubDir ssd("2024_11_21");
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_21");
+        REQUIRE(ssd.path() == "2024_11_21");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 21);
@@ -268,7 +312,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         MagAOX::file::stdSubDir ssd("2024_01_01");
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_01_01");
+        REQUIRE(ssd.path() == "2024_01_01");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 1);
         REQUIRE(ssd.day() == 1);
@@ -291,7 +335,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.subDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_20");
+        REQUIRE(ssd.path() == "2024_11_20");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 20);
@@ -299,7 +343,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.subDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_19");
+        REQUIRE(ssd.path() == "2024_11_19");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 19);
@@ -314,7 +358,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.addDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_22");
+        REQUIRE(ssd.path() == "2024_11_22");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 22);
@@ -322,7 +366,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.addDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_23");
+        REQUIRE(ssd.path() == "2024_11_23");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 23);
@@ -337,7 +381,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.addDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_22");
+        REQUIRE(ssd.path() == "2024_11_22");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 22);
@@ -345,7 +389,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
         ssd.subDay();
 
         REQUIRE(ssd.valid() == true);
-        REQUIRE(ssd.subDir() == "2024_11_21");
+        REQUIRE(ssd.path() == "2024_11_21");
         REQUIRE(ssd.year() == 2024);
         REQUIRE(ssd.month() == 11);
         REQUIRE(ssd.day() == 21);
@@ -367,7 +411,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_11_20");
+        REQUIRE(psd.path() == "2024_11_20");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 11);
         REQUIRE(psd.day() == 20);
@@ -382,7 +426,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_10_31");
+        REQUIRE(psd.path() == "2024_10_31");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 10);
         REQUIRE(psd.day() == 31);
@@ -397,7 +441,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_02_29");
+        REQUIRE(psd.path() == "2024_02_29");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 02);
         REQUIRE(psd.day() == 29);
@@ -412,7 +456,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2025_02_28");
+        REQUIRE(psd.path() == "2025_02_28");
         REQUIRE(psd.year() == 2025);
         REQUIRE(psd.month() == 02);
         REQUIRE(psd.day() == 28);
@@ -427,7 +471,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2023_12_31");
+        REQUIRE(psd.path() == "2023_12_31");
         REQUIRE(psd.year() == 2023);
         REQUIRE(psd.month() == 12);
         REQUIRE(psd.day() == 31);
@@ -442,7 +486,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_11_22");
+        REQUIRE(psd.path() == "2024_11_22");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 11);
         REQUIRE(psd.day() == 22);
@@ -457,7 +501,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_12_01");
+        REQUIRE(psd.path() == "2024_12_01");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 12);
         REQUIRE(psd.day() == 1);
@@ -472,7 +516,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2024_03_01");
+        REQUIRE(psd.path() == "2024_03_01");
         REQUIRE(psd.year() == 2024);
         REQUIRE(psd.month() == 03);
         REQUIRE(psd.day() == 1);
@@ -487,7 +531,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
         REQUIRE(psd.valid() == true);
-        REQUIRE(psd.subDir() == "2025_03_01");
+        REQUIRE(psd.path() == "2025_03_01");
         REQUIRE(psd.year() == 2025);
         REQUIRE(psd.month() == 03);
         REQUIRE(psd.day() == 1);

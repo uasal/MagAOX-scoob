@@ -33,12 +33,15 @@
 #include "common/defaults.hpp"
 #include "common/environment.hpp"
 
+#include "file/fileTimes.hpp"
+#include "file/stdFileName.hpp"
+#include "file/stdSubDir.hpp"
+
 #include "ImageStreamIO/ImageStruct.hpp"
 #include "ImageStreamIO/pixaccess.hpp"
 
 #include "logger/logFileRaw.hpp"
 #include "logger/logManager.hpp"
-#include "logger/logFileName.hpp"
 #include "logger/logMap.hpp"
 #include "logger/logMeta.hpp"
 #include "logger/logBinarySchemata.hpp"
@@ -48,7 +51,6 @@
 #include "logger/generated/logTypes.hpp"
 #include "logger/generated/logCodeValid.hpp"
 
-#include "sys/fileTimes.hpp"
 #include "sys/runCommand.hpp"
 #include "sys/thSetuid.hpp"
 

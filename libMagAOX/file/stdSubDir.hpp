@@ -24,11 +24,11 @@ class stdSubDir
 {
 
   protected:
-    std::chrono::sys_days m_sysday;
+    std::chrono::sys_days m_sysday; ///< System time representation of the date of this sub directory
 
-    mutable bool m_subDirMade{ false }; ///< Whether or not the subDir string has been constructed
+    mutable bool m_pathMade{ false }; ///< Whether or not the path string has been constructed
 
-    mutable std::string m_subDir;
+    mutable std::string m_path; ///< The path string.  Only constructed on demand.
 
     bool m_valid{ false }; ///< Whether or not the components are valid
 
@@ -78,13 +78,13 @@ class stdSubDir
     /**
      * Parses the string and sets the time point
      */
-    void subDir( const std::string &subdir );
+    void path( const std::string &subdir );
 
     /// Get the current value of m_subDir
     /**
      * \returns the current value of m_subDir
      */
-    std::string subDir() const;
+    std::string path() const;
 
     /// Get the current value of m_year
     /**
@@ -123,6 +123,24 @@ class stdSubDir
 
     /// Subtract a day from this subdirectory
     void subDay();
+
+    /// Compare to subdirectories for equality by timestamp
+    /** Two subdirectories are equal if and only if their timestamps are equal
+     *
+     */
+    bool operator==( const stdSubDir & comp) const
+    {
+        return (m_sysday == comp.m_sysday);
+    }
+
+    /// Compare to subdirectories for less-than by timestamp
+    /** A subdirectory is less than if and only if its timestamp is less-than
+     *
+     */
+    bool operator<( const stdSubDir & comp) const
+    {
+        return (m_sysday < comp.m_sysday);
+    }
 };
 
 } // namespace file

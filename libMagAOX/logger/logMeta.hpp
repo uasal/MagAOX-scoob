@@ -3,7 +3,7 @@
   * \author Jared R. Males (jaredmales@gmail.com)
   *
   * \ingroup logger_files
-  * 
+  *
   * History:
   * - 2020-01-02 created by JRM
   */
@@ -29,7 +29,7 @@ struct logMetaSpec
    std::string keyword; //overrides the default
    std::string format; //overrides the default
    std::string comment; //overrides the default
-   
+
 
    logMetaSpec()
    {
@@ -111,13 +111,13 @@ struct logMetaDetail
    logMetaDetail( const std::string & k,
                   int vt,
                   int mt,
-                  void *acc, 
+                  void *acc,
                   bool h
                 ) : keyword(k), valType(vt), metaType(mt), accessor(acc), hierarch(h)
    {
    }
 
-};  
+};
 
 logMetaDetail logMemberAccessor( flatlogs::eventCodeT ec,
                                  const std::string & memberName
@@ -136,9 +136,9 @@ int getLogStateVal( valT & val,
 {
    char * atprior = nullptr;
    char * stprior = nullptr;
-   
+
    char * _hint = nullptr;
-   
+
    if(hint) _hint = *hint;
    else _hint = 0;
 
@@ -146,20 +146,20 @@ int getLogStateVal( valT & val,
    std::cerr << __FILE__ << " " << __LINE__ << "\n";
    #endif
 
-   if(lm.getPriorLog(stprior, appName, ev, stime, _hint) != 0) 
+   if(lm.getPriorLog(stprior, appName, ev, stime, _hint) != 0)
    {
       std::cerr << __FILE__ << " " << __LINE__ << " getPriorLog returned error for " << appName << ":" << ev << "\n";
       return -1;
    }
    valT stprV = getter(flatlogs::logHeader::messageBuffer(stprior));
-   
+
    valT atprV;
-   
+
    #ifdef DEBUG
    std::cerr << __FILE__ << " " << __LINE__ << "\n";
    #endif
 
-   if(lm.getNextLog(atprior, stprior, appName) != 0) 
+   if(lm.getNextLog(atprior, stprior, appName) != 0)
    {
       std::cerr << __FILE__ << " " << __LINE__ << " getNextLog returned error for " << appName << ":" << ev << "\n";
       return -1;
@@ -185,9 +185,9 @@ int getLogStateVal( valT & val,
          return -1;
       }
    }
-   
+
    val = stprV;
-   
+
    if(hint) *hint = stprior;
    return 0;
 }
@@ -205,13 +205,13 @@ int getLogContVal( valT & val,
 {
    char * atafter;
    char * stprior;
-   
+
    char * _hint;
    if(hint) _hint = *hint;
    else _hint = 0;
 
    flatlogs::timespecX midexp = meanTimespecX(atime, stime);
-   
+
    //Get log entry before midexp
    if(lm.getPriorLog(stprior, appName, ev, midexp, _hint)!=0)
    {
@@ -219,12 +219,12 @@ int getLogContVal( valT & val,
       return 1;
    }
    valT stprV = getter(flatlogs::logHeader::messageBuffer(stprior));
-   
+
    //Get log entry after.
    if(lm.getNextLog(atafter, stprior, appName)!=0)
    {
       std::cerr << __FILE__ << " " << __LINE__ << " getNextLog returned error for " << appName << ":" << ev << "\n";
-      #ifdef HARD_EXIT 
+      #ifdef HARD_EXIT
       exit(-1);
       #endif
       return 1;
@@ -234,11 +234,11 @@ int getLogContVal( valT & val,
    double st = flatlogs::logHeader::timespec(stprior).asDouble();
    double it = midexp.asDouble();
    double et = flatlogs::logHeader::timespec(atafter).asDouble();
-   
+
    val = stprV + (atprV-stprV)/(et-st)*(it-st);
-   
+
    if(hint) *hint = stprior;
-   
+
    return 0;
 }
 
@@ -246,9 +246,9 @@ int getLogContVal( valT & val,
 /// Manage meta data for a log entry
 /** Handles cases where log is a state, i.e. has one of a finite number of values, or is a
   * continuous variable, e.g. a temperature.
-  * 
+  *
   * Contains the information to construct a FITS header card.
-  */ 
+  */
 struct logMeta
 {
 public:
@@ -291,45 +291,46 @@ public:
    };
 
 protected:
-   
+
    logMetaSpec m_spec;
    logMetaDetail m_detail;
 
    bool m_isValid {false};
    std::string m_invalidValue {"invalid"};
-   
+
    char * m_hint {nullptr};
-   
+
 public:
-   
+
    logMeta( const logMetaSpec & lms /**< [in] the specification of this meta data entry */ );
-          
-   std::string keyword();
-   
-   std::string comment();
-   
+
+   const std::string & device();
+   const std::string & keyword();
+
+   const std::string & comment();
+
    int setLog( const logMetaSpec &);
-   
+
    std::string value( logMap & lm,
                       const flatlogs::timespecX & stime,
                       const flatlogs::timespecX & atime
                     );
-   
+
    std::string valueNumber( logMap & lm,
                             const flatlogs::timespecX & stime,
                             const flatlogs::timespecX & atime
                           );
-   
+
    std::string valueString( logMap & lm,
                             const flatlogs::timespecX & stime,
                             const flatlogs::timespecX & atime
                           );
-   
+
    mx::fits::fitsHeaderCard card( logMap &lm,
                                   const flatlogs::timespecX & stime,
-                                  const flatlogs::timespecX & atime 
+                                  const flatlogs::timespecX & atime
                                 );
-         
+
 };
 
 
