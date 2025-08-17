@@ -16,7 +16,6 @@
 
 #include <mx/mxException.hpp>
 
-
 #include "../common/exceptions.hpp"
 
 using namespace flatlogs;
@@ -26,7 +25,7 @@ namespace MagAOX
 namespace logger
 {
 
-int logInMemory::loadFile( file::stdFileName const &lfn )
+int logInMemory::loadFile( file::stdFileName<verboseT> const &lfn )
 {
     int fd = open( lfn.fullName().c_str(), O_RDONLY );
 
@@ -123,33 +122,33 @@ int logInMemory::loadFile( file::stdFileName const &lfn )
 }
 
 mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
-                               const std::string       &dev,
-                               const std::string       &ext,
-                               const file::stdFileName &firstFile,
-                               const file::stdFileName &lastFile )
+                                      const std::string       &dev,
+                                      const std::string       &ext,
+                                      const file::stdFileName<verboseT> &firstFile,
+                                      const file::stdFileName<verboseT> &lastFile )
 {
     std::error_code ec;
-    if(!std::filesystem::exists(dir, ec))
+    if( !std::filesystem::exists( dir, ec ) )
     {
         std::cerr << dir + " does not exist " << __FILE__ << ' ' << __LINE__ << '\n';
         return mx::error_t::dirnotfound;
     }
 
-    if(ec.value()!=0)
+    if( ec.value() != 0 )
     {
-        std::cerr << "error from std::filesystem::exists: " + ec.message() << ' ' << __FILE__ << ' ' << __LINE__ << '\n';
+        std::cerr << "error from std::filesystem::exists: " + ec.message() << ' ' << __FILE__ << ' ' << __LINE__
+                  << '\n';
         return mx::error_t::filererr;
     }
 
-
-    if(!std::filesystem::is_directory(dir, ec))
+    if( !std::filesystem::is_directory( dir, ec ) )
     {
-        throw xwcException(dir + " is not a directory");
+        throw xwcException( dir + " is not a directory" );
     }
 
-    if(ec.value()!=0)
+    if( ec.value() != 0 )
     {
-        throw xwcException("error from std::filesystem::is_directory: " + ec.message());
+        throw xwcException( "error from std::filesystem::is_directory: " + ec.message() );
     }
 
     // Timestamps for defining the previous log and the following log
@@ -178,12 +177,9 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
     {
         ++ndays;
 
-        mx::error_t errc = mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext );
-        if(errc != mx::error_t::success)
-        {
-            std::cerr << "error from mx::ioutils::getFileNames " << __FILE__ << ' ' << __LINE__ << '\n';
-            return errc;
-        }
+        std::vector<std::string> tmp_flist;
+
+        mx_error_check(mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ));
 
         // Find first subdir that has files in it
         if( tmp_flist.size() == 0 )
@@ -195,7 +191,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
         // Start from last file and move backwards
         for( size_t n = tmp_flist.size() - 1; n != static_cast<size_t>( -1 ); --n )
         {
-            file::stdFileName sfn;
+            file::stdFileName<verboseT> sfn;
 
             try
             {
@@ -228,7 +224,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
 
     if( !prevLogFound )
     {
-        return; // this is not an error...yet.  one must check the map to see if 0 files found.
+        return mx::error_t::noerror; // this is not an error...yet.  one must check the map to see if 0 files found.
     }
 
     subdir = lastFile.subDir();
@@ -239,18 +235,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
 
         std::vector<std::string> tmp_flist;
 
-        try
-        {
-            tmp_flist = mx::ioutils::getFileNames( basedir + subdir.path(), dev, "", ext );
-        }
-        catch( const mx::err::notfound &e )
-        {
-            // ignore
-        }
-        catch( ... )
-        {
-            std::throw_with_nested( xwcException( "error from mx::ioutils::getFileNames" ) );
-        }
+        mx_error_check(mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ));
 
         // Find first subdir that has files in it
         if( tmp_flist.size() == 0 )
@@ -262,7 +247,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
         // Start from first file and move forward
         for( size_t n = 0; n < tmp_flist.size(); ++n )
         {
-            file::stdFileName sfn;
+            file::stdFileName<verboseT> sfn;
             try
             {
                 sfn.fullName( tmp_flist[n] );
@@ -307,18 +292,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
 
         std::vector<std::string> tmp_flist;
 
-        try
-        {
-            tmp_flist = mx::ioutils::getFileNames( basedir + subdir.path(), dev, "", ext );
-        }
-        catch( const mx::err::notfound &e )
-        {
-            // ignore
-        }
-        catch( ... )
-        {
-            std::throw_with_nested( xwcException( "error from mx::ioutils::getFileNames" ) );
-        }
+        mx_error_check(mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ));
 
         if( follLogFile_n == static_cast<size_t>( -1 ) )
         {
@@ -337,7 +311,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
         {
             try
             {
-                m_appToFileMap[dev].insert( file::stdFileName( tmp_flist[n] ) );
+                m_appToFileMap[dev].insert( file::stdFileName<verboseT>( tmp_flist[n] ) );
             }
             catch( const std::exception &e )
             {
@@ -351,24 +325,13 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
 
         std::vector<std::string> tmp_flist;
 
-        try
-        {
-            tmp_flist = mx::ioutils::getFileNames( basedir + subdir.path(), dev, "", ext );
-        }
-        catch( const mx::err::notfound &e )
-        {
-            // ignore
-        }
-        catch( ... )
-        {
-            std::throw_with_nested( xwcException( "error from mx::ioutils::getFileNames" ) );
-        }
+        mx_error_check( mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ) );
 
         for( size_t n = prevLogFile_n; n < tmp_flist.size(); ++n )
         {
             try
             {
-                m_appToFileMap[dev].insert( file::stdFileName( tmp_flist[n] ) );
+                m_appToFileMap[dev].insert( file::stdFileName<verboseT>( tmp_flist[n] ) );
             }
             catch( const std::exception &e )
             {
@@ -380,24 +343,14 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
 
         while( subdir < follLogSubDir )
         {
-            try
-            {
-                tmp_flist = mx::ioutils::getFileNames( basedir + subdir.path(), dev, "", ext );
-            }
-            catch( const mx::err::notfound &e )
-            {
-                // ignore
-            }
-            catch( ... )
-            {
-                std::throw_with_nested( xwcException( "error from mx::ioutils::getFileNames" ) );
-            }
+
+            mx_error_check(mx::ioutils::getFileNames(tmp_flist, basedir + subdir.path(), dev, "", ext ));
 
             for( size_t n = 0; n < tmp_flist.size(); ++n )
             {
                 try
                 {
-                    m_appToFileMap[dev].insert( file::stdFileName( tmp_flist[n] ) );
+                    m_appToFileMap[dev].insert( file::stdFileName<verboseT>( tmp_flist[n] ) );
                 }
                 catch( const std::exception &e )
                 {
@@ -408,18 +361,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
             subdir.addDay();
         }
 
-        try
-        {
-            tmp_flist = mx::ioutils::getFileNames( basedir + subdir.path(), dev, "", ext );
-        }
-        catch( const mx::err::notfound &e )
-        {
-            // ignore
-        }
-        catch( ... )
-        {
-            std::throw_with_nested( xwcException( "error from mx::ioutils::getFileNames" ) );
-        }
+        mx_error_check(mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ));
 
         if( follLogFile_n == static_cast<size_t>( -1 ) )
         {
@@ -438,7 +380,7 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
         {
             try
             {
-                m_appToFileMap[dev].insert( file::stdFileName( tmp_flist[n] ) );
+                m_appToFileMap[dev].insert( file::stdFileName<verboseT>( tmp_flist[n] ) );
             }
             catch( const std::exception &e )
             {
@@ -446,6 +388,8 @@ mx::error_t logMap::loadAppToFileMap( const std::string       &dir,
             }
         }
     }
+
+    return mx::error_t::noerror;
 }
 
 int logMap::getPriorLog( char                      *&logBefore,

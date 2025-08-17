@@ -2024,14 +2024,13 @@ int MagAOXApp<_useINDI>::setEuidCalled()
     errno = 0;
     if( sys::th_seteuid( m_euidCalled ) < 0 )
     {
-        std::string logss = "Setting effective user id to euidCalled (";
-        logss += mx::ioutils::convertToString<int>( m_euidCalled );
-        logss += ") failed.  Errno says: ";
-        logss += strerror( errno );
-
-        log<software_error>( { __FILE__, __LINE__, errno, 0, logss } );
-
+        log<software_error>( { __FILE__, __LINE__, errno, 0, std::format("Setting effective user id to "
+                                                                                     "euidCalled ({}) failed.  "
+                                                                                     "Errno says: {}",
+            m_euidCalled,
+            strerror( errno )) } );
         return -1;
+
     }
 
     return 0;
@@ -2043,12 +2042,11 @@ int MagAOXApp<_useINDI>::setEuidReal()
     errno = 0;
     if( sys::th_seteuid( m_euidReal ) < 0 )
     {
-        std::string logss = "Setting effective user id to euidReal (";
-        logss += mx::ioutils::convertToString<int>( m_euidReal );
-        logss += ") failed.  Errno says: ";
-        logss += strerror( errno );
-
-        log<software_error>( { __FILE__, __LINE__, errno, 0, logss } );
+        log<software_error>( { __FILE__, __LINE__, errno, 0, std::format("Setting effective user id to "
+            "euidReal ({}) failed.  "
+            "Errno says: {}",
+            m_euidReal,
+            strerror( errno )) } );
 
         return -1;
     }

@@ -448,7 +448,7 @@ std::string logMeta::valueString( logMap & lm,
    return val;
 }
 
-mx::fits::fitsHeaderCard logMeta::card( logMap &lm,
+mx::fits::fitsHeaderCard<logMeta::verboseT> logMeta::card( logMap &lm,
                                           const flatlogs::timespecX & stime,
                                           const flatlogs::timespecX & atime
                                         )

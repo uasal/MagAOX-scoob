@@ -7,11 +7,16 @@
 #ifndef file_stdFileName_hpp
 #define file_stdFileName_hpp
 
+#include <filesystem>
+#include <chrono>
+#include <format>
+
 #include <flatlogs/flatlogs.hpp>
 
 #include "../common/exceptions.hpp"
 
 #include "stdSubDir.hpp"
+#include "fileTimes.hpp"
 
 namespace MagAOX
 {
@@ -19,6 +24,7 @@ namespace file
 {
 
 /// Organize and analyze the name of a standard file name
+template<typename verboseT=XWC_DEFAULT_VERBOSITY>
 class stdFileName
 {
 
@@ -30,7 +36,7 @@ class stdFileName
 
     std::string m_appName; ///< The name of the application which wrote the file
 
-    stdSubDir m_subDir; ///< The subdirectory of the file
+    stdSubDir<verboseT> m_subDir; ///< The subdirectory of the file
 
     int      m_year{ 0 };   ///< The year of the timestamp
     unsigned m_month{ 0 };  ///< The month of the timestamp
@@ -135,7 +141,7 @@ class stdFileName
      * \b Tests:
      * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const stdSubDir &subDir() const;
+    const stdSubDir<verboseT> &subDir() const;
 
     /// Get the current value of m_year
     /**
@@ -227,7 +233,7 @@ class stdFileName
      * \throws xwcException if no extension found
      * \throws nested xwcException on errors from parseFilePath
      * \throws nested xwcException on errors from std::stoi
-     * \throws nested xwcException on errors from stdSubDir::ymd
+     * \throws nested xwcException on errors from stdSubDir<verboseT>::ymd
      * \throws xwcException on error from timegm
      *
      * \b Tests:
@@ -236,20 +242,245 @@ class stdFileName
     void parseName();
 };
 
+template<class verboseT>
+stdFileName<verboseT>::stdFileName()
+{
+    return;
+}
+
+template<class verboseT>
+stdFileName<verboseT>::stdFileName( const std::string &fn ) : m_fullName{ fn }
+{
+    try
+    {
+        parseName();
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error parsing filename: " + m_fullName ) );
+    }
+}
+
+template<class verboseT>
+stdFileName<verboseT> &stdFileName<verboseT>::operator=( const std::string &fn )
+{
+    try
+    {
+        fullName( fn );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error parsing name in std::fileName:operator=" ) );
+    }
+
+    return *this;
+}
+
+template<class verboseT>
+void stdFileName<verboseT>::fullName( const std::string &fn )
+{
+    try
+    {
+        m_fullName = fn;
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std::string assignment" ) );
+    }
+
+    try
+    {
+        parseName();
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from parseName" ) );
+    }
+}
+
+template<class verboseT>
+const std::string &stdFileName<verboseT>::fullName() const
+{
+    return m_fullName;
+}
+
+template<class verboseT>
+const std::string &stdFileName<verboseT>::baseName() const
+{
+    return m_baseName;
+}
+
+template<class verboseT>
+const std::string &stdFileName<verboseT>::extension() const
+{
+    return m_extension;
+}
+
+template<class verboseT>
+const std::string &stdFileName<verboseT>::appName() const
+{
+    return m_appName;
+}
+
+template<class verboseT>
+const stdSubDir<verboseT> &stdFileName<verboseT>::subDir() const
+{
+    return m_subDir;
+}
+
+template<class verboseT>
+int stdFileName<verboseT>::year() const
+{
+    return m_year;
+}
+
+template<class verboseT>
+unsigned stdFileName<verboseT>::month() const
+{
+    return m_month;
+}
+
+template<class verboseT>
+unsigned stdFileName<verboseT>::day() const
+{
+    return m_day;
+}
+
+template<class verboseT>
+int stdFileName<verboseT>::hour() const
+{
+    return m_hour;
+}
+
+template<class verboseT>
+int stdFileName<verboseT>::minute() const
+{
+    return m_minute;
+}
+
+template<class verboseT>
+int stdFileName<verboseT>::second() const
+{
+    return m_second;
+}
+
+template<class verboseT>
+int stdFileName<verboseT>::nsec() const
+{
+    return m_nsec;
+}
+
+template<class verboseT>
+flatlogs::timespecX stdFileName<verboseT>::timestamp() const
+{
+    return m_timestamp;
+}
+
+template<class verboseT>
+bool stdFileName<verboseT>::valid() const
+{
+    return m_valid;
+}
+
+template<class verboseT>
+void stdFileName<verboseT>::parseName()
+{
+    try
+    {
+        std::filesystem::path p( m_fullName );
+
+        m_baseName  = p.filename();
+        m_extension = p.extension();
+    }
+    catch( ... )
+    {
+        m_valid = false;
+
+        std::throw_with_nested( xwcException( "error extracting basename and extension" ) );
+    }
+
+    if( m_extension == "" )
+    {
+        m_valid = false;
+        throw xwcException( "No extension found in: " + m_fullName );
+    }
+
+    std::string YYYY, MM, DD, hh, mm, ss, nn;
+
+    try
+    {
+        parseFilePath( m_appName, YYYY, MM, DD, hh, mm, ss, nn, m_baseName );
+    }
+    catch( ... )
+    {
+        m_valid = false;
+
+        std::throw_with_nested( xwcException( "Error parsing filename" ) );
+    }
+
+    try
+    {
+        m_year   = std::stoi( YYYY );
+        m_month  = std::stoi( MM );
+        m_day    = std::stoi( DD );
+        m_hour   = std::stoi( hh );
+        m_minute = std::stoi( mm );
+        m_second = std::stoi( ss );
+        m_nsec   = std::stoi( nn );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std:stoi" ) );
+    }
+
+    try
+    {
+        m_subDir.ymd( m_year, m_month, m_day );
+    }
+    catch( ... )
+    {
+        std::throw_with_nested( xwcException( "error from std::subDir::ymd" ) );
+    }
+
+    tm tmst;
+    tmst.tm_year = m_year - 1900;
+    tmst.tm_mon  = m_month - 1;
+    tmst.tm_mday = m_day;
+    tmst.tm_hour = m_hour;
+    tmst.tm_min  = m_minute;
+    tmst.tm_sec  = m_second;
+
+    time_t tgm = timegm( &tmst );
+
+    if( tgm == static_cast<time_t>( -1 ) )
+    {
+        throw xwcException( "error from timegm: " + std::string( strerror( errno ) ) );
+    }
+
+    m_timestamp.time_s  = tgm;
+    m_timestamp.time_ns = m_nsec;
+
+    m_valid = true;
+}
+
+extern template class stdFileName<XWC_DEFAULT_VERBOSITY>;
+
 /// Sort predicate for stdFileNames
 /** Sorting is on 'fullName()'
  */
+template<class stdFileNameT>
 struct compStdFileName
 {
     /// Comparison operator.
     /** \returns true if a < b
      * \returns false otherwise
      */
-    bool operator()( const stdFileName &a, const stdFileName &b ) const
+    bool operator()( const stdFileNameT &a, const stdFileNameT &b ) const
     {
         return ( a.baseName() < b.baseName() );
     }
 };
+
 
 } // namespace file
 } // namespace MagAOX

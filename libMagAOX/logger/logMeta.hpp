@@ -251,6 +251,8 @@ int getLogContVal( valT & val,
   */
 struct logMeta
 {
+    typedef mx::verbose::vvv verboseT;
+
 public:
    enum valTypes
    {
@@ -326,7 +328,7 @@ public:
                             const flatlogs::timespecX & atime
                           );
 
-   mx::fits::fitsHeaderCard card( logMap &lm,
+   mx::fits::fitsHeaderCard<verboseT> card( logMap &lm,
                                   const flatlogs::timespecX & stime,
                                   const flatlogs::timespecX & atime
                                 );

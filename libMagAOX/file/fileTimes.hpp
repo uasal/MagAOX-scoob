@@ -11,6 +11,8 @@
 #include <iostream>
 #include <format>
 
+#include <mx/mxError.hpp>
+
 #include "../common/exceptions.hpp"
 
 namespace MagAOX
@@ -23,55 +25,48 @@ namespace XWCTEST_NAMESPACE
 {
 #endif
 
-namespace internal
-{
-
-inline void initbdtime( tm &bt )
-{
-    bt.tm_sec    = 0;
-    bt.tm_min    = 0;
-    bt.tm_hour   = 0;
-    bt.tm_mday   = 0;
-    bt.tm_mon    = 0;
-    bt.tm_year   = 0;
-    bt.tm_wday   = 0;
-    bt.tm_yday   = 0;
-    bt.tm_isdst  = 0;
-    bt.tm_gmtoff = 0;
-    bt.tm_zone   = 0;
-}
-
-} // namespace internal
-
 /// Get the filename timestamp from the breakdown for a time.
 /** Fills in the \p tstamp string with the timestamp encoded as
  * \verbatim
  *      YYYYMMDDHHMMSSNNNNNNNNN
  * \endverbatim
  *
- * \returns 0 on success
- * \returns -2 if snprintf returns an error
- * \returns -3 if snprintf does not write enough characters
+ * \returns mx::error_t::noerror on success
+ * \returns mx::error_t::format_error if std::format throws and exception
+ * \returns mx::error_t::std_exception if any other exception other than bad_alloc is caught
+ *
+ * \returns throws nested xwcException if std::bad_alloc is caught from std::format
  *
  * \b Tests
- * - Getting timestamp string and broken-down time for a given time \ref
- * tests_libMagAOX_file_fileTimes_timestamp_bdtime "[test doc]"
- *     - Getting timestamp and broken-down time with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filenames_timestamp_bdtime_errors "[test doc]"
- *     - Getting timestamp string only for a given time \ref tests_libMagAOX_file_fileTimes_timestamp_only "[test doc]"
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_file_fileTimes_filename_relpath_time
- * "[test doc]"
- *     - Getting filename and relative path with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filename_relpath_only_errors "[test doc]"
+ *
  */
-inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
+template <class verboseT = mx::verbose::vvv>
+mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        const tm    &uttime, /**< [in] the broken down time*/
                        long         ts_nsec /**< [in] the nanosecond*/
 )
 {
-
     try
     {
+
+        // clang-format off
+        #ifdef XWCTEST_TIMESTAMP_THROW_BAD_ALLOC
+        throw std::bad_alloc();
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_TIMESTAMP_THROW_FORMAT_ERROR
+        throw std::format_error("testing format_error");
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_TIMESTAMP_THROW_EXCEPTION
+        throw std::exception();
+        #endif
+        // clang-format on
+
         tstamp = std::format( "{:04}{:02}{:02}{:02}{:02}{:02}{:09}",
                               uttime.tm_year + 1900,
                               uttime.tm_mon + 1,
@@ -81,10 +76,21 @@ inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                               uttime.tm_sec,
                               ts_nsec );
     }
-    catch( ... )
+    catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "error from std::format", -12 ) );
+        std::throw_with_nested( xwcException( "bad_alloc from std::format", -12 ) );
     }
+    catch( const std::format_error &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_format_error,
+                                           std::string( "from std::format: " ) + e.what() );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "from std::format: " ) + e.what() );
+    }
+
+    return mx::error_t::noerror;
 }
 
 /// Get the filename timestamp and the breakdown for a time.
@@ -94,40 +100,47 @@ inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \endverbatim
  * and the broken down `tm` structure \p uttime
  *
- * \returns 0 on success
- * \returns -1 if gmtime_r returns an error
- * \returns -2 if snprintf returns an error
- * \returns -3 if snprintf does not write enough characters
+ * \returns mx::error_t::noerror on success
+ * \returns mx::error_t::eoverflow if year is too big for gmtime_r
+ * \returns mx::error_t::error if gmtime_r returns an error without setting errno
+ * \returns mx::error_t::format_error if std::format throws and exception
+ * \returns mx::error_t::std_exception if any other exception other than bad_alloc is caught in \ref
+ * timestamp(std::string &, const tm&, long) "timestamp"
  *
- * \b Tests
- *     - Getting timestamp string and broken-down time for a given time \ref
- * tests_libMagAOX_file_fileTimes_timestamp_bdtime "[test doc]"
- *     - Getting timestamp and broken-down time with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filenames_timestamp_bdtime_errors "[test doc]"
- *     - Getting timestamp string only for a given time \ref tests_libMagAOX_file_fileTimes_timestamp_only "[test doc]"
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_file_fileTimes_filename_relpath_time
- * "[test doc]"
- *     - Getting filename and relative path with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filename_relpath_only_errors "[test doc]"
+ * \returns throws nested xwcException if an exception is caught from \ref timestamp(std::string &, const tm&, long)
+ * "timestamp" , which means std::bad_alloc was thrown
+ *
  */
-inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
+template <typename verboseT = mx::verbose::vvv>
+mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        tm          &uttime, /**< [out] the broken down time*/
                        time_t       ts_sec, /**< [in] the unix time second*/
                        long         ts_nsec /**< [in] the nanosecond*/
 )
 {
+    memset( &uttime, 0, sizeof( uttime ) );
+
+    errno = 0;
     if( gmtime_r( &ts_sec, &uttime ) == 0 )
     {
-        throw xwcException( "error getting UT time (gmtime_r returned 0)", -1 );
+        if( errno != 0 )
+        {
+            return mx::error_report<verboseT>( mx::errno2error_t( errno ),
+                                               "error getting UT time (gmtime_r returned 0)" );
+        }
+        else
+        {
+            return mx::error_report<verboseT>( mx::error_t::error, "error getting UT time (gmtime_r returned 0)" );
+        }
     }
 
     try
     {
-        timestamp( tstamp, uttime, ts_nsec );
+        mx_error_return( timestamp<verboseT>( tstamp, uttime, ts_nsec ) );
     }
-    catch( ... )
+    catch( const std::exception &e )
     {
-        std::throw_with_nested( xwcException( "error getting timestamp from broken down time", -5 ) );
+        std::throw_with_nested( xwcException( "exception from timestamp", -5 ) );
     }
 }
 
@@ -139,31 +152,33 @@ inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  *
  * \overload
  *
- * \returns 0 on success
- * \returns -1 if gmtime_r returns an error
- * \returns -2 if snprintf returns an error
- * \returns -3 if snprintf does not write enough characters
+ * \returns mx::error_t::noerror on success
+ * \returns mx::error_t::eoverflow if year is too big for gmtime_r
+ * \returns mx::error_t::error if gmtime_r returns an error without setting errno
+ * \returns mx::error_t::std_exception if an exception other than bad_alloc is caught in \ref timestamp(std::string &,
+ * const tm&, long) "timestamp"
+ *
+ * \returns throws nested xwcException if an exception is caught from \ref timestamp(std::string &, const tm&, long)
+ * "timestamp" , which means std::bad_alloc was thrown
  *
  * \b Tests
- *     - Getting timestamp string only for a given time \ref tests_libMagAOX_file_fileTimes_timestamp_only "[test doc]"
- *     - Getting timestamp only with errors \ref tests_libMagAOX_file_fileTimes_parse_filenames_timestamp_only_errors
- * "[test doc]"
  */
-inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
+template <class verboseT = mx::verbose::vvv>
+mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        time_t       ts_sec, /**< [in] the unix time second*/
                        long         ts_nsec /**< [in] the nanosecond*/
 )
 {
     tm uttime;
-    internal::initbdtime( uttime );
+    memset( &uttime, 0, sizeof( uttime ) );
 
     try
     {
-        timestamp( tstamp, uttime, ts_sec, ts_nsec );
+        mx_error_return( timestamp<verboseT>( tstamp, uttime, ts_sec, ts_nsec ) );
     }
-    catch( ... )
+    catch( const std::exception &e )
     {
-        std::throw_with_nested( xwcException( "error getting timestamp", -6 ) );
+        std::throw_with_nested( xwcException( "exception from timestamp", -5 ) );
     }
 }
 
@@ -188,31 +203,58 @@ inline void timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  *     - Getting filename and relative path for a given time \ref tests_libMagAOX_file_fileTimes_filename_relpath_time
  * "[test doc]"
  */
-inline void fileTimeRelPath( std::string &tstamp,  /**< [out] */
+template <class verboseT = mx::verbose::vvv>
+mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
                              std::string &relPath, /**< [out] */
                              time_t       ts_sec,  /**< [in] the unix time second*/
                              long         ts_nsec  /**< [in] the nanosecond*/
 )
 {
     tm uttime;
-    internal::initbdtime( uttime );
+    memset( &uttime, 0, sizeof( uttime ) );
 
     try
     {
-        timestamp( tstamp, uttime, ts_sec, ts_nsec );
-    }
-    catch( ... )
-    {
-        std::throw_with_nested( xwcException( "Error from timestamp", -7 ) );
-    }
+        // clang-format off
+        #ifdef XWCTEST_FILETIMERELPATH_THROW_BAD_ALLOC
+        throw std::bad_alloc();
+        #endif
+        // clang-format on
 
-    try
-    {
+        // clang-format off
+        #ifdef XWCTEST_FILETIMERELPATH_THROW_FORMAT_ERROR
+        throw std::format_error("testing format_error");
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_FILETIMERELPATH_THROW_EXCEPTION
+        throw std::exception();
+        #endif
+        // clang-format on
+
+        mx_error_check( timestamp( tstamp, uttime, ts_sec, ts_nsec ) );
+
         relPath = std::format( "{:04}_{:02}_{:02}", uttime.tm_year + 1900, uttime.tm_mon + 1, uttime.tm_mday );
+
+        return mx::error_t::noerror;
     }
-    catch( ... )
+    catch( const xwcException &e ) // This is from previous bad_alloc
     {
-        std::throw_with_nested( xwcException( "error formatting timestamp string", -8 ) );
+        std::throw_with_nested( xwcException( "getting relPath", -5 ) );
+    }
+    catch( const std::bad_alloc &e )
+    {
+        std::throw_with_nested( xwcException( "getting relPath", -6 ) );
+    }
+    catch( const std::format_error &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_format_error,
+                                           std::string( "from std::format: " ) + e.what() );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception, e.what() );
     }
 }
 
@@ -236,14 +278,10 @@ inline void fileTimeRelPath( std::string &tstamp,  /**< [out] */
  * \returns -5 if snprintf does not write enough characters to relPath
  *
  * \b Tests
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_file_fileTimes_filename_relpath_time
- * "[test doc]"
- *     - Getting filename and relative path with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filename_relpath_only_errors "[test doc]"
- *     - Getting filename and relative path for a given time with errors \ref
- * tests_libMagAOX_file_fileTimes_parse_filenames_relpath_errors "[test doc]"../libMagAOX/logger/tests/logMap_test
+ *
  */
-inline void fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
+template <class verboseT = mx::verbose::vvv>
+mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
                              std::string       &relPath,  /**< [out] the resulting relative path*/
                              const std::string &devName,  /**< [in] the device name part of the path.  No '/'. */
                              const std::string &ext,      /**< [in] the extension part of the filename. No `.`. */
@@ -255,39 +293,62 @@ inline void fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
 
     try
     {
-        fileTimeRelPath( tstamp, tmprelpath, ts_sec, ts_nsec );
+        mx_error_check( fileTimeRelPath<verboseT>( tstamp, tmprelpath, ts_sec, ts_nsec ) );
     }
-    catch( ... )
+    catch( const xwcException &e ) // This is from previous bad_alloc
     {
-        std::throw_with_nested( xwcException( "Error from fileTimeRelPath", -17 ) );
+        std::throw_with_nested( xwcException( "from fileTimeRelPath", -5 ) );
     }
 
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_FILETIMERELPATHSTRING_THROW_BAD_ALLOC
+        throw std::bad_alloc();
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_FILETIMERELPATHSTRING_THROW_EXCEPTION
+        throw std::exception();
+        #endif
+        // clang-format on
+
         relPath  = devName + '/' + tmprelpath;
         fileName = devName + '_' + tstamp + '.' + ext;
+
+        return mx::error_t::noerror;
     }
-    catch( ... )
+    catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "std::string error assembling paths", -18 ) );
+        std::throw_with_nested( xwcException( "std::string error assembling paths", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           std::string( "std::string error assembling paths" ) + e.what() );
     }
 }
 
 /// Parse a standard XWCTk timestamp string
 /** Extracts the date components.
  *
- * The input muse be exactly 23 characters long.
+ * The input must be exactly 23 characters long.
  *
  * No validity checks are done on the components.
  *
- * \returns 0 on success
- * \returns -1 on error
+ * \returns mx::error_t::noerror on success
+ * \returns mx::error_t::invalidarg if timestamp is not 23 characters long
+ * \returns mx::error_t::std_out_of_range if std::out_of_range is thrown by std::substr
+ * \returns mx::error_t::exception if any other exception other than bad_alloc is thrown by std::string::substr
+ *
+ * \throws nested mxException if std::bad_alloc is thrown
  *
  * \b Tests
- *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_file_fileTimes_parse_filenames_timestamps "[test
- * doc]"
+
  */
-inline void parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
+template <class verboseT = mx::verbose::vvv>
+mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
                             std::string       &MM,    /**< [out] the 2 digit month*/
                             std::string       &DD,    /**< [out] the 2 digit day*/
                             std::string       &hh,    /**< [out] the 2 digit hour*/
@@ -297,13 +358,31 @@ inline void parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
                             const std::string &tstamp /**< [in] the 23-digit timestamp */
 )
 {
-    if( tstamp.length() != 23 )
-    {
-        throw xwcException( "timestamp does not have 23 characters", -19 );
-    }
-
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_PARSETIMESTAMP_THROW_BAD_ALLOC
+        throw std::bad_alloc();
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_PARSETIMESTAMP_THROW_OUT_OF_RANGE
+        throw std::out_of_range("testing out of range");
+        #endif
+        // clang-format on
+
+        // clang-format off
+        #ifdef XWCTEST_PARSETIMESTAMP_THROW_EXCEPTION
+        throw std::exception();
+        #endif
+        // clang-format on
+
+        if( tstamp.length() != 23 )
+        {
+            return mx::error_report<verboseT>( mx::error_t::invalidarg, "timestamp does not have 23 characters" );
+        }
+
         YYYY = tstamp.substr( 0, 4 );
         MM   = tstamp.substr( 4, 2 );
         DD   = tstamp.substr( 6, 2 );
@@ -311,10 +390,21 @@ inline void parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
         mm   = tstamp.substr( 10, 2 );
         ss   = tstamp.substr( 12, 2 );
         nn   = tstamp.substr( 14, 9 );
+
+        return mx::error_t::noerror;
     }
-    catch( ... )
+    catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "error from std::string::substr for " + tstamp ) );
+        std::throw_with_nested( xwcException( "parsing timestamp", -6 ) );
+    }
+    catch( const std::out_of_range &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_out_of_range,
+                                           std::string( "parsing timestamp" ) + e.what() );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "parsing timestamp" ) + e.what() );
     }
 }
 
@@ -335,10 +425,10 @@ inline void parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
  * \returns -1 on error
  *
  * \b Tests
- *     - Parsing filenames, paths and timestamps \ref tests_libMagAOX_file_fileTimes_parse_filenames_timestamps "[test
- * doc]"
+
  */
-inline void parseFilePath( std::string       &devName, /**< [out] the device name */
+template <class verboseT = mx::verbose::vvv>
+mx::error_t parseFilePath( std::string       &devName, /**< [out] the device name */
                            std::string       &YYYY,    /**< [out] the 4 digit year*/
                            std::string       &MM,      /**< [out] the 2 digit month*/
                            std::string       &DD,      /**< [out] the 2 digit day*/
@@ -349,116 +439,112 @@ inline void parseFilePath( std::string       &devName, /**< [out] the device nam
                            const std::string &fname    /**< [in] the filename, which can include a path */
 )
 {
-    size_t est = fname.rfind( '.' ); // throws nothing
-    if( est == std::string::npos )
-    {
-        est = fname.size(); // no extension
-    }
-
-    size_t dst;
-    size_t dend;
-
     try
     {
-#ifdef XWCTEST_FILETIMES_ERR20
-        throw std::runtime_error( "XWCTEST_FILETIMES_ERR20" );
-#endif
+        // clang-format off
+        #ifdef XWCTEST_PARSEFILEPATH_THROW_BAD_ALLOC
+        throw std::bad_alloc();
+        #endif
+        // clang-format on
 
-        dend = fname.rfind( '_', est );
-    }
-    catch( ... )
-    {
-        std::throw_with_nested( xwcException( "error from std::string::rfind", -20 ) ); /*tested*/
-    }
+        // clang-format off
+        #ifdef XWCTEST_PARSEFILEPATH_THROW_EXCEPTION
+        throw std::exception();
+        #endif
+        // clang-format on
 
-    if( dend == std::string::npos ) // no device name, just a timestamp
-    {
-        try
+        size_t est = fname.rfind( '.' ); // rfind does not throw
+        if( est == std::string::npos )
         {
-#ifdef XWCTEST_FILETIMES_ERR21
-            throw std::runtime_error( "XWCTEST_FILETIMES_ERR21" );
-#endif
-                dst = fname.rfind( '/', est );
+            est = fname.size(); // no extension
         }
-        catch( ... )
+
+        size_t dst;
+        size_t dend;
+
+        dend = fname.rfind( '_', est ); // rfind does not throw
+
+        if( dend == std::string::npos ) // no device name, just a timestamp
         {
-            std::throw_with_nested( xwcException( "error from std::string::rfind", -21 ) ); /*tested*/
-        }
-        if( dst == std::string::npos ) // no path
-        {
-            dst = 0;
+
+            dst = fname.rfind( '/', est );
+
+            if( dst == std::string::npos ) // no path
+            {
+                dst = 0;
+            }
+            else
+            {
+                ++dst; // move past the '/'
+            }
+
+            dend = est;
+
+            devName = "";
         }
         else
         {
-            ++dst; // move past the '/'
-        }
 
-        dend = est;
+            dst = fname.rfind( '/', dend );
 
-        devName = "";
-    }
-    else
-    {
-        try
-        {
-#ifdef XWCTEST_FILETIMES_ERR22
-            throw std::runtime_error( "XWCTEST_FILETIMES_ERR22" );
-#endif
-                dst = fname.rfind( '/', dend );
-        }
-        catch( ... )
-        {
-            std::throw_with_nested( xwcException( "error from std::string::rfind", -22 ) );/*tested*/
-        }
-        if( dst == std::string::npos ) // no path
-        {
-            dst = 0;
-        }
-        else
-        {
-            ++dst; // move past the '/'
-        }
-
-        if( dst >= dend ) // This is '/_YYYY....'
-        {
-            devName = ""; // no device
-        }
-        else // finally, we have a device name
-        {
-            try
+            if( dst == std::string::npos ) // no path
             {
-#ifdef XWCTEST_FILETIMES_ERR23
-                throw std::runtime_error( "XWCTEST_FILETIMES_ERR23" );
-#endif
-                    devName = fname.substr( dst, dend - dst );
+                dst = 0;
             }
-            catch( ... )
+            else
             {
-                std::throw_with_nested( xwcException( "error from std::string::substr", -23 ) );/*tested*/
+                ++dst; // move past the '/'
             }
+
+            if( dst >= dend ) // This is '/_YYYY....'
+            {
+                devName = ""; // no device
+            }
+            else // finally, we have a device name
+            {
+
+                // clang-format off
+                #ifdef XWCTEST_PARSEFILEPATH_THROW_OUT_OF_RANGE
+                throw std::out_of_range("testing out of range");
+                #endif
+                // clang-format on
+
+                devName = fname.substr( dst, dend - dst );
+            }
+
+            dst  = dend + 1; // now move to beginning of timestamp
+            dend = est;      // and one-past-the-end of the timestamp
         }
 
-        dst  = dend + 1; // now move to beginning of timestamp
-        dend = est;      // and one-past-the-end of the timestamp
-    }
+        // Here dst...dend should be just the timestamp
+        if( dend - dst != 23 )
+        {
+            return mx::error_report<verboseT>( mx::error_t::invalidarg, "timestamp does not have 23 characters" );
+        }
 
-    // Here dst...dend should be just the timestamp
-    if( dend - dst != 23 )
-    {
-        throw xwcException( "MagAOX::file::parseFilePath: timestamp does not have 23 characters", -24 ); /*tested*/
-    }
+        // clang-format off
+        #ifdef XWCTEST_PARSEFILEPATH_TOO_SHORT
+        ++dst; // this will generate a too-short error at this point (invalidarg)
+        #endif
+        // clang-format on
 
-    try
-    {
-#ifdef XWCTEST_FILETIMES_ERR25
-        ++dst; // this will generate a too-short exception
-#endif
-
-        parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, fname.substr( dst, dend - dst ) );
+        mx_error_return( parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, fname.substr( dst, dend - dst ) ) );
     }
-    catch( ... )
+    catch( const xwcException &e ) // from a previous bad_alloc
     {
-        std::throw_with_nested( xwcException( "error parsing timestamp", -25 ) ); /*tested*/
+        std::throw_with_nested( xwcException( "parsing filepath", -6 ) );
+    }
+    catch( const std::bad_alloc &e )
+    {
+        std::throw_with_nested( xwcException( "parsing filepath", -6 ) );
+    }
+    catch( const std::out_of_range &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_out_of_range, e.what() );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception, e.what() );
     }
 }
 

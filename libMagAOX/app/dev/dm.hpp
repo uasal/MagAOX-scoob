@@ -70,6 +70,8 @@ template <class derivedT, typename realT>
 class dm
 {
 
+    typedef mx::verbose::vvv verboseT;
+
 protected:
     /** \name Configurable Parameters
      * @{
@@ -848,7 +850,7 @@ int dm<derivedT, realT>::appLogic()
     if(m_piTimes.size() >= m_piTimes.maxEntries() && m_piTimes.maxEntries() > 0 && m_piTimes.mono() != lastMono)
     {
        cbIndexT refEntry = m_piTimes.earliest();
-         
+
        m_piTimesD.resize(m_piTimes.maxEntries());
        m_satSemD.resize(m_satSem.maxEntries());
        m_actProcD.resize(m_actProc.maxEntries());
@@ -916,7 +918,10 @@ int dm<derivedT, realT>::whilePowerOff()
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::findDMChannels()
 {
-    std::vector<std::string> dmlist = mx::ioutils::getFileNames("/milk/shm/", derived().m_shmimName, ".im", ".shm");
+    std::vector<std::string> dmlist;
+    mx::error_t errc = mx::ioutils::getFileNames(dmlist, "/milk/shm/", derived().m_shmimName, ".im", ".shm");
+
+    mx_error_check_rv(errc, -1);
 
     if (dmlist.size() == 0)
     {
@@ -1013,7 +1018,7 @@ int dm<derivedT, realT>::processImage(void *curr_src,
     #ifdef XWC_DMTIMINGS
     m_t0 = mx::sys::get_curr_time();
     #endif
-    
+
     int rv = derived().commandDM(curr_src);
 
     #ifdef XWC_DMTIMINGS
@@ -1077,7 +1082,10 @@ int dm<derivedT, realT>::releaseDM()
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::checkFlats()
 {
-    std::vector<std::string> tfs = mx::ioutils::getFileNames(m_flatPath, "", "", ".fits");
+    std::vector<std::string> tfs;
+    mx::error_t errc = mx::ioutils::getFileNames(tfs, m_flatPath, "", "", ".fits");
+
+    mx_error_check_rv(errc, -1);
 
     // First remove default, b/c we always add it and don't want to include it in timestamp selected ones
     for (size_t n = 0; n < tfs.size(); ++n)
@@ -1430,7 +1438,10 @@ int dm<derivedT, realT>::zeroFlat()
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::checkTests()
 {
-    std::vector<std::string> tfs = mx::ioutils::getFileNames(m_testPath, "", "", ".fits");
+    std::vector<std::string> tfs;
+    mx::error_t errc = mx::ioutils::getFileNames(tfs, m_testPath, "", "", ".fits");
+
+    mx_error_check_rv(errc, -1);
 
     for (auto it = m_testCommands.begin(); it != m_testCommands.end(); ++it)
     {

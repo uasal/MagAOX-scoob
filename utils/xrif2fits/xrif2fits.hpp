@@ -68,6 +68,10 @@ void sigTermHandler( int signum, siginfo_t *siginf, void *ucont )
  */
 class xrif2fits : public mx::app::application
 {
+    typedef mx::verbose::vvv verboseT;
+
+    typedef MagAOX::file::stdFileName<verboseT> stdFileNameT;
+
   protected:
     /** \name Configurable Parameters
      * @{
@@ -79,7 +83,7 @@ class xrif2fits : public mx::app::application
     std::vector<std::string> m_files; /**< List of files to use.  If dir is not empty,
                                            it will be pre-pended to each name.*/
 
-    std::vector<MagAOX::file::stdFileName> m_fileNames; /**< The decoded file names broken down into
+    std::vector<MagAOX::file::stdFileName<verboseT>> m_fileNames; /**< The decoded file names broken down into
                                                               constituent parts */
 
     std::vector<std::string> m_logDir;
@@ -125,7 +129,7 @@ class xrif2fits : public mx::app::application
     int prepareFiles();
 
     template <typename dataT>
-    int writeImages( int n, MagAOX::file::stdFileName &lfn, std::vector<logMeta> &logMetas );
+    int writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logMetas );
 
     std::string format_nano( uint64_t n );
 };
@@ -284,7 +288,11 @@ inline int xrif2fits::execute()
 
     try
     {
-        prepareFiles();
+        if(prepareFiles() < 0)
+        {
+            mx::error_report<verboseT>(mx::error_t::error, "error from prepareFiles");
+            return -1;
+        }
     }
     catch( ... )
     {
@@ -294,8 +302,8 @@ inline int xrif2fits::execute()
     // Move this to prepareFiles
 
     // this has to be here
-    MagAOX::file::stdFileName &firstFile = m_fileNames[0];
-    MagAOX::file::stdFileName &lastFile  = m_fileNames.back();
+    stdFileNameT &firstFile = m_fileNames[0];
+    stdFileNameT &lastFile  = m_fileNames.back();
 
     xrif_error_t rv;
     rv = xrif_new( &m_xrif );
@@ -783,7 +791,7 @@ inline int xrif2fits::prepareFiles()
             m_dir = "./";
         }
 
-        m_files = mx::ioutils::getFileNames( m_dir, "", "", ".xrif" );
+        mx_error_check_rv(mx::ioutils::getFileNames(m_files, m_dir, "", "", ".xrif" ),-1);
 
         for( size_t n = 0; n < m_files.size(); ++n )
         {
@@ -843,7 +851,7 @@ inline int xrif2fits::prepareFiles()
 
     if( m_files.size() == 0 )
     {
-        throw MagAOX::xwcException( "No xrif files found" );
+        mx::error_report(mx::error_t::notfound, "No xrif files found" );
         return -1;
     }
 
@@ -881,7 +889,7 @@ inline int xrif2fits::prepareFiles()
 }
 
 template <typename dataT>
-int xrif2fits::writeImages( int n, MagAOX::file::stdFileName &lfn, std::vector<logMeta> &logMetas )
+int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logMetas )
 {
     mx::improc::eigenCube<dataT> tmpc(
         reinterpret_cast<dataT *>( m_xrif->raw_buffer ), m_xrif->width, m_xrif->height, m_xrif->frames );
