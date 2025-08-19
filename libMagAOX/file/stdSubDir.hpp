@@ -22,6 +22,11 @@ namespace MagAOX
 namespace file
 {
 
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
 /// Manage a standard subdirectory
 /** MagAO-X data storage subdirectories have the format YYYY_MM_DD
  *  This class provides parsing and date arithmetic.
@@ -99,21 +104,21 @@ class stdSubDir
      * \returns the current value of m_year if valid
      * \returns std::numeric_limits<int>::max() if invalid
      */
-    int year() const;
+    int year( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ ) const;
 
     /// Get the current value of m_month
     /**
      * \returns the current value of m_month if valid
      * \returns std::numeric_limits<unsigned int>::max() if invalid
      */
-    unsigned int month() const;
+    unsigned int month( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ ) const;
 
     /// Get the current value of m_day
     /**
      * \returns the current value of m_day if valid
      * \returns std::numeric_limits<unsigned int>::max() if invalid
      */
-    unsigned int day() const;
+    unsigned int day( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ ) const;
 
     /// Get the current value of m_valid
     /**
@@ -123,36 +128,54 @@ class stdSubDir
 
     // Manipulations
 
-    /// Get the previous day's subdirectory
-    stdSubDir previousSubdir( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ );
-
-    /// Get the following day's subdirectory
-    stdSubDir
-    followingSubdir( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ );
-
     /// Add a day to this subdirectory
     mx::error_t addDay();
 
     /// Subtract a day from this subdirectory
     mx::error_t subDay();
 
-    /// Compare to subdirectories for equality by timestamp
+    /// Get the previous day's subdirectory
+    stdSubDir previousSubdir( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */ );
+
+    /// Get the following day's subdirectory
+    stdSubDir followingSubdir( mx::error_t *errc = nullptr /**< [in] [optional] error code set during path creation */
+    );
+
+    /// Compare two subdirectories for equality by timestamp
     /** Two subdirectories are equal if and only if their timestamps are equal
      *
      */
-    bool operator==( const stdSubDir &comp ) const
-    {
-        return ( m_sysday == comp.m_sysday );
-    }
+    bool operator==( const stdSubDir &comp ) const;
 
-    /// Compare to subdirectories for less-than by timestamp
+    /// Compare two subdirectories for inequality by timestamp
+    /** Two subdirectories are equal if and only if their timestamps are equal
+     *
+     */
+    bool operator!=( const stdSubDir &comp ) const;
+
+    /// Compare two subdirectories for less-than by timestamp
     /** A subdirectory is less than if and only if its timestamp is less-than
      *
      */
-    bool operator<( const stdSubDir &comp ) const
-    {
-        return ( m_sysday < comp.m_sysday );
-    }
+    bool operator<( const stdSubDir &comp ) const;
+
+    /// Compare two subdirectories for less-than-or-equal by timestamp
+    /** A subdirectory is less than or equal if and only if its timestamp is less-than-or-equal
+     *
+     */
+    bool operator<=( const stdSubDir &comp ) const;
+
+    /// Compare two subdirectories for greater-than by timestamp
+    /** A subdirectory is greater than if and only if its timestamp is greater-than
+     *
+     */
+    bool operator>( const stdSubDir &comp ) const;
+
+    /// Compare two subdirectories for greater-than-or-equal by timestamp
+    /** A subdirectory is greater than if and only if its timestamp is greater-than-or-equal
+     *
+     */
+    bool operator>=( const stdSubDir &comp ) const;
 };
 
 template <typename verboseT>
@@ -164,9 +187,29 @@ stdSubDir<verboseT>::stdSubDir()
 template <typename verboseT>
 stdSubDir<verboseT>::stdSubDir( const std::chrono::sys_days &sysday )
 {
-    m_sysday = sysday;
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_CTORSYSDAYS_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
 
-    m_valid = true;
+        #ifdef XWCTEST_STDSUBDIR_CTORSYSDAYS_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        m_sysday = sysday;
+        m_valid  = true;
+    }
+    catch( const std::bad_alloc &e )
+    {
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations: " ) + e.what() );
+    }
 }
 
 template <typename verboseT>
@@ -184,14 +227,30 @@ stdSubDir<verboseT>::stdSubDir( const std::string &subdir )
 template <typename verboseT>
 mx::error_t stdSubDir<verboseT>::ymd( int year, unsigned month, unsigned day )
 {
+    // we technically could be subtle about this and wait for changes to occur
+    // but we'll just propagate any errors as invalidating this instance
+    m_valid    = false;
+    m_pathMade = false;
+
     try
     {
-        m_pathMade = false;
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_YMD_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_YMD_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
 
         std::chrono::year_month_day ymd{
             std::chrono::year( year ), std::chrono::month( month ), std::chrono::day( day ) };
 
         m_sysday = ymd;
+
+        m_valid = true;
+        return mx::error_t::noerror;
     }
     catch( const std::bad_alloc &e )
     {
@@ -199,12 +258,9 @@ mx::error_t stdSubDir<verboseT>::ymd( int year, unsigned month, unsigned day )
     }
     catch( const std::exception &e )
     {
-        m_valid = false;
-        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           std::string( "chrono operations: " ) + e.what() );
     }
-
-    m_valid = true;
-    return mx::error_t::noerror;
 }
 
 template <typename verboseT>
@@ -233,7 +289,7 @@ mx::error_t stdSubDir<verboseT>::path( const std::string &subdir )
         if( !isdigit( subdir[n] ) )
         {
             return mx::error_report<verboseT>( mx::error_t::invalidarg,
-                                               "subdir " + subdir + "has non-digit at " + std::to_string( n ) );
+                                               "subdir " + subdir + " has non-digit at " + std::to_string( n ) );
         }
     }
 
@@ -244,6 +300,20 @@ mx::error_t stdSubDir<verboseT>::path( const std::string &subdir )
 
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_SETPATH_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_SETPATH_OUT_OF_RANGE
+            throw std::out_of_range("test"); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_SETPATH_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         year = mx::ioutils::stoT<int>( subdir.substr( 0, 4 ), errc );
         mx_error_check_code( errc );
 
@@ -268,10 +338,27 @@ mx::error_t stdSubDir<verboseT>::path( const std::string &subdir )
 
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_SETPATH_BAD_ALLOC2
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_SETPATH_EXCEPTION2
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         std::chrono::year_month_day ymd{
             std::chrono::year( year ), std::chrono::month( month ), std::chrono::day( day ) };
 
         m_sysday = ymd;
+
+        m_path     = subdir;
+        m_pathMade = true;
+
+        m_valid = true;
+
+        return mx::error_t::noerror;
     }
     catch( const std::bad_alloc &e )
     {
@@ -279,15 +366,9 @@ mx::error_t stdSubDir<verboseT>::path( const std::string &subdir )
     }
     catch( const std::exception &e )
     {
-        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           std::string( "chrono operations: " ) + e.what() );
     }
-
-    m_path     = subdir;
-    m_pathMade = true;
-
-    m_valid = true;
-
-    return mx::error_t::noerror;
 }
 
 template <typename verboseT>
@@ -307,7 +388,23 @@ std::string stdSubDir<verboseT>::path( mx::error_t *errc ) const
     {
         try
         {
+            // clang-format off
+            #ifdef XWCTEST_STDSUBDIR_MAKEPATH_BAD_ALLOC
+                throw std::bad_alloc(); // LCOV_EXCL_LINE
+            #endif
+
+            #ifdef XWCTEST_STDSUBDIR_MAKEPATH_FORMAT_ERROR
+                throw std::format_error("test"); // LCOV_EXCL_LINE
+            #endif
+
+            #ifdef XWCTEST_STDSUBDIR_MAKEPATH_EXCEPTION
+                throw std::exception(); // LCOV_EXCL_LINE
+            #endif
+            // clang-format on
+
             m_path = std::format( "{:%Y_%m_%d}", m_sysday );
+
+            m_pathMade = true;
         }
         catch( const std::bad_alloc &e )
         {
@@ -331,8 +428,6 @@ std::string stdSubDir<verboseT>::path( mx::error_t *errc ) const
             mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "from std::format: " ) + e.what() );
             return "";
         }
-
-        m_pathMade = true;
     }
 
     if( errc )
@@ -343,48 +438,241 @@ std::string stdSubDir<verboseT>::path( mx::error_t *errc ) const
 }
 
 template <typename verboseT>
-int stdSubDir<verboseT>::year() const
+int stdSubDir<verboseT>::year( mx::error_t *errc ) const
 {
     if( !m_valid )
     {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
         mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access year while invalid" );
         return std::numeric_limits<int>::max();
     }
 
-    std::chrono::year_month_day ymd{ m_sysday };
-    return static_cast<int>( ymd.year() );
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_GYMD_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_GYMD_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        std::chrono::year_month_day ymd{ m_sysday };
+
+        if( errc )
+        {
+            *errc = mx::error_t::noerror;
+        }
+
+        return static_cast<int>( ymd.year() );
+    }
+    catch( const std::bad_alloc &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_bad_alloc;
+        }
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_exception;
+        }
+        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations: " ) + e.what() );
+        return std::numeric_limits<int>::max();
+    }
 }
 
 template <typename verboseT>
-unsigned int stdSubDir<verboseT>::month() const
+unsigned int stdSubDir<verboseT>::month( mx::error_t *errc ) const
 {
     if( !m_valid )
     {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
         mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access month while invalid" );
         return std::numeric_limits<unsigned int>::max();
     }
 
-    std::chrono::year_month_day ymd{ m_sysday };
-    return static_cast<unsigned>( ymd.month() );
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_GYMD_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_GYMD_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        std::chrono::year_month_day ymd{ m_sysday };
+
+        if( errc )
+        {
+            *errc = mx::error_t::noerror;
+        }
+        return static_cast<unsigned>( ymd.month() );
+    }
+    catch( const std::bad_alloc &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_bad_alloc;
+        }
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_exception;
+        }
+        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations: " ) + e.what() );
+        return std::numeric_limits<unsigned int>::max();
+    }
 }
 
 template <typename verboseT>
-unsigned int stdSubDir<verboseT>::day() const
+unsigned int stdSubDir<verboseT>::day( mx::error_t *errc ) const
 {
     if( !m_valid )
     {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
         mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access day while invalid" );
         return std::numeric_limits<unsigned int>::max();
     }
 
-    std::chrono::year_month_day ymd{ m_sysday };
-    return static_cast<unsigned>( ymd.day() );
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_GYMD_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_GYMD_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        std::chrono::year_month_day ymd{ m_sysday };
+
+        if( errc )
+        {
+            *errc = mx::error_t::noerror;
+        }
+        return static_cast<unsigned>( ymd.day() );
+    }
+    catch( const std::bad_alloc &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_bad_alloc;
+        }
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_exception;
+        }
+        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations: " ) + e.what() );
+        return std::numeric_limits<unsigned int>::max();
+    }
 }
 
 template <typename verboseT>
 bool stdSubDir<verboseT>::valid() const
 {
     return m_valid;
+}
+
+template <typename verboseT>
+mx::error_t stdSubDir<verboseT>::addDay()
+{
+    if( !m_valid )
+    {
+        return mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_INC_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_INC_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        m_pathMade = false;
+        ++m_sysday;
+    }
+    catch( const std::bad_alloc &e )
+    {
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        m_valid = false;
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           std::string( "chrono operations: " ) + e.what() );
+    }
+
+    return mx::error_t::noerror;
+}
+
+template <typename verboseT>
+mx::error_t stdSubDir<verboseT>::subDay()
+{
+    if( !m_valid )
+    {
+        return mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+
+    try
+    {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_INC_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDSUBDIR_INC_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
+        --m_sysday;
+
+        m_pathMade = false;
+
+        return mx::error_t::noerror;
+    }
+    catch( const std::bad_alloc &e )
+    {
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const std::exception &e )
+    {
+        m_valid = false;
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           std::string( "chrono operations: " ) + e.what() );
+    }
 }
 
 template <typename verboseT>
@@ -402,10 +690,14 @@ stdSubDir<verboseT> stdSubDir<verboseT>::previousSubdir( mx::error_t *errc )
 
     try
     {
-        std::chrono::sys_days symd = m_sysday;
-        --symd;
+        stdSubDir std = *this;
 
-        stdSubDir std( symd );
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_PREV_INVAL
+            // invalidate
+            std.path(""); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
 
         if( !std.valid() )
         {
@@ -417,27 +709,28 @@ stdSubDir<verboseT> stdSubDir<verboseT>::previousSubdir( mx::error_t *errc )
             return stdSubDir();
         }
 
+        mx::error_t _errc = std.subDay();
+
+        if( _errc != mx::error_t::noerror )
+        {
+            mx::error_report<verboseT>( _errc, "from subDay" );
+        }
+
         if( errc )
         {
-            *errc = mx::error_t::noerror;
+            *errc = _errc;
         }
 
         return std;
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
-    }
-    catch( const std::exception &e )
-    {
         if( errc )
         {
-            *errc = mx::error_t::std_exception;
+            *errc = mx::error_t::std_bad_alloc;
         }
-        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
-        return stdSubDir();
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }
-
 }
 
 template <typename verboseT>
@@ -455,10 +748,15 @@ stdSubDir<verboseT> stdSubDir<verboseT>::followingSubdir( mx::error_t *errc )
 
     try
     {
-        std::chrono::sys_days symd = m_sysday;
-        ++symd;
+        stdSubDir std = *this;
 
-        stdSubDir std( symd );
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_PREV_INVAL
+            // invalidate
+            std.path(""); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         if( !std.valid() )
         {
             if( errc )
@@ -469,81 +767,73 @@ stdSubDir<verboseT> stdSubDir<verboseT>::followingSubdir( mx::error_t *errc )
             return stdSubDir();
         }
 
+        mx::error_t _errc = std.addDay();
+
+        if( _errc != mx::error_t::noerror )
+        {
+            mx::error_report<verboseT>( _errc, "from subDay" );
+        }
+
         if( errc )
         {
-            *errc = mx::error_t::noerror;
+            *errc = _errc;
         }
 
         return std;
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
-    }
-    catch( const std::exception &e )
-    {
         if( errc )
         {
-            *errc = mx::error_t::std_exception;
+            *errc = mx::error_t::std_bad_alloc;
         }
-        mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
-        return stdSubDir();
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }
 }
 
 template <typename verboseT>
-mx::error_t stdSubDir<verboseT>::addDay()
+bool stdSubDir<verboseT>::operator==( const stdSubDir &comp ) const
 {
-    if( !m_valid )
-    {
-        return mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
-    }
-
-    try
-    {
-        m_pathMade = false;
-        ++m_sysday;
-    }
-    catch( const std::bad_alloc &e )
-    {
-        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
-    }
-    catch( const std::exception &e )
-    {
-        m_valid = false;
-        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
-    }
-
-    return mx::error_t::noerror;
+    return ( m_sysday == comp.m_sysday );
 }
 
 template <typename verboseT>
-mx::error_t stdSubDir<verboseT>::subDay()
+bool stdSubDir<verboseT>::operator!=( const stdSubDir &comp ) const
 {
-    if( !m_valid )
-    {
-        return mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
-    }
-
-    try
-    {
-        --m_sysday;
-    }
-    catch( const std::bad_alloc &e )
-    {
-        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
-    }
-    catch( const std::exception &e )
-    {
-        m_valid = false;
-        return mx::error_report<verboseT>( mx::error_t::std_exception, std::string( "chrono operations" ) + e.what() );
-    }
-
-    m_pathMade = false;
-    return mx::error_t::noerror;
+    return ( m_sysday != comp.m_sysday );
 }
 
+template <typename verboseT>
+bool stdSubDir<verboseT>::operator<( const stdSubDir &comp ) const
+{
+    return ( m_sysday < comp.m_sysday );
+}
+
+template <typename verboseT>
+bool stdSubDir<verboseT>::operator<=( const stdSubDir &comp ) const
+{
+    return ( m_sysday <= comp.m_sysday );
+}
+
+template <typename verboseT>
+bool stdSubDir<verboseT>::operator>( const stdSubDir &comp ) const
+{
+    return ( m_sysday > comp.m_sysday );
+}
+
+template <typename verboseT>
+bool stdSubDir<verboseT>::operator>=( const stdSubDir &comp ) const
+{
+    return ( m_sysday >= comp.m_sysday );
+}
+
+#ifndef XWCTEST_NAMESPACE
 extern template class stdSubDir<XWC_DEFAULT_VERBOSITY>;
+#endif
+
+#ifdef XWCTEST_NAMESPACE
+}
+#endif
 
 } // namespace file
 } // namespace MagAOX

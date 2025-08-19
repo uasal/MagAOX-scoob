@@ -37,8 +37,6 @@ namespace XWCTEST_NAMESPACE
  *
  * \returns throws nested xwcException if std::bad_alloc is caught from std::format
  *
- * \b Tests
- *
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
@@ -51,19 +49,19 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
 
         // clang-format off
         #ifdef XWCTEST_TIMESTAMP_THROW_BAD_ALLOC
-        throw std::bad_alloc();
+        throw std::bad_alloc(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_TIMESTAMP_THROW_FORMAT_ERROR
-        throw std::format_error("testing format_error");
+        throw std::format_error("testing format_error"); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_TIMESTAMP_THROW_EXCEPTION
-        throw std::exception();
+        throw std::exception(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
@@ -161,7 +159,6 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns throws nested xwcException if an exception is caught from \ref timestamp(std::string &, const tm&, long)
  * "timestamp" , which means std::bad_alloc was thrown
  *
- * \b Tests
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
@@ -199,9 +196,6 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns -4 if snprintf returns an error writing relPath
  * \returns -5 if snprintf does not write enough characters to relPath
  *
- * \b Tests
- *     - Getting filename and relative path for a given time \ref tests_libMagAOX_file_fileTimes_filename_relpath_time
- * "[test doc]"
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
@@ -217,19 +211,19 @@ mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
     {
         // clang-format off
         #ifdef XWCTEST_FILETIMERELPATH_THROW_BAD_ALLOC
-        throw std::bad_alloc();
+        throw std::bad_alloc(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_FILETIMERELPATH_THROW_FORMAT_ERROR
-        throw std::format_error("testing format_error");
+        throw std::format_error("testing format_error"); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_FILETIMERELPATH_THROW_EXCEPTION
-        throw std::exception();
+        throw std::exception(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
@@ -277,8 +271,6 @@ mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
  * \returns -4 if snprintf returns an error writing relPath
  * \returns -5 if snprintf does not write enough characters to relPath
  *
- * \b Tests
- *
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
@@ -304,13 +296,13 @@ mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
     {
         // clang-format off
         #ifdef XWCTEST_FILETIMERELPATHSTRING_THROW_BAD_ALLOC
-        throw std::bad_alloc();
+        throw std::bad_alloc(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_FILETIMERELPATHSTRING_THROW_EXCEPTION
-        throw std::exception();
+        throw std::exception(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
@@ -344,8 +336,6 @@ mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
  *
  * \throws nested mxException if std::bad_alloc is thrown
  *
- * \b Tests
-
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
@@ -362,19 +352,19 @@ mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
     {
         // clang-format off
         #ifdef XWCTEST_PARSETIMESTAMP_THROW_BAD_ALLOC
-        throw std::bad_alloc();
+        throw std::bad_alloc(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_PARSETIMESTAMP_THROW_OUT_OF_RANGE
-        throw std::out_of_range("testing out of range");
+        throw std::out_of_range("testing out of range"); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_PARSETIMESTAMP_THROW_EXCEPTION
-        throw std::exception();
+        throw std::exception(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
@@ -424,8 +414,6 @@ mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
  * \returns 0 on success
  * \returns -1 on error
  *
- * \b Tests
-
  */
 template <class verboseT = mx::verbose::vvv>
 mx::error_t parseFilePath( std::string       &devName, /**< [out] the device name */
@@ -443,13 +431,13 @@ mx::error_t parseFilePath( std::string       &devName, /**< [out] the device nam
     {
         // clang-format off
         #ifdef XWCTEST_PARSEFILEPATH_THROW_BAD_ALLOC
-        throw std::bad_alloc();
+        throw std::bad_alloc(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
         // clang-format off
         #ifdef XWCTEST_PARSEFILEPATH_THROW_EXCEPTION
-        throw std::exception();
+        throw std::exception(); // LCOV_EXCL_LINE
         #endif
         // clang-format on
 
@@ -505,7 +493,7 @@ mx::error_t parseFilePath( std::string       &devName, /**< [out] the device nam
 
                 // clang-format off
                 #ifdef XWCTEST_PARSEFILEPATH_THROW_OUT_OF_RANGE
-                throw std::out_of_range("testing out of range");
+                throw std::out_of_range("testing out of range"); // LCOV_EXCL_LINE
                 #endif
                 // clang-format on
 
@@ -524,7 +512,8 @@ mx::error_t parseFilePath( std::string       &devName, /**< [out] the device nam
 
         // clang-format off
         #ifdef XWCTEST_PARSEFILEPATH_TOO_SHORT
-        ++dst; // this will generate a too-short error at this point (invalidarg)
+        // this will generate a too-short error at this point (invalidarg)
+        ++dst; // LCOV_EXCL_LINE
         #endif
         // clang-format on
 

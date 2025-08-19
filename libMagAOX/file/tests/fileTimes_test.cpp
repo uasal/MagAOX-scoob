@@ -107,9 +107,16 @@
 #undef XWCTEST_NAMESPACE
 #undef XWCTEST_PARSEFILEPATH_THROW_EXCEPTION
 
-/** \test Scenario: Getting timestamp string and broken-down time for a given time
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_bdtime
+namespace libXWCTest
+{
+namespace fileTest
+{
+namespace fileTimesTest
+{
+
+/// Getting timestamp string and broken-down time for a given time
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp string and broken-down time for a given time", "[libMagAOX::file::fileTimes]" )
 {
@@ -194,11 +201,11 @@ SCENARIO( "Getting timestamp string and broken-down time for a given time", "[li
     }
 }
 
-/** \test Scenario: Getting timestamp and broken-down time with errors
- *
+/// Getting timestamp and broken-down time with errors
+/**
  * This is in a separate file due to need to define a buffer size too small to generate errors
  *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_bdtime_errors
+ * \test
  */
 SCENARIO( "Getting timestamp and broken-down time with errors", "[libMagAOX::file::fileTimes]" )
 {
@@ -216,8 +223,8 @@ SCENARIO( "Getting timestamp and broken-down time with errors", "[libMagAOX::fil
     }
 }
 
-/** \test Scenario: Getting timestamp only with errors
- *
+/// Getting timestamp only with errors
+/**
  * This is in a separate file due to need to define a buffer size too small to generate errors
  *
  * \anchor tests_libMagAOX_file_fileTimes_timestamp_only_errors
@@ -237,9 +244,9 @@ SCENARIO( "Getting timestamp only with errors", "[libMagAOX::file::fileTimes]" )
     }
 }
 
-/** \test Scenario: Getting timestamp string and broken-down time causes bad_alloc
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_bdtime_bad_alloc
+/// Getting timestamp string and broken-down time causes bad_alloc
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp string and broken-down time causes bad_alloc", "[libMagAOX::file::fileTimes]" )
 {
@@ -266,9 +273,9 @@ SCENARIO( "Getting timestamp string and broken-down time causes bad_alloc", "[li
     }
 }
 
-/** \test Scenario: Getting timestamp only causes bad_alloc
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_only_bad_alloc
+/// Getting timestamp only causes bad_alloc
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp only causes bad_alloc", "[libMagAOX::file::fileTimes]" )
 {
@@ -294,9 +301,9 @@ SCENARIO( "Getting timestamp only causes bad_alloc", "[libMagAOX::file::fileTime
     }
 }
 
-/** \test Scenario: Getting timestamp string and broken-down time causes filesystem_error
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_bdtime_filesystem_error
+/// Getting timestamp string and broken-down time causes filesystem_error
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp string and broken-down time causes filesystem_error", "[libMagAOX::file::fileTimes]" )
 {
@@ -315,9 +322,9 @@ SCENARIO( "Getting timestamp string and broken-down time causes filesystem_error
     }
 }
 
-/** \test Scenario: Getting timestamp only causes filesystem_error
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_only_filesystem_error
+/// Getting timestamp only causes filesystem_error
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp only causes filesystem_error", "[libMagAOX::file::fileTimes]" )
 {
@@ -334,9 +341,9 @@ SCENARIO( "Getting timestamp only causes filesystem_error", "[libMagAOX::file::f
     }
 }
 
-/** \test Scenario: Getting timestamp string and broken-down time causes exception
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_bdtime_exception
+/// Getting timestamp string and broken-down time causes exception
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp string and broken-down time causes exception", "[libMagAOX::file::fileTimes]" )
 {
@@ -355,9 +362,9 @@ SCENARIO( "Getting timestamp string and broken-down time causes exception", "[li
     }
 }
 
-/** \test Scenario: Getting timestamp only causes exception
- *
- * \anchor tests_libMagAOX_file_fileTimes_timestamp_only_exception
+/// Getting timestamp only causes exception
+/**
+ * \test
  */
 SCENARIO( "Getting timestamp only causes exception", "[libMagAOX::file::fileTimes]" )
 {
@@ -374,9 +381,9 @@ SCENARIO( "Getting timestamp only causes exception", "[libMagAOX::file::fileTime
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time
+/// Getting filename and relative path for a given time
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time", "[libMagAOX::file::fileTimes]" )
 {
@@ -395,9 +402,9 @@ SCENARIO( "Getting filename and relative path for a given time", "[libMagAOX::fi
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes overflow
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_overflow
+/// Getting filename and relative path for a given time causes overflow
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes overflow", "[libMagAOX::file::fileTimes]" )
 {
@@ -414,9 +421,9 @@ SCENARIO( "Getting filename and relative path for a given time causes overflow",
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes bad_alloc in timestamp
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_timestamp_bad_alloc
+/// Getting filename and relative path for a given time causes bad_alloc in timestamp
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes bad_alloc in timestamp",
           "[libMagAOX::file::fileTimes]" )
@@ -443,9 +450,9 @@ SCENARIO( "Getting filename and relative path for a given time causes bad_alloc 
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes format_error in timestamp
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_timestamp_format_error
+/// Getting filename and relative path for a given time causes format_error in timestamp
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes format_error in timestamp",
           "[libMagAOX::file::fileTimes]" )
@@ -464,9 +471,9 @@ SCENARIO( "Getting filename and relative path for a given time causes format_err
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes exception in timestamp
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_timestamp_exception
+/// Getting filename and relative path for a given time causes exception in timestamp
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes exception in timestamp",
           "[libMagAOX::file::fileTimes]" )
@@ -485,9 +492,9 @@ SCENARIO( "Getting filename and relative path for a given time causes exception 
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes bad_alloc in top relpath
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_top_rp_bad_alloc
+///Getting filename and relative path for a given time causes bad_alloc in top relpath
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes bad_alloc in top relpath",
           "[libMagAOX::file::fileTimes]" )
@@ -514,9 +521,9 @@ SCENARIO( "Getting filename and relative path for a given time causes bad_alloc 
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes bad_alloc in relpath string
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_rpstring_bad_alloc
+/// Getting filename and relative path for a given time causes bad_alloc in relpath string
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes bad_alloc in relpath string",
           "[libMagAOX::file::fileTimes]" )
@@ -543,9 +550,9 @@ SCENARIO( "Getting filename and relative path for a given time causes bad_alloc 
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes format_error in top relpath
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_top_rp_format_error
+/// Getting filename and relative path for a given time causes format_error in top relpath
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes format_error in top relpath",
           "[libMagAOX::file::fileTimes]" )
@@ -564,9 +571,9 @@ SCENARIO( "Getting filename and relative path for a given time causes format_err
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes exception in top relpath
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_top_rp_exception
+/// Getting filename and relative path for a given time causes exception in top relpath
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes exception in top relpath",
           "[libMagAOX::file::fileTimes]" )
@@ -585,9 +592,9 @@ SCENARIO( "Getting filename and relative path for a given time causes exception 
     }
 }
 
-/** \test Scenario: Getting filename and relative path for a given time causes exception in relpath string
- *
- * \anchor tests_libMagAOX_file_fileTimes_filename_relpath_time_rpstring_exception
+/// Getting filename and relative path for a given time causes exception in relpath string
+/**
+ * \test
  */
 SCENARIO( "Getting filename and relative path for a given time causes exception in relpath string",
           "[libMagAOX::file::fileTimes]" )
@@ -606,9 +613,9 @@ SCENARIO( "Getting filename and relative path for a given time causes exception 
     }
 }
 
-/** \test Scenario: Parsing filenames, paths and timestamps, with no errors
- *
- * \anchor tests_libMagAOX_file_fileTimes_parse_filenames_timestamps
+/// Parsing filenames, paths and timestamps, with no errors
+/**
+ * \test
  */
 SCENARIO( "Parsing filenames, paths and timestamps, with no errors", "[libMagAOX::file::fileTimes]" )
 {
@@ -829,9 +836,9 @@ SCENARIO( "Parsing filenames, paths and timestamps, with no errors", "[libMagAOX
     }
 }
 
-/** \test Scenario: Parsing filenames and paths with errors
- *
- * \anchor tests_libMagAOX_file_fileTimes_parse_filenames_errors
+/// Parsing filenames and paths with errors
+/**
+ * \test
  */
 SCENARIO( "Parsing filenames and paths with errors", "[libMagAOX::file::fileTimes]" )
 {
@@ -929,11 +936,11 @@ SCENARIO( "Parsing filenames and paths with errors", "[libMagAOX::file::fileTime
     }
 }
 
-/** \test Scenario: Parsing timestamps with errors
- *
+/// Parsing timestamps with errors
+/**
  * Tests only size errors.  Exceptions tested with parseFilePath tests.
  *
- * \anchor tests_libMagAOX_file_fileTimes_timestamps_errors
+ * \test
  */
 SCENARIO( "Parsing timestamps with errors", "[libMagAOX::file::fileTimes]" )
 {
@@ -953,4 +960,8 @@ SCENARIO( "Parsing timestamps with errors", "[libMagAOX::file::fileTimes]" )
         mx::error_t errc = MagAOX::file::parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, "202411210633000000000001" );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
+}
+
+} //namespace fileTimes_test
+}
 }

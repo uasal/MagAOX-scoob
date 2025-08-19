@@ -9,7 +9,11 @@
 
 #include "../stdFileName.hpp"
 
-namespace stdFileName_test
+namespace libXWCTest
+{
+namespace fileTest
+{
+namespace stdFileNameTest
 {
 
 /** \test Scenario: Using stdFileName
@@ -20,94 +24,87 @@ SCENARIO( "Using stdFileName", "[libMagAOX::file::stdFileName]" )
 {
     GIVEN( "default construction and parsing and member access" )
     {
-        std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+        std::string               fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
         MagAOX::file::stdFileName sfn;
 
-        sfn.fullName(fullName);
+        sfn.fullName( fullName );
 
-        REQUIRE(sfn.fullName() == fullName);
-        REQUIRE(sfn.baseName() == "bamm_20241121063321000000001.binlog");
-        REQUIRE(sfn.appName() == "bamm");
-        REQUIRE(sfn.extension() == ".binlog");
-        REQUIRE(sfn.subDir().path() == "2024_11_21");
-        REQUIRE(sfn.year() == 2024);
-        REQUIRE(sfn.month() == 11);
-        REQUIRE(sfn.day() == 21);
-        REQUIRE(sfn.hour() == 6);
-        REQUIRE(sfn.minute() == 33);
-        REQUIRE(sfn.second() == 21);
-        REQUIRE(sfn.nsec() == 1);
+        REQUIRE( sfn.fullName() == fullName );
+        REQUIRE( sfn.baseName() == "bamm_20241121063321000000001.binlog" );
+        REQUIRE( sfn.appName() == "bamm" );
+        REQUIRE( sfn.extension() == ".binlog" );
+        REQUIRE( sfn.subDir().path() == "2024_11_21" );
+        REQUIRE( sfn.year() == 2024 );
+        REQUIRE( sfn.month() == 11 );
+        REQUIRE( sfn.day() == 21 );
+        REQUIRE( sfn.hour() == 6 );
+        REQUIRE( sfn.minute() == 33 );
+        REQUIRE( sfn.second() == 21 );
+        REQUIRE( sfn.nsec() == 1 );
 
         flatlogs::timespecX ts = sfn.timestamp();
 
-        REQUIRE(ts.time_s == 1732170801);
-        REQUIRE(ts.time_ns == 1);
+        REQUIRE( ts.time_s == 1732170801 );
+        REQUIRE( ts.time_ns == 1 );
 
-
-        REQUIRE(sfn.valid() == true);
-
+        REQUIRE( sfn.valid() == true );
     }
 
     GIVEN( "default construction, assignment and member access" )
     {
-        std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+        std::string               fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
         MagAOX::file::stdFileName sfn;
 
         sfn = fullName;
 
-        REQUIRE(sfn.fullName() == fullName);
-        REQUIRE(sfn.baseName() == "bamm_20241121063321000000001.binlog");
-        REQUIRE(sfn.appName() == "bamm");
-        REQUIRE(sfn.extension() == ".binlog");
-        REQUIRE(sfn.subDir().path() == "2024_11_21");
-        REQUIRE(sfn.year() == 2024);
-        REQUIRE(sfn.month() == 11);
-        REQUIRE(sfn.day() == 21);
-        REQUIRE(sfn.hour() == 6);
-        REQUIRE(sfn.minute() == 33);
-        REQUIRE(sfn.second() == 21);
-        REQUIRE(sfn.nsec() == 1);
+        REQUIRE( sfn.fullName() == fullName );
+        REQUIRE( sfn.baseName() == "bamm_20241121063321000000001.binlog" );
+        REQUIRE( sfn.appName() == "bamm" );
+        REQUIRE( sfn.extension() == ".binlog" );
+        REQUIRE( sfn.subDir().path() == "2024_11_21" );
+        REQUIRE( sfn.year() == 2024 );
+        REQUIRE( sfn.month() == 11 );
+        REQUIRE( sfn.day() == 21 );
+        REQUIRE( sfn.hour() == 6 );
+        REQUIRE( sfn.minute() == 33 );
+        REQUIRE( sfn.second() == 21 );
+        REQUIRE( sfn.nsec() == 1 );
 
         flatlogs::timespecX ts = sfn.timestamp();
 
-        REQUIRE(ts.time_s == 1732170801);
-        REQUIRE(ts.time_ns == 1);
+        REQUIRE( ts.time_s == 1732170801 );
+        REQUIRE( ts.time_ns == 1 );
 
-
-
-        REQUIRE(sfn.valid() == true);
-
+        REQUIRE( sfn.valid() == true );
     }
 
     GIVEN( "construction by parsing and member access" )
     {
-        std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
-        MagAOX::file::stdFileName sfn(fullName);
+        std::string               fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+        MagAOX::file::stdFileName sfn( fullName );
 
-        REQUIRE(sfn.fullName() == fullName);
-        REQUIRE(sfn.baseName() == "bamm_20241121063321000000001.binlog");
-        REQUIRE(sfn.appName() == "bamm");
-        REQUIRE(sfn.extension() == ".binlog");
-        REQUIRE(sfn.subDir().path() == "2024_11_21");
-        REQUIRE(sfn.year() == 2024);
-        REQUIRE(sfn.month() == 11);
-        REQUIRE(sfn.day() == 21);
-        REQUIRE(sfn.hour() == 6);
-        REQUIRE(sfn.minute() == 33);
-        REQUIRE(sfn.second() == 21);
-        REQUIRE(sfn.nsec() == 1);
+        REQUIRE( sfn.fullName() == fullName );
+        REQUIRE( sfn.baseName() == "bamm_20241121063321000000001.binlog" );
+        REQUIRE( sfn.appName() == "bamm" );
+        REQUIRE( sfn.extension() == ".binlog" );
+        REQUIRE( sfn.subDir().path() == "2024_11_21" );
+        REQUIRE( sfn.year() == 2024 );
+        REQUIRE( sfn.month() == 11 );
+        REQUIRE( sfn.day() == 21 );
+        REQUIRE( sfn.hour() == 6 );
+        REQUIRE( sfn.minute() == 33 );
+        REQUIRE( sfn.second() == 21 );
+        REQUIRE( sfn.nsec() == 1 );
 
         flatlogs::timespecX ts = sfn.timestamp();
 
-        REQUIRE(ts.time_s == 1732170801);
-        REQUIRE(ts.time_ns == 1);
+        REQUIRE( ts.time_s == 1732170801 );
+        REQUIRE( ts.time_ns == 1 );
 
-
-
-        REQUIRE(sfn.valid() == true);
-
+        REQUIRE( sfn.valid() == true );
     }
 }
 
-
-} // namespace stdFileRaw_test
+} // namespace stdFileNameTest
+} // namespace fileTest
+} // namespace libXWCTest
