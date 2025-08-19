@@ -62,6 +62,10 @@ else
   OPTIMIZE += -O3
 endif
 
+ifeq ($(DEBUG),1)
+  OPTIMIZE += -O0 -g
+endif
+
 ########################################
 ## Libraries
 #######################################

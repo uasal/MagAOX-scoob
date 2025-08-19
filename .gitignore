@@ -228,3 +228,6 @@ libMagAOX/doc/diag/png/xwcapps_connections.png
 **/*.gcda
 *.info
 coverage_report/
+
+# Valgrind logs
+tests/valgrind/logs/*
