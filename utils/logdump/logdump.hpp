@@ -11,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 
+#include <mx/mxError.hpp>
 #include <mx/ioutils/fileUtils.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp"
@@ -39,6 +40,8 @@ using namespace flatlogs;
  */
 class logdump : public mx::app::application
 {
+    typedef mx::verbose::vvv verboseT;
+
   protected:
     std::string m_dir;
     std::string m_ext;
@@ -260,7 +263,7 @@ int logdump::execute()
         {
 
             std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
-            MagAOX::sys::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, m_file );
+            mx_error_check_rv(MagAOX::file::parseFilePath( devName, YYYY, MM, DD, hh, mm, ss, nn, m_file ),-1);
 
             m_file = m_dir + '/' + devName + '/' + YYYY + '_' + MM + '_' + DD + '/' + m_file;
         }
@@ -269,18 +272,19 @@ int logdump::execute()
     }
     else
     {
-        subdirs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], "", "", "" );
+        mx_error_check_rv(mx::ioutils::getFileNames(subdirs, m_dir + "/" + m_prefixes[0], "", "", "" ),-1);
 
         if( m_follow )
         {
-            logs = mx::ioutils::getFileNames( subdirs.back(), m_prefixes[0], "", m_ext );
+            mx_error_check_rv(mx::ioutils::getFileNames(logs, subdirs.back(), m_prefixes[0], "", m_ext ), -1);
         }
         else
         {
             for( size_t d = 0; d < subdirs.size(); ++d )
             {
                 // get subdir vectors one at a time and append to build the whole list
-                std::vector<std::string> tlogs = mx::ioutils::getFileNames( subdirs[d], m_prefixes[0], "", m_ext );
+                std::vector<std::string> tlogs;
+                mx_error_check_rv(mx::ioutils::getFileNames(tlogs, subdirs[d], m_prefixes[0], "", m_ext ),-1);
                 logs.insert( logs.end(), tlogs.begin(), tlogs.end() );
             }
         }
@@ -349,7 +353,7 @@ int logdump::execute()
                         {
                             // Check if a new sub-directory exists now.
                             size_t old_subdirs_sz = subdirs.size();
-                            subdirs = mx::ioutils::getFileNames( m_dir + "/" + m_prefixes[0], "", "", "" );
+                            mx_error_check_rv(mx::ioutils::getFileNames( subdirs, m_dir + "/" + m_prefixes[0], "", "", "" ),-1);
                             if( subdirs.size() > old_subdirs_sz )
                             {
                                 // new subdirs(s) detected;
@@ -358,7 +362,9 @@ int logdump::execute()
 
                             // Check if a new file exists now.
                             size_t old_logs_sz = logs.size();
-                            logs               = mx::ioutils::getFileNames( subdirs.back(), m_prefixes[0], "", m_ext );
+
+                            mx_error_check_rv(mx::ioutils::getFileNames( logs, subdirs.back(), m_prefixes[0], "", m_ext ),-1);
+
                             if( logs.size() > old_logs_sz )
                             {
                                 // new file(s) detected;
