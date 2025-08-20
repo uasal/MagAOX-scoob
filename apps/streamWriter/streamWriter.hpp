@@ -1866,7 +1866,14 @@ int streamWriter::doEncode()
 
     std::string fileName;
     std::string relPath;
-    sys::fileTimeRelPath( fileName, relPath, m_outName, "xrif", fts->tv_sec, fts->tv_nsec );
+    mx::error_t errc = file::fileTimeRelPath( fileName, relPath, m_outName, "xrif", fts->tv_sec, fts->tv_nsec );
+    if(errc != mx::error_t::noerror)
+    {
+        std::string msg = "error from file::fileTimeRePath: ";
+        msg += mx::errorMessage(errc);
+        msg += " (" + std::string(mx::errorName(errc)) + ")";
+        return log<software_error, -1>( { __FILE__, __LINE__, msg } );
+    }
 
     std::string fullPath = m_rawimageDir + '/' + relPath;
 
