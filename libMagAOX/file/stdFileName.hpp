@@ -23,8 +23,13 @@ namespace MagAOX
 namespace file
 {
 
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
 /// Organize and analyze the name of a standard file name
-template<typename verboseT=XWC_DEFAULT_VERBOSITY>
+template <typename verboseT = XWC_DEFAULT_VERBOSITY>
 class stdFileName
 {
 
@@ -38,13 +43,10 @@ class stdFileName
 
     stdSubDir<verboseT> m_subDir; ///< The subdirectory of the file
 
-    int      m_year{ 0 };   ///< The year of the timestamp
-    unsigned m_month{ 0 };  ///< The month of the timestamp
-    unsigned m_day{ 0 };    ///< The day of the timestamp
-    int      m_hour{ 0 };   ///< The hour of the timestamp
-    int      m_minute{ 0 }; ///< The minute of the timestamp
-    int      m_second{ 0 }; ///< The second of the timestamp
-    int      m_nsec{ 0 };   ///< The nanosecond of the timestamp
+    int m_hour{ 0 };   ///< The hour of the timestamp
+    int m_minute{ 0 }; ///< The minute of the timestamp
+    int m_second{ 0 }; ///< The second of the timestamp
+    int m_nsec{ 0 };   ///< The nanosecond of the timestamp
 
     flatlogs::timespecX m_timestamp{ 0, 0 }; ///< The timestamp
 
@@ -55,17 +57,15 @@ class stdFileName
     stdFileName();
 
     /// Construct from a full name
-    /** This calls parseName, which parses the input and
+    /** This calls fullName(const std::string &), which parses the input and
      * populates all fields.
      *
      * On success, sets `m_valid=true`
      *
-     * On error this throws and exception and will leave `m_valid=false`
      *
-     * \throws nested MagAOX::xwcException on an exception from parseName.
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
+     * \throws nested MagAOX::xwcException on an exception from fullName.
+     *
      */
     explicit stdFileName( const std::string &fullName /**< [in] The new full name of the file (including the path)*/ );
 
@@ -81,394 +81,596 @@ class stdFileName
      *
      * \throws nested MagAOX::xwcException on an exception from fullName.
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    stdFileName &
-    operator=( const std::string &fullname /**< [in] The new full name of the file (including the path)*/ );
+    stdFileName &operator=( const std::string &fullname /**< [in] The new full name of the file
+                                                                  (including the path)*/
+    );
 
     /// Sets the full name
     /** Setting the full name is the only way to set any of the values.  This parses the input and
      * populates all fields.
      *
-     * \throws nested MagAOX::xwcException on an exception from string assignment or parseName.
+     * \throws nested MagAOX::xwcException on a bad_alloc exception.
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    void fullName( const std::string &fullName /**< [in] The new full name of the file (including the path)*/ );
+    mx::error_t fullName( const std::string &fullName /**< [in] The new full name of the file (including the path)*/ );
 
     /// Get the current value of m_fullName
     /**
      * \returns the current value of m_fullName
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const std::string &fullName() const;
+    const std::string &fullName( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_baseName
     /**
      * \returns the current value of m_baseName
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const std::string &baseName() const;
+    const std::string &baseName( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of
     /**
      * \returns the current value of
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const std::string &extension() const;
+    const std::string &extension( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_appName
     /**
      * \returns the current value of m_appName
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const std::string &appName() const;
+    const std::string &appName( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_subDir
     /**
      * \returns the current value of m_subDir
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    const stdSubDir<verboseT> &subDir() const;
+    const stdSubDir<verboseT> &subDir( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
-    /// Get the current value of m_year
+    /// Get the year
     /**
-     * \returns the current value of m_year
+     * \returns year() from m_subDir
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    int year() const;
+    int year( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
-    /// Get the current value of m_month
+    /// Get the month
     /**
-     * \returns the current value of m_month
+     * \returns month from m_subDir
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    unsigned month() const;
+    unsigned month( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
-    /// Get the current value of m_day
+    /// Get the day
     /**
-     * \returns the current value of m_day
+     * \returns day from m_subDir
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-
-    unsigned day() const;
+    unsigned day( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_hour
     /**
      * \returns the current value of m_hour
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    int hour() const;
+    int hour( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_minute
     /**
      * \returns the current value of m_minute
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    int minute() const;
+    int minute( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_second
     /**
      * \returns the current value of m_second
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    int second() const;
+    int second( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_nsec
     /**
      * \returns the current value of m_nsec
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    int nsec() const;
+    int nsec( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of m_valid
     /**
      * \returns the current value of m_valid
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
-    flatlogs::timespecX timestamp() const;
+    flatlogs::timespecX timestamp( mx::error_t *errc = nullptr /**< [in] [optional] error code */ ) const;
 
     /// Get the current value of
     /**
      * \returns the current value of
      *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
      */
     bool valid() const;
 
-  protected:
-    /// Parses the `m_fullName` and populates all fields.
-    /** On success m_valid will be true.
-     *
-     * \throws nested xwcException on errors from std::filesystem
-     * \throws xwcException if no extension found
-     * \throws nested xwcException on errors from parseFilePath
-     * \throws nested xwcException on errors from std::stoi
-     * \throws nested xwcException on errors from stdSubDir<verboseT>::ymd
-     * \throws xwcException on error from timegm
-     *
-     * \b Tests:
-     * -  Using stdFileName \ref libXWC_logger_file_stdFileName_using "[test doc]"
-     */
-    void parseName();
+    /// Set all stored values to invalid values
+    void invalidate();
 };
 
-template<class verboseT>
+template <class verboseT>
 stdFileName<verboseT>::stdFileName()
 {
     return;
 }
 
-template<class verboseT>
-stdFileName<verboseT>::stdFileName( const std::string &fn ) : m_fullName{ fn }
+template <class verboseT>
+stdFileName<verboseT>::stdFileName( const std::string &fn )
 {
     try
     {
-        parseName();
+        mx::error_t errc = fullName( fn );
+        if( errc != mx::error_t::noerror )
+        {
+            mx::error_report( errc, "from fullName" );
+        }
     }
     catch( ... )
     {
-        std::throw_with_nested( xwcException( "error parsing filename: " + m_fullName ) );
+        std::throw_with_nested( xwcException( "from fullName" ) );
     }
 }
 
-template<class verboseT>
+template <class verboseT>
 stdFileName<verboseT> &stdFileName<verboseT>::operator=( const std::string &fn )
 {
     try
     {
-        fullName( fn );
-    }
-    catch( ... )
-    {
-        std::throw_with_nested( xwcException( "error parsing name in std::fileName:operator=" ) );
-    }
+        mx::error_t errc = fullName( fn );
 
-    return *this;
+        if( errc != mx::error_t::noerror )
+        {
+            mx::error_report<verboseT>( errc, "from fullName" );
+        }
+
+        return *this;
+    }
+    catch( ... ) // will be bad_alloc
+    {
+        std::throw_with_nested( xwcException( "from fullName" ) );
+    }
 }
 
-template<class verboseT>
-void stdFileName<verboseT>::fullName( const std::string &fn )
+template <class verboseT>
+mx::error_t stdFileName<verboseT>::fullName( const std::string &fn )
 {
+    // assume it's false beginning at any modification
+    invalidate();
+
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_STDFILENAME_FULLNAME_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+
+        #ifdef XWCTEST_STDFILENAME_FULLNAME_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         m_fullName = fn;
     }
-    catch( ... )
+    catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "error from std::string assignment" ) );
+        std::throw_with_nested( xwcException( "from std::string" ) );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception, "from std::string" );
     }
 
     try
     {
-        parseName();
-    }
-    catch( ... )
-    {
-        std::throw_with_nested( xwcException( "error from parseName" ) );
-    }
-}
+        // clang-format off
+        #ifdef XWCTEST_STDFILENAME_FULLNAME_FS_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
 
-template<class verboseT>
-const std::string &stdFileName<verboseT>::fullName() const
-{
-    return m_fullName;
-}
+        #ifdef XWCTEST_STDFILENAME_FULLNAME_FS_FILESYSTEM_ERROR
+            throw std::filesystem::filesystem_error("test", std::error_code(10, std::system_category())); // LCOV_EXCL_LINE
+        #endif
 
-template<class verboseT>
-const std::string &stdFileName<verboseT>::baseName() const
-{
-    return m_baseName;
-}
+        #ifdef XWCTEST_STDFILENAME_FULLNAME_FS_EXCEPTION
+            throw std::exception(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
 
-template<class verboseT>
-const std::string &stdFileName<verboseT>::extension() const
-{
-    return m_extension;
-}
-
-template<class verboseT>
-const std::string &stdFileName<verboseT>::appName() const
-{
-    return m_appName;
-}
-
-template<class verboseT>
-const stdSubDir<verboseT> &stdFileName<verboseT>::subDir() const
-{
-    return m_subDir;
-}
-
-template<class verboseT>
-int stdFileName<verboseT>::year() const
-{
-    return m_year;
-}
-
-template<class verboseT>
-unsigned stdFileName<verboseT>::month() const
-{
-    return m_month;
-}
-
-template<class verboseT>
-unsigned stdFileName<verboseT>::day() const
-{
-    return m_day;
-}
-
-template<class verboseT>
-int stdFileName<verboseT>::hour() const
-{
-    return m_hour;
-}
-
-template<class verboseT>
-int stdFileName<verboseT>::minute() const
-{
-    return m_minute;
-}
-
-template<class verboseT>
-int stdFileName<verboseT>::second() const
-{
-    return m_second;
-}
-
-template<class verboseT>
-int stdFileName<verboseT>::nsec() const
-{
-    return m_nsec;
-}
-
-template<class verboseT>
-flatlogs::timespecX stdFileName<verboseT>::timestamp() const
-{
-    return m_timestamp;
-}
-
-template<class verboseT>
-bool stdFileName<verboseT>::valid() const
-{
-    return m_valid;
-}
-
-template<class verboseT>
-void stdFileName<verboseT>::parseName()
-{
-    try
-    {
         std::filesystem::path p( m_fullName );
 
         m_baseName  = p.filename();
         m_extension = p.extension();
     }
-    catch( ... )
+    catch( const std::bad_alloc &e )
     {
-        m_valid = false;
-
-        std::throw_with_nested( xwcException( "error extracting basename and extension" ) );
+        std::throw_with_nested( xwcException( "extracting basename and extension" ) );
+    }
+    catch( const std::filesystem::filesystem_error &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_filesystem_error,
+                                           "extracting basename and extension " + m_fullName );
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           "extracting basename and extension from " + m_fullName );
     }
 
     if( m_extension == "" )
     {
-        m_valid = false;
-        throw xwcException( "No extension found in: " + m_fullName );
+        return mx::error_report<verboseT>( mx::error_t::invalidarg, "No extension found in: " + m_fullName );
     }
 
     std::string YYYY, MM, DD, hh, mm, ss, nn;
 
     try
     {
-        parseFilePath( m_appName, YYYY, MM, DD, hh, mm, ss, nn, m_baseName );
+        mx_error_check( parseFilePath( m_appName, YYYY, MM, DD, hh, mm, ss, nn, m_baseName ) );
     }
-    catch( ... )
+    catch( const xwcException &e ) // a bad_alloc
     {
-        m_valid = false;
-
-        std::throw_with_nested( xwcException( "Error parsing filename" ) );
+        std::throw_with_nested( xwcException( "parsing filename" ) );
     }
+
+    mx::error_t errc;
+    int         year = mx::ioutils::stoT<int>( YYYY, &errc );
+    mx_error_check_code( errc );
+
+    unsigned int month = mx::ioutils::stoT<unsigned int>( MM, &errc );
+    mx_error_check_code( errc );
+
+    unsigned int day = mx::ioutils::stoT<unsigned int>( DD, &errc );
+    mx_error_check_code( errc );
+
+    m_hour = mx::ioutils::stoT<int>( hh, &errc );
+    mx_error_check_code( errc );
+
+    m_minute = mx::ioutils::stoT<int>( mm, &errc );
+    mx_error_check_code( errc );
+
+    m_second = mx::ioutils::stoT<int>( ss, &errc );
+    mx_error_check_code( errc );
+
+    m_nsec = mx::ioutils::stoT<int>( nn, &errc );
+    mx_error_check_code( errc );
 
     try
     {
-        m_year   = std::stoi( YYYY );
-        m_month  = std::stoi( MM );
-        m_day    = std::stoi( DD );
-        m_hour   = std::stoi( hh );
-        m_minute = std::stoi( mm );
-        m_second = std::stoi( ss );
-        m_nsec   = std::stoi( nn );
+        mx_error_check( m_subDir.ymd( year, month, day ) );
     }
     catch( ... )
     {
-        std::throw_with_nested( xwcException( "error from std:stoi" ) );
-    }
-
-    try
-    {
-        m_subDir.ymd( m_year, m_month, m_day );
-    }
-    catch( ... )
-    {
-        std::throw_with_nested( xwcException( "error from std::subDir::ymd" ) );
+        std::throw_with_nested( xwcException( "from stdSubDir::ymd" ) );
     }
 
     tm tmst;
-    tmst.tm_year = m_year - 1900;
-    tmst.tm_mon  = m_month - 1;
-    tmst.tm_mday = m_day;
+    tmst.tm_year = year - 1900;
+    tmst.tm_mon  = month - 1;
+    tmst.tm_mday = day;
     tmst.tm_hour = m_hour;
     tmst.tm_min  = m_minute;
     tmst.tm_sec  = m_second;
 
+    errno      = 0;
     time_t tgm = timegm( &tmst );
+
+    // clang-format off
+    #ifdef XWCTEST_STDFILENAME_FULLNAME_TIMEGM
+        tgm = static_cast<time_t>( -1 ); // LCOV_EXCL_LINE
+        errno = EOVERFLOW; // LCOV_EXCL_LINE
+    #endif
+    // clang-format on
 
     if( tgm == static_cast<time_t>( -1 ) )
     {
-        throw xwcException( "error from timegm: " + std::string( strerror( errno ) ) );
+        if( errno != 0 )
+        {
+            return mx::error_report<verboseT>( mx::errno2error_t( errno ), "error from timegm" );
+        }
+
+        return mx::error_report<verboseT>( mx::error_t::error, "error from timegm" );
     }
 
     m_timestamp.time_s  = tgm;
     m_timestamp.time_ns = m_nsec;
 
     m_valid = true;
+
+    return mx::error_t::noerror;
 }
 
+template <class verboseT>
+const std::string &stdFileName<verboseT>::fullName( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_fullName;
+}
+
+template <class verboseT>
+const std::string &stdFileName<verboseT>::baseName( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_baseName;
+}
+
+template <class verboseT>
+const std::string &stdFileName<verboseT>::extension( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_extension;
+}
+
+template <class verboseT>
+const std::string &stdFileName<verboseT>::appName( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_appName;
+}
+
+template <class verboseT>
+const stdSubDir<verboseT> &stdFileName<verboseT>::subDir( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_subDir;
+}
+
+template <class verboseT>
+int stdFileName<verboseT>::year( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_subDir.year();
+}
+
+template <class verboseT>
+unsigned int stdFileName<verboseT>::month( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<unsigned int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_subDir.month();
+}
+
+template <class verboseT>
+unsigned int stdFileName<verboseT>::day( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<unsigned int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_subDir.day();
+}
+
+template <class verboseT>
+int stdFileName<verboseT>::hour( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_hour;
+}
+
+template <class verboseT>
+int stdFileName<verboseT>::minute( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_minute;
+}
+
+template <class verboseT>
+int stdFileName<verboseT>::second( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_second;
+}
+
+template <class verboseT>
+int stdFileName<verboseT>::nsec( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return std::numeric_limits<int>::max();
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_nsec;
+}
+
+template <class verboseT>
+flatlogs::timespecX stdFileName<verboseT>::timestamp( mx::error_t *errc ) const
+{
+    if( !m_valid )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::invalidconfig;
+        }
+        mx::error_report<verboseT>( mx::error_t::invalidconfig, "attempt to access while invalid" );
+        return flatlogs::timespecX( 0, 0 );
+    }
+    else if( errc )
+    {
+        *errc = mx::error_t::noerror;
+    }
+
+    return m_timestamp;
+}
+
+template <class verboseT>
+bool stdFileName<verboseT>::valid() const
+{
+    return m_valid;
+}
+
+template <class verboseT>
+void stdFileName<verboseT>::invalidate()
+{
+    m_appName.clear();
+    m_baseName.clear();
+    m_extension.clear();
+    m_baseName.clear();
+    m_fullName.clear();
+
+    m_subDir.invalidate();
+
+    m_valid = false;
+}
+
+#ifndef XWCTEST_NAMESPACE
 extern template class stdFileName<XWC_DEFAULT_VERBOSITY>;
+#endif
 
 /// Sort predicate for stdFileNames
 /** Sorting is on 'fullName()'
  */
-template<class stdFileNameT>
+template <class stdFileNameT>
 struct compStdFileName
 {
     /// Comparison operator.
@@ -481,6 +683,9 @@ struct compStdFileName
     }
 };
 
+#ifdef XWCTEST_NAMESPACE
+}
+#endif
 
 } // namespace file
 } // namespace MagAOX

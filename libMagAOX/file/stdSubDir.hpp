@@ -176,6 +176,10 @@ class stdSubDir
      *
      */
     bool operator>=( const stdSubDir &comp ) const;
+
+    /// Invalidate this instance
+    void invalidate();
+
 };
 
 template <typename verboseT>
@@ -229,8 +233,7 @@ mx::error_t stdSubDir<verboseT>::ymd( int year, unsigned month, unsigned day )
 {
     // we technically could be subtle about this and wait for changes to occur
     // but we'll just propagate any errors as invalidating this instance
-    m_valid    = false;
-    m_pathMade = false;
+    invalidate();
 
     try
     {
@@ -268,8 +271,7 @@ mx::error_t stdSubDir<verboseT>::path( const std::string &subdir )
 {
     // we technically could be subtle about this and wait for changes to occur
     // but we'll just propagate any errors as invalidating this instance
-    m_valid    = false;
-    m_pathMade = false;
+    invalidate();
 
     if( subdir.length() != 10 )
     {
@@ -625,11 +627,12 @@ mx::error_t stdSubDir<verboseT>::addDay()
     }
     catch( const std::bad_alloc &e )
     {
+        invalidate();
         std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }
     catch( const std::exception &e )
     {
-        m_valid = false;
+        invalidate();
         return mx::error_report<verboseT>( mx::error_t::std_exception,
                                            std::string( "chrono operations: " ) + e.what() );
     }
@@ -665,11 +668,12 @@ mx::error_t stdSubDir<verboseT>::subDay()
     }
     catch( const std::bad_alloc &e )
     {
+        invalidate();
         std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }
     catch( const std::exception &e )
     {
-        m_valid = false;
+        invalidate();
         return mx::error_report<verboseT>( mx::error_t::std_exception,
                                            std::string( "chrono operations: " ) + e.what() );
     }
@@ -825,6 +829,15 @@ template <typename verboseT>
 bool stdSubDir<verboseT>::operator>=( const stdSubDir &comp ) const
 {
     return ( m_sysday >= comp.m_sysday );
+}
+
+template <typename verboseT>
+void stdSubDir<verboseT>::invalidate()
+{
+    m_path.clear();
+
+    m_pathMade = false;
+    m_valid = false;
 }
 
 #ifndef XWCTEST_NAMESPACE
