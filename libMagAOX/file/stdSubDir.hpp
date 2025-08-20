@@ -54,7 +54,7 @@ class stdSubDir
      *
      * On error, sets `m_valid=false`
      */
-    stdSubDir( const std::chrono::sys_days &sysday /**< [in] The new year*/ );
+    explicit stdSubDir( const std::chrono::sys_days &sysday /**< [in] The new year*/ );
 
     /// Construct from components
     /**

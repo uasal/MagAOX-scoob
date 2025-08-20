@@ -126,7 +126,7 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
         REQUIRE( ts.time_s == 1732170801 );
         REQUIRE( ts.time_ns == 1 );
 
-        REQUIRE( sfn.valid() == true );
+        REQUIRE( sfn.valid() );
     }
 
     GIVEN( "default construction, assignment and member access" )
@@ -155,7 +155,7 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
         REQUIRE( ts.time_s == 1732170801 );
         REQUIRE( ts.time_ns == 1 );
 
-        REQUIRE( sfn.valid() == true );
+        REQUIRE( sfn.valid() );
     }
 
     GIVEN( "construction by parsing and member access" )
@@ -220,7 +220,7 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
         REQUIRE( ts.time_ns == 1 );
         REQUIRE( errc == mx::error_t::noerror );
 
-        REQUIRE( sfn.valid() == true );
+        REQUIRE( sfn.valid() );
     }
 }
 
@@ -290,7 +290,7 @@ SCENARIO( "Member Access Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( ts.time_ns == 0 );
         REQUIRE( errc == mx::error_t::invalidconfig );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
     }
 }
 /// Setting fullName errors
@@ -322,7 +322,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_EXCEPTION_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
     }
 
     GIVEN( "Default Construction, setting fullname throws exception" )
@@ -332,7 +332,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 
@@ -359,7 +359,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_FILESYSTEM_ERROR_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
     }
 
     GIVEN( "Construction with fullname throws exception from fs" )
@@ -368,7 +368,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_EXCEPTION_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
     }
 
     GIVEN( "Default Construction, setting fullname throws filesystem_error from fs" )
@@ -378,7 +378,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_filesystem_error );
     }
 
@@ -389,7 +389,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 
@@ -400,7 +400,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -429,7 +429,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_out_of_range );
     }
 
@@ -440,7 +440,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_X0241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -451,7 +451,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_2024X121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -462,7 +462,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_202411X1063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -473,7 +473,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_202411X1063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -484,7 +484,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121H63321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -495,7 +495,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_2024112106M321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -506,7 +506,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_202411210633S1000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -517,7 +517,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321N00000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
@@ -545,7 +545,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 
@@ -556,7 +556,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
-        REQUIRE( sfn.valid() == false );
+        REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::eoverflow );
     }
 }

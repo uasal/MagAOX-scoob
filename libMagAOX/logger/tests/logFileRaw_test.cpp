@@ -24,7 +24,7 @@ class logFileRawTest : public MagAOX::logger::logFileRaw
         testPath = m_logPath + '/' + m_logName;
     }
 
-    logFileRawTest( const std::string &lp )
+    explicit logFileRawTest( const std::string &lp )
     {
         m_logPath = lp;
 

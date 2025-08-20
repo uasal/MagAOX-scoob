@@ -252,16 +252,17 @@ SCENARIO( "Getting timestamp string and broken-down time causes bad_alloc", "[li
 {
     GIVEN( "A time with non-0 sec and 3-digit nsec" )
     {
-        time_t        ts_sec  = 1732170785;
-        unsigned long ts_nsec = 292;
-
-        std::string tstamp;
-        tm          uttime;
 
         bool caught = false;
 
         try
         {
+            time_t        ts_sec  = 1732170785;
+            unsigned long ts_nsec = 292;
+
+            std::string tstamp;
+            tm          uttime;
+
             MagAOX::file::XWCTEST_TIMESTAMP_THROW_BAD_ALLOC_ns::timestamp( tstamp, uttime, ts_sec, ts_nsec );
         }
         catch( const MagAOX::xwcException &e )
@@ -430,14 +431,14 @@ SCENARIO( "Getting filename and relative path for a given time causes bad_alloc 
 {
     GIVEN( "A time with 0 sec and 0 nsec" )
     {
-        time_t        ts_sec  = 1732170780;
-        unsigned long ts_nsec = 0;
-
-        std::string fileName, relPath;
 
         bool caught = false;
         try
         {
+            time_t        ts_sec  = 1732170780;
+            unsigned long ts_nsec = 0;
+            std::string   fileName, relPath;
+
             MagAOX::file::XWCTEST_TIMESTAMP_THROW_BAD_ALLOC_ns::fileTimeRelPath(
                 fileName, relPath, "tdevice", "txt", ts_sec, ts_nsec );
         }
@@ -492,7 +493,7 @@ SCENARIO( "Getting filename and relative path for a given time causes exception 
     }
 }
 
-///Getting filename and relative path for a given time causes bad_alloc in top relpath
+/// Getting filename and relative path for a given time causes bad_alloc in top relpath
 /**
  * \test
  */
@@ -863,11 +864,12 @@ SCENARIO( "Parsing filenames and paths with errors", "[libMagAOX::file::fileTime
 
     GIVEN( "An valid MagAO-X filepath but bad_alloc is thrown in parseTimeStamp" )
     {
-        std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
 
         bool caught = false;
         try
         {
+            std::string devName, YYYY, MM, DD, hh, mm, ss, nn;
+
             MagAOX::file::XWCTEST_PARSETIMESTAMP_THROW_BAD_ALLOC_ns::parseFilePath(
                 devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_20241121063300000000000.txt" );
         }
@@ -962,6 +964,6 @@ SCENARIO( "Parsing timestamps with errors", "[libMagAOX::file::fileTimes]" )
     }
 }
 
-} //namespace fileTimes_test
-}
-}
+} // namespace fileTimesTest
+} // namespace fileTest
+} // namespace libXWCTest

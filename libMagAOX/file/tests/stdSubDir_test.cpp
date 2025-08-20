@@ -144,7 +144,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
         MagAOX::file::stdSubDir ssd;
         mx::error_t             errc;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         std::string path = ssd.path();
 
@@ -190,11 +190,11 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         ssd.path( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -221,7 +221,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
 
         MagAOX::file::stdSubDir ssd( sysday );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
@@ -245,7 +245,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( 2024, 11, 21 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
@@ -269,7 +269,7 @@ SCENARIO( "Initializing stdSubDir", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
@@ -325,7 +325,7 @@ SCENARIO( "Construction with errors", "[libMagAOX::file::stdSubDir]" )
 
         MagAOX::file::XWCTEST_STDSUBDIR_CTORSYSDAYS_EXCEPTION_ns::stdSubDir<mx::verbose::vv> ssd( sysday );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Construction from ymd causes bad_alloc" )
@@ -349,7 +349,7 @@ SCENARIO( "Construction with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_YMD_EXCEPTION_ns::stdSubDir<mx::verbose::vv> ssd( 2024, 11, 21 );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Construction from path throws bad_alloc in stoT" )
@@ -373,16 +373,16 @@ SCENARIO( "Construction with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_OUT_OF_RANGE_ns::stdSubDir<mx::verbose::vv> ssd( "2024_11_20" );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Construction from path throws exception in stoT" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_EXCEPTION_ns::stdSubDir<mx::verbose::vv> ssd( "2024_11_20" );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Construction from path throws bad_alloc setting ymd" )
@@ -407,7 +407,7 @@ SCENARIO( "Construction with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_EXCEPTION2_ns::stdSubDir<mx::verbose::vv> ssd( "2024_11_20" );
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 }
 
@@ -421,52 +421,52 @@ SCENARIO( "Setting path with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
         mx::error_t errc;
 
         errc = ssd.path( "2024_11_2" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024x11_21" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024_11x21" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "Y024_11_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2Y24_11_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "20Y4_11_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "202Y_11_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024_M1_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024_2M_24" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024_21_D4" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         errc = ssd.path( "2024_21_2D" );
         REQUIRE( errc == mx::error_t::invalidarg );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Setting path throws bad_alloc in stoT" )
@@ -474,7 +474,7 @@ SCENARIO( "Setting path with errors", "[libMagAOX::file::stdSubDir]" )
         // This is slightly different than the construction test b/c we can test valid()
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_BAD_ALLOC_ns::stdSubDir<mx::verbose::vv> ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         bool caught = false;
 
@@ -489,38 +489,38 @@ SCENARIO( "Setting path with errors", "[libMagAOX::file::stdSubDir]" )
         }
 
         REQUIRE( caught == true );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Setting path throws out_of_range in stoT" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_OUT_OF_RANGE_ns::stdSubDir<mx::verbose::vv> ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         mx::error_t errc = ssd.path( "2024_11_20" );
 
         REQUIRE( errc == mx::error_t::std_out_of_range );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Setting path throws exception in stoT" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_EXCEPTION_ns::stdSubDir<mx::verbose::vv> ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         mx::error_t errc = ssd.path( "2024_11_20" );
 
         REQUIRE( errc == mx::error_t::std_exception );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Setting path throws bad_alloc setting ymd" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_BAD_ALLOC2_ns::stdSubDir<mx::verbose::vv> ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         bool caught = false;
 
@@ -535,19 +535,19 @@ SCENARIO( "Setting path with errors", "[libMagAOX::file::stdSubDir]" )
         }
 
         REQUIRE( caught == true );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 
     GIVEN( "Setting path throws exception setting ymd" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_SETPATH_EXCEPTION2_ns::stdSubDir<mx::verbose::vv> ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         mx::error_t errc = ssd.path( "2024_11_20" );
 
         REQUIRE( errc == mx::error_t::std_exception );
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
     }
 }
 
@@ -561,7 +561,7 @@ SCENARIO( "Getting path with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_MAKEPATH_BAD_ALLOC_ns::stdSubDir<mx::verbose::vv> ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         bool caught = false;
 
@@ -582,7 +582,7 @@ SCENARIO( "Getting path with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_MAKEPATH_FORMAT_ERROR_ns::stdSubDir<mx::verbose::vv> ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t errc;
         std::string p = ssd.path( &errc );
@@ -595,7 +595,7 @@ SCENARIO( "Getting path with errors", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_MAKEPATH_EXCEPTION_ns::stdSubDir<mx::verbose::vv> ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t errc;
         std::string p = ssd.path( &errc );
@@ -620,7 +620,7 @@ SCENARIO( "Setting from YMD", "[libMagAOX::file::stdSubDir]" )
 
         ssd.ymd( 2024, 11, 21 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -631,7 +631,7 @@ SCENARIO( "Setting from YMD", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( 2024, 11, 21 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -642,7 +642,7 @@ SCENARIO( "Setting from YMD", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( 2024, 1, 1 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_01_01" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 1 );
@@ -653,7 +653,7 @@ SCENARIO( "Setting from YMD", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -664,7 +664,7 @@ SCENARIO( "Setting from YMD", "[libMagAOX::file::stdSubDir]" )
     {
         MagAOX::file::stdSubDir ssd( "2024_01_01" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_01_01" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 1 );
@@ -807,11 +807,11 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         ssd.subDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_20" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -819,7 +819,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
 
         ssd.subDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_19" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -830,11 +830,11 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         ssd.addDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_22" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -842,7 +842,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
 
         ssd.addDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_23" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -853,11 +853,11 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         ssd.addDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_22" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -865,7 +865,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs", "[libMagAOX::file::stdSubD
 
         ssd.subDay();
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
         REQUIRE( ssd.path() == "2024_11_21" );
         REQUIRE( ssd.year() == 2024 );
         REQUIRE( ssd.month() == 11 );
@@ -884,7 +884,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs with errors", "[libMagAOX::f
 
         mx::error_t errc = ssd.subDay();
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
         REQUIRE( errc == mx::error_t::invalidconfig );
     }
 
@@ -911,7 +911,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs with errors", "[libMagAOX::f
 
         mx::error_t errc = ssd.subDay();
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 
@@ -921,7 +921,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs with errors", "[libMagAOX::f
 
         mx::error_t errc = ssd.addDay();
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
         REQUIRE( errc == mx::error_t::invalidconfig );
     }
 
@@ -948,7 +948,7 @@ SCENARIO( "Incrementing and decrementing stdSubDirs with errors", "[libMagAOX::f
 
         mx::error_t errc = ssd.addDay();
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 }
@@ -963,7 +963,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
@@ -978,7 +978,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_11_01" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
@@ -993,7 +993,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_03_01" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
@@ -1008,7 +1008,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2025_03_01" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
@@ -1023,7 +1023,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_01_01" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.previousSubdir();
 
@@ -1038,7 +1038,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_11_21" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
@@ -1053,7 +1053,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_11_30" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
@@ -1068,7 +1068,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2024_02_29" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
@@ -1083,7 +1083,7 @@ SCENARIO( "Getting previous and following stdSubDirs", "[libMagAOX::file::stdSub
     {
         MagAOX::file::stdSubDir ssd( "2025_02_28" );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         MagAOX::file::stdSubDir psd = ssd.followingSubdir();
 
@@ -1105,7 +1105,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::stdSubDir ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         mx::error_t             errc;
         MagAOX::file::stdSubDir psd = ssd.previousSubdir( &errc );
@@ -1118,7 +1118,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_PREV_INVAL_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t                                              errc;
         MagAOX::file::XWCTEST_STDSUBDIR_PREV_INVAL_ns::stdSubDir psd = ssd.previousSubdir( &errc );
@@ -1131,7 +1131,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_INC_BAD_ALLOC_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         bool caught = false;
 
@@ -1151,12 +1151,12 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_INC_EXCEPTION_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t                                                 errc;
         MagAOX::file::XWCTEST_STDSUBDIR_INC_EXCEPTION_ns::stdSubDir pssd = ssd.previousSubdir( &errc );
 
-        REQUIRE( pssd.valid() == false );
+        REQUIRE( !pssd.valid()  );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 
@@ -1164,7 +1164,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::stdSubDir ssd;
 
-        REQUIRE( ssd.valid() == false );
+        REQUIRE( !ssd.valid()  );
 
         mx::error_t             errc;
         MagAOX::file::stdSubDir psd = ssd.followingSubdir( &errc );
@@ -1177,7 +1177,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_PREV_INVAL_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t                                              errc;
         MagAOX::file::XWCTEST_STDSUBDIR_PREV_INVAL_ns::stdSubDir psd = ssd.followingSubdir( &errc );
@@ -1190,7 +1190,7 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_INC_BAD_ALLOC_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         bool caught = false;
 
@@ -1210,12 +1210,12 @@ SCENARIO( "Getting previous and following stdSubDirs with errors", "[libMagAOX::
     {
         MagAOX::file::XWCTEST_STDSUBDIR_INC_EXCEPTION_ns::stdSubDir ssd( 2024, 11, 20 );
 
-        REQUIRE( ssd.valid() == true );
+        REQUIRE( ssd.valid()  );
 
         mx::error_t                                                 errc;
         MagAOX::file::XWCTEST_STDSUBDIR_INC_EXCEPTION_ns::stdSubDir pssd = ssd.followingSubdir( &errc );
 
-        REQUIRE( pssd.valid() == false );
+        REQUIRE( !pssd.valid()  );
         REQUIRE( errc == mx::error_t::std_exception );
     }
 }
