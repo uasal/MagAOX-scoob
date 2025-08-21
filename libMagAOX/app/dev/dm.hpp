@@ -1238,9 +1238,12 @@ int dm<derivedT, realT>::loadFlat(const std::string &intarget)
     m_flatLoaded = false;
     // load into memory.
     mx::fits::fitsFile<realT> ff;
-    if (ff.read(m_flatCommand, targetPath) < 0)
+    mx::error_t errc = ff.read(m_flatCommand, targetPath);
+    if (errc != mx::error_t::noerror)
     {
-        derivedT::template log<text_log>("flat file " + targetPath + " not found", logPrio::LOG_ERROR);
+        derivedT::template log<text_log>(std::format("error reading flat file {}: "
+                                                     "{} ({})", targetPath, mx::errorMessage(errc), 
+                                                     mx::errorName(errc)), logPrio::LOG_ERROR);
         return -1;
     }
 
@@ -1554,9 +1557,12 @@ int dm<derivedT, realT>::loadTest(const std::string &intarget)
     m_testLoaded = false;
     // load into memory.
     mx::fits::fitsFile<realT> ff;
-    if (ff.read(m_testCommand, targetPath) < 0)
+    mx::error_t errc = ff.read(m_testCommand, targetPath);
+    if ( errc != mx::error_t::noerror)
     {
-        derivedT::template log<text_log>("test file " + targetPath + " not found", logPrio::LOG_ERROR);
+        derivedT::template log<text_log>(std::format("error reading test file {}: "
+                                                     "{} ({})", targetPath, mx::errorMessage(errc), 
+                                                     mx::errorName(errc)), logPrio::LOG_ERROR);
         return -1;
     }
 

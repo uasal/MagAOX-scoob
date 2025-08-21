@@ -159,9 +159,7 @@ endif
 utils_to_build = \
 	logdump \
 	logsurgeon \
-	logstream \
 	cursesINDI \
-	xrif2shmim \
 	xrif2fits
 
 scripts_to_install = \
