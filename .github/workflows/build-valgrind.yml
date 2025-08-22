@@ -35,13 +35,54 @@ jobs:
         with:
           name: valgrind-logs
           path: tests/valgrind/logs
-      # Fail if valgrind's exit code was non-zero
-      - name: Fail if valgrind failed
+      - name: Summarize Valgrind errors and fail if any
         if: always()
         run: |
-          rc="${{ steps.valgrind.outputs.exitcode }}"
-          echo "Valgrind exit code: $rc"
-          if [ "$rc" = "1" ]; then
-            echo "Valgrind returned exit code 1. Failing job."
+          set -euo pipefail
+          LOG_DIR="tests/valgrind/logs"
+          any_problem=0
+
+          echo ">>> Checking valgrind logs in $LOG_DIR ..."
+
+          for f in "$LOG_DIR"/*.log; do
+            [ -e "$f" ] || continue
+
+            # Extract all ERROR SUMMARY lines with non-zero errors (using template line "ERROR SUMMARY: 22 errors ...")
+            err_lines=$(grep -E "ERROR SUMMARY: [1-9][0-9]* errors" "$f" || true)
+
+            # Sum all "definitely lost:" byte counts (aggregate multiple process blocks)
+            def_bytes=$(LC_ALL=C grep "definitely lost:" "$f" \
+              | tr -d ',' \
+              | awk '{ sum += $4 } END { print (sum ? sum : 0) }')
+
+            if [ -n "$err_lines" ] || [ "${def_bytes:-0}" -gt 0 ]; then
+              any_problem=1
+              echo
+              echo "---- $(basename "$f") ----" >&2
+
+              # print all matching ERROR SUMMARY lines
+              if [ -n "$err_lines" ]; then
+                echo "  Valgrind ERROR SUMMARY lines:" >&2
+                echo "$err_lines" | sed 's/^/    /' >&2
+              fi
+
+              # print all LEAK SUMMARY blocks
+              if [ "${def_bytes:-0}" -gt 0 ]; then
+                echo "  Total definitely lost bytes (summed across processes in this log): ${def_bytes}" >&2
+                echo "  Leak summary excerpts:" >&2
+                awk '
+                  /LEAK SUMMARY/ { inblock=1; cnt=6 }
+                  inblock { print "    "$0; if (--cnt<=0) { inblock=0 } }
+                ' "$f" >&2 || true
+              fi
+            fi
+          done
+
+          echo
+          echo
+          if [ "$any_problem" -eq 1 ]; then
+            echo ">>> FAIL: Valgrind reported errors or definite leaks. See per-test logs in $LOG_DIR" >&2
             exit 1
           fi
+
+          echo ">>> OK: No valgrind ERROR SUMMARY errors and no 'definitely lost' bytes detected."
