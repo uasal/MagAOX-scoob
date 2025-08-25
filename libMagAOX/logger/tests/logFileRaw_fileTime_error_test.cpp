@@ -3,13 +3,8 @@
  * \ingroup logger_files
  */
 
-#include "../../../tests/catch2/catch.hpp"
+#include "../../../tests/testXWC.hpp"
 
-#include <filesystem>
-
-// Separate file so that we can make this definition:
-//  this will cause a compiler warning
-#define XWC_TIMESTAMP_BUFFER_SIZE ( 20 )
 #include "../logFileRaw.cpp"
 
 namespace logFileRaw_test

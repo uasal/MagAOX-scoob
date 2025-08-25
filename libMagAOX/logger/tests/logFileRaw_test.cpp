@@ -3,16 +3,36 @@
  * \ingroup logger_files
  */
 
-#include "../../../tests/catch2/catch.hpp"
-
-#include <filesystem>
+#include "../../../tests/testXWC.hpp"
 
 #include "../logFileRaw.hpp"
 
-namespace logFileRaw_test
+namespace libXWCTest
 {
 
-class logFileRawTest : public MagAOX::logger::logFileRaw
+/** \defgroup logger_unit_test libXWC::logger Unit Tests
+ * \ingroup unit_test
+ */
+
+/// Namespace for XWC::logger tests
+/** \ingroup logger_unit_test
+ *
+ */
+namespace loggerTest
+{
+
+/** \defgroup logFileRaw_unit_test logFileRaw Unit Tests
+ * \ingroup logger_unit_test
+ */
+
+/// Namespace for XWC::logger::logFileRaw tests
+/** \ingroup logFileRaw_unit_test
+ *
+ */
+namespace logFileRawTest
+{
+
+class logFileRawTest : public MagAOX::logger::logFileRaw<XWC_DEFAULT_VERBOSITY>
 {
   public:
     std::string testPath;
@@ -31,15 +51,19 @@ class logFileRawTest : public MagAOX::logger::logFileRaw
         testPath = m_logPath + '/' + m_logName;
     }
 
-    int test_createFile( flatlogs::timespecX &ts )
+    mx::error_t test_createFile( flatlogs::timespecX &ts )
     {
         return createFile( ts );
     }
 };
 
-SCENARIO( "Construction of logFileRaw", "[libMagAOX::logger::logFileRaw]" )
+/// Construction of logFileRaw
+/**
+ * \ingroup logFileRaw_unit_test
+ */
+TEST_CASE( "Construction of logFileRaw", "[libMagAOX::logger::logFileRaw]" )
 {
-    GIVEN( "basic construction and member access" )
+    SECTION( "basic construction and member access" )
     {
         MagAOX::logger::logFileRaw lfr;
 
@@ -62,9 +86,25 @@ SCENARIO( "Construction of logFileRaw", "[libMagAOX::logger::logFileRaw]" )
     }
 }
 
-SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
+/// Creating a log file
+/**
+ * \ingroup logFileRaw_unit_test
+ */
+TEST_CASE( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 {
-    GIVEN( "Two valid timestamps" )
+    // clang-format off
+    #ifdef XWCTEST_DOXYGEN_REF_PROTECTED
+        logFileRaw          lfr;
+        flatlogs::timespecX ts1( 1732170780, 1 );
+        lfr.createFile( ts1 );
+        lfr.logName();
+        lfr.logExt();
+        lfr.m_logPath;
+        lfr.m_logName;
+    #endif
+    // clang-format on
+
+    SECTION( "Two valid timestamps" )
     {
         logFileRawTest lfr;
 
@@ -82,9 +122,9 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::timespecX ts1( 1732170780, 1 );
 
-        int rv = lfr.test_createFile( ts1 );
+        mx::error_t rv = lfr.test_createFile( ts1 );
 
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000001." +
@@ -94,14 +134,14 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         rv = lfr.test_createFile( ts2 );
 
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2025_11_21/" ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2025_11_21/" + lfr.logName() + "_20251121063300000000050." +
                                           lfr.logExt() ) );
     }
 
-    GIVEN( "logPath without permissions" )
+    SECTION( "logPath without permissions" )
     {
         // check that this path doesn't already exist
         if( std::filesystem::exists( "/lfrtest" ) )
@@ -129,7 +169,7 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
         REQUIRE( caught == true );
     }
 
-    GIVEN( "2nd timestamp is the same as the first, file already exists" )
+    SECTION( "2nd timestamp is the same as the first, file already exists" )
     {
         logFileRawTest lfr;
 
@@ -147,9 +187,9 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::timespecX ts1( 1732170780, 1 );
 
-        int rv = lfr.test_createFile( ts1 );
+        mx::error_t rv = lfr.test_createFile( ts1 );
 
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000001." +
@@ -159,7 +199,7 @@ SCENARIO( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         rv = lfr.test_createFile( ts2 );
 
-        REQUIRE( rv == -1 );
+        REQUIRE( rv == mx::error_t::eexist );
     }
 }
 
@@ -191,9 +231,28 @@ struct dummyLog
     }
 };
 
-SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
+/// Writing to a log file
+/**
+ * \ingroup logFileRaw_unit_test
+ */
+TEST_CASE( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 {
-    GIVEN( "Write to existing log" )
+    // clang-format off
+    #ifdef XWCTEST_DOXYGEN_REF_PROTECTED
+        logFileRaw          lfr;
+        flatlogs::timespecX ts1( 1732170780, 1 );
+        lfr.createFile( ts1 );
+        flatlogs::bufferPtrT logbuff;
+        lfr.writeLog( logbuff );
+        lfr.logName();
+        lfr.logExt();
+        lfr.close()
+        lfr.m_logPath;
+        lfr.m_logName;
+    #endif
+    // clang-format on
+
+    SECTION( "Write to existing log" )
     {
         logFileRawTest lfr;
 
@@ -211,9 +270,9 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::timespecX ts1( 1732170780, 1 );
 
-        int rv = lfr.test_createFile( ts1 );
+        mx::error_t rv = lfr.test_createFile( ts1 );
 
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
 
@@ -229,16 +288,16 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
         rv = lfr.writeLog( logbuff );
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
 
-        REQUIRE( lfr.close() == 0 );
+        REQUIRE( lfr.close() == mx::error_t::noerror );
 
         std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
         REQUIRE( fsz == 1 * ( 256 + 14 ) );
     }
 
-    GIVEN( "Write to log that doesn't exist yet" )
+    SECTION( "Write to log that doesn't exist yet" )
     {
         logFileRawTest lfr;
 
@@ -260,8 +319,8 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog( logbuff );
-        REQUIRE( rv == 0 );
+        mx::error_t rv = lfr.writeLog( logbuff );
+        REQUIRE( rv == mx::error_t::noerror );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
@@ -271,14 +330,14 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         REQUIRE( std::filesystem::exists( fullPath ) );
 
-        REQUIRE( lfr.close() == 0 );
+        REQUIRE( lfr.close() == mx::error_t::noerror );
 
         std::uintmax_t fsz = std::filesystem::file_size( fullPath );
 
         REQUIRE( fsz == 1 * ( 256 + 14 ) );
     }
 
-    GIVEN( "Write to log twice, does not exceed size" )
+    SECTION( "Write to log twice, does not exceed size" )
     {
         logFileRawTest lfr;
 
@@ -300,8 +359,8 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::logHeader::createLog<dummyLog>( logbuff, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog( logbuff );
-        REQUIRE( rv == 0 );
+        mx::error_t rv = lfr.writeLog( logbuff );
+        REQUIRE( rv == mx::error_t::noerror );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
@@ -316,7 +375,7 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         flatlogs::logHeader::createLog<dummyLog>( logbuff3, ts3, msg, flatlogs::logPrio::LOG_NOTICE );
 
         rv = lfr.writeLog( logbuff3 );
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
 
         // New file not created
         std::string fullPath2 = lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000050.";
@@ -331,7 +390,7 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         REQUIRE( fsz == 2 * ( 256 + 14 ) ); // has two logs in it
     }
 
-    GIVEN( "Write to log twice, does exceed size" )
+    SECTION( "Write to log twice, does exceed size" )
     {
         logFileRawTest lfr;
         lfr.maxLogSize( 256 );
@@ -354,8 +413,8 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::logHeader::createLog<dummyLog>( logbuff, ts, msg, flatlogs::logPrio::LOG_NOTICE );
 
-        int rv = lfr.writeLog( logbuff );
-        REQUIRE( rv == 0 );
+        mx::error_t rv = lfr.writeLog( logbuff );
+        REQUIRE( rv == mx::error_t::noerror );
 
         REQUIRE( std::filesystem::exists( lfr.testPath ) );
         REQUIRE( std::filesystem::exists( lfr.testPath + "/2024_11_21/" ) );
@@ -370,7 +429,7 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
         flatlogs::logHeader::createLog<dummyLog>( logbuff2, ts2, msg, flatlogs::logPrio::LOG_NOTICE );
 
         rv = lfr.writeLog( logbuff2 );
-        REQUIRE( rv == 0 );
+        REQUIRE( rv == mx::error_t::noerror );
 
         // New file created
         std::string fullPath2 = lfr.testPath + "/2024_11_21/" + lfr.logName() + "_20241121063300000000050.";
@@ -391,4 +450,6 @@ SCENARIO( "Writing to a log file", "[libMagAOX::logger::logFileRaw]" )
     }
 }
 
-} // namespace logFileRaw_test
+} // namespace logFileRawTest
+} // namespace loggerTest
+} // namespace libXWCTest

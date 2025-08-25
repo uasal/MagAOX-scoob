@@ -13,6 +13,8 @@
 
 #include <flatlogs/flatlogs.hpp>
 
+#include "../common/defaults.hpp"
+
 #include "../common/exceptions.hpp"
 
 #include "stdSubDir.hpp"
@@ -367,6 +369,9 @@ mx::error_t stdFileName<verboseT>::fullName( const std::string &fn )
     #ifdef XWCTEST_STDFILENAME_FULLNAME_TIMEGM
         tgm = static_cast<time_t>( -1 ); // LCOV_EXCL_LINE
         errno = EOVERFLOW; // LCOV_EXCL_LINE
+    #endif
+    #ifdef XWCTEST_STDFILENAME_FULLNAME_TIMEGM_OTHER
+        tgm = static_cast<time_t>( -1 ); // LCOV_EXCL_LINE
     #endif
     // clang-format on
 

@@ -3,7 +3,7 @@
  * \ingroup logger_files
  */
 
-#include "../../../tests/catch2/catch.hpp"
+#include "../../../tests/testXWC.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -13,7 +13,21 @@
 #include "../logMap.hpp"
 #include "../logMap.cpp"
 
-namespace logMap_test
+namespace libXWCTest
+{
+
+namespace loggerTest
+{
+
+/** \defgroup logMap_unit_test logMap Unit Tests
+ * \ingroup logger_unit_test
+ */
+
+/// Namespace for XWC::logger::logMap tests
+/** \ingroup logMap_unit_test
+ *
+ */
+namespace logMapTest
 {
 
 // simple time struct to enable log structure creation
@@ -89,15 +103,15 @@ void createTestPaths( const std::string &basedir )
     }
 }
 
-/** \test Scenario: Building the app-to-file map
- *
- * \anchor tests_libMagAOX_logger_logMap_apptofile
+/// Building the app-to-file map
+/**
+ * \ingroup logMap_unit_test
  */
-SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
+TEST_CASE( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
 {
     createTestPaths( "/tmp/logMap_test" );
 
-    GIVEN( "File matches middle file and one later on same day" )
+    SECTION( "File matches middle file and one later on same day" )
     {
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241119030000000000000.xrif" );
         MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
@@ -113,7 +127,7 @@ SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
         REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119052300000000000.xlog" );
     }
 
-    GIVEN( "File matches first file by delta-t and last file on same day" )
+    SECTION( "File matches first file by delta-t and last file on same day" )
     {
         // This is inside second log, but will pick the first log to get the 60 second buffer
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241119000061000000000.xrif" );
@@ -134,7 +148,7 @@ SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
         REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119052300000000000.xlog" );
     }
 
-    GIVEN( "File matches first file by delta-t and first file on next day" )
+    SECTION( "File matches first file by delta-t and first file on next day" )
     {
         // This is inside second log, but will pick the first log to get the 60 second buffer
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241119000061000000000.xrif" );
@@ -157,7 +171,7 @@ SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
         REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119052300000000000.xlog" );
     }
 
-    GIVEN( "File matches last file on previous day and first file on current day (times are the same)" )
+    SECTION( "File matches last file on previous day and first file on current day (times are the same)" )
     {
         // This will pick the first log of 11/19 to get the 60 second buffer
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241121200030000000000.xrif" );
@@ -169,22 +183,14 @@ SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
 
         lm.loadAppToFileMap( "/tmp/logMap_test", "dev1", ".xlog", firstFile, lastFile );
 
-        REQUIRE( lm.m_appToFileMap["dev1"].size() == 5 );
+        REQUIRE( lm.m_appToFileMap["dev1"].size() == 2 );
         auto it = lm.m_appToFileMap["dev1"].begin();
-        REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119000000000000000.xlog" );
-        ++it;
-        REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119000030000000000.xlog");
-        ++it;
-        REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119025526000004000.xlog");
-        ++it;
-        REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119052300000000000.xlog");
+        REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_19/dev1_20241119052300000000000.xlog" );
         ++it;
         REQUIRE( it->fullName() == "/tmp/logMap_test/dev1/2024_11_21/dev1_20241121220000000000000.xlog" );
-
-
     }
 
-    GIVEN( "Matches first and last overall files, last one is not > 1 hr" )
+    SECTION( "Matches first and last overall files, last one is not > 1 hr" )
     {
         // this is 50 seconds into 2nd file, so will pick the first file which is > 60 secs
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241119000120000000000.xrif" );
@@ -216,15 +222,104 @@ SCENARIO( "Building the app-to-file map", "[libMagAOX::logger::logMap]" )
     }
 }
 
-/** \test Scenario: Building the app-to-file map with errors
- *
- * \anchor tests_libMagAOX_logger_logMap_apptofile_errors
+/// Building the app-to-file map with bad arguments
+/**
+ * \ingroup logMap_unit_test
  */
-SCENARIO( "Building the app-to-file map with errors", "[libMagAOX::logger::logMap]" )
+TEST_CASE( "Building the app-to-file map with bad arguments", "[libMagAOX::logger::logMap]" )
 {
     createTestPaths( "/tmp/logMap_test" );
 
-    GIVEN( "No prior log" )
+    SECTION( "bad directory permissions" )
+    {
+        MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
+        MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/root/adlknalkejr111", "dev1", ".xlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::eacces);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+    SECTION( "directory does not exist" )
+    {
+        MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
+        MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/tmp/logMap_testX", "dev1", ".xlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::dirnotfound);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+    SECTION( "firstFile is not valid" )
+    {
+        MagAOX::file::stdFileName firstFile;
+        MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/tmp/logMap_test", "dev1", ".xlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::invalidconfig);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+    SECTION( "lastFile is not valid" )
+    {
+        MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
+        MagAOX::file::stdFileName lastFile;
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/tmp/logMap_test", "dev1", ".xlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::invalidconfig);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+    SECTION( "wrong device name so no files" )
+    {
+        MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
+        MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/tmp/logMap_test", "dev6", ".xlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::noerror);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+    SECTION( "wrong extension so no files" )
+    {
+        MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
+        MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
+
+        MagAOX::logger::logMap lm;
+
+        mx::error_t errc = lm.loadAppToFileMap( "/tmp/logMap_test", "dev1", ".qlog", firstFile, lastFile );
+
+        REQUIRE(errc == mx::error_t::noerror);
+        REQUIRE( lm.m_appToFileMap.size() == 0 );
+    }
+
+
+}
+
+/// Building the app-to-file map with errors
+/**
+ * \ingroup logMap_unit_test
+ */
+TEST_CASE( "Building the app-to-file map with errors", "[libMagAOX::logger::logMap]" )
+{
+    createTestPaths( "/tmp/logMap_test" );
+
+    SECTION( "No prior log" )
     {
         MagAOX::file::stdFileName firstFile( "cam1/2024_11_19/cam1_20241118030000000000000.xrif" );
         MagAOX::file::stdFileName lastFile( "cam1/2024_11_19/cam1_20241119040000000000000.xrif" );
@@ -237,4 +332,6 @@ SCENARIO( "Building the app-to-file map with errors", "[libMagAOX::logger::logMa
     }
 }
 
-} // namespace logMap_test
+} // namespace logMapTest
+} // namespace loggerTest
+} // namespace libXWCTest

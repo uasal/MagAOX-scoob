@@ -7,6 +7,7 @@
 
 #include <exception>
 #include <source_location>
+#include <format>
 
 namespace MagAOX
 {
@@ -39,6 +40,7 @@ class xwcException : public std::exception
     /**
      * The what() message becomes "msg (file line)".
      */
+    explicit
     xwcException( const std::string         &msg, /**<[in] the error descriptionat message) */
                   const std::source_location loc = std::source_location::current() )
         : m_what{ std::format( "{} ({} {})", msg, loc.file_name(), loc.line() ) }, m_message{ msg }, m_location{ loc }

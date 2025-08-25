@@ -11,11 +11,11 @@
 #include <string>
 #include <chrono>
 
-#include <mx/mxError.hpp>
+#include <mx/mxlib.hpp>
 #include <mx/ioutils/stringUtils.hpp>
 #include "../common/exceptions.hpp"
 
-#define XWC_DEFAULT_VERBOSITY mx::verbose::vvv
+#include "../common/defaults.hpp"
 
 namespace MagAOX
 {
@@ -694,6 +694,12 @@ stdSubDir<verboseT> stdSubDir<verboseT>::previousSubdir( mx::error_t *errc )
 
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_PREVFOLL_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         stdSubDir std = *this;
 
         // clang-format off
@@ -735,6 +741,14 @@ stdSubDir<verboseT> stdSubDir<verboseT>::previousSubdir( mx::error_t *errc )
         }
         std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }
+    catch( const xwcException &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_exception;
+        }
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
 }
 
 template <typename verboseT>
@@ -752,6 +766,12 @@ stdSubDir<verboseT> stdSubDir<verboseT>::followingSubdir( mx::error_t *errc )
 
     try
     {
+        // clang-format off
+        #ifdef XWCTEST_STDSUBDIR_PREVFOLL_BAD_ALLOC
+            throw std::bad_alloc(); // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         stdSubDir std = *this;
 
         // clang-format off
@@ -790,6 +810,14 @@ stdSubDir<verboseT> stdSubDir<verboseT>::followingSubdir( mx::error_t *errc )
         if( errc )
         {
             *errc = mx::error_t::std_bad_alloc;
+        }
+        std::throw_with_nested( xwcException( "chrono operations", -6 ) );
+    }
+    catch( const xwcException &e )
+    {
+        if( errc )
+        {
+            *errc = mx::error_t::std_exception;
         }
         std::throw_with_nested( xwcException( "chrono operations", -6 ) );
     }

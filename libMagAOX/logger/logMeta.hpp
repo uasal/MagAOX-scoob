@@ -123,9 +123,9 @@ logMetaDetail logMemberAccessor( flatlogs::eventCodeT ec,
                                  const std::string & memberName
                                );
 
-template<typename valT>
+template<typename valT, class verboseT = XWC_DEFAULT_VERBOSITY>
 int getLogStateVal( valT & val,
-                    logMap & lm,
+                    logMap<verboseT> & lm,
                     const std::string & appName,
                     flatlogs::eventCodeT ev,
                     const flatlogs::timespecX & stime,
@@ -192,9 +192,9 @@ int getLogStateVal( valT & val,
    return 0;
 }
 
-template<typename valT>
+template<typename valT, class verboseT=XWC_DEFAULT_VERBOSITY>
 int getLogContVal( valT & val,
-                    logMap & lm,
+                    logMap<verboseT> & lm,
                     const std::string & appName,
                     flatlogs::eventCodeT ev,
                     const flatlogs::timespecX & stime,
@@ -251,7 +251,7 @@ int getLogContVal( valT & val,
   */
 struct logMeta
 {
-    typedef mx::verbose::vvv verboseT;
+    typedef XWC_DEFAULT_VERBOSITY verboseT;
 
 public:
    enum valTypes
@@ -313,22 +313,22 @@ public:
 
    int setLog( const logMetaSpec &);
 
-   std::string value( logMap & lm,
+   std::string value( logMap<verboseT> & lm,
                       const flatlogs::timespecX & stime,
                       const flatlogs::timespecX & atime
                     );
 
-   std::string valueNumber( logMap & lm,
+   std::string valueNumber( logMap<verboseT> & lm,
                             const flatlogs::timespecX & stime,
                             const flatlogs::timespecX & atime
                           );
 
-   std::string valueString( logMap & lm,
+   std::string valueString( logMap<verboseT> & lm,
                             const flatlogs::timespecX & stime,
                             const flatlogs::timespecX & atime
                           );
 
-   mx::fits::fitsHeaderCard<verboseT> card( logMap &lm,
+   mx::fits::fitsHeaderCard<verboseT> card( logMap<verboseT> &lm,
                                   const flatlogs::timespecX & stime,
                                   const flatlogs::timespecX & atime
                                 );

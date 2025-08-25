@@ -138,7 +138,7 @@ int logMeta::setLog( const logMetaSpec & lms )
 }
 
 
-std::string logMeta::value( logMap & lm,
+std::string logMeta::value( logMap<verboseT> & lm,
                             const flatlogs::timespecX & stime,
                             const flatlogs::timespecX & atime
                           )
@@ -165,7 +165,7 @@ std::string logMeta::value( logMap & lm,
    }
 }
 
-std::string logMeta::valueNumber( logMap & lm,
+std::string logMeta::valueNumber( logMap<verboseT> & lm,
                                   const flatlogs::timespecX & stime,
                                   const flatlogs::timespecX & atime
                                 )
@@ -421,7 +421,7 @@ std::string logMeta::valueNumber( logMap & lm,
 
 }
 
-std::string logMeta::valueString( logMap & lm,
+std::string logMeta::valueString( logMap<verboseT> & lm,
                                   const flatlogs::timespecX & stime,
                                   const flatlogs::timespecX & atime
                                 )
@@ -448,7 +448,7 @@ std::string logMeta::valueString( logMap & lm,
    return val;
 }
 
-mx::fits::fitsHeaderCard<logMeta::verboseT> logMeta::card( logMap &lm,
+mx::fits::fitsHeaderCard<logMeta::verboseT> logMeta::card( logMap<verboseT> &lm,
                                           const flatlogs::timespecX & stime,
                                           const flatlogs::timespecX & atime
                                         )
@@ -482,16 +482,16 @@ mx::fits::fitsHeaderCard<logMeta::verboseT> logMeta::card( logMap &lm,
    {
       std::cerr << "got invalid value: " << __FILE__ << " " << __LINE__ << "\n";
       // always a string sentinel value, so return here to skip the valType conditional
-      return mx::fits::fitsHeaderCard(keyw, vstr, m_spec.comment);
+      return mx::fits::fitsHeaderCard<verboseT>(keyw, vstr, m_spec.comment);
    }
 
    if(m_detail.valType == valTypes::String)
    {
-      return mx::fits::fitsHeaderCard(keyw, vstr, m_spec.comment);
+      return mx::fits::fitsHeaderCard<verboseT>(keyw, vstr, m_spec.comment);
    }
    else
    {
-      return mx::fits::fitsHeaderCard(keyw, vstr.c_str(), m_detail.valType, m_spec.comment);
+      return mx::fits::fitsHeaderCard<verboseT>(keyw, vstr.c_str(), m_detail.valType, m_spec.comment);
    }
 }
 

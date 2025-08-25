@@ -461,7 +461,8 @@ void logManager<parentT, logFileT>::logThreadExec()
          while( it != end )
          {
             //m_logFile.
-            if( this->writeLog( *it ) < 0)
+            mx::error_t errc = this->writeLog( *it );
+            if( errc != mx::error_t::noerror)
             {
                m_logThreadRunning = false;
                return;

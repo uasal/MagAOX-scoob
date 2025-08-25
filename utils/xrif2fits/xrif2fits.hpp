@@ -68,7 +68,7 @@ void sigTermHandler( int signum, siginfo_t *siginf, void *ucont )
  */
 class xrif2fits : public mx::app::application
 {
-    typedef mx::verbose::vvv verboseT;
+    typedef XWC_DEFAULT_VERBOSITY verboseT;
 
     typedef MagAOX::file::stdFileName<verboseT> stdFileNameT;
 
@@ -100,9 +100,9 @@ class xrif2fits : public mx::app::application
 
     bool m_cubeMode{ false };
 
-    logMap m_logs;
+    logMap<verboseT> m_logs;
 
-    logMap m_tels;
+    logMap<verboseT> m_tels;
 
   protected:
     ///@}
@@ -894,8 +894,8 @@ int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logM
     mx::improc::eigenCube<dataT> tmpc(
         reinterpret_cast<dataT *>( m_xrif->raw_buffer ), m_xrif->width, m_xrif->height, m_xrif->frames );
 
-    mx::fits::fitsFile<dataT> ff;
-    mx::fits::fitsHeader      fh;
+    mx::fits::fitsFile<dataT,verboseT> ff;
+    mx::fits::fitsHeader<verboseT>      fh;
 
     // Special handling for meta output
     logMeta exptimeMeta( logMetaSpec( lfn.appName(), telem_stdcam::eventCode, "exptime" ) );
@@ -992,7 +992,7 @@ int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logM
                 // Then output each value in turn
                 for( size_t u = 0; u < logMetas.size(); ++u )
                 {
-                    mx::fits::fitsHeaderCard fc = logMetas[u].card( m_tels, stime, atime );
+                    mx::fits::fitsHeaderCard<verboseT> fc = logMetas[u].card( m_tels, stime, atime );
                     fh.append( fc );
                     if( !m_noMeta )
                     {

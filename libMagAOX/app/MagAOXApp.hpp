@@ -127,8 +127,10 @@ class MagAOXApp : public application
     friend class MagAOXApp_test;
 
   public:
+    typedef XWC_DEFAULT_VERBOSITY verboseT;
+
     /// The log manager type.
-    typedef logger::logManager<MagAOXApp<_useINDI>, logFileRaw> logManagerT;
+    typedef logger::logManager<MagAOXApp<_useINDI>, logFileRaw<verboseT>> logManagerT;
 
   protected:
     std::string MagAOXPath; ///< The base path of the MagAO-X system.

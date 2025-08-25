@@ -3,7 +3,7 @@
  * \ingroup file_files
  */
 
-#include "../../../tests/catch2/catch.hpp"
+#include "../../../tests/testXWC.hpp"
 
 #include <filesystem>
 
@@ -87,20 +87,36 @@
 #undef XWCTEST_NAMESPACE
 #undef XWCTEST_STDFILENAME_FULLNAME_TIMEGM
 
+#undef file_stdFileName_hpp
+#define XWCTEST_NAMESPACE XWCTEST_STDFILENAME_FULLNAME_TIMEGM_OTHER_ns
+#define XWCTEST_STDFILENAME_FULLNAME_TIMEGM_OTHER
+#include "../stdFileName.hpp"
+#undef XWCTEST_NAMESPACE
+#undef XWCTEST_STDFILENAME_FULLNAME_TIMEGM_OTHER
+
 namespace libXWCTest
 {
 namespace fileTest
 {
+
+/** \defgroup stdFileName_unit_test stdFileName Unit Tests
+ * \ingroup file_unit_test
+ */
+
+/// Namespace for XWC::file::stdFileName tests
+/** \ingroup stdFileName_unit_test
+ *
+ */
 namespace stdFileNameTest
 {
 
 /// Constructing and Initializing stdFileName
 /**
- * \test
+ * \ingroup stdFileName_unit_test
  */
-SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFileName]" )
+TEST_CASE( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFileName]" )
 {
-    GIVEN( "default construction and parsing and member access" )
+    SECTION( "default construction and parsing and member access" )
     {
         std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
 
@@ -129,7 +145,7 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
         REQUIRE( sfn.valid() );
     }
 
-    GIVEN( "default construction, assignment and member access" )
+    SECTION( "default construction, assignment and member access" )
     {
         std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
 
@@ -158,7 +174,7 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
         REQUIRE( sfn.valid() );
     }
 
-    GIVEN( "construction by parsing and member access" )
+    SECTION( "construction by parsing and member access" )
     {
         std::string fullName = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
 
@@ -226,11 +242,11 @@ SCENARIO( "Construction and Initializing stdFileName", "[libMagAOX::file::stdFil
 
 /// Member Access Errors
 /**
- * \test
+ * \ingroup stdFileName_unit_test
  */
-SCENARIO( "Member Access Errors", "[libMagAOX::file::stdFileName]" )
+TEST_CASE( "Member Access Errors", "[libMagAOX::file::stdFileName]" )
 {
-    GIVEN( "default construction, access while invalid" )
+    SECTION( "default construction, access while invalid" )
     {
         MagAOX::file::stdFileName sfn;
 
@@ -295,11 +311,11 @@ SCENARIO( "Member Access Errors", "[libMagAOX::file::stdFileName]" )
 }
 /// Setting fullName errors
 /**
- * \test
+ * \ingroup stdFileName_unit_test
  */
-SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
+TEST_CASE( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 {
-    GIVEN( "Construction with fullname throws bad_alloc" )
+    SECTION( "Construction with fullname throws bad_alloc" )
     {
         bool caught = false;
 
@@ -307,6 +323,9 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         {
             MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_BAD_ALLOC_ns::stdFileName sfn(
                 "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+
+            XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn(
+                "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" ) );
         }
         catch( const MagAOX::xwcException &e )
         {
@@ -316,16 +335,20 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( caught == true );
     }
 
-    GIVEN( "Construction with fullname throws exception" )
+    SECTION( "Construction with fullname throws exception" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_EXCEPTION_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
         REQUIRE( !sfn.valid() );
+
+        XWCTEST_DOXYGEN_REF(
+            MagAOX::file::stdFileName sfn( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+            sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname throws exception" )
+    SECTION( "Default Construction, setting fullname throws exception" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_EXCEPTION_ns::stdFileName sfn;
@@ -334,9 +357,12 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" ) );
     }
 
-    GIVEN( "Construction with fullname throws bad_alloc from fs" )
+    SECTION( "Construction with fullname throws bad_alloc from fs" )
     {
         bool caught = false;
 
@@ -351,27 +377,38 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         }
 
         REQUIRE( caught == true );
+
+        XWCTEST_DOXYGEN_REF(
+            MagAOX::file::stdFileName sfn( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" ) );
     }
 
-    GIVEN( "Construction with fullname throws filesystem_error from fs" )
+    SECTION( "Construction with fullname throws filesystem_error from fs" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_FILESYSTEM_ERROR_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
         REQUIRE( !sfn.valid() );
+
+        XWCTEST_DOXYGEN_REF(
+            MagAOX::file::stdFileName sfn( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+            sfn.valid() );
     }
 
-    GIVEN( "Construction with fullname throws exception from fs" )
+    SECTION( "Construction with fullname throws exception from fs" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_EXCEPTION_ns::stdFileName sfn(
             "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
 
         REQUIRE( !sfn.valid() );
+
+        XWCTEST_DOXYGEN_REF(
+            MagAOX::file::stdFileName sfn( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+            sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname throws filesystem_error from fs" )
+    SECTION( "Default Construction, setting fullname throws filesystem_error from fs" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_FILESYSTEM_ERROR_ns::stdFileName sfn;
@@ -380,9 +417,13 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_filesystem_error );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname throws exception from fs" )
+    SECTION( "Default Construction, setting fullname throws exception from fs" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_EXCEPTION_ns::stdFileName sfn;
@@ -391,9 +432,13 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname without extension" )
+    SECTION( "Default Construction, setting fullname without extension" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -402,9 +447,13 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::invalidarg );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001" );
+                             sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname throws exception from parseFilePath" )
+    SECTION( "Default Construction, setting fullname throws exception from parseFilePath" )
     {
 
         MagAOX::file::XWCTEST_PARSEFILEPATH_THROW_BAD_ALLOC_ns::stdFileName sfn;
@@ -420,9 +469,12 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
             caught = true;
         }
         REQUIRE( caught == true );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" ) );
     }
 
-    GIVEN( "Default Construction, setting fullname causes error from parseFilePath" )
+    SECTION( "Default Construction, setting fullname causes error from parseFilePath" )
     {
 
         MagAOX::file::XWCTEST_PARSEFILEPATH_THROW_OUT_OF_RANGE_ns::stdFileName sfn;
@@ -431,9 +483,13 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_out_of_range );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname error in year" )
+    SECTION( "Default Construction, setting fullname error in year" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -444,7 +500,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in month" )
+    SECTION( "Default Construction, setting fullname error in month" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -455,7 +511,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in day" )
+    SECTION( "Default Construction, setting fullname error in day" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -466,7 +522,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in day" )
+    SECTION( "Default Construction, setting fullname error in day" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -477,7 +533,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in hour" )
+    SECTION( "Default Construction, setting fullname error in hour" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -488,7 +544,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in minute" )
+    SECTION( "Default Construction, setting fullname error in minute" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -499,7 +555,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in second" )
+    SECTION( "Default Construction, setting fullname error in second" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -510,7 +566,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname error in nanosecond" )
+    SECTION( "Default Construction, setting fullname error in nanosecond" )
     {
 
         MagAOX::file::stdFileName sfn;
@@ -521,7 +577,7 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
         REQUIRE( errc == mx::error_t::invalidarg );
     }
 
-    GIVEN( "Default Construction, setting fullname throws exception from stdSubDir.ymd" )
+    SECTION( "Default Construction, setting fullname throws exception from stdSubDir.ymd" )
     {
         MagAOX::file::XWCTEST_STDSUBDIR_YMD_BAD_ALLOC_ns::stdFileName sfn;
 
@@ -536,9 +592,12 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
             caught = true;
         }
         REQUIRE( caught == true );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" ); );
     }
 
-    GIVEN( "Default Construction, setting fullname causes error from stdSubDir.ymd" )
+    SECTION( "Default Construction, setting fullname causes error from stdSubDir.ymd" )
     {
 
         MagAOX::file::XWCTEST_STDSUBDIR_YMD_EXCEPTION_ns::stdFileName sfn;
@@ -547,9 +606,13 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::std_exception );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
     }
 
-    GIVEN( "Default Construction, setting fullname causes error from timegm" )
+    SECTION( "Default Construction, setting fullname causes error with errno from timegm" )
     {
 
         MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_TIMEGM_ns::stdFileName sfn;
@@ -558,16 +621,70 @@ SCENARIO( "Setting fullName Errors", "[libMagAOX::file::stdFileName]" )
 
         REQUIRE( !sfn.valid() );
         REQUIRE( errc == mx::error_t::eoverflow );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
+    }
+
+    SECTION( "Default Construction, setting fullname causes other error from timegm" )
+    {
+        MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_TIMEGM_OTHER_ns::stdFileName sfn;
+
+        mx::error_t errc = sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+
+        REQUIRE( !sfn.valid() );
+        REQUIRE( errc == mx::error_t::error );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn.fullName( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
+                             sfn.valid() );
+    }
+
+    SECTION( "Default Construction, setting fullname via = throws exception from fs" )
+    {
+        MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_EXCEPTION_ns::stdFileName sfn;
+
+        sfn = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+
+        REQUIRE( !sfn.valid() );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+                             sfn.valid() );
+    }
+
+    SECTION( "Default Construction, setting fullname via = throws bad_alloc from fs" )
+    {
+        bool caught = false;
+
+        MagAOX::file::XWCTEST_STDFILENAME_FULLNAME_FS_BAD_ALLOC_ns::stdFileName sfn;
+
+        try
+        {
+            sfn = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+        }
+        catch( const MagAOX::xwcException &e )
+        {
+            caught = true;
+        }
+
+        REQUIRE( caught == true );
+        REQUIRE( !sfn.valid() );
+
+        XWCTEST_DOXYGEN_REF( MagAOX::file::stdFileName sfn;
+                             sfn = "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog";
+                             sfn.valid(); );
     }
 }
 
 /// Comparing stdFileNames
 /**
- * \test
+ * \ingroup stdFileName_unit_test
  */
-SCENARIO( "Comparing stdFileNames", "[libMagAOX::file::stdFileName]" )
+TEST_CASE( "Comparing stdFileNames", "[libMagAOX::file::stdFileName]" )
 {
-    GIVEN( "filenames to compare" )
+    SECTION( "filenames to compare" )
     {
         MagAOX::file::stdFileName sfn1( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20241121063321000000001.binlog" );
         MagAOX::file::stdFileName sfn2( "/opt/MagAOX/stds/bamm/2024_11_21/bamm_20251121063321000000001.binlog" );

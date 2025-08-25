@@ -7,11 +7,13 @@
 #define file_fileTimes_hpp
 
 #include <time.h>
-
+#include <cstring>
 #include <iostream>
 #include <format>
 
-#include <mx/mxError.hpp>
+#include <mx/mxlib.hpp>
+
+#include "../common/defaults.hpp"
 
 #include "../common/exceptions.hpp"
 
@@ -121,6 +123,12 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
     errno = 0;
     if( gmtime_r( &ts_sec, &uttime ) == 0 )
     {
+        // clang-format off
+        #ifdef XWCTEST_TIMESTAMP_GMTIME_OTHER
+        errno = 0; // LCOV_EXCL_LINE
+        #endif
+        // clang-format on
+
         if( errno != 0 )
         {
             return mx::error_report<verboseT>( mx::errno2error_t( errno ),
