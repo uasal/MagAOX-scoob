@@ -31,7 +31,7 @@ log.setLevel(logging.DEBUG)
 
 CHUNK_DEFAULT_MB = 1000
 TELEM_ENTRIES_CHUNK = 10_000
-DEFAULT_CHANNELS = [
+DEFAULT_STREAMS = [
     'camsci1',
     'camsci2',
     'camwfs',
@@ -40,15 +40,13 @@ DEFAULT_CHANNELS = [
     'camlowfs',
     'camacq',
     'camtip',
-]
-DEFAULT_DMS = [
     'dm00disp',
     'dm01disp',
     'dm02disp',
 ]
 
 @xconf.config
-class ChannelConfig:
+class StreamConfig:
     name: str = xconf.field(help="Name of the camera channel")
     chunk_size_mb: int = xconf.field(
         default=CHUNK_DEFAULT_MB, help="Number of frames per chunk"
@@ -120,6 +118,7 @@ def datetime_to_seconds_nanos(dt):
 def unpack_one_xrif(
     local_path, idx, frames_per_xrif_chunk, frames_tmp, times_tmp, log
 ) -> int:
+    log.debug(f"{local_path=} {idx=} {frames_per_xrif_chunk=}")
     with open(local_path, "rb") as f:
         frames = fixr.XrifReader(f).copy_data()
         # n.b. after reading `frames`, file `f` has seeked (sought?) to
@@ -127,28 +126,31 @@ def unpack_one_xrif(
         # the image data
         times = fixr.XrifReader(f).copy_data()
         frames = frames.reshape((-1,) + frames.shape[2:])
-        times = times.reshape((-1,) + (times.shape[-1],))
+        # time rows are [frame_num, acqsec, acqnsec, wrtsec, wrtnsec]
+        times = times.reshape((-1, 5))
 
     if frames.shape[0] != times.shape[0]:
         log.warning(
             f"Discarding {frames.shape[0]} frames because xrif wrote {times.shape[0]} timestamps for this archive"
         )
-        return 0
+        return idx, 0
 
     if frames.shape[1:] != frames_tmp.shape[1:]:
         log.warning(
             f"Skipping {frames.shape[0]} frames because {frames.shape[1:]=} but {frames_tmp.shape[1:]=}"
         )
-        return 0
+        return idx, 0
 
     start_idx = idx * frames_per_xrif_chunk
-    n_actual_frames = frames.shape[0]
+    # zero for timestamp seconds is used as a sentinel for empty frames, which we should skip
+    actual_frames_mask = times[:, 1] != 0
+    n_actual_frames = np.count_nonzero(actual_frames_mask)
     if n_actual_frames != frames_per_xrif_chunk:
         log.debug(
             f"Got {n_actual_frames=} from {local_path} but expected {frames_per_xrif_chunk=}, filling in the frames we have"
         )
-    frames_tmp[start_idx : start_idx + n_actual_frames] = frames
-    times_tmp[start_idx : start_idx + n_actual_frames] = times
+    frames_tmp[start_idx : start_idx + n_actual_frames] = frames[actual_frames_mask]
+    times_tmp[start_idx : start_idx + n_actual_frames] = times[actual_frames_mask]
     return idx, n_actual_frames
 
 
@@ -194,13 +196,14 @@ def infer_common_xrif_cube_size_dtype(paths):
 
 
 def repack_xrif_channel(
-    camera_channel: ChannelConfig,
+    camera_channel: StreamConfig,
     channel_grouping_root: zarr.Group,
     cur: psycopg.Connection,
     path_rewrites: list[PathRewriteConfig],
     bounds,
     chunk_size_mb,
     pool: futures.ThreadPoolExecutor,
+    temp_root: str,
 ) -> tuple[list[str], int]:
     other_files_args = bounds + (camera_channel.name,)
     other_files_q_body = SQL("""
@@ -255,7 +258,8 @@ def repack_xrif_channel(
 
     n_frames = frames_per_xrif_chunk * xrifs_row_count
 
-    with tempfile.TemporaryDirectory() as td:
+    os.makedirs(temp_root, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root) as td:
         rechunk = zarr.open_group(f"file://" + td)
         frames_tmp = rechunk.zeros(
             "frames",
@@ -310,7 +314,7 @@ def repack_xrif_channel(
                 succeeded += 1
 
         log.info(
-            f"Loaded {total_frames=} of an expected {n_frames=} (loads {succeeded=} {failed=})"
+            f"Loaded {total_frames=} of an expected {n_frames} (loads {succeeded=} {failed=})"
         )
         if failed > 0:
             log.warning(f"Failed to load {failed} files, final array will contain gaps")
@@ -451,40 +455,39 @@ WHERE
 
 def pack_one_obs(
     span,
-    channels: list[ChannelConfig],
-    dms: list[ChannelConfig],
+    streams: list[StreamConfig],
     root: zarr.Group,
     conn,
     path_rewrites: list[PathRewriteConfig],
     pool: futures.ThreadPoolExecutor,
+    temp_root: str,
 ):
     cur = conn.cursor()
     bounds = span.begin, span.end
     paths_packed = []
     orig_total_bytes, final_total_bytes = 0, 0
 
-    detector = root.require_group('detector')
-    dm = root.require_group('dm')
-    for channel_root, channels in zip((detector, dm), (channels, dms)):
-        for channel in channels:
-            log.info(f"Checking for {channel.name}...")
-            cam_files_packed, orig_bytes_packed, final_bytes_packed = (
-                repack_xrif_channel(
-                    channel,
-                    channel_root,
-                    cur,
-                    path_rewrites,
-                    bounds,
-                    channel.chunk_size_mb,
-                    pool,
-                )
+    stream_root = root.require_group('stream')
+    for stream in streams:
+        log.info(f"Checking for {stream.name}...")
+        cam_files_packed, orig_bytes_packed, final_bytes_packed = (
+            repack_xrif_channel(
+                stream,
+                stream_root,
+                cur,
+                path_rewrites,
+                bounds,
+                stream.chunk_size_mb,
+                pool,
+                temp_root,
             )
-            paths_packed.extend(cam_files_packed)
-            orig_total_bytes += orig_bytes_packed
-            final_total_bytes += final_bytes_packed
-            if final_bytes_packed > 0:
-                log.debug(
-                    f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
-                )
+        )
+        paths_packed.extend(cam_files_packed)
+        orig_total_bytes += orig_bytes_packed
+        final_total_bytes += final_bytes_packed
+        if final_bytes_packed > 0:
+            log.debug(
+                f"Packed {len(cam_files_packed)} files, compressed {orig_bytes_packed/1024/1024:1.1f} MiB -> {final_bytes_packed/1024/1024:1.1f} MiB ({orig_bytes_packed / final_bytes_packed:1.2f})"
+            )
     repack_telem(root.require_group("telem"), cur, bounds, chunk_size=TELEM_ENTRIES_CHUNK)
     return paths_packed, orig_total_bytes, final_total_bytes
