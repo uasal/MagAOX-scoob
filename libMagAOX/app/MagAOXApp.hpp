@@ -39,6 +39,7 @@
 #include "indiDriver.hpp"
 #include "indiMacros.hpp"
 #include "indiUtils.hpp"
+#include "resurrectee.hpp"
 
 using namespace mx::app;
 
@@ -230,6 +231,7 @@ class MagAOXApp : public application
      * - signal handling installation by setSigTermHandler()
      * - appStartup() is called
      * - INDI communications started by startINDI()
+     * - Resurrectee started by startResurrectee()
      * - power state is checked, pausing if unknown (if being managed)
      *
      * Errors in the above steps will cause a process exit.
@@ -357,6 +359,9 @@ class MagAOXApp : public application
                          void *ucont        ///< [in] ignored by MagAOXApp
     );
 
+    std::string m_indiserver_ctrl_fifo{
+        "" }; ///< INDI server control FIFO for starting and stopping comms with INDI drivers
+
     ///@} -- Signal Handling
 
     /** \name Privilege Management
@@ -445,6 +450,18 @@ class MagAOXApp : public application
     std::string pidFileName; ///< The name of the PID file
 
     pid_t m_pid{ 0 }; ///< This process's PID
+
+    /// Attempt to create status directory for PID file
+
+    /** call mkdir("/opt/MagAOX/sys/<m_configName>/") with appropriate permissions and ownership
+     *
+     * Called by lockPID() below; also called when --mkfifo-hexbeat is command-line argument
+     *
+     * \returns 0 on success.
+     * \returns -1 on any error
+     */
+
+    int mkStatusDir();
 
     /// Attempt to lock the PID by writing it to a file. Fails if a process is already running with the same config
     /// name.
@@ -597,6 +614,15 @@ class MagAOXApp : public application
     /// Mutex for locking INDI communications.
     std::mutex m_indiMutex;
 
+    /// The resurrectee wrapper. //TBD: Constructed and initialized by execute
+    resurrectee<MagAOXApp> *m_resurrectee{ nullptr };
+
+    /// A wrapper for the INDI server ctrl FIFO name; used by m_indiDriver
+    const std::string &indiserver_ctrl_fifo() const
+    {
+        return m_indiserver_ctrl_fifo;
+    }
+
   protected:
     /// Structure to hold the call-back details for handling INDI communications.
     struct indiCallBack
@@ -640,10 +666,8 @@ class MagAOXApp : public application
     /// Full path name of the INDI driver output FIFO.
     std::string m_driverOutName;
 
-    /// Full path name of the INDI driver control FIFO.
-    /** This is currently only used to signal restarts.
-     */
-    std::string m_driverCtrlName;
+    /// Full path name of the resurrector/resurrectee FIFO.
+    std::string m_resurrecteeFifoName;
 
   public:
     /// Create a standard R/W INDI Text property with target and current elements.
@@ -869,6 +893,20 @@ class MagAOXApp : public application
      * \returns -1 on error.  This is fatal.
      */
     int startINDI();
+
+    /// Create the resurrectee FIFOs
+    /**
+     * \returns 0 on success
+     * \returns -1 on error.  This is fatal.
+     */
+    int createResurrecteeFIFO();
+
+    /// Start the resurrectee communications
+    /**
+     * \returns 0 on success
+     * \returns -1 on error.  This is fatal.
+     */
+    int startResurrectee();
 
   public:
     void sendGetPropertySetList( bool all = false );
@@ -1172,11 +1210,11 @@ class MagAOXApp : public application
      */
     std::string driverOutName();
 
-    /// Get the INDI control FIFO file name
+    /// Get the resurrectee FIFO file name
     /**
-     * \returns the current value of m_driverCtrlName
+     * \returns the current value of m_resurrecteeFifoName
      */
-    std::string driverCtrlName();
+    std::string resurrecteeFifoName();
 
     ///@} --Member Accessors
 };
@@ -1319,6 +1357,31 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
     config.parseCommandLine( argc, argv, "name" );
     config( m_configName, "name" );
 
+    // Special case check for --mkfifo-hexbeat
+    config.add("mkfifo-hexbeat", "", "mkfifo-hexbeat", argType::None
+              , "", "", false, "bool"
+              , "Create Hexbeat FIFO via mkfifo(2) and exit"
+              );
+
+    for (auto pparg = argv+1; pparg < (argv+argc); ++pparg)
+    {
+        if(::strcmp(*pparg, "--mkfifo-hexbeat")) { continue; }
+        std::cerr
+        << "Creating Hexbeat FIFO ["
+        << m_configName
+        << ".hb], status directory, and exiting ..."
+        << std::endl;
+        if ( createResurrecteeFIFO() ) { exit( -1 ); };
+        std::cerr
+        << "Hexbeat FIFO either already existed or was created successfully"
+        << std::endl;
+        if( mkStatusDir() ) { exit( -1 ); };
+        std::cerr
+        << "Status directory either already existed or was created successfully"
+        << std::endl;
+        exit( 0 );
+    }
+
     if( m_configName == "" )
     {
         m_configName = mx::ioutils::pathStem( invokedName );
@@ -1379,8 +1442,21 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
     config.add(
         "ignore_git", "", "ignore-git", argType::True, "", "", false, "bool", "set to true to ignore git status to prevent the fsm_alert" );
 
+    config.add( "indiserver_ctrl_fifo",
+                "",
+                "indiserver-ctrl-fifo",
+                argType::Required,
+                "",
+                "indiserver_ctrl_fifo",
+                false,
+                "string",
+                "INDI drivers can send [start /opt/MagAOX/drivers/fifos/indi-driver-name] messages to this INDI server"
+                " ctrl FIFO ( typically [/opt/MagAOX/drivers/fifos/indiserver.ctrl] ) on startup; the value should"
+                " match that of [indiserver.f] in /.../is*.conf" );
     // Logger Stuff
     m_log.setupConfig( config );
+    // Resurrectee configuration setup - static
+    resurrectee<MagAOXApp>::_setupConfig( config );
 
     if( m_powerMgtEnabled )
     {
@@ -1447,6 +1523,14 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
     bool ig{ false };
     config( ig, "ignore_git" );
 
+    {
+    //--------- Check for, and ignore, mkfifo-hexbeat --------//
+    bool mh{ false };
+    config( mh, "mkfifo-hexbeat" );
+    }
+
+    config( m_indiserver_ctrl_fifo, "indiserver_ctrl_fifo" );
+
     if( !ig && m_gitAlert )
     {
         m_stateAlert = true;
@@ -1461,6 +1545,9 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
     //---------- Setup the logger ----------//
     m_log.logName( m_configName );
     m_log.loadConfig( config );
+
+    //-- Configure the resurrectee - static --//
+    resurrectee<MagAOXApp>::_loadConfig( config );
 
     //--------- Loop Pause Time --------//
     config( m_loopPause, "loopPause" );
@@ -1656,6 +1743,17 @@ int MagAOXApp<_useINDI>::execute() // virtual
         }
     }
 
+    //====Begin Resurrectee
+    if( m_shutdown == 0 ) // if we're not already dead, that is
+    {
+        if( startResurrectee() < 0 )
+        {
+            state( stateCodes::FAILURE );
+            return -1;
+        }
+    }
+
+
     /* ***************************** */
     /*         appStartup()          */
     /* ***************************** */
@@ -1803,6 +1901,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
 
         /** \todo Need a heartbeat update here.
          */
+        m_resurrectee->execute();
 
         if( m_useINDI )
         {
@@ -1984,6 +2083,12 @@ void MagAOXApp<_useINDI>::_handlerSigTerm( int signum, siginfo_t *siginf, void *
     m_self->handlerSigTerm( signum, siginf, ucont );
 }
 
+static std::string sigabbrev( int sig )
+{
+    char *p = (char *)sigabbrev_np( sig );
+    return std::string( "SIG" ) + ( p ? p : "<unknown>" );
+}
+
 template <bool _useINDI>
 void MagAOXApp<_useINDI>::handlerSigTerm( int signum,
                                           siginfo_t *siginf __attribute__( ( unused ) ),
@@ -1992,6 +2097,7 @@ void MagAOXApp<_useINDI>::handlerSigTerm( int signum,
     m_shutdown = 1;
 
     std::string signame;
+#if 0
     switch( signum )
     {
     case SIGTERM:
@@ -2006,6 +2112,8 @@ void MagAOXApp<_useINDI>::handlerSigTerm( int signum,
     default:
         signame = "OTHER";
     }
+#endif // 0
+    signame += sigabbrev( signum );
 
     std::string logss = "Caught signal ";
     logss += signame;
@@ -2057,11 +2165,11 @@ int MagAOXApp<_useINDI>::setEuidReal()
 }
 
 template <bool _useINDI>
-int MagAOXApp<_useINDI>::lockPID()
+int MagAOXApp<_useINDI>::mkStatusDir()
 {
-    m_pid = getpid();
-
     std::string statusDir = sysPath;
+    statusDir += "/";
+    statusDir += m_configName;
 
     // Get the maximum privileges available
     elevatedPrivileges elPriv( this );
@@ -2079,7 +2187,20 @@ int MagAOXApp<_useINDI>::lockPID()
             return -1;
         }
     }
+    return 0;
+}
 
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::lockPID()
+{
+    if (mkStatusDir()) { return -1; }
+
+    m_pid = getpid();
+
+    // Get the maximum privileges available
+    elevatedPrivileges elPriv( this );
+
+    std::string statusDir = sysPath;
     statusDir += "/";
     statusDir += m_configName;
 
@@ -2898,7 +3019,6 @@ int MagAOXApp<_useINDI>::createINDIFIFOS()
 
     m_driverInName = driverFIFOPath + "/" + configName() + ".in";
     m_driverOutName = driverFIFOPath + "/" + configName() + ".out";
-    m_driverCtrlName = driverFIFOPath + "/" + configName() + ".ctrl";
 
     // Get max permissions
     elevatedPrivileges elPriv( this );
@@ -2920,19 +3040,6 @@ int MagAOXApp<_useINDI>::createINDIFIFOS()
 
     errno = 0;
     if( mkfifo( m_driverOutName.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP ) != 0 )
-    {
-        if( errno != EEXIST )
-        {
-            umask( prev );
-            // euidReal();
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, "mkfifo failed" } );
-            log<text_log>( "Failed to create ouput FIFO.", logPrio::LOG_CRITICAL );
-            return -1;
-        }
-    }
-
-    errno = 0;
-    if( mkfifo( m_driverCtrlName.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP ) != 0 )
     {
         if( errno != EEXIST )
         {
@@ -3004,6 +3111,99 @@ int MagAOXApp<_useINDI>::startINDI()
     sendGetPropertySetList( true );
 
     return 0;
+}
+
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::createResurrecteeFIFO()
+{
+    ///Need non-empty drivername
+    if ( m_configName.empty() ) { return -1; }
+
+    ///\todo make driver FIFO path full configurable.
+    std::string driverFIFOPath = MAGAOX_path;
+    driverFIFOPath += "/";
+    driverFIFOPath += MAGAOX_driverFIFORelPath;
+
+    m_resurrecteeFifoName = driverFIFOPath + "/" + configName() + ".hb";
+
+    // Get max permissions
+    elevatedPrivileges elPriv( this );
+
+    mode_t prev = umask( 0 );
+
+    errno = 0;
+    if( mkfifo( m_resurrecteeFifoName.c_str(), S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP ) != 0 )
+    {
+        if( errno != EEXIST )
+        {
+            umask( prev );
+            // euidReal();
+            log<software_critical>( { __FILE__, __LINE__, errno, 0, "mkfifo failed" } );
+            log<text_log>( "Failed to create resurrector/resurrectee FIFO.", logPrio::LOG_CRITICAL );
+            return -1;
+        }
+    }
+
+    umask( prev );
+    // euidReal();
+    return 0;
+}
+
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::startResurrectee()
+{
+
+    //===== Create the FIFOs for INDI communications ====
+    if( createResurrecteeFIFO() < 0 )
+    {
+        return -1;
+    }
+
+    //======= Instantiate the resurrectee
+    try
+    {
+        if( m_resurrectee != nullptr )
+        {
+            delete m_resurrectee;
+            m_resurrectee = nullptr;
+        }
+
+        m_resurrectee = new resurrectee<MagAOXApp>( this, _handlerSigTerm );
+    }
+    catch( ... )
+    {
+        log<software_critical>( { __FILE__, __LINE__, 0, 0, "Resurrectee construction exception." } );
+        return -1;
+    }
+
+    // Check for resurrectee failure
+    if( m_resurrectee == nullptr )
+    {
+        log<software_critical>( { __FILE__, __LINE__, 0, 0, "Resurrectee construction failed." } );
+        return -1;
+    }
+
+    // Check for resurrectee to open the FIFOs
+    if( m_resurrectee->good() == false )
+    {
+        log<software_critical>( { __FILE__, __LINE__, 0, 0, "Resurrectee failed to open FIFOs." } );
+        delete m_resurrectee;
+        m_resurrectee = nullptr;
+        return -1;
+    }
+
+    // Send a hexbeat using 2nd* time offset if that offset was configured
+    // *** Hexbeat sent only if 2nd vector element is present and positive
+    // * m_resurrectee->m_time_offset[1]
+    m_resurrectee->execute_1();
+
+    return 0;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::resurrecteeFifoName()
+{
+    return m_resurrecteeFifoName;
 }
 
 template <bool _useINDI>
@@ -3578,12 +3778,6 @@ template <bool _useINDI>
 std::string MagAOXApp<_useINDI>::driverOutName()
 {
     return m_driverOutName;
-}
-
-template <bool _useINDI>
-std::string MagAOXApp<_useINDI>::driverCtrlName()
-{
-    return m_driverCtrlName;
 }
 
 extern template class MagAOXApp<true>;
