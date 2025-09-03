@@ -12,6 +12,7 @@
     <speak>do not over-click mouse, as this can cause computers to freeze.</speak>
     <speak>Veggie nugget</speak>
     <speak>I write sophisticated algorithms, not tragedies</speak>
+    <speak> Yourtch control to Major Tom. </speak>
     <speak>So, by the way, how does a pyramid wavefront sensor actually work?</speak>
     <speak>We, at toilet duck, recommend toilet duck.</speak>
     <speak>
@@ -24,6 +25,67 @@
       <voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice>
     </speak>
   </random-utterances>
+  <walk-ups>
+    <walk-up email="jlong@flatironinstitute.org">
+      <file name="seven_nation.wav" />
+    </walk-up>
+    <walk-up email="lclose@as.arizona.edu">
+      <file name="allstar.wav" />
+    </walk-up>
+    <walk-up email="lapearce@umich.edu">
+      <file name="skibidi.wav" />
+    </walk-up>
+    <walk-up email="jrmales@arizona.edu">
+      <file name="aenema.wav" />
+    </walk-up>
+    <walk-up email="jrhom@arizona.edu">
+      <file name="justin.wav" />
+    </walk-up>
+    <walk-up email="jliberman@arizona.edu">
+      <file name="lipgloss.wav" />
+      <file name="sober.wav" />
+    </walk-up>
+    <walk-up email="twitchell@arizona.edu">
+      <file name="katie.wav" />
+    </walk-up>
+    <walk-up email="tonucci@strw.leidenuniv.nl">
+      <file name="elena.wav" />
+    </walk-up>
+    <walk-up email="edenmcewen@arizona.edu">
+      <file name="eden.wav" />
+    </walk-up>
+    <walk-up email="haffert@strw.leidenuniv.nl">
+      <file name="sebastiaan.wav" />
+    </walk-up>
+    <walk-up email="mars@strw.leidenuniv.nl">
+      <file name="matthijs.wav" />
+    </walk-up>
+    <!-- <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
+      <transition value="On">
+        <file name="allstar.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.lapearce-at-umich-dot-edu">
+      <transition value="On">
+        <file name="skibidi.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jrmales-at-arizona-dot-edu">
+      <transition value="On">
+        <file name="aenema.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jlong-at-flatironinstitute-dot-org">
+      <transition value="On">
+        <file name="seven_nation.wav" />
+      </transition>
+    </react-to>
+    <react-to indi-id="observers.observers.jliberman-at-arizona-dot-edu">
+      <transition value="On">
+        <file name="lipgloss.wav" />
+      </transition>
+    </react-to> -->
+  </walk-ups>
   <soundboard>
     <button name="NotJared">
       <file name="not_jared.wav" />
@@ -37,8 +99,8 @@
     <button name="ChickenNugget">
       <speak>Chicken nugget</speak>
     </button>
-    <button name="Avalon">
-      <speak>beep boop bop</speak>
+    <button name="WeProudlyPresent">
+      <file name="bad_fox.wav" />
     </button>
     <button name="Proposals">
       <file name="lkca15.wav" />
@@ -51,6 +113,12 @@
     </button>
     <button name="Diggy">
       <file name="diggy_short.wav" />
+    </button>
+    <button name="PleaseClap">
+      <file name="please_clap.wav" />
+    </button>
+    <button name="VizzyAO">
+      <file name="blue.wav" />
     </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
@@ -70,7 +138,7 @@
   </react-to>
   <react-to indi-id="observers.obs_on.toggle">
     <transition value="On">
-      <speak>Saving data for {observers.current_observer.pfoa}.</speak>
+      <speak>Saving data for {observers.current_observer.pronunciation}.</speak>
     </transition>
     <transition value="Off">
       <speak>Data saving stopped.</speak>
@@ -109,6 +177,16 @@
       <speak>Nothing is working. Good.</speak>
       <speak>That is a block too far, I am afraid.</speak>
       <speak>This is embarrassing</speak>
+      <speak>I can’t fix this.</speak>
+      <speak>My algorithms are useless.</speak>
+      <speak>My Strehl ratio is a joke…</speak>
+      <speak>I peaked at calibration!</speak>
+    </transition>
+  </react-to>
+  <react-to indi-id="tcsi.teldata.dome_stat">
+    <transition op="eq" value="-1">
+      <file name="bad_fox.wav" />
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tcsi.catalog.object">
@@ -144,6 +222,7 @@
   <react-to indi-id="tcsi.environment.wind">
     <transition op="gt" value="35.1">
       <speak>The last wind measurement exceeded the shutdown threshold</speak>
+      <file name="that_escalated.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tcsi.seeing.dimm_fwhm">
@@ -184,6 +263,7 @@
       <speak>Low fiss off</speak>
     </transition>
   </react-to>
+
   <react-to indi-id="camvisx.current_exposure.remaining_pct">
     <transition value="90" op="gt">
       <speak>
@@ -205,6 +285,7 @@
       <speak>Exposuring complete</speak>
       <speak>Done visex ing</speak>
       <speak>Sixty megapixels for you</speak>
+      <file name="please_clap.wav" />
     </transition>
   </react-to>
   <react-to indi-id="tweeterSpeck.modulating.toggle">
@@ -215,4 +296,28 @@
       <speak>You needed more speckles?</speak>
     </transition>
   </react-to>
+
+  <react-to indi-id="labrules.info.loop-closed-above-2kHz">
+    <transition value="On">
+      <file name="doc_brown_shit.wav" />
+      <file name="top_gun_need.wav" />
+      <file name="ricky_go_fast.wav" />
+      <file name="pull_over.wav" />
+      <speak>the captain has turned on the seatbelt sign. please return to your seats</speak>
+      <speak>better keep an eye on gee pee you temperature</speak>
+      <speak>I'm worried we're gonna go plaid</speak>
+    </transition>
+  </react-to>
+
+  <react-to indi-id="labrules.info.loop-closed-below-1kHz">
+    <transition value="On">
+      <file name="close_down.wav" />
+      <file name="help_push.wav" />
+      <file name="shit_man.wav" />
+      <speak>we don't even need gee pee yous for this</speak>
+      <speak>someone doesn't have enough photons</speak>
+      <speak>can anyone spare a photon or two?</speak>
+    </transition>
+  </react-to>
+
 </personality>

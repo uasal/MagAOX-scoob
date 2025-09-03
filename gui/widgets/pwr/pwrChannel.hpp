@@ -36,21 +36,23 @@ class pwrChannel : public QWidget
 
     pwrChState m_setSwitchState{ pwrChState::Off }; ///< The last state set by the user.
 
+    bool m_changing {false}; ///< Flag tracking if this channel is changing
+
     std::vector<int> m_outlets; ///< The outlets controlled by this channel.
 
-    double m_onDelay{ 0 }; ///< The total turn-on delay for this channel (between outlets)
+    double m_onDelay{ 1000 }; ///< The total turn-on delay for this channel (between outlets)
 
-    double m_onTimeout{ 3000 }; /**< The turn-ontimeout for this channel, the time to wait for device to update the
+    double m_onTimeout{ 6000 }; /**< The turn-ontimeout for this channel, the time to wait for device to update the
                                       status before re-enabling the switch.*/
 
-    double m_offDelay{ 0 }; ///> The turn-off delay for this channel (between outlets)
+    double m_offDelay{ 1000 }; ///> The turn-off delay for this channel (between outlets)
 
-    double m_offTimeout{ 3000 }; /**< The turn-off timeout for this channel, the time to wait for device to update the
+    double m_offTimeout{ 6000 }; /**< The turn-off timeout for this channel, the time to wait for device to update the
                                       status before re-enabling the switch.*/
 
     bool m_isToggle {false}; ///< Whether this is a toggle switch (true) or a text switch (false).
 
-QTimer *m_timer{ nullptr }; ///< Timer for tracking timeouts on channel state changes
+    QTimer *m_timer{ nullptr }; ///< Timer for tracking timeouts on channel state changes
 
 public:
 /// Constructor
@@ -78,6 +80,10 @@ int switchState();
 void switchTarget( pwrChState swstate );
 
 void switchState( pwrChState swstate );
+bool changing()
+{
+    return m_changing;
+}
 
 QwtTextLabel *channelNameLabel();
 
@@ -181,15 +187,15 @@ if( m_swTarget == pwrChState::Unk )
 m_swTarget = swstate;
 }
 
-if( swstate != m_swTarget )
-{
-m_channelSwitch->setEnabled( false );
-if( swstate == pwrChState::Int )
-{
-    m_channelSwitch->setSliderPosition( m_channelSwitch->minimum() +
-					0.5 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) );
-    m_setSwitchState = pwrChState::Int;
-}
+    if( swstate != m_swTarget && m_changing)
+    {
+        m_channelSwitch->setEnabled( false );
+        if( swstate == pwrChState::Int )
+        {
+            m_channelSwitch->setSliderPosition( m_channelSwitch->minimum() +
+                                                0.5 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) );
+            m_setSwitchState = pwrChState::Int;
+        }
 
 return;
 }
@@ -248,65 +254,73 @@ calcOffTimeout();
 
 void pwrChannel::calcOnTimeout()
 {
-if(m_outlets.size() > 1)
-{
-m_onTimeout = m_outlets.size() * 3000 + m_onDelay;
-}
-else
-{
-m_onTimeout = 3000 + m_onDelay;
-}
+    if(m_outlets.size() > 1)
+    {
+        m_onTimeout = m_outlets.size() * 5000 + m_onDelay;
+    }
+    else
+    {
+        m_onTimeout = 5000 + m_onDelay;
+    }
 }
 
 void pwrChannel::calcOffTimeout()
 {
-if(m_outlets.size() > 1)
-{
-m_offTimeout = m_outlets.size() * 3000 + m_offDelay;
-}
-else
-{
-m_offTimeout = 3000 + m_offDelay;
-}
+    if(m_outlets.size() > 1)
+    {
+        m_offTimeout = m_outlets.size() * 5000 + m_offDelay;
+    }
+    else
+    {
+        m_offTimeout = 5000 + m_offDelay;
+    }
 }
 
 void pwrChannel::sliderReleased()
 {
-if( m_setSwitchState != pwrChState::On )
-{
-if( m_channelSwitch->sliderPosition() >
-    m_channelSwitch->minimum() + 0.8 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) )
-{
-    m_channelSwitch->setEnabled( false );
-    m_timer->start( m_onTimeout );
-    emit switchOn( m_channelName );
-}
-else
-    switchState( pwrChState::Off );
-}
-else
-{
-if( m_channelSwitch->sliderPosition() <
-    m_channelSwitch->minimum() + 0.2 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) )
-{
-    m_channelSwitch->setEnabled( false );
-    m_timer->start( m_offTimeout );
-    emit switchOff( m_channelName );
-}
-else
-    switchState( pwrChState::On );
-}
+    if( m_setSwitchState != pwrChState::On )
+    {
+        if( m_channelSwitch->sliderPosition() >
+            m_channelSwitch->minimum() + 0.8 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) )
+        {
+            m_channelSwitch->setEnabled( false );
+            m_changing = true;
+            m_timer->start( m_onTimeout );
+            emit switchOn( m_channelName );
+        }
+        else
+        {
+            switchState( pwrChState::Off );
+        }
+    }
+    else
+    {
+        if( m_channelSwitch->sliderPosition() <
+            m_channelSwitch->minimum() + 0.2 * ( m_channelSwitch->maximum() - m_channelSwitch->minimum() ) )
+        {
+            m_channelSwitch->setEnabled( false );
+            m_changing = true;
+            m_timer->start( m_offTimeout );
+            emit switchOff( m_channelName );
+        }
+        else
+        {
+            switchState( pwrChState::On );
+        }
+    }
 }
 
 void pwrChannel::noTimeOut()
 {
-m_timer->stop();
+    m_changing = false;
+    m_timer->stop();
 }
 
 void pwrChannel::timeOut()
 {
-m_swTarget = m_setSwitchState;
-switchState( m_setSwitchState );
+    m_changing = false;
+    m_swTarget = m_setSwitchState;
+    switchState( m_setSwitchState );
 }
 
 } // namespace xqt
