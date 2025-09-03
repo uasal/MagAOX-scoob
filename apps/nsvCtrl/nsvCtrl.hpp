@@ -17,6 +17,9 @@
 
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <sstream>
+#include <map>
 
 #include <unistd.h>
 
@@ -100,6 +103,11 @@ protected:
    std::string m_powerOffTS;
    std::string m_poweredOnDuration;
 
+   // Power monitoring variables
+   float m_gmslVoltage {0.0};
+   float m_gmslCurrent {0.0};
+   std::string m_gmslInterface; // e.g., "12V_A_GMSL1"
+
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
 
@@ -173,6 +181,8 @@ public:
    int getTemp();
 
    int getPowerStatus();
+
+   int getPowerMetrics();
 
    int setTempControl();
 
@@ -278,6 +288,8 @@ protected:
    pcf::IndiProperty m_indiP_mean_frame_time;
    pcf::IndiProperty m_indiP_power;
    pcf::IndiProperty m_indiP_power_status;
+   pcf::IndiProperty m_indiP_gmsl_voltage;
+   pcf::IndiProperty m_indiP_gmsl_current;
 
 public:
 
@@ -342,6 +354,11 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    // roi start pos, ver start pos, end pos, etc.
    m_powerCycles = 0;
 
+   // Initialize power monitoring
+   m_gmslVoltage = 0.0;
+   m_gmslCurrent = 0.0;
+   m_gmslInterface = "";
+
    return;
 }
 
@@ -359,6 +376,7 @@ void nsvCtrl::setupConfig()
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
+   config.add("camera.power_rail", "", "camera.power_rail", argType::Optional, "camera", "power_rail", false, "str", "Power rail name for monitoring (e.g., 12V_A_GMSL1)");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -373,6 +391,7 @@ void nsvCtrl::loadConfig()
    config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
+   config(m_gmslInterface, "camera.power_rail");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -467,6 +486,14 @@ int nsvCtrl::appStartup()
    createROIndiNumber( m_indiP_mean_frame_time, "m_indiP_mean_frame_time", "Mean Frame Time (s)");
    indi::addNumberElement<float>( m_indiP_mean_frame_time, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%f", "readout time");
    registerIndiPropertyReadOnly( m_indiP_mean_frame_time );
+
+   createROIndiNumber( m_indiP_gmsl_voltage, "gmsl_voltage", "GMSL Voltage (V)");
+   indi::addNumberElement<float>( m_indiP_gmsl_voltage, "value", 0.0, 15.0, 0.0,  "%.3f", "GMSL interface voltage");
+   registerIndiPropertyReadOnly( m_indiP_gmsl_voltage );
+
+   createROIndiNumber( m_indiP_gmsl_current, "gmsl_current", "GMSL Current (A)");
+   indi::addNumberElement<float>( m_indiP_gmsl_current, "value", 0.0, 10.0, 0.0,  "%.3f", "GMSL interface current");
+   registerIndiPropertyReadOnly( m_indiP_gmsl_current );
 
    /*
    createStandardIndiNumber<int>(m_indiP_frame_timestamp_s, "frame_timestamp_s", 0, 2147483647, 1, "%d");
@@ -590,6 +617,8 @@ int nsvCtrl::appLogic()
          state(stateCodes::NODEVICE);
          return 0;
       }
+
+      getPowerMetrics();
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -997,6 +1026,124 @@ int nsvCtrl::getPowerStatus()
       m_powerState = -1;
    }
    return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get power state"}) : m_powerState;
+}
+
+inline
+int nsvCtrl::getPowerMetrics()
+{
+   
+   // Read INA3221 sensor data
+   std::map<std::string, std::pair<float, float>> powerData;
+   
+   // Try to read from both possible INA3221 driver locations
+   // First try: /sys/bus/i2c/drivers/ina3221x/
+   std::vector<std::string> ina3221Paths;
+   std::string cmd = "find /sys/bus/i2c/drivers/ina3221x/ -name 'iio*' -type d 2>/dev/null";
+   std::string result = cmdRes(cmd.c_str());
+   
+   if (result != "error" && !result.empty()) {
+      std::istringstream iss(result);
+      std::string line;
+      while (std::getline(iss, line)) {
+         if (!line.empty()) {
+            ina3221Paths.push_back(line);
+         }
+      }
+   }
+   
+   // Second try: /sys/bus/i2c/drivers/ina3221/
+   cmd = "find /sys/bus/i2c/drivers/ina3221/ -name 'hwmon*' -type d 2>/dev/null";
+   result = cmdRes(cmd.c_str());
+   
+   if (result != "error" && !result.empty()) {
+      std::istringstream iss(result);
+      std::string line;
+      while (std::getline(iss, line)) {
+         if (!line.empty()) {
+            ina3221Paths.push_back(line);
+         }
+      }
+   }
+   
+   // Read data from each INA3221 device
+   for (const auto& path : ina3221Paths) {
+      // Try to read from ina3221x format first
+      for (int i = 0; i < 3; i++) {
+         std::string currentFile = path + "/in_current" + std::to_string(i) + "_input";
+         std::string voltageFile = path + "/in_voltage" + std::to_string(i) + "_input";
+         std::string nameFile = path + "/rail_name_" + std::to_string(i);
+         
+         std::ifstream currentStream(currentFile);
+         std::ifstream voltageStream(voltageFile);
+         std::ifstream nameStream(nameFile);
+         
+         if (currentStream.good() && voltageStream.good() && nameStream.good()) {
+            std::string currentStr, voltageStr, name;
+            std::getline(currentStream, currentStr);
+            std::getline(voltageStream, voltageStr);
+            std::getline(nameStream, name);
+            
+            if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
+               float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+               float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+               powerData[name] = std::make_pair(current, voltage);
+            }
+         }
+      }
+      
+      // Try to read from ina3221 format
+      for (int i = 1; i <= 3; i++) {
+         std::string currentFile = path + "/curr" + std::to_string(i) + "_input";
+         std::string voltageFile = path + "/in" + std::to_string(i) + "_input";
+         std::string nameFile = path + "/of_node/channel@" + std::to_string(i-1) + "/label";
+         
+         std::ifstream currentStream(currentFile);
+         std::ifstream voltageStream(voltageFile);
+         std::ifstream nameStream(nameFile);
+         
+         if (currentStream.good() && voltageStream.good() && nameStream.good()) {
+            std::string currentStr, voltageStr, name;
+            std::getline(currentStream, currentStr);
+            std::getline(voltageStream, voltageStr);
+            std::getline(nameStream, name);
+            
+            if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
+               float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+               float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+               powerData[name] = std::make_pair(current, voltage);
+            }
+         }
+      }
+   }
+   
+   // Use configured power rail or find the first available GMSL interface
+   if (m_gmslInterface.empty()) {
+      // If no power rail configured, find the first available GMSL interface
+      for (const auto& pair : powerData) {
+         if (pair.first.find("GMSL") != std::string::npos) {
+            m_gmslInterface = pair.first;
+            log<text_log>("No power_rail configured, using first available: " + m_gmslInterface, logPrio::LOG_INFO);
+            break;
+         }
+      }
+   }
+   
+   // Update power metrics for the mapped GMSL interface
+   auto it = powerData.find(m_gmslInterface);
+   if (it != powerData.end()) {
+      m_gmslCurrent = it->second.first;
+      m_gmslVoltage = it->second.second;
+      
+      // Update INDI properties
+      updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+      updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      
+      return 0;
+   } else {
+      // Power rail not found
+      log<text_log>("Power rail '" + m_gmslInterface + "' not found in sensor data", logPrio::LOG_WARNING);
+      return -1;
+   }
 }
 
 inline
