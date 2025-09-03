@@ -1035,9 +1035,10 @@ int nsvCtrl::getPowerMetrics()
    // Read INA3221 sensor data
    std::map<std::string, std::pair<float, float>> powerData;
    
-   // Try to read from both possible INA3221 driver locations
-   // First try: /sys/bus/i2c/drivers/ina3221x/
+   // Find all INA3221 devices
    std::vector<std::string> ina3221Paths;
+   
+   // First try: /sys/bus/i2c/drivers/ina3221x/
    std::string cmd = "find /sys/bus/i2c/drivers/ina3221x/ -name 'iio*' -type d 2>/dev/null";
    std::string result = cmdRes(cmd.c_str());
    
@@ -1065,6 +1066,12 @@ int nsvCtrl::getPowerMetrics()
       }
    }
    
+   // Log found devices for debugging
+   log<text_log>("Found " + std::to_string(ina3221Paths.size()) + " INA3221 devices", logPrio::LOG_INFO);
+   for (const auto& path : ina3221Paths) {
+      log<text_log>("  Device: " + path, logPrio::LOG_INFO);
+   }
+   
    // Read data from each INA3221 device
    for (const auto& path : ina3221Paths) {
       // Try to read from ina3221x format first
@@ -1073,20 +1080,36 @@ int nsvCtrl::getPowerMetrics()
          std::string voltageFile = path + "/in_voltage" + std::to_string(i) + "_input";
          std::string nameFile = path + "/rail_name_" + std::to_string(i);
          
+         // Check if files exist first
          std::ifstream currentStream(currentFile);
          std::ifstream voltageStream(voltageFile);
          std::ifstream nameStream(nameFile);
          
-         if (currentStream.good() && voltageStream.good() && nameStream.good()) {
+         if (currentStream.is_open() && voltageStream.is_open() && nameStream.is_open()) {
             std::string currentStr, voltageStr, name;
             std::getline(currentStream, currentStr);
             std::getline(voltageStream, voltageStr);
             std::getline(nameStream, name);
             
             if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
-               float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
-               float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
-               powerData[name] = std::make_pair(current, voltage);
+               try {
+                  // Log raw values for debugging
+                  log<text_log>("Raw values for " + name + ": current='" + currentStr + "' mA, voltage='" + voltageStr + "' mV", logPrio::LOG_INFO);
+                  
+                  float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+                  float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+                  
+                  // Log converted values with more precision
+                  char current_buf[32], voltage_buf[32];
+                  snprintf(current_buf, sizeof(current_buf), "%.6f", current);
+                  snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", voltage);
+                  
+                  log<text_log>("Converted values for " + name + ": current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
+                  
+                  powerData[name] = std::make_pair(current, voltage);
+               } catch (const std::exception& e) {
+                  log<text_log>("Error parsing power data for " + name + ": " + e.what(), logPrio::LOG_WARNING);
+               }
             }
          }
       }
@@ -1097,23 +1120,45 @@ int nsvCtrl::getPowerMetrics()
          std::string voltageFile = path + "/in" + std::to_string(i) + "_input";
          std::string nameFile = path + "/of_node/channel@" + std::to_string(i-1) + "/label";
          
+         // Check if files exist first
          std::ifstream currentStream(currentFile);
          std::ifstream voltageStream(voltageFile);
          std::ifstream nameStream(nameFile);
          
-         if (currentStream.good() && voltageStream.good() && nameStream.good()) {
+         if (currentStream.is_open() && voltageStream.is_open() && nameStream.is_open()) {
             std::string currentStr, voltageStr, name;
             std::getline(currentStream, currentStr);
             std::getline(voltageStream, voltageStr);
             std::getline(nameStream, name);
             
             if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
-               float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
-               float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
-               powerData[name] = std::make_pair(current, voltage);
+               try {
+                  // Log raw values for debugging
+                  log<text_log>("Raw values for " + name + ": current='" + currentStr + "' mA, voltage='" + voltageStr + "' mV", logPrio::LOG_INFO);
+                  
+                  float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+                  float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+                  
+                  // Log converted values with more precision
+                  char current_buf[32], voltage_buf[32];
+                  snprintf(current_buf, sizeof(current_buf), "%.6f", current);
+                  snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", voltage);
+                  
+                  log<text_log>("Converted values for " + name + ": current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
+                  
+                  powerData[name] = std::make_pair(current, voltage);
+               } catch (const std::exception& e) {
+                  log<text_log>("Error parsing power data for " + name + ": " + e.what(), logPrio::LOG_WARNING);
+               }
             }
          }
       }
+   }
+   
+   // Log all found power data for debugging
+   log<text_log>("Found " + std::to_string(powerData.size()) + " power interfaces", logPrio::LOG_INFO);
+   for (const auto& pair : powerData) {
+      log<text_log>("  " + pair.first + ": " + std::to_string(pair.second.first) + "A, " + std::to_string(pair.second.second) + "V", logPrio::LOG_INFO);
    }
    
    // Use configured power rail or find the first available GMSL interface
@@ -1134,9 +1179,18 @@ int nsvCtrl::getPowerMetrics()
       m_gmslCurrent = it->second.first;
       m_gmslVoltage = it->second.second;
       
+      // Log the values being sent to INDI
+      char current_buf[32], voltage_buf[32];
+      snprintf(current_buf, sizeof(current_buf), "%.6f", m_gmslCurrent);
+      snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", m_gmslVoltage);
+      
+      log<text_log>("Updating INDI properties: current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
+      
       // Update INDI properties
       updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
       updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      
+      log<text_log>("INDI properties updated successfully", logPrio::LOG_INFO);
       
       return 0;
    } else {
