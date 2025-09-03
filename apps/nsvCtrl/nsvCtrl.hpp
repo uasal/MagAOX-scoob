@@ -1053,15 +1053,29 @@ int nsvCtrl::getPowerMetrics()
    }
    
    // Second try: /sys/bus/i2c/drivers/ina3221/
-   cmd = "find /sys/bus/i2c/drivers/ina3221/ -name 'hwmon*' -type d 2>/dev/null";
+   // First, get all device directories
+   cmd = "ls /sys/bus/i2c/drivers/ina3221/ 2>/dev/null | grep -E '^[0-9]+-[0-9a-f]+$'";
    result = cmdRes(cmd.c_str());
    
    if (result != "error" && !result.empty()) {
       std::istringstream iss(result);
-      std::string line;
-      while (std::getline(iss, line)) {
-         if (!line.empty()) {
-            ina3221Paths.push_back(line);
+      std::string deviceDir;
+      while (std::getline(iss, deviceDir)) {
+         if (!deviceDir.empty()) {
+            // For each device directory, look for hwmon subdirectories
+            std::string hwmonCmd = "ls /sys/bus/i2c/drivers/ina3221/" + deviceDir + "/hwmon/ 2>/dev/null | grep -E '^hwmon[0-9]+$'";
+            std::string hwmonResult = cmdRes(hwmonCmd.c_str());
+            
+            if (hwmonResult != "error" && !hwmonResult.empty()) {
+               std::istringstream hwmonIss(hwmonResult);
+               std::string hwmonDir;
+               while (std::getline(hwmonIss, hwmonDir)) {
+                  if (!hwmonDir.empty()) {
+                     std::string fullPath = "/sys/bus/i2c/drivers/ina3221/" + deviceDir + "/hwmon/" + hwmonDir;
+                     ina3221Paths.push_back(fullPath);
+                  }
+               }
+            }
          }
       }
    }
