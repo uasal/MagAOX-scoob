@@ -20,6 +20,8 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <thread>
+#include <mutex>
 
 #include <unistd.h>
 
@@ -107,6 +109,15 @@ protected:
    float m_gmslVoltage {0.0};
    float m_gmslCurrent {0.0};
    std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
+   std::ifstream m_powerCurrentStream;    // Persistent file stream for current reading
+   std::ifstream m_powerVoltageStream;    // Persistent file stream for voltage reading
+   int m_powerUpdateCounter = 0;          // Counter for rate limiting power updates
+   int m_powerUpdateInterval = 10;        // Update power every N frames (10Hz at 100fps = every 10 frames)
+   
+   // High-frequency power monitoring thread
+   std::thread m_powerThread;             // Separate thread for power monitoring
+   bool m_powerThreadRunning = false;     // Control flag for power thread
+   std::chrono::milliseconds m_powerUpdateRate{100}; // Update every 100ms (10Hz)
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -182,7 +193,8 @@ public:
 
    int getPowerStatus();
 
-   int getPowerMetrics();
+   // Power monitoring thread function
+   void powerMonitoringThread();
 
    int setTempControl();
 
@@ -364,6 +376,21 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 inline
 nsvCtrl::~nsvCtrl() noexcept
 {
+   // Stop power monitoring thread
+   if (m_powerThreadRunning) {
+      m_powerThreadRunning = false;
+      if (m_powerThread.joinable()) {
+         m_powerThread.join();
+      }
+   }
+   
+   // Close power monitoring file streams
+   if (m_powerCurrentStream.is_open()) {
+      m_powerCurrentStream.close();
+   }
+   if (m_powerVoltageStream.is_open()) {
+      m_powerVoltageStream.close();
+   }
    return;
 }
 
@@ -522,6 +549,35 @@ int nsvCtrl::appStartup()
    m_powerState = 0;  
    //m_powerTargetState = 1;
 
+   // Initialize power monitoring file streams
+   if (!m_powerDevicePath.empty()) {
+      std::string currentFile = m_powerDevicePath + "/curr1_input";
+      std::string voltageFile = m_powerDevicePath + "/in1_input";
+      
+      m_powerCurrentStream.open(currentFile);
+      m_powerVoltageStream.open(voltageFile);
+      
+      if (!m_powerCurrentStream.is_open()) {
+         log<text_log>("Failed to open power current file: " + currentFile, logPrio::LOG_WARNING);
+      }
+      if (!m_powerVoltageStream.is_open()) {
+         log<text_log>("Failed to open power voltage file: " + voltageFile, logPrio::LOG_WARNING);
+      }
+      
+      if (m_powerCurrentStream.is_open() && m_powerVoltageStream.is_open()) {
+         log<text_log>("Power monitoring initialized: " + m_powerDevicePath, logPrio::LOG_INFO);
+         
+         // Start power monitoring thread
+         m_powerThreadRunning = true;
+         m_powerThread = std::thread(&nsvCtrl::powerMonitoringThread, this);
+         log<text_log>("Power monitoring thread started at " + std::to_string(1000/m_powerUpdateRate.count()) + "Hz", logPrio::LOG_INFO);
+      } else {
+         log<text_log>("Power monitoring file streams not available", logPrio::LOG_WARNING);
+      }
+   } else {
+      log<text_log>("No power_device_path configured, power monitoring disabled", logPrio::LOG_INFO);
+   }
+
    return 0;
 
 }
@@ -617,7 +673,7 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      getPowerMetrics();
+      // Power monitoring moved to acquireAndCheckValid() for higher frequency updates
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -1027,66 +1083,45 @@ int nsvCtrl::getPowerStatus()
    return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get power state"}) : m_powerState;
 }
 
-inline
-int nsvCtrl::getPowerMetrics()
+void nsvCtrl::powerMonitoringThread()
 {
-   // Check if power device path is configured
-   if (m_powerDevicePath.empty()) {
-      log<text_log>("No power_device_path configured", logPrio::LOG_WARNING);
-      return -1;
+   log<text_log>("Power monitoring thread started", logPrio::LOG_INFO);
+   
+   while (m_powerThreadRunning && !shutdown()) {
+      if (m_powerCurrentStream.is_open() && m_powerVoltageStream.is_open()) {
+         // Reset file streams to beginning
+         m_powerCurrentStream.clear();
+         m_powerCurrentStream.seekg(0);
+         m_powerVoltageStream.clear();
+         m_powerVoltageStream.seekg(0);
+         
+         std::string currentStr, voltageStr;
+         std::getline(m_powerCurrentStream, currentStr);
+         std::getline(m_powerVoltageStream, voltageStr);
+         
+         if (!currentStr.empty() && !voltageStr.empty()) {
+            try {
+               // Convert mA to A and mV to V
+               m_gmslCurrent = std::stof(currentStr) / 1000.0f;
+               m_gmslVoltage = std::stof(voltageStr) / 1000.0f;
+               
+               // Update INDI properties (thread-safe)
+               std::unique_lock<std::mutex> lock(m_indiMutex);
+               updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+               updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+               lock.unlock();
+               
+            } catch (const std::exception& e) {
+               // Silent error handling to avoid log spam
+            }
+         }
+      }
+      
+      // Sleep for the specified update rate
+      std::this_thread::sleep_for(m_powerUpdateRate);
    }
    
-   log<text_log>("Reading power from device path: " + m_powerDevicePath, logPrio::LOG_INFO);
-   
-   // Read directly from the specified path, e.g. /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6
-   std::string currentFile = m_powerDevicePath + "/curr1_input";
-   std::string voltageFile = m_powerDevicePath + "/in1_input";
-   
-   std::ifstream currentStream(currentFile);
-   std::ifstream voltageStream(voltageFile);
-   
-   if (!currentStream.is_open()) {
-      log<text_log>("Failed to open current file: " + currentFile, logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   if (!voltageStream.is_open()) {
-      log<text_log>("Failed to open voltage file: " + voltageFile, logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   std::string currentStr, voltageStr;
-   std::getline(currentStream, currentStr);
-   std::getline(voltageStream, voltageStr);
-   
-   if (currentStr.empty() || voltageStr.empty()) {
-      log<text_log>("Empty power data read from files", logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   try {
-      // Convert mA to A and mV to V
-      m_gmslCurrent = std::stof(currentStr) / 1000.0f;
-      m_gmslVoltage = std::stof(voltageStr) / 1000.0f;
-      
-      // Log the values with high precision
-      char current_buf[32], voltage_buf[32];
-      snprintf(current_buf, sizeof(current_buf), "%.6f", m_gmslCurrent);
-      snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", m_gmslVoltage);
-      
-      log<text_log>("Power data: current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
-      
-      // Update INDI properties
-      updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
-      updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
-      
-      log<text_log>("INDI properties updated successfully", logPrio::LOG_INFO);
-      
-      return 0;
-   } catch (const std::exception& e) {
-      log<text_log>("Error parsing power data: " + std::string(e.what()), logPrio::LOG_WARNING);
-      return -1;
-   }
+   log<text_log>("Power monitoring thread stopped", logPrio::LOG_INFO);
 }
 
 inline
@@ -1513,6 +1548,8 @@ int nsvCtrl::acquireAndCheckValid()
       // get timing information stored for the camera frame that was just dequeued
       m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
       m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
+
+      // Power monitoring now handled by separate thread at 10Hz
 
       if (has_prev && buffer_discard == bufferCount) { // make sure we cycle through the buffer at least once before computing statistics.
          int64_t sec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_sec) - static_cast<int64_t>(prev_timestamp.tv_sec);
