@@ -117,7 +117,7 @@ protected:
    // High-frequency power monitoring thread
    std::thread m_powerThread;             // Separate thread for power monitoring
    bool m_powerThreadRunning = false;     // Control flag for power thread
-   std::chrono::milliseconds m_powerUpdateRate{100}; // Update every 100ms (10Hz)
+   std::chrono::milliseconds m_powerUpdateRate{1}; // Update every 1ms (1000Hz)
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
