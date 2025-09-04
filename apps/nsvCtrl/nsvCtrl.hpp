@@ -106,7 +106,7 @@ protected:
    // Power monitoring variables
    float m_gmslVoltage {0.0};
    float m_gmslCurrent {0.0};
-   std::string m_gmslInterface; // e.g., "12V_A_GMSL1"
+   std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -376,7 +376,7 @@ void nsvCtrl::setupConfig()
    config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
-   config.add("camera.power_rail", "", "camera.power_rail", argType::Optional, "camera", "power_rail", false, "str", "Power rail name for monitoring (e.g., 12V_A_GMSL1)");
+   config.add("camera.power_device_path", "", "camera.power_device_path", argType::Optional, "camera", "power_device_path", false, "str", "Direct device path for power monitoring (e.g., /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6)");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -391,7 +391,7 @@ void nsvCtrl::loadConfig()
    config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
-   config(m_gmslInterface, "camera.power_rail");
+   config(m_powerDevicePath, "camera.power_device_path");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -1031,174 +1031,51 @@ int nsvCtrl::getPowerStatus()
 inline
 int nsvCtrl::getPowerMetrics()
 {
-   
-   // Read INA3221 sensor data
-   std::map<std::string, std::pair<float, float>> powerData;
-   
-   // Find all INA3221 devices
-   std::vector<std::string> ina3221Paths;
-   
-   // First try: /sys/bus/i2c/drivers/ina3221x/
-   std::string cmd = "find /sys/bus/i2c/drivers/ina3221x/ -name 'iio*' -type d 2>/dev/null";
-   std::string result = cmdRes(cmd.c_str());
-   
-   if (result != "error" && !result.empty()) {
-      std::istringstream iss(result);
-      std::string line;
-      while (std::getline(iss, line)) {
-         if (!line.empty()) {
-            ina3221Paths.push_back(line);
-         }
-      }
+   // Check if power device path is configured
+   if (m_powerDevicePath.empty()) {
+      log<text_log>("No power_device_path configured", logPrio::LOG_WARNING);
+      return -1;
    }
    
-   // Second try: /sys/bus/i2c/drivers/ina3221/
-   // First, get all device directories
-   cmd = "ls /sys/bus/i2c/drivers/ina3221/ 2>/dev/null | grep -E '^[0-9]+-[0-9a-f]+$'";
-   result = cmdRes(cmd.c_str());
+   log<text_log>("Reading power from device path: " + m_powerDevicePath, logPrio::LOG_INFO);
    
-   if (result != "error" && !result.empty()) {
-      std::istringstream iss(result);
-      std::string deviceDir;
-      while (std::getline(iss, deviceDir)) {
-         if (!deviceDir.empty()) {
-            // For each device directory, look for hwmon subdirectories
-            std::string hwmonCmd = "ls /sys/bus/i2c/drivers/ina3221/" + deviceDir + "/hwmon/ 2>/dev/null | grep -E '^hwmon[0-9]+$'";
-            std::string hwmonResult = cmdRes(hwmonCmd.c_str());
-            
-            if (hwmonResult != "error" && !hwmonResult.empty()) {
-               std::istringstream hwmonIss(hwmonResult);
-               std::string hwmonDir;
-               while (std::getline(hwmonIss, hwmonDir)) {
-                  if (!hwmonDir.empty()) {
-                     std::string fullPath = "/sys/bus/i2c/drivers/ina3221/" + deviceDir + "/hwmon/" + hwmonDir;
-                     ina3221Paths.push_back(fullPath);
-                  }
-               }
-            }
-         }
-      }
+   // Read directly from the specified path, e.g. /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6
+   std::string currentFile = m_powerDevicePath + "/curr1_input";
+   std::string voltageFile = m_powerDevicePath + "/in1_input";
+   
+   std::ifstream currentStream(currentFile);
+   std::ifstream voltageStream(voltageFile);
+   
+   if (!currentStream.is_open()) {
+      log<text_log>("Failed to open current file: " + currentFile, logPrio::LOG_WARNING);
+      return -1;
    }
    
-   // Log found devices for debugging
-   log<text_log>("Found " + std::to_string(ina3221Paths.size()) + " INA3221 devices", logPrio::LOG_INFO);
-   for (const auto& path : ina3221Paths) {
-      log<text_log>("  Device: " + path, logPrio::LOG_INFO);
+   if (!voltageStream.is_open()) {
+      log<text_log>("Failed to open voltage file: " + voltageFile, logPrio::LOG_WARNING);
+      return -1;
    }
    
-   // Read data from each INA3221 device
-   for (const auto& path : ina3221Paths) {
-      // Try to read from ina3221x format first
-      for (int i = 0; i < 3; i++) {
-         std::string currentFile = path + "/in_current" + std::to_string(i) + "_input";
-         std::string voltageFile = path + "/in_voltage" + std::to_string(i) + "_input";
-         std::string nameFile = path + "/rail_name_" + std::to_string(i);
-         
-         // Check if files exist first
-         std::ifstream currentStream(currentFile);
-         std::ifstream voltageStream(voltageFile);
-         std::ifstream nameStream(nameFile);
-         
-         if (currentStream.is_open() && voltageStream.is_open() && nameStream.is_open()) {
-            std::string currentStr, voltageStr, name;
-            std::getline(currentStream, currentStr);
-            std::getline(voltageStream, voltageStr);
-            std::getline(nameStream, name);
-            
-            if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
-               try {
-                  // Log raw values for debugging
-                  log<text_log>("Raw values for " + name + ": current='" + currentStr + "' mA, voltage='" + voltageStr + "' mV", logPrio::LOG_INFO);
-                  
-                  float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
-                  float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
-                  
-                  // Log converted values with more precision
-                  char current_buf[32], voltage_buf[32];
-                  snprintf(current_buf, sizeof(current_buf), "%.6f", current);
-                  snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", voltage);
-                  
-                  log<text_log>("Converted values for " + name + ": current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
-                  
-                  powerData[name] = std::make_pair(current, voltage);
-               } catch (const std::exception& e) {
-                  log<text_log>("Error parsing power data for " + name + ": " + e.what(), logPrio::LOG_WARNING);
-               }
-            }
-         }
-      }
+   std::string currentStr, voltageStr;
+   std::getline(currentStream, currentStr);
+   std::getline(voltageStream, voltageStr);
+   
+   if (currentStr.empty() || voltageStr.empty()) {
+      log<text_log>("Empty power data read from files", logPrio::LOG_WARNING);
+      return -1;
+   }
+   
+   try {
+      // Convert mA to A and mV to V
+      m_gmslCurrent = std::stof(currentStr) / 1000.0f;
+      m_gmslVoltage = std::stof(voltageStr) / 1000.0f;
       
-      // Try to read from ina3221 format
-      for (int i = 1; i <= 3; i++) {
-         std::string currentFile = path + "/curr" + std::to_string(i) + "_input";
-         std::string voltageFile = path + "/in" + std::to_string(i) + "_input";
-         std::string nameFile = path + "/of_node/channel@" + std::to_string(i-1) + "/label";
-         
-         // Check if files exist first
-         std::ifstream currentStream(currentFile);
-         std::ifstream voltageStream(voltageFile);
-         std::ifstream nameStream(nameFile);
-         
-         if (currentStream.is_open() && voltageStream.is_open() && nameStream.is_open()) {
-            std::string currentStr, voltageStr, name;
-            std::getline(currentStream, currentStr);
-            std::getline(voltageStream, voltageStr);
-            std::getline(nameStream, name);
-            
-            if (!currentStr.empty() && !voltageStr.empty() && !name.empty()) {
-               try {
-                  // Log raw values for debugging
-                  log<text_log>("Raw values for " + name + ": current='" + currentStr + "' mA, voltage='" + voltageStr + "' mV", logPrio::LOG_INFO);
-                  
-                  float current = std::stof(currentStr) / 1000.0f; // Convert mA to A
-                  float voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
-                  
-                  // Log converted values with more precision
-                  char current_buf[32], voltage_buf[32];
-                  snprintf(current_buf, sizeof(current_buf), "%.6f", current);
-                  snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", voltage);
-                  
-                  log<text_log>("Converted values for " + name + ": current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
-                  
-                  powerData[name] = std::make_pair(current, voltage);
-               } catch (const std::exception& e) {
-                  log<text_log>("Error parsing power data for " + name + ": " + e.what(), logPrio::LOG_WARNING);
-               }
-            }
-         }
-      }
-   }
-   
-   // Log all found power data for debugging
-   log<text_log>("Found " + std::to_string(powerData.size()) + " power interfaces", logPrio::LOG_INFO);
-   for (const auto& pair : powerData) {
-      log<text_log>("  " + pair.first + ": " + std::to_string(pair.second.first) + "A, " + std::to_string(pair.second.second) + "V", logPrio::LOG_INFO);
-   }
-   
-   // Use configured power rail or find the first available GMSL interface
-   if (m_gmslInterface.empty()) {
-      // If no power rail configured, find the first available GMSL interface
-      for (const auto& pair : powerData) {
-         if (pair.first.find("GMSL") != std::string::npos) {
-            m_gmslInterface = pair.first;
-            log<text_log>("No power_rail configured, using first available: " + m_gmslInterface, logPrio::LOG_INFO);
-            break;
-         }
-      }
-   }
-   
-   // Update power metrics for the mapped GMSL interface
-   auto it = powerData.find(m_gmslInterface);
-   if (it != powerData.end()) {
-      m_gmslCurrent = it->second.first;
-      m_gmslVoltage = it->second.second;
-      
-      // Log the values being sent to INDI
+      // Log the values with high precision
       char current_buf[32], voltage_buf[32];
       snprintf(current_buf, sizeof(current_buf), "%.6f", m_gmslCurrent);
       snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", m_gmslVoltage);
       
-      log<text_log>("Updating INDI properties: current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
+      log<text_log>("Power data: current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
       
       // Update INDI properties
       updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
@@ -1207,9 +1084,8 @@ int nsvCtrl::getPowerMetrics()
       log<text_log>("INDI properties updated successfully", logPrio::LOG_INFO);
       
       return 0;
-   } else {
-      // Power rail not found
-      log<text_log>("Power rail '" + m_gmslInterface + "' not found in sensor data", logPrio::LOG_WARNING);
+   } catch (const std::exception& e) {
+      log<text_log>("Error parsing power data: " + e.what(), logPrio::LOG_WARNING);
       return -1;
    }
 }
