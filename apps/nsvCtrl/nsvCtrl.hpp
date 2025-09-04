@@ -117,7 +117,7 @@ protected:
    // High-frequency power monitoring thread
    std::thread m_powerThread;             // Separate thread for power monitoring
    bool m_powerThreadRunning = false;     // Control flag for power thread
-   std::chrono::milliseconds m_powerUpdateRate{100}; // Update every 100ms (10Hz)
+   std::chrono::milliseconds m_powerUpdateRate{25}; // Update every 25ms (40Hz)
    std::mutex m_powerMutex;               // Separate mutex for power data
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
@@ -638,6 +638,13 @@ int nsvCtrl::appLogic()
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
    {
+      // Always update power data first, even without INDI mutex
+      {
+         std::lock_guard<std::mutex> lock(m_powerMutex);
+         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      }
+      
       //Get a lock if we can
       std::unique_lock<std::mutex> lock(m_indiMutex, std::try_to_lock);
 
@@ -674,12 +681,7 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      // Update INDI properties with latest power data (fallback if power thread couldn't update)
-      {
-         std::lock_guard<std::mutex> lock(m_powerMutex);
-         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
-         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
-      }
+      // Power data already updated above
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -1128,10 +1130,12 @@ void nsvCtrl::powerMonitoringThread()
          }
       }
       
-      // Debug logging every 50 loops (5 seconds at 10Hz)
+      // Debug logging every 40 loops (1 second at 40Hz)
       loop_count++;
-      if (loop_count % 50 == 0) {
-         log<text_log>("Power thread running, loop count: " + std::to_string(loop_count), logPrio::LOG_INFO);
+      if (loop_count % 40 == 0) {
+         log<text_log>("Power thread running, loop count: " + std::to_string(loop_count) + 
+                      ", voltage: " + std::to_string(m_gmslVoltage) + 
+                      "V, current: " + std::to_string(m_gmslCurrent) + "A", logPrio::LOG_INFO);
       }
       
       // Sleep for the specified update rate
