@@ -117,7 +117,8 @@ protected:
    // High-frequency power monitoring thread
    std::thread m_powerThread;             // Separate thread for power monitoring
    bool m_powerThreadRunning = false;     // Control flag for power thread
-   std::chrono::milliseconds m_powerUpdateRate{1}; // Update every 1ms (1000Hz)
+   std::chrono::milliseconds m_powerUpdateRate{100}; // Update every 100ms (10Hz)
+   std::mutex m_powerMutex;               // Separate mutex for power data
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -673,7 +674,12 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      // Power monitoring moved to acquireAndCheckValid() for higher frequency updates
+      // Update INDI properties with latest power data (fallback if power thread couldn't update)
+      {
+         std::lock_guard<std::mutex> lock(m_powerMutex);
+         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      }
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -1087,6 +1093,7 @@ void nsvCtrl::powerMonitoringThread()
 {
    log<text_log>("Power monitoring thread started", logPrio::LOG_INFO);
    
+   int loop_count = 0;
    while (m_powerThreadRunning && !shutdown()) {
       if (m_powerCurrentStream.is_open() && m_powerVoltageStream.is_open()) {
          // Reset file streams to beginning
@@ -1102,19 +1109,29 @@ void nsvCtrl::powerMonitoringThread()
          if (!currentStr.empty() && !voltageStr.empty()) {
             try {
                // Convert mA to A and mV to V
-               m_gmslCurrent = std::stof(currentStr) / 1000.0f;
-               m_gmslVoltage = std::stof(voltageStr) / 1000.0f;
+               float current = std::stof(currentStr) / 1000.0f;
+               float voltage = std::stof(voltageStr) / 1000.0f;
                
-               // Update INDI properties (thread-safe)
-               std::unique_lock<std::mutex> lock(m_indiMutex);
-               updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
-               updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
-               lock.unlock();
+               // Update power data with separate mutex
+               {
+                  std::lock_guard<std::mutex> lock(m_powerMutex);
+                  m_gmslCurrent = current;
+                  m_gmslVoltage = voltage;
+               }
+               
+               // Don't try to update INDI here - let the main thread handle it
+               // This avoids mutex contention and blocking
                
             } catch (const std::exception& e) {
                // Silent error handling to avoid log spam
             }
          }
+      }
+      
+      // Debug logging every 50 loops (5 seconds at 10Hz)
+      loop_count++;
+      if (loop_count % 50 == 0) {
+         log<text_log>("Power thread running, loop count: " + std::to_string(loop_count), logPrio::LOG_INFO);
       }
       
       // Sleep for the specified update rate
