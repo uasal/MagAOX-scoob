@@ -357,7 +357,6 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    // Initialize power monitoring
    m_gmslVoltage = 0.0;
    m_gmslCurrent = 0.0;
-   m_gmslInterface = "";
 
    return;
 }
@@ -1085,7 +1084,7 @@ int nsvCtrl::getPowerMetrics()
       
       return 0;
    } catch (const std::exception& e) {
-      log<text_log>("Error parsing power data: " + e.what(), logPrio::LOG_WARNING);
+      log<text_log>("Error parsing power data: " + std::string(e.what()), logPrio::LOG_WARNING);
       return -1;
    }
 }
