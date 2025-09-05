@@ -12,10 +12,10 @@
 
 #include <mx/ioutils/fileUtils.hpp>
 
-//#include "../../libMagAOX/libMagAOX.hpp"
+#include "../../libMagAOX/libMagAOX.hpp"
 //using namespace MagAOX::logger;
 
-//using namespace flatlogs;
+// using namespace flatlogs;
 
 
 class logstream //: public mx::app::application

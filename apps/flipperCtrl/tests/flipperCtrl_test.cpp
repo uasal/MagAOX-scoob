@@ -5,7 +5,7 @@
   */
 #include "../../../tests/catch2/catch.hpp"
 
-#include "../template.hpp"
+#include "../flipperCtrl.hpp"
 
 using namespace MagAOX::app;
 
@@ -20,7 +20,7 @@ SCENARIO( "xxxx", "[template]" )
 
       WHEN("xxxx")
       {
-         rv = [some test];
+         rv = 0;
 
          REQUIRE(rv == 0);
       }
