@@ -18,6 +18,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <map>
 #include <thread>
@@ -109,16 +110,20 @@ protected:
    float m_gmslVoltage {0.0};
    float m_gmslCurrent {0.0};
    std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
-   std::ifstream m_powerCurrentStream;    // Persistent file stream for current reading
-   std::ifstream m_powerVoltageStream;    // Persistent file stream for voltage reading
    int m_powerUpdateCounter = 0;          // Counter for rate limiting power updates
    int m_powerUpdateInterval = 10;        // Update power every N frames (10Hz at 100fps = every 10 frames)
    
    // High-frequency power monitoring thread
    std::thread m_powerThread;             // Separate thread for power monitoring
    bool m_powerThreadRunning = false;     // Control flag for power thread
-   std::chrono::milliseconds m_powerUpdateRate{25}; // Update every 25ms (40Hz)
+   std::chrono::milliseconds m_powerUpdateRate{10}; // Update every 10ms (100Hz)
    std::mutex m_powerMutex;               // Separate mutex for power data
+   
+   // Power logging variables
+   bool m_powerLoggingEnabled = false;
+   std::ofstream m_powerLogFile;
+   std::mutex m_powerLogMutex;
+   std::string m_powerLogPath;
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -196,6 +201,11 @@ public:
 
    // Power monitoring thread function
    void powerMonitoringThread();
+   
+   // Power logging functions
+   int startPowerLogging();
+   int stopPowerLogging();
+   void logPowerData();
 
    int setTempControl();
 
@@ -303,11 +313,13 @@ protected:
    pcf::IndiProperty m_indiP_power_status;
    pcf::IndiProperty m_indiP_gmsl_voltage;
    pcf::IndiProperty m_indiP_gmsl_current;
+   pcf::IndiProperty m_indiP_power_logging;
 
 public:
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power_logging);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power);
 
    /** \name Telemeter Interface
@@ -385,13 +397,7 @@ nsvCtrl::~nsvCtrl() noexcept
       }
    }
    
-   // Close power monitoring file streams
-   if (m_powerCurrentStream.is_open()) {
-      m_powerCurrentStream.close();
-   }
-   if (m_powerVoltageStream.is_open()) {
-      m_powerVoltageStream.close();
-   }
+   // Power monitoring uses direct file reading, no persistent streams to close
    return;
 }
 
@@ -522,6 +528,10 @@ int nsvCtrl::appStartup()
    indi::addNumberElement<float>( m_indiP_gmsl_current, "value", 0.0, 10.0, 0.0,  "%.3f", "GMSL interface current");
    registerIndiPropertyReadOnly( m_indiP_gmsl_current );
 
+   createStandardIndiToggleSw( m_indiP_power_logging, "power_logging", "Power Logging", "Enable/disable power data logging");
+   m_indiP_power_logging["toggle"].set(0);
+   registerIndiPropertyNew( m_indiP_power_logging, INDI_NEWCALLBACK(m_indiP_power_logging));
+
    /*
    createStandardIndiNumber<int>(m_indiP_frame_timestamp_s, "frame_timestamp_s", 0, 2147483647, 1, "%d");
    m_indiP_frame_timestamp_s["current"] = prev_timestamp.tv_sec;
@@ -550,22 +560,16 @@ int nsvCtrl::appStartup()
    m_powerState = 0;  
    //m_powerTargetState = 1;
 
-   // Initialize power monitoring file streams
+   // Initialize power monitoring
    if (!m_powerDevicePath.empty()) {
+      // Test if power monitoring files exist
       std::string currentFile = m_powerDevicePath + "/curr1_input";
       std::string voltageFile = m_powerDevicePath + "/in1_input";
       
-      m_powerCurrentStream.open(currentFile);
-      m_powerVoltageStream.open(voltageFile);
+      std::ifstream testCurrent(currentFile);
+      std::ifstream testVoltage(voltageFile);
       
-      if (!m_powerCurrentStream.is_open()) {
-         log<text_log>("Failed to open power current file: " + currentFile, logPrio::LOG_WARNING);
-      }
-      if (!m_powerVoltageStream.is_open()) {
-         log<text_log>("Failed to open power voltage file: " + voltageFile, logPrio::LOG_WARNING);
-      }
-      
-      if (m_powerCurrentStream.is_open() && m_powerVoltageStream.is_open()) {
+      if (testCurrent.is_open() && testVoltage.is_open()) {
          log<text_log>("Power monitoring initialized: " + m_powerDevicePath, logPrio::LOG_INFO);
          
          // Start power monitoring thread
@@ -573,7 +577,7 @@ int nsvCtrl::appStartup()
          m_powerThread = std::thread(&nsvCtrl::powerMonitoringThread, this);
          log<text_log>("Power monitoring thread started at " + std::to_string(1000/m_powerUpdateRate.count()) + "Hz", logPrio::LOG_INFO);
       } else {
-         log<text_log>("Power monitoring file streams not available", logPrio::LOG_WARNING);
+         log<text_log>("Power monitoring files not available: " + currentFile + ", " + voltageFile, logPrio::LOG_WARNING);
       }
    } else {
       log<text_log>("No power_device_path configured, power monitoring disabled", logPrio::LOG_INFO);
@@ -638,18 +642,18 @@ int nsvCtrl::appLogic()
 
    if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
    {
-      // Always update power data first, even without INDI mutex
-      {
-         std::lock_guard<std::mutex> lock(m_powerMutex);
-         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
-         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
-      }
-      
       //Get a lock if we can
       std::unique_lock<std::mutex> lock(m_indiMutex, std::try_to_lock);
 
       //but don't wait for it, just go back around.
       if(!lock.owns_lock()) return 0;
+      
+      // Update power data inside INDI mutex to ensure it gets processed
+      {
+         std::lock_guard<std::mutex> powerLock(m_powerMutex);
+         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      }
    
       if(m_powerState == 0) return 0;
 
@@ -1097,16 +1101,17 @@ void nsvCtrl::powerMonitoringThread()
    
    int loop_count = 0;
    while (m_powerThreadRunning && !shutdown()) {
-      if (m_powerCurrentStream.is_open() && m_powerVoltageStream.is_open()) {
-         // Reset file streams to beginning
-         m_powerCurrentStream.clear();
-         m_powerCurrentStream.seekg(0);
-         m_powerVoltageStream.clear();
-         m_powerVoltageStream.seekg(0);
-         
+      // Use direct file reading (like original Python) instead of persistent streams
+      std::string currentFile = m_powerDevicePath + "/curr1_input";
+      std::string voltageFile = m_powerDevicePath + "/in1_input";
+      
+      std::ifstream currentStream(currentFile);
+      std::ifstream voltageStream(voltageFile);
+      
+      if (currentStream.is_open() && voltageStream.is_open()) {
          std::string currentStr, voltageStr;
-         std::getline(m_powerCurrentStream, currentStr);
-         std::getline(m_powerVoltageStream, voltageStr);
+         std::getline(currentStream, currentStr);
+         std::getline(voltageStream, voltageStr);
          
          if (!currentStr.empty() && !voltageStr.empty()) {
             try {
@@ -1121,6 +1126,9 @@ void nsvCtrl::powerMonitoringThread()
                   m_gmslVoltage = voltage;
                }
                
+               // Log power data if enabled
+               logPowerData();
+               
                // Don't try to update INDI here - let the main thread handle it
                // This avoids mutex contention and blocking
                
@@ -1130,9 +1138,9 @@ void nsvCtrl::powerMonitoringThread()
          }
       }
       
-      // Debug logging every 40 loops (1 second at 40Hz)
+      // Debug logging every 100 loops (1 second at 100Hz)
       loop_count++;
-      if (loop_count % 40 == 0) {
+      if (loop_count % 100 == 0) {
          log<text_log>("Power thread running, loop count: " + std::to_string(loop_count) + 
                       ", voltage: " + std::to_string(m_gmslVoltage) + 
                       "V, current: " + std::to_string(m_gmslCurrent) + "A", logPrio::LOG_INFO);
@@ -1143,6 +1151,112 @@ void nsvCtrl::powerMonitoringThread()
    }
    
    log<text_log>("Power monitoring thread stopped", logPrio::LOG_INFO);
+}
+
+inline
+int nsvCtrl::startPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (m_powerLoggingEnabled) {
+      return 0; // Already logging
+   }
+   
+   // Generate log file path with timestamp in MagAOX telemetry directory
+   auto now = std::chrono::system_clock::now();
+   auto time_t = std::chrono::system_clock::to_time_t(now);
+   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+   
+   // Ensure telemetry directory exists
+   std::string telemDir = "/opt/MagAOX/telem";
+   if (access(telemDir.c_str(), F_OK) != 0) {
+      // Create directory if it doesn't exist
+      std::string mkdirCmd = "mkdir -p " + telemDir;
+      if (system(mkdirCmd.c_str()) != 0) {
+         log<software_error>({__FILE__, __LINE__, "Failed to create telemetry directory: " + telemDir});
+         return -1;
+      }
+   }
+   
+   std::stringstream ss;
+   ss << telemDir << "/nsvCtrl_power_" << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+   ss << "_" << std::setfill('0') << std::setw(3) << ms.count() << ".csv";
+   m_powerLogPath = ss.str();
+   
+   m_powerLogFile.open(m_powerLogPath, std::ios::out);
+   if (!m_powerLogFile.is_open()) {
+      log<software_error>({__FILE__, __LINE__, "Failed to open power log file: " + m_powerLogPath});
+      return -1;
+   }
+   
+   // Write CSV header
+   m_powerLogFile << "system_time_ns,camera_timestamp_s,camera_timestamp_ns,voltage_v,current_a\n";
+   m_powerLogFile.flush();
+   
+   m_powerLoggingEnabled = true;
+   log<text_log>("Power logging started, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   
+   return 0;
+}
+
+inline
+int nsvCtrl::stopPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLoggingEnabled) {
+      return 0; // Not logging
+   }
+   
+   m_powerLoggingEnabled = false;
+   
+   if (m_powerLogFile.is_open()) {
+      m_powerLogFile.close();
+      log<text_log>("Power logging stopped, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   }
+   
+   return 0;
+}
+
+inline
+void nsvCtrl::logPowerData()
+{
+   if (!m_powerLoggingEnabled) return;
+   
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLogFile.is_open()) return;
+   
+   // Get current system time in nanoseconds
+   auto now = std::chrono::high_resolution_clock::now();
+   auto duration = now.time_since_epoch();
+   auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+   
+   // Get camera timestamp (if available)
+   long camera_timestamp_s = 0;
+   long camera_timestamp_ns = 0;
+   
+   // Try to get camera timestamp from current image
+   if (m_currImageTimestamp.tv_sec != 0 || m_currImageTimestamp.tv_nsec != 0) {
+      camera_timestamp_s = m_currImageTimestamp.tv_sec;
+      camera_timestamp_ns = m_currImageTimestamp.tv_nsec;
+   }
+   
+   // Get current power values
+   float voltage, current;
+   {
+      std::lock_guard<std::mutex> powerLock(m_powerMutex);
+      voltage = m_gmslVoltage;
+      current = m_gmslCurrent;
+   }
+   
+   // Write to log file
+   m_powerLogFile << nanoseconds << "," 
+                  << camera_timestamp_s << "," 
+                  << camera_timestamp_ns << "," 
+                  << std::fixed << std::setprecision(6) << voltage << "," 
+                  << std::fixed << std::setprecision(6) << current << "\n";
+   m_powerLogFile.flush();
 }
 
 inline
@@ -1851,6 +1965,41 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       printf("powered off, state changed to POWEROFF\n");
       
       log<text_log>("powered off from INDI");
+   }
+   
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power_logging)(const pcf::IndiProperty &ipRecv)
+{
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_power_logging, ipRecv);
+   
+   if(!ipRecv.find("toggle")) return 0;
+   
+   if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::On, INDI_OK);
+      
+      if(startPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to start power logging"});
+         updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_ALERT);
+         return -1;
+      }
+      
+      log<text_log>("Power logging started", logPrio::LOG_INFO);
+   }
+   else
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_OK);
+      
+      if(stopPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to stop power logging"});
+         return -1;
+      }
+      
+      log<text_log>("Power logging stopped", logPrio::LOG_INFO);
    }
    
    return 0;
