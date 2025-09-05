@@ -165,7 +165,7 @@ else ifeq ($(MAGAOX_ROLE),SS)
 endif
 
 # If building for coverage, build everything that you can.
-ifeq ($(COVERAGE),1)
+ifeq ($(ALL_APPS),1)
 	apps_to_build :=  ${all_buildable_apps}
 endif
 
@@ -182,7 +182,7 @@ all_guis = \
 	stageGUI
 
 # If building for coverage, don't build guis for now
-ifeq ($(COVERAGE),1)
+ifeq ($(NO_GUIS),1)
 	all_guis := 
 endif
 
@@ -416,10 +416,14 @@ print_role:
 
 .PHONY: coverage
 coverage:
-	${MAKE} all COVERAGE=1
+	${MAKE} all COVERAGE=1 ALL_APPS=1 NO_GUIS=1
 
 coverage_clean:
 	find . -name '*.gcno' -delete
 	find . -name '*.gcda' -delete
 	find . -name '*.gcov' -delete
-	${MAKE} all_clean COVERAGE=1
+	${MAKE} all_clean COVERAGE=1 ALL_APPS=1
+
+.PHONY: valgrind
+valgrind:
+	${MAKE} all ALL_APPS=1 DEBUG=1
