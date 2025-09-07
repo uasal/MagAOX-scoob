@@ -17,8 +17,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -37,8 +38,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::warning);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::GtEq);
@@ -57,8 +59,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -76,8 +79,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::alert);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Neq);
@@ -96,8 +100,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -115,8 +120,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::info);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Neq);
@@ -135,8 +141,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -156,8 +163,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -177,8 +185,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["rule1"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["rule1"]->comparison() == ruleComparison::Eq);
@@ -201,8 +210,9 @@ SCENARIO( "configuring basic rules", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             REQUIRE(maps.rules["ruleA"]->priority() == rulePriority::none);
             REQUIRE(maps.rules["ruleA"]->comparison() == ruleComparison::Eq);
@@ -262,8 +272,9 @@ SCENARIO( "configuring the demo", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
-            loadRuleConfig(maps, config);
+            loadRuleConfig(maps, rrkMap, config);
 
             ruleCompRule * rcr = dynamic_cast<ruleCompRule *>(maps.rules["fwfpm-fpm-stagesci-fpm"]);
 
@@ -292,11 +303,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(const mx::err::invalidconfig & e)
             {
@@ -318,11 +330,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(const mx::err::notimpl & e)
             {
@@ -349,11 +362,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);            
             }
             catch(...)
             {
@@ -376,11 +390,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(...)
             {
@@ -402,11 +417,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
+            std::map<std::string, ruleRuleKeys> rrkMap;
 
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(...)
             {
@@ -429,11 +445,12 @@ SCENARIO( "rule configurations with errors", "[stateRuleEngine::ruleConfig]" )
             config.readConfig("/tmp/ruleConfig_test.conf");
 
             indiRuleMaps maps;
-
+            std::map<std::string, ruleRuleKeys> rrkMap;
+            
             bool caught = false;
             try
             {
-                loadRuleConfig(maps, config);
+                loadRuleConfig(maps, rrkMap, config);
             }
             catch(...)
             {

@@ -40,3 +40,12 @@ realclean: clean
 	@rm -f testMain.o
 	@rm -f test_stderr.txt
 	
+.PHONY: coverage
+coverage:
+	${MAKE} all COVERAGE=1
+
+coverage_clean:
+	find .. -path '*/tests/*.gcno' -delete
+	find .. -path '*/tests/*.gcda' -delete
+	find .. -path '*/tests/*.gcov' -delete
+	${MAKE} clean COVERAGE=1

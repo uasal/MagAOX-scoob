@@ -4,9 +4,10 @@ from purepyindi2.messages import DefNumber, DefSwitch, DefText
 import sys
 import logging
 import xconf
+import psycopg
 from magaox.indi.device import XDevice
 from magaox.constants import DEFAULT_PREFIX
-from magaox.db.config import BaseDeviceConfig
+from magaox.db.config import BaseDbDeviceConfig
 from magaox.db import Telem, FileOrigin, UserLog
 from magaox.db import ingest
 from magaox.utils import parse_iso_datetime_as_utc, creation_time_from_filename
@@ -89,7 +90,7 @@ def _run_logdump_thread(logger_name, logdump_dir, logdump_args, name, message_qu
             log.exception(f"Exception in log/telem follower for {name}")
 
 @xconf.config
-class dbIngestConfig(BaseDeviceConfig):
+class dbIngestConfig(BaseDbDeviceConfig):
     proclist : str = xconf.field(default="/opt/MagAOX/config/proclist_%s.txt", help="Path to process list file, %s will be replaced with the value of $MAGAOX_ROLE (or an empty string if absent from the environment)")
     logdump_exe : str = xconf.field(default="/opt/MagAOX/bin/logdump", help="logdump (a.k.a. teldump) executable to use")
 
@@ -102,6 +103,8 @@ class dbIngest(XDevice):
     last_update_ts_sec : float
     startup_ts_sec : float
     records_since_startup : float
+    _connections : list[psycopg.Connection]
+    _should_connect : bool = True
     
     #add user_log support here
     user_log_threads : list[tuple[str, threading.Thread]]
@@ -114,7 +117,6 @@ class dbIngest(XDevice):
         self.log.debug(f"Watching {dev} for incoming telem")
         self.telem_threads.append((dev, telem_thread))
 
-        #userLog support here
         if dev == "observers":
             ULog_args = self.log.name + '.' + dev, '/opt/MagAOX/logs', (self.config.logdump_exe, '--ext=.binlog'), dev, self.user_log_queue, UserLog
             user_log_thread = threading.Thread(target=_run_logdump_thread, args= ULog_args, daemon=True)
@@ -157,8 +159,6 @@ class dbIngest(XDevice):
         ))
         self.add_property(records)
 
-        self.conn = self.config.database.connect()
-
         role = os.environ.get('MAGAOX_ROLE', '')
         proclist = pathlib.Path(self.config.proclist.replace('%s', role))
         if not proclist.exists():
@@ -177,7 +177,6 @@ class dbIngest(XDevice):
                     raise RuntimeError(f"Got malformed proclist line: {repr(line)}")
                 device_names.add(parts[0])
 
-        #setup user log here too
         self.user_log_queue = queue.Queue()
         self.user_log_threads = []
 
@@ -188,6 +187,9 @@ class dbIngest(XDevice):
         
         self.startup_ts_sec = time.time()
         
+        self._connections = self.config.connect_to_databases()
+        self._should_connect = False
+
         # rescan for inventory
         self.rescan_files()
 
@@ -203,10 +205,28 @@ class dbIngest(XDevice):
             self.log.info(f"Watching {dirpath} for changes")
         self.fs_observer.start()
 
+
+
     def rescan_files(self):
         search_paths = [self.config.common_path_prefix / name for name in self.config.data_dirs]
-        with self.conn.cursor() as cur:
-            ingest.update_file_inventory(cur, self.config.hostname, search_paths)
+        try:
+            for conn in self._connections:
+                with conn.cursor() as cur:
+                    # n.b. the state of the file inventory and which files
+                    # are 'new' can be different depending on which
+                    # database we're talking about, so we rescan once
+                    # per connection
+                    self.log.debug(f"Scanning for new files for {conn.info.dsn}")
+                    ingest.update_file_inventory(
+                        cur,
+                        self.config.hostname,
+                        search_paths,
+                        self.config.ignore_patterns.files, self.config.ignore_patterns.directories
+                    )
+        except Exception:
+            self.log.exception(f"Failed to rescan/inventory files for {conn.info.dsn}, attempting to reconnect")
+            self._should_connect = True
+            return
         self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
     def ingest_line(self, line):
@@ -215,6 +235,10 @@ class dbIngest(XDevice):
             self.log.debug(line)
 
     def loop(self):
+        if self._should_connect:
+            self._connections = self.config.connect_to_databases(existing_connections=self._connections)
+            self._should_connect = False
+
         telems = []
         try:
             while rec := self.telem_queue.get(timeout=0.1):
@@ -240,11 +264,17 @@ class dbIngest(XDevice):
         except queue.Empty:
             pass
 
-        with self.conn.transaction():
-            cur = self.conn.cursor()
-            ingest.batch_telem(cur, telems)
-            ingest.batch_file_origins(cur, fs_events)
-            ingest.batch_user_log(cur, user_logs)
+        try:
+            for conn in self._connections:
+                self.log.debug(f"Batching ingest for {conn.info.dsn}")
+                with conn.transaction():
+                    cur = conn.cursor()
+                    ingest.batch_telem(cur, telems)
+                    ingest.batch_file_origins(cur, fs_events)
+                    ingest.batch_user_log(cur, user_logs)
+        except Exception as e:
+            self.log.exception("Caught exception in batch ingest, reconnecting")
+            self._should_connect = True
 
         this_ts_sec = time.time()
         self.last_update_ts_sec = this_ts_sec

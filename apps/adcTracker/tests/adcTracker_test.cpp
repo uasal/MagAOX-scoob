@@ -8,7 +8,7 @@
 
 
 #include "../../../tests/catch2/catch.hpp"
-#include "../../tests/testMacrosINDI.hpp"
+#include "../../../tests/testMacrosINDI.hpp"
 
 #include "../adcTracker.hpp"
 

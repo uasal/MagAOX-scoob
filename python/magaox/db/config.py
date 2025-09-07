@@ -1,14 +1,14 @@
-import os
-import typing
-import xconf
 import logging
+import os
 import pathlib
-import psycopg
-import psycopg.rows
+import re
 import socket
 
-from magaox.indi.device import BaseConfig as IndiDeviceBaseConfig
+import psycopg
+import psycopg.rows
+import xconf
 
+from magaox.indi.device import BaseConfig as IndiDeviceBaseConfig
 from ..constants import DEFAULT_DATA_DIRS
 
 log = logging.getLogger(__name__)
@@ -17,9 +17,8 @@ __all__ = [
     'DEFAULT_DATA_DIRS',
     'DbConfig',
     'BaseConfig',
-    'BaseDeviceConfig',
+    'BaseDbDeviceConfig',
 ]
-
 
 SETUP_USERS_SQL_PATH = pathlib.Path(__file__).parent / 'sql' / 'setup_users.sql'
 
@@ -28,7 +27,7 @@ class DbConfig:
     host : str = xconf.field(default='localhost', help='Hostname on which PostgreSQL is listening for connections')
     user : str = xconf.field(default='xtelem', help='Username with access to PostgreSQL database over TCP')
     port : int = xconf.field(default=5432, help='TCP port to connect to PostgreSQL on')
-    database : int = xconf.field(default='xtelem', help='Name of PostgreSQL database')
+    database : str = xconf.field(default='xtelem', help='Name of PostgreSQL database')
     password_file : str = xconf.field(default='/opt/MagAOX/secrets/xtelemdb_password', help="File containing the password for the given user (newlines are stripped). If $XTELEMDB_PASSWORD is set in the environment, it will take precedence.")
 
     def connect(self) -> psycopg.Connection:
@@ -38,7 +37,6 @@ class DbConfig:
                 password = open(self.password_file, 'r').read().strip()
             except Exception:
                 log.error(f"Tried to get password from {self.password_file}")
-
 
         try:
             conn = psycopg.connect(
@@ -68,15 +66,37 @@ See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
         return self.connect().cursor()
 
 @xconf.config
+class IgnorePatternsConfig:
+    files : list[str] = xconf.field(default_factory=lambda: [r'.*\.DS_Store', r'.+\.swp', r'.+~'], help="Regular expression patterns to match against full file paths")
+    directories : list[str] = xconf.field(default_factory=lambda: [r'.*\.git.*'], help="Regular expression patterns to match against full directory paths")
+
+@xconf.config
 class BaseConfig:
     '''Base class for telemdb commands providing a `db` config item
     '''
-    database : DbConfig = xconf.field(default=DbConfig(), help="PostgreSQL database connection")
+    databases : list[DbConfig] = xconf.field(default_factory=lambda: [DbConfig()], help="PostgreSQL database connections")
     hostname : str = xconf.field(default=socket.gethostname(), help="Hostname to identify this computer when running inventory or watch_files")
     data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
+    ignore_patterns : IgnorePatternsConfig = xconf.field(default_factory=IgnorePatternsConfig, help="Patterns for files and directories to ignore in the inventory")
+
+    def connect_to_databases(self, existing_connections=None) -> list[psycopg.Connection]:
+        if existing_connections is None:
+            existing_connections = []
+        for conn in existing_connections:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        connections = []
+        for db in self.databases:
+            log.debug(f"Connecting to {db}...")
+            conn = db.connect()
+            connections.append(conn)
+            log.debug(f"Connected to {db}!")
+        return connections
 
 @xconf.config
-class BaseDeviceConfig(BaseConfig, IndiDeviceBaseConfig):
+class BaseDbDeviceConfig(BaseConfig, IndiDeviceBaseConfig):
     '''Base config for devices accessing the telem db
     '''
     pass

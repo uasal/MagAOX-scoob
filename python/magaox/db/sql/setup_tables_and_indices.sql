@@ -7,6 +7,10 @@ CREATE TABLE IF NOT EXISTS telem (
     PRIMARY KEY (ts, device)
 );
 
+CREATE INDEX IF NOT EXISTS telem_ts ON telem (ts);
+CREATE INDEX IF NOT EXISTS telem_ec ON telem (ec);
+CREATE INDEX IF NOT EXISTS telem_device ON telem (device);
+
 CREATE INDEX IF NOT EXISTS telem_device_ts ON telem (device, ts);
 CREATE INDEX IF NOT EXISTS telem_device_ec_ts ON telem (device, ec, ts);
 CREATE INDEX IF NOT EXISTS observation_spans_fixup ON telem (ts, (msg->>'obsName')) WHERE device = 'observers' AND (msg->>'obsName' != '');

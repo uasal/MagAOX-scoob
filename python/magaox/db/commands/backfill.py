@@ -95,26 +95,28 @@ class Backfill(BaseDbCommand):
             raise RuntimeError(f"Passed a path {path} that we don't know how to read")
         # pass to batch ingest
         log.debug(f"Ingesting {len(records)} record{'s' if len(records) != 1 else ''} into the database")
-        conn = self.database.connect()
-        try:
-            with conn.transaction():
-                cur = conn.cursor()
-                ingest.batch_telem(cur, records)
-                ingest.record_file_ingest_time(cur, FileIngestTime(
-                    ts=xfilename_to_utc_timestamp(fname),
-                    device=name,
-                    ingested_at=utcnow(),
-                    origin_host=self.hostname,
-                    origin_path=path,
-                ))
-        finally:
-            conn.close()
+        for conn in self.connect_to_databases():
+            try:
+                with conn.transaction():
+                    cur = conn.cursor()
+                    ingest.batch_telem(cur, records)
+                    ingest.record_file_ingest_time(cur, FileIngestTime(
+                        ts=xfilename_to_utc_timestamp(fname),
+                        device=name,
+                        ingested_at=utcnow(),
+                        origin_host=self.hostname,
+                        origin_path=path,
+                    ))
+            finally:
+                conn.close()
         return path
 
     def main(self):
-        paths = ingest.identify_non_ingested_telem(
-            self.database.cursor(), self.hostname
-        )
+        connections = self.connect_to_databases()
+        for conn in connections:
+            paths = ingest.identify_non_ingested_telem(
+                conn.cursor(), self.hostname
+            )
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as pool:
             futures_to_paths = {}
             log.info(f"Starting backfill tasks for {len(paths)} path{'s' if len(paths) != 1 else ''}")
