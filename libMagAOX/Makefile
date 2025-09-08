@@ -38,6 +38,8 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              logger/logMap.hpp \
              logger/logMeta.hpp \
              logger/logBinarySchemata.hpp \
+			 logger/types/ao_operator.hpp \
+			 logger/types/config_log.hpp \
              logger/types/empty_log.hpp \
              logger/types/flatbuffer_log.hpp \
              logger/types/git_state.hpp \
@@ -47,39 +49,38 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              logger/types/loop_open.hpp \
              logger/types/loop_paused.hpp \
              logger/types/observer.hpp \
-             logger/types/ao_operator.hpp \
-             logger/types/outlet_state.hpp \
+			 logger/types/ocam_temps.hpp \
              logger/types/outlet_channel_state.hpp \
+             logger/types/outlet_state.hpp \
              logger/types/pico_channel.hpp \
-             logger/types/software_log.hpp \
+			 logger/types/saving_start.hpp \
+			 logger/types/saving_state_change.hpp \
+			 logger/types/saving_stop.hpp \
+			 logger/types/software_log.hpp \
              logger/types/state_change.hpp \
              logger/types/string_log.hpp \
-             logger/types/user_log.hpp \
-             logger/types/config_log.hpp \
-             logger/types/saving_state_change.hpp \
-             logger/types/saving_start.hpp \
-             logger/types/saving_stop.hpp \
-             logger/types/telem_saving.hpp \
-             logger/types/telem_saving_state.hpp \
-             logger/types/telem_dmmodes.hpp \
-             logger/types/telem_dmspeck.hpp \
-             logger/types/telem_blockgains.hpp \
+			 logger/types/telem_blockgains.hpp \
+			 logger/types/telem_chrony_stats.hpp \
              logger/types/telem_chrony_status.hpp \
-             logger/types/telem_chrony_stats.hpp \
              logger/types/telem_cooler.hpp \
              logger/types/telem_coreloads.hpp \
              logger/types/telem_coretemps.hpp \
+			 logger/types/telem_dmmodes.hpp \
+             logger/types/telem_dmspeck.hpp \
              logger/types/telem_drivetemps.hpp \
              logger/types/telem_fgtimings.hpp \
              logger/types/telem_fxngen.hpp \
-             logger/types/telem_observer.hpp \
              logger/types/telem_loopgain.hpp \
+             logger/types/telem_observer.hpp \
 			 logger/types/telem_pi335.hpp \
              logger/types/telem_pico.hpp \
-             logger/types/telem_position.hpp \
              logger/types/telem_pokecenter.hpp \
 			 logger/types/telem_pokeloop.hpp \
+             logger/types/telem_position.hpp \
              logger/types/telem_rhusb.hpp \
+             logger/types/telem_saving_state.hpp \
+			 logger/types/telem_saving.hpp \
+			 logger/types/telem_sparkleclock.hpp \
              logger/types/telem_stage.hpp \
              logger/types/telem_stdcam.hpp \
              logger/types/telem_telcat.hpp \
@@ -92,6 +93,8 @@ INCLUDEDEPS= app/MagAOXApp.hpp \
              logger/types/telem_usage.hpp \
              logger/types/telem_zaber.hpp \
              logger/types/text_log.hpp \
+			 logger/types/ttmmod_params.hpp \
+			 logger/types/user_log.hpp \
              sys/thSetuid.hpp \
              sys/runCommand.hpp \
              tty/ttyErrors.hpp \

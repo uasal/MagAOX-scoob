@@ -79,15 +79,12 @@ class xrif2fits : public mx::app::application
     std::string m_camera; /**< The INDI device name of the camera to process.
                                Sets m_cameraHeader to `<m_camera>_header.conf` */
 
-    std::string m_commonHeader{ "xrif2fits_header.conf" }; /**< The filename of the config file containing the common
-                                                                header specification. The path specified by
-                                                                $MagAOX_PATH/$MagAOX_CONFIG is searched,
-                                                                unless XRIF2FITS_CONFIGPATH is set in the environment.*/
-
     std::string m_cameraHeader; /**< The filename of the config file containing the camera header specification.
                                      Setting this overrides the setting from m_camera.
                                      The path specified by $MagAOX_PATH/$MagAOX_CONFIG is searched,
                                      unless XRIF2FITS_CONFIGPATH is set in the environment.*/
+
+    bool m_noHeader{ false }; /**< if true then no camera header is generated */
 
     std::string m_dir; ///< The directory to search for files.  Can be empty if full path given in files.  If files is
                        ///< empty, all archives in dir will be used.  Defaults to `./`.
@@ -147,14 +144,14 @@ class xrif2fits : public mx::app::application
     /// Prepare the file list and output directory
     /** Based on loaded configuration
      *
-     * \returns 0 on success
-     * \returns -1 on error
+     * \returns mx::error_t::noerror on success
+     * \returns error code on an error
      *
      */
-    int prepareFiles();
+    mx::error_t prepareFiles();
 
     template <typename dataT>
-    int writeImages( int n, stdFileNameT &lfn);
+    int writeImages( int n, stdFileNameT &lfn );
 
     std::string format_nano( uint64_t n );
 };
@@ -172,10 +169,6 @@ inline xrif2fits::xrif2fits()
 
     // Allow overriding the config path
     mx::app::application::m_configPathCLBase_env = "XRIF2FITS_CONFIGPATH";
-
-    m_configPathCL = "xrif2fits.conf";
-
-    std::cerr << mx::app::application::m_configPathCLBase << '\n';
 }
 
 inline xrif2fits::~xrif2fits()
@@ -194,7 +187,7 @@ inline xrif2fits::~xrif2fits()
 inline void xrif2fits::setupConfig()
 {
     config.add( "camera",
-                "C",
+                "",
                 "camera",
                 argType::Required,
                 "",
@@ -202,17 +195,6 @@ inline void xrif2fits::setupConfig()
                 false,
                 "string",
                 "The device name of the camera.  Sets the header.camera config to <camera>_header.conf" );
-
-    config.add( "header.common",
-                "",
-                "header.common",
-                argType::Required,
-                "header",
-                "common",
-                false,
-                "string",
-                "The name of a config file defining a common header, used for all cameras."
-                "Searches $MagAOX_PATH/$MagAOX_CONFIG, unless XRIF2FITS_CONFIGPATH is set in the environment." );
 
     config.add( "header.camera",
                 "",
@@ -224,6 +206,16 @@ inline void xrif2fits::setupConfig()
                 "string",
                 "The name of a config file defining a camera header.  Overrides the default for `camera`."
                 "Searches $MagAOX_PATH/$MagAOX_CONFIG, unless XRIF2FITS_CONFIGPATH is set in the environment." );
+
+    config.add( "noHeader",
+                "N",
+                "noHeader",
+                argType::True,
+                "",
+                "noHeader",
+                false,
+                "bool",
+                "If true, then no camera header is generated" );
 
     config.add( "dir",
                 "d",
@@ -321,13 +313,14 @@ inline void xrif2fits::loadConfig()
 {
     config( m_camera, "camera" );
 
-    config( m_commonHeader, "header.common" );
-
     if( m_camera != "" )
     {
         m_cameraHeader = m_camera + "_header.conf";
     }
+
     config( m_cameraHeader, "header.camera" );
+
+    config( m_noHeader, "noHeader" );
 
     config( m_dir, "dir" );
     config( m_files, "files" );
@@ -339,56 +332,62 @@ inline void xrif2fits::loadConfig()
     config( m_noMeta, "noMeta" );
     config( m_cubeMode, "cubeMode" );
 
-    if( mx::app::application::m_configPathCLBase.back() != '/' )
+    if( m_configPathCLBase.size() > 0 )
     {
-        mx::app::application::m_configPathCLBase.back() = '/';
-    }
-
-    if( m_commonHeader != "" )
-    {
-        mx::error_t errc = readHeaderConfig( mx::app::application::m_configPathCLBase + m_commonHeader );
-
-        if( !!errc )
+        if( mx::app::application::m_configPathCLBase.back() != '/' )
         {
-            mx::error_report<verboseT>(
-                errc, "Error reading common header: " + mx::app::application::m_configPathCLBase + m_commonHeader );
-            return;
-        }
-    }
-    if( m_cameraHeader != "" )
-    {
-        mx::error_t errc = readHeaderConfig( mx::app::application::m_configPathCLBase + m_cameraHeader );
-
-        if( !!errc )
-        {
-            mx::error_report<verboseT>(
-                errc, "Error reading camera header: " + mx::app::application::m_configPathCLBase + m_cameraHeader );
-            return;
+            mx::app::application::m_configPathCLBase.back() = '/';
         }
     }
 }
 
 inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
 {
-    mx::app::appConfigurator hconfig;
-
     if( hcfile == "" )
     {
         return mx::error_t::noerror;
     }
 
-    if( hconfig.readConfig( hcfile, true ) != 0 )
+    mx::app::appConfigurator hconfig;
+
+    hconfig.add( "include", "", "include", argType::Required, "", "include", false, "string", "" );
+
+    try
     {
-        return mx::error_t::error;
+        if( hconfig.readConfig( hcfile, true ) != 0 )
+        {
+            return mx::error_report<verboseT>( mx::error_t::error, "Error reading header config: " + hcfile );
+        }
+    }
+    catch( const std::exception &e )
+    {
+        return mx::error_report<verboseT>( mx::error_t::std_exception,
+                                           "Exception reading header config: " + hcfile + ". " + e.what() );
+    }
+
+    std::vector<std::string> includes;
+    hconfig( includes, "include" );
+
+    for( auto &include : includes )
+    {
+        if( include.size() > 4 )
+        {
+            if( include.substr( include.size() - 5, 4 ) != ".conf" )
+            {
+                include += ".conf";
+            }
+        }
+
+        mx_error_check( readHeaderConfig( mx::app::application::m_configPathCLBase + include ) );
     }
 
     std::vector<std::string> devices;
 
     hconfig.unusedSections( devices );
 
-    if( devices.size() == 0 )
+    if( devices.size() == 0 && includes.size() == 0) //this allows include-only
     {
-        return mx::error_report<verboseT>( mx::error_t::notfound, "No device sections in " + hcfile );
+        return mx::error_report<verboseT>( mx::error_t::notfound, "No device sections in header config:" + hcfile );
     }
 
     for( auto &device : devices )
@@ -421,8 +420,6 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
 
 inline int xrif2fits::execute()
 {
-    return 0;
-
     // Install signal handling
     struct sigaction act;
     sigset_t         set;
@@ -455,9 +452,10 @@ inline int xrif2fits::execute()
 
     try
     {
-        if( prepareFiles() < 0 )
+        mx::error_t errc = prepareFiles();
+        if( !!errc )
         {
-            mx::error_report<verboseT>( mx::error_t::error, "error from prepareFiles" );
+            mx::error_report<verboseT>( errc, "error from prepareFiles" );
             return -1;
         }
     }
@@ -465,8 +463,6 @@ inline int xrif2fits::execute()
     {
         std::throw_with_nested( MagAOX::xwcException( "error from prepareFiles" ) );
     }
-
-    // Move this to prepareFiles
 
     // this has to be here
     stdFileNameT &firstFile = m_fileNames[0];
@@ -489,52 +485,55 @@ inline int xrif2fits::execute()
         return -1;
     }
 
-    m_logMetas.push_back( logMetaSpec( { firstFile.appName(), telem_stdcam::eventCode, "exptime" } ) );
-
-    // Build list of apps, this will be automagic as part of config
-    std::set<std::string> logApps;
-
-    logApps.insert( m_fileNames[0].appName() );
-
-    for( auto &meta : m_logMetas )
+    if( !m_noHeader )
     {
-        logApps.insert( meta.device() );
-    }
+        m_logMetas.push_back( logMetaSpec( { firstFile.appName(), telem_stdcam::eventCode, "exptime" } ) );
 
-    for( auto &app : logApps )
-    {
-        for( size_t n = 0; n < m_logDir.size(); ++n )
+        // Build list of apps, this will be automagic as part of config
+        std::set<std::string> logApps;
+
+        logApps.insert( m_fileNames[0].appName() );
+
+        for( auto &meta : m_logMetas )
         {
-            try
-            {
-                m_logs.loadAppToFileMap( m_logDir[n], app, ".binlog", firstFile, lastFile );
-            }
-            catch( ... )
-            {
-                /// for now ignore all exceptions. \todo eventually ignore only "no prior logs" etc
-            }
+            logApps.insert( meta.device() );
         }
 
-        for( size_t n = 0; n < m_telDir.size(); ++n )
+        for( auto &app : logApps )
         {
-            try
+            for( size_t n = 0; n < m_logDir.size(); ++n )
             {
-                m_tels.loadAppToFileMap( m_telDir[n], app, ".bintel", firstFile, lastFile );
+                try
+                {
+                    m_logs.loadAppToFileMap( m_logDir[n], app, ".binlog", firstFile, lastFile );
+                }
+                catch( ... )
+                {
+                    /// for now ignore all exceptions. \todo eventually ignore only "no prior logs" etc
+                }
             }
-            catch( ... )
+
+            for( size_t n = 0; n < m_telDir.size(); ++n )
             {
-                /// for now ignore all exceptions. \todo eventually ignore only "no prior logs" etc
+                try
+                {
+                    m_tels.loadAppToFileMap( m_telDir[n], app, ".bintel", firstFile, lastFile );
+                }
+                catch( ... )
+                {
+                    /// for now ignore all exceptions. \todo eventually ignore only "no prior logs" etc
+                }
             }
-        }
 
-        if( m_logs.m_appToFileMap[app].size() == 0 )
-        {
-            throw MagAOX::xwcException( "no logs found for " + app );
-        }
+            if( m_logs.m_appToFileMap[app].size() == 0 )
+            {
+                throw MagAOX::xwcException( "no logs found for " + app );
+            }
 
-        if( m_tels.m_appToFileMap[app].size() == 0 )
-        {
-            throw MagAOX::xwcException( "no telems found for " + app );
+            if( m_tels.m_appToFileMap[app].size() == 0 )
+            {
+                throw MagAOX::xwcException( "no telems found for " + app );
+            }
         }
     }
 
@@ -546,8 +545,10 @@ inline int xrif2fits::execute()
         if( g_timeToDie == true )
             break; // check before going on
 
-        m_tels.loadFiles( m_fileNames[n].appName(), m_fileNames[n].timestamp() );
-
+        if( !m_noHeader )
+        {
+            m_tels.loadFiles( m_fileNames[n].appName(), m_fileNames[n].timestamp() );
+        }
         if( !m_timesOnly )
         {
 
@@ -860,7 +861,7 @@ inline int xrif2fits::execute()
     return 0;
 }
 
-inline int xrif2fits::prepareFiles()
+inline mx::error_t xrif2fits::prepareFiles()
 {
     // If files aren't specified, we search the given directory.
     if( m_files.size() == 0 )
@@ -870,24 +871,18 @@ inline int xrif2fits::prepareFiles()
             m_dir = "./";
         }
 
-        mx_error_check_rv( mx::ioutils::getFileNames( m_files, m_dir, "", "", ".xrif" ), -1 );
+        mx_error_check( mx::ioutils::getFileNames( m_files, m_dir, "", "", ".xrif" ) );
 
         for( size_t n = 0; n < m_files.size(); ++n )
         {
             MagAOX::file::stdFileName sfn;
             try
             {
-                sfn.fullName( m_files[n] );
-            }
-            catch( const MagAOX::xwcException &e )
-            {
-                static_cast<void>( e ); // we ignore this as just a file to ignore
-                continue;               // and go on
+                mx_error_check( sfn.fullName( m_files[n] ) );
             }
             catch( ... )
             {
-                std::throw_with_nested(
-                    MagAOX::xwcException( "unknown exception from stdFileName for " + m_files[n] ) );
+                std::throw_with_nested( mx::exception( "From stdFileName for " + m_files[n] ) );
             }
 
             // add only if it passed
@@ -895,9 +890,14 @@ inline int xrif2fits::prepareFiles()
             {
                 m_fileNames.push_back( sfn );
             }
+            catch( const std::bad_alloc &e )
+            {
+                std::throw_with_nested(
+                    mx::exception( mx::error_t::std_bad_alloc, "error adding file " + m_files[n] ) );
+            }
             catch( ... )
             {
-                std::throw_with_nested( MagAOX::xwcException( "error adding file " + m_files[n] ) );
+                std::throw_with_nested( mx::exception( "error adding file " + m_files[n] ) );
             }
         }
     }
@@ -905,12 +905,23 @@ inline int xrif2fits::prepareFiles()
     {
         if( m_dir != "" )
         {
-            if( m_dir[m_dir.size() - 1] != '/' )
-                m_dir += '/';
-
-            for( size_t n = 0; n < m_files.size(); ++n )
+            try
             {
-                m_files[n] = m_dir + m_files[n];
+                if( m_dir[m_dir.size() - 1] != '/' )
+                    m_dir += '/';
+
+                for( size_t n = 0; n < m_files.size(); ++n )
+                {
+                    m_files[n] = m_dir + m_files[n];
+                }
+            }
+            catch( const std::bad_alloc &e )
+            {
+                std::throw_with_nested( mx::exception( mx::error_t::std_bad_alloc, "adding dir to files" ) );
+            }
+            catch( ... )
+            {
+                std::throw_with_nested( mx::exception("adding dir to files") );
             }
         }
 
@@ -921,17 +932,21 @@ inline int xrif2fits::prepareFiles()
             {
                 m_fileNames.push_back( MagAOX::file::stdFileName( m_files[n] ) );
             }
+            catch( const std::bad_alloc &e )
+            {
+                std::throw_with_nested(
+                    mx::exception( mx::error_t::std_bad_alloc, "error adding file " + m_files[n] ) );
+            }
             catch( ... )
             {
-                std::throw_with_nested( MagAOX::xwcException( "error adding file " + m_files[n] ) );
+                std::throw_with_nested( mx::exception( "error adding file " + m_files[n] ) );
             }
         }
     }
 
     if( m_files.size() == 0 )
     {
-        mx::error_report( mx::error_t::notfound, "No xrif files found" );
-        return -1;
+        return mx::error_report<verboseT>( mx::error_t::notfound, "No xrif files found" );
     }
 
     if( m_outDir == "" )
@@ -940,7 +955,7 @@ inline int xrif2fits::prepareFiles()
     }
     else
     {
-        // Make sure the slash exists, then mkdir
+        // Make sure the slash exists, then mkdir.  We know size is > 0 here.
         if( m_outDir[m_outDir.size() - 1] != '/' )
         {
             m_outDir += '/';
@@ -951,7 +966,7 @@ inline int xrif2fits::prepareFiles()
             errno = 0;
             if( mkdir( m_outDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH ) < 0 )
             {
-                throw MagAOX::xwcException( "Error creating directory " + m_outDir + ": " + strerror( errno ) );
+                return mx::error_report<verboseT>(mx::errno2error_t(errno), "Creating directory " + m_outDir);
             }
         }
     }
@@ -960,15 +975,37 @@ inline int xrif2fits::prepareFiles()
     {
         if( m_fileNames.back().appName() != m_fileNames[0].appName() )
         {
-            throw MagAOX::xwcException( "can only operate on a single camera at a time" );
+            return mx::error_report<verboseT>(mx::error_t::invalidarg, "can only operate on a single camera at a time" );
         }
     }
 
-    return 0;
+    if( m_camera == "" )
+    {
+        m_camera = m_fileNames[0].appName();
+    }
+
+    if( m_cameraHeader == "" )
+    {
+        m_cameraHeader = m_camera + "_header.conf";
+    }
+
+    if( !m_noHeader )
+    {
+        mx::error_t errc = readHeaderConfig( mx::app::application::m_configPathCLBase + m_cameraHeader );
+
+        if( !!errc )
+        {
+            return mx::error_report<verboseT>(
+                errc, "Error reading camera header: " + mx::app::application::m_configPathCLBase + m_cameraHeader );
+
+        }
+    }
+
+    return mx::error_t::noerror;
 }
 
 template <typename dataT>
-int xrif2fits::writeImages( int n, stdFileNameT &lfn)
+int xrif2fits::writeImages( int n, stdFileNameT &lfn )
 {
     mx::improc::eigenCube<dataT> tmpc(
         reinterpret_cast<dataT *>( m_xrif->raw_buffer ), m_xrif->width, m_xrif->height, m_xrif->frames );
@@ -1015,27 +1052,31 @@ int xrif2fits::writeImages( int n, stdFileNameT &lfn)
             wtime.tv_sec  = curr_timing[3];
             wtime.tv_nsec = curr_timing[4];
 
-            // We have to bootstrap the exposure time
-            char *prior = nullptr;
-            m_tels.getPriorLog( prior, lfn.appName(), eventCodes::TELEM_STDCAM, atime );
             double exptime = -1;
-            if( prior )
+            if( !m_noHeader )
             {
-                char *priorprior = nullptr;
-                exptime          = telem_stdcam::exptime( logHeader::messageBuffer( prior ) );
+                // We have to bootstrap the exposure time
+                char *prior = nullptr;
+                m_tels.getPriorLog( prior, lfn.appName(), eventCodes::TELEM_STDCAM, atime );
 
-                stime = atime - exptime;
-                m_tels.getPriorLog( priorprior, lfn.appName(), eventCodes::TELEM_STDCAM, stime );
-
-                ///\todo this needs to check for any log entries between end and start
-                if( telem_stdcam::exptime( logHeader::messageBuffer( priorprior ) ) != exptime )
+                if( prior )
                 {
-                    std::cerr << "Change in exposure time mid-exposure\n";
+                    char *priorprior = nullptr;
+                    exptime          = telem_stdcam::exptime( logHeader::messageBuffer( prior ) );
+
+                    stime = atime - exptime;
+                    m_tels.getPriorLog( priorprior, lfn.appName(), eventCodes::TELEM_STDCAM, stime );
+
+                    ///\todo this needs to check for any log entries between end and start
+                    if( telem_stdcam::exptime( logHeader::messageBuffer( priorprior ) ) != exptime )
+                    {
+                        std::cerr << "Change in exposure time mid-exposure\n";
+                    }
                 }
-            }
-            else
-            {
-                std::cerr << "no prior\n";
+                else
+                {
+                    std::cerr << "no prior\n";
+                }
             }
 
             // timespecX midexp = mx::meanTimespec( atime, stime);
