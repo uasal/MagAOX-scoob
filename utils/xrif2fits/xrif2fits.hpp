@@ -160,11 +160,35 @@ inline xrif2fits::xrif2fits()
 {
     // setup the default config path
     MagAOXPath    = mx::sys::getEnv( MAGAOX_env_path );
+
+    if(MagAOXPath == "")
+    {
+        MagAOXPath = MAGAOX_path;
+    }
+
+    if(MagAOXPath.size() > 0)
+    {
+        if(MagAOXPath.back() !='/')
+        {
+            MagAOXPath += '/';
+        }
+    }
+
     ConfigRelPath = mx::sys::getEnv( MAGAOX_env_config );
 
-    if( MagAOXPath.size() > 0 && ConfigRelPath.size() > 0 )
+    if(ConfigRelPath == "")
     {
-        mx::app::application::m_configPathCLBase = MagAOXPath + '/' + ConfigRelPath + '/';
+        ConfigRelPath = MAGAOX_configRelPath;
+    }
+
+    if( ConfigRelPath.size() > 0 )
+    {
+        if(ConfigRelPath.back() !='/')
+        {
+            ConfigRelPath += '/';
+        }
+
+        mx::app::application::m_configPathCLBase = MagAOXPath + ConfigRelPath + '/';
     }
 
     // Allow overriding the config path
@@ -336,7 +360,7 @@ inline void xrif2fits::loadConfig()
     {
         if( mx::app::application::m_configPathCLBase.back() != '/' )
         {
-            mx::app::application::m_configPathCLBase.back() = '/';
+            mx::app::application::m_configPathCLBase += '/';
         }
     }
 }
