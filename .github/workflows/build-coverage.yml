@@ -51,4 +51,4 @@ jobs:
         env:
             SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
-            rsync -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/
+            rsync -e 'ssh -o "UserKnownHostsFile /home/runner/.ssh/known_hosts"' -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/
