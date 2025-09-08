@@ -76,9 +76,21 @@ class xrif2fits : public mx::app::application
     /** \name Configurable Parameters
      * @{
      */
+    std::string m_camera; /**< The INDI device name of the camera to process.
+                               Sets m_cameraHeader to `<m_camera>_header.conf` */
+
+    std::string m_commonHeader{ "xrif2fits_header.conf" }; /**< The filename of the config file containing the common
+                                                                header specification. The path specified by
+                                                                $MagAOX_PATH/$MagAOX_CONFIG is searched,
+                                                                unless XRIF2FITS_CONFIGPATH is set in the environment.*/
+
+    std::string m_cameraHeader; /**< The filename of the config file containing the camera header specification.
+                                     Setting this overrides the setting from m_camera.
+                                     The path specified by $MagAOX_PATH/$MagAOX_CONFIG is searched,
+                                     unless XRIF2FITS_CONFIGPATH is set in the environment.*/
 
     std::string m_dir; ///< The directory to search for files.  Can be empty if full path given in files.  If files is
-                       ///< empty, all archives in dir will be used.
+                       ///< empty, all archives in dir will be used.  Defaults to `./`.
 
     std::vector<std::string> m_files; /**< List of files to use.  If dir is not empty,
                                            it will be pre-pended to each name.*/
@@ -107,15 +119,28 @@ class xrif2fits : public mx::app::application
   protected:
     ///@}
 
+    std::string MagAOXPath;
+    std::string ConfigRelPath;
+
+    std::vector<logMeta> m_logMetas;
+
     xrif_t m_xrif{ nullptr };
     xrif_t m_xrif_timing{ nullptr };
 
   public:
+    /// c-tor
+    /** Sets up the default config paths by reading from the environment
+     *
+     */
+    xrif2fits();
+
     ~xrif2fits();
 
     virtual void setupConfig();
 
     virtual void loadConfig();
+
+    virtual mx::error_t readHeaderConfig( const std::string &hcfile );
 
     virtual int execute();
 
@@ -129,10 +154,29 @@ class xrif2fits : public mx::app::application
     int prepareFiles();
 
     template <typename dataT>
-    int writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logMetas );
+    int writeImages( int n, stdFileNameT &lfn);
 
     std::string format_nano( uint64_t n );
 };
+
+inline xrif2fits::xrif2fits()
+{
+    // setup the default config path
+    MagAOXPath    = mx::sys::getEnv( MAGAOX_env_path );
+    ConfigRelPath = mx::sys::getEnv( MAGAOX_env_config );
+
+    if( MagAOXPath.size() > 0 && ConfigRelPath.size() > 0 )
+    {
+        mx::app::application::m_configPathCLBase = MagAOXPath + '/' + ConfigRelPath + '/';
+    }
+
+    // Allow overriding the config path
+    mx::app::application::m_configPathCLBase_env = "XRIF2FITS_CONFIGPATH";
+
+    m_configPathCL = "xrif2fits.conf";
+
+    std::cerr << mx::app::application::m_configPathCLBase << '\n';
+}
 
 inline xrif2fits::~xrif2fits()
 {
@@ -149,6 +193,38 @@ inline xrif2fits::~xrif2fits()
 
 inline void xrif2fits::setupConfig()
 {
+    config.add( "camera",
+                "C",
+                "camera",
+                argType::Required,
+                "",
+                "camera",
+                false,
+                "string",
+                "The device name of the camera.  Sets the header.camera config to <camera>_header.conf" );
+
+    config.add( "header.common",
+                "",
+                "header.common",
+                argType::Required,
+                "header",
+                "common",
+                false,
+                "string",
+                "The name of a config file defining a common header, used for all cameras."
+                "Searches $MagAOX_PATH/$MagAOX_CONFIG, unless XRIF2FITS_CONFIGPATH is set in the environment." );
+
+    config.add( "header.camera",
+                "",
+                "header.camera",
+                argType::Required,
+                "header",
+                "camera",
+                false,
+                "string",
+                "The name of a config file defining a camera header.  Overrides the default for `camera`."
+                "Searches $MagAOX_PATH/$MagAOX_CONFIG, unless XRIF2FITS_CONFIGPATH is set in the environment." );
+
     config.add( "dir",
                 "d",
                 "dir",
@@ -157,7 +233,7 @@ inline void xrif2fits::setupConfig()
                 "dir",
                 false,
                 "string",
-                "The directory to search for files.  Can be empty if full path given in files." );
+                "The directory to search for files. Can be empty if full path given in files." );
 
     config.add( "files",
                 "f",
@@ -167,7 +243,7 @@ inline void xrif2fits::setupConfig()
                 "files",
                 false,
                 "vector<string>",
-                "List of files to use.  If dir is not empty, it will be pre-pended to each name." );
+                "List of files to use. If dir is not empty, it will be pre-pended to each name." );
 
     config.add( "logdir",
                 "l",
@@ -177,7 +253,7 @@ inline void xrif2fits::setupConfig()
                 "logdir",
                 false,
                 "vector<string>",
-                "Directory(ies) for log files." );
+                "Directories for log files." );
 
     config.add( "teldir",
                 "t",
@@ -187,7 +263,7 @@ inline void xrif2fits::setupConfig()
                 "teldir",
                 false,
                 "vector<string>",
-                "Directory(ies) for telemetry files." );
+                "Directories for telemetry files." );
 
     config.add( "outDir",
                 "D",
@@ -243,6 +319,16 @@ inline void xrif2fits::setupConfig()
 
 inline void xrif2fits::loadConfig()
 {
+    config( m_camera, "camera" );
+
+    config( m_commonHeader, "header.common" );
+
+    if( m_camera != "" )
+    {
+        m_cameraHeader = m_camera + "_header.conf";
+    }
+    config( m_cameraHeader, "header.camera" );
+
     config( m_dir, "dir" );
     config( m_files, "files" );
     config( m_outDir, "outDir" );
@@ -252,10 +338,91 @@ inline void xrif2fits::loadConfig()
     config( m_timesOnly, "time" );
     config( m_noMeta, "noMeta" );
     config( m_cubeMode, "cubeMode" );
+
+    if( mx::app::application::m_configPathCLBase.back() != '/' )
+    {
+        mx::app::application::m_configPathCLBase.back() = '/';
+    }
+
+    if( m_commonHeader != "" )
+    {
+        mx::error_t errc = readHeaderConfig( mx::app::application::m_configPathCLBase + m_commonHeader );
+
+        if( !!errc )
+        {
+            mx::error_report<verboseT>(
+                errc, "Error reading common header: " + mx::app::application::m_configPathCLBase + m_commonHeader );
+            return;
+        }
+    }
+    if( m_cameraHeader != "" )
+    {
+        mx::error_t errc = readHeaderConfig( mx::app::application::m_configPathCLBase + m_cameraHeader );
+
+        if( !!errc )
+        {
+            mx::error_report<verboseT>(
+                errc, "Error reading camera header: " + mx::app::application::m_configPathCLBase + m_cameraHeader );
+            return;
+        }
+    }
+}
+
+inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
+{
+    mx::app::appConfigurator hconfig;
+
+    if( hcfile == "" )
+    {
+        return mx::error_t::noerror;
+    }
+
+    if( hconfig.readConfig( hcfile, true ) != 0 )
+    {
+        return mx::error_t::error;
+    }
+
+    std::vector<std::string> devices;
+
+    hconfig.unusedSections( devices );
+
+    if( devices.size() == 0 )
+    {
+        return mx::error_report<verboseT>( mx::error_t::notfound, "No device sections in " + hcfile );
+    }
+
+    for( auto &device : devices )
+    {
+        // Wind through all the unused targets
+        for( auto it = hconfig.m_unusedConfigs.begin(); it != hconfig.m_unusedConfigs.end(); ++it )
+        {
+            if( device == it->second.section )
+            {
+                std::string eventCode = it->second.keyword;
+
+                // Check if this keyword is a valid flatlogs eventCode
+                flatlogs::eventCodeT ec = MagAOX::logger::eventCode( eventCode );
+                if( ec != eventCodes::UNKNOWN )
+                {
+                    std::vector<std::string> fields;
+                    hconfig.configUnused( fields, mx::app::iniFile::makeKey( device, eventCode ) );
+
+                    for( auto &field : fields )
+                    {
+                        m_logMetas.push_back( logMetaSpec( { device, ec, field } ) );
+                    }
+                }
+            }
+        }
+    }
+
+    return mx::error_t::noerror;
 }
 
 inline int xrif2fits::execute()
 {
+    return 0;
+
     // Install signal handling
     struct sigaction act;
     sigset_t         set;
@@ -288,9 +455,9 @@ inline int xrif2fits::execute()
 
     try
     {
-        if(prepareFiles() < 0)
+        if( prepareFiles() < 0 )
         {
-            mx::error_report<verboseT>(mx::error_t::error, "error from prepareFiles");
+            mx::error_report<verboseT>( mx::error_t::error, "error from prepareFiles" );
             return -1;
         }
     }
@@ -322,100 +489,14 @@ inline int xrif2fits::execute()
         return -1;
     }
 
-    std::vector<logMeta> logMetas;
-
-    logMetas.push_back( logMetaSpec({ firstFile.appName(), telem_stdcam::eventCode, "exptime"}));
-
-/*    logMetas.push_back( logMetaSpec( { "observers", telem_observer::eventCode, "email" } ) );
-    logMetas.push_back( logMetaSpec( { "observers", telem_observer::eventCode, "obsName" } ) );
-
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telcat::eventCode, "catObj" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telcat::eventCode, "catRA" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telcat::eventCode, "catDec" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telcat::eventCode, "catEp" } ) );
-
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "ra" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "dec" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "epoch" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "el" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "am" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_telpos::eventCode, "ha" } ) );
-    logMetas.push_back( logMetaSpec( { "tcsi", telem_teldata::eventCode, "pa" } ) );
-
-    logMetas.push_back( logMetaSpec( { "holoop", telem_loopgain::eventCode, "state" } ) );
-    logMetas.push_back( logMetaSpec( { "holoop", telem_loopgain::eventCode, "gain" } ) );
-    logMetas.push_back( logMetaSpec( { "holoop", telem_loopgain::eventCode, "multcoef" } ) );
-    logMetas.push_back( logMetaSpec( { "holoop", telem_loopgain::eventCode, "limit" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fxngenmodwfs", telem_fxngen::eventCode, "C1freq" } ) );
-    logMetas.push_back( logMetaSpec( { "fxngenmodwfs", telem_fxngen::eventCode, "C2freq" } ) );
-
-    logMetas.push_back( logMetaSpec( { "stagebs", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "stagebs", telem_stage::eventCode, "preset" } ) );
-    logMetas.push_back( logMetaSpec( { "stagebs", telem_zaber::eventCode, "pos" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fwscind", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "fwscind", telem_stage::eventCode, "preset" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fwpupil", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "fwpupil", telem_stage::eventCode, "preset" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fwfpm", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "fwfpm", telem_stage::eventCode, "preset" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fwlowfs", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "fwlowfs", telem_stage::eventCode, "preset" } ) );
-
-    logMetas.push_back( logMetaSpec( { "fwlyot", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "fwlyot", telem_stage::eventCode, "preset" } ) );
-
-    logMetas.push_back( logMetaSpec( { "stagescibs", telem_stage::eventCode, "presetName" } ) );
-    logMetas.push_back( logMetaSpec( { "stagescibs", telem_stage::eventCode, "preset" } ) );
-    logMetas.push_back( logMetaSpec( { "stagescibs", telem_zaber::eventCode, "pos" } ) );
-
-    logMetas.push_back( logMetaSpec( "camwfs", telem_stdcam::eventCode, "fps" ) );
-    logMetas.push_back( logMetaSpec( "camwfs", telem_stdcam::eventCode, "xbin" ) );
-    logMetas.push_back( logMetaSpec( "camwfs", telem_stdcam::eventCode, "ybin" ) );
-    logMetas.push_back( logMetaSpec( "camwfs", telem_stdcam::eventCode, "emGain" ) );
-
-    ///\todo remove this once configuration works
-    if( firstFile.appName().length() > 3 )
-    {
-        if( firstFile.appName().substr( 0, 3 ) == "cam" )
-        {
-            std::string channel = firstFile.appName().substr( 3 );
-            // For channels with associated focus stages, report those positions as headers
-            if( channel == "sci1" || channel == "sci2" || channel == "flowfs" || channel == "llowfs" )
-            {
-                logMetas.push_back( logMetaSpec( { "fw" + channel, telem_stage::eventCode, "presetName" } ) );
-                logMetas.push_back( logMetaSpec( { "fw" + channel, telem_stage::eventCode, "preset" } ) );
-                logMetas.push_back( logMetaSpec( { "stage" + channel, telem_stage::eventCode, "presetName" } ) );
-                logMetas.push_back( logMetaSpec( { "stage" + channel, telem_stage::eventCode, "preset" } ) );
-                logMetas.push_back( logMetaSpec( { "stage" + channel, telem_zaber::eventCode, "pos" } ) );
-            }
-        }
-    }
-
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "modulating" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "trigger" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "frequency" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "separations" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "angles" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "amplitudes" } ) );
-    logMetas.push_back( logMetaSpec( { "tweeterSpeck", telem_dmspeck::eventCode, "crosses" } ) );
-
-    logMetas.push_back( logMetaSpec( { "loloop", telem_loopgain::eventCode, "state" } ) );
-    logMetas.push_back( logMetaSpec( { "loloop", telem_loopgain::eventCode, "gain" } ) );
-    logMetas.push_back( logMetaSpec( { "loloop", telem_loopgain::eventCode, "multcoef" } ) );
-    logMetas.push_back( logMetaSpec( { "loloop", telem_loopgain::eventCode, "limit" } ) );
-*/
+    m_logMetas.push_back( logMetaSpec( { firstFile.appName(), telem_stdcam::eventCode, "exptime" } ) );
 
     // Build list of apps, this will be automagic as part of config
     std::set<std::string> logApps;
 
-    logApps.insert(m_fileNames[0].appName());
+    logApps.insert( m_fileNames[0].appName() );
 
-    for( auto &meta : logMetas )
+    for( auto &meta : m_logMetas )
     {
         logApps.insert( meta.device() );
     }
@@ -448,15 +529,13 @@ inline int xrif2fits::execute()
 
         if( m_logs.m_appToFileMap[app].size() == 0 )
         {
-            throw MagAOX::xwcException("no logs found for " + app );
+            throw MagAOX::xwcException( "no logs found for " + app );
         }
-
 
         if( m_tels.m_appToFileMap[app].size() == 0 )
         {
-            throw MagAOX::xwcException("no telems found for " + app );
+            throw MagAOX::xwcException( "no telems found for " + app );
         }
-
     }
 
     // Now de-compress and load the frames
@@ -690,7 +769,7 @@ inline int xrif2fits::execute()
         {
             if( m_xrif->type_code == XRIF_TYPECODE_UINT8 )
             {
-                if( writeImages<uint8_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<uint8_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -698,7 +777,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_INT8 )
             {
-                if( writeImages<int8_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<int8_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -706,7 +785,7 @@ inline int xrif2fits::execute()
             }
             if( m_xrif->type_code == XRIF_TYPECODE_UINT16 )
             {
-                if( writeImages<uint16_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<uint16_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -714,7 +793,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_INT16 )
             {
-                if( writeImages<int16_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<int16_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -722,7 +801,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_UINT32 )
             {
-                if( writeImages<uint32_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<uint32_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -730,7 +809,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_INT32 )
             {
-                if( writeImages<int32_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<int32_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -738,7 +817,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_UINT64 )
             {
-                if( writeImages<uint32_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<uint32_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -746,7 +825,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_INT64 )
             {
-                if( writeImages<int32_t>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<int32_t>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -754,7 +833,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_FLOAT )
             {
-                if( writeImages<float>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<float>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -762,7 +841,7 @@ inline int xrif2fits::execute()
             }
             else if( m_xrif->type_code == XRIF_TYPECODE_DOUBLE )
             {
-                if( writeImages<float>( n, m_fileNames[n], logMetas ) < 0 )
+                if( writeImages<float>( n, m_fileNames[n] ) < 0 )
                 {
                     ERR_INVOKED_NAME( "error writing to file: " + m_files[n] );
                     return -1;
@@ -791,7 +870,7 @@ inline int xrif2fits::prepareFiles()
             m_dir = "./";
         }
 
-        mx_error_check_rv(mx::ioutils::getFileNames(m_files, m_dir, "", "", ".xrif" ),-1);
+        mx_error_check_rv( mx::ioutils::getFileNames( m_files, m_dir, "", "", ".xrif" ), -1 );
 
         for( size_t n = 0; n < m_files.size(); ++n )
         {
@@ -851,7 +930,7 @@ inline int xrif2fits::prepareFiles()
 
     if( m_files.size() == 0 )
     {
-        mx::error_report(mx::error_t::notfound, "No xrif files found" );
+        mx::error_report( mx::error_t::notfound, "No xrif files found" );
         return -1;
     }
 
@@ -872,7 +951,7 @@ inline int xrif2fits::prepareFiles()
             errno = 0;
             if( mkdir( m_outDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH ) < 0 )
             {
-                throw MagAOX::xwcException("Error creating directory " + m_outDir + ": " + strerror(errno));
+                throw MagAOX::xwcException( "Error creating directory " + m_outDir + ": " + strerror( errno ) );
             }
         }
     }
@@ -881,7 +960,7 @@ inline int xrif2fits::prepareFiles()
     {
         if( m_fileNames.back().appName() != m_fileNames[0].appName() )
         {
-            throw MagAOX::xwcException("can only operate on a single camera at a time" );
+            throw MagAOX::xwcException( "can only operate on a single camera at a time" );
         }
     }
 
@@ -889,12 +968,12 @@ inline int xrif2fits::prepareFiles()
 }
 
 template <typename dataT>
-int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logMetas )
+int xrif2fits::writeImages( int n, stdFileNameT &lfn)
 {
     mx::improc::eigenCube<dataT> tmpc(
         reinterpret_cast<dataT *>( m_xrif->raw_buffer ), m_xrif->width, m_xrif->height, m_xrif->frames );
 
-    mx::fits::fitsFile<dataT,verboseT> ff;
+    mx::fits::fitsFile<dataT, verboseT> ff;
     mx::fits::fitsHeader<verboseT>      fh;
 
     // Special handling for meta output
@@ -921,7 +1000,6 @@ int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logM
     }
     else
     {
-
         for( int q = 0; q < tmpc.planes(); ++q )
         {
             uint64_t cnt0;
@@ -990,22 +1068,22 @@ int xrif2fits::writeImages( int n, stdFileNameT &lfn, std::vector<logMeta> &logM
                 }
 
                 // Then output each value in turn
-                for( size_t u = 0; u < logMetas.size(); ++u )
+                for( size_t u = 0; u < m_logMetas.size(); ++u )
                 {
-                    mx::fits::fitsHeaderCard<verboseT> fc = logMetas[u].card( m_tels, stime, atime );
+                    mx::fits::fitsHeaderCard<verboseT> fc = m_logMetas[u].card( m_tels, stime, atime );
                     fh.append( fc );
                     if( !m_noMeta )
                     {
-                        metaOut << " " << logMetas[u].value( m_tels, stime, atime );
+                        metaOut << " " << m_logMetas[u].value( m_tels, stime, atime );
                     }
                 }
             }
 
             fh.append( "FRAMENO", cnt0 );
             fh.append( "ACQSEC", atime.tv_sec, "Image acq. time, seconds since Unix epoch" );
-            fh.append( "ACQNSEC", atime.tv_nsec,"Image acq. time, nanosecond component" );
+            fh.append( "ACQNSEC", atime.tv_nsec, "Image acq. time, nanosecond component" );
             fh.append( "WRTSEC", wtime.tv_sec, "Image write time, seconds since Unix epoch" );
-            fh.append( "WRTNSEC", wtime.tv_nsec,"Image write time, nanosecond component" );
+            fh.append( "WRTNSEC", wtime.tv_nsec, "Image write time, nanosecond component" );
 
             if( !m_noMeta )
             {

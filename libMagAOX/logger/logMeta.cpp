@@ -9,7 +9,9 @@
 
 #include "logMeta.hpp"
 
-#include "generated/logTypes.hpp"
+//#include "generated/logTypes.hpp"
+
+#include "generated/logMemberAccessor.hpp"
 
 
 namespace MagAOX
@@ -17,6 +19,7 @@ namespace MagAOX
 namespace logger
 {
 
+/*
 logMetaDetail logMemberAccessor( flatlogs::eventCodeT ec,
                           const std::string & memberName
                         )
@@ -44,10 +47,10 @@ logMetaDetail logMemberAccessor( flatlogs::eventCodeT ec,
       case telem_loopgain::eventCode:
          return telem_loopgain::getAccessor(memberName);
       default:
-         std::cerr << "Missing logMemberAccessor case entry for " << ec << ":" << memberName << "\n";
+         std::cerr << "Missing logMemberAccessor case entry for " << ec << ": " << memberName << "\n";
          return logMetaDetail();
    }
-}
+}*/
 
 
 logMeta::logMeta( const logMetaSpec & lms )

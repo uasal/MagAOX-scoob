@@ -183,6 +183,18 @@ struct software_log : public flatbuffer_log
       return ret;
    }
 
+   /// Get an empty logMetaDetail because meta data doesn't make sense for this log
+   /**
+     * \returns an empty logMetaDetail
+     */
+   static logMetaDetail getAccessor( const std::string & member /**< [in] the name of the member */ )
+   {
+      static_cast<void>(member);
+
+      std::cerr << "meta data doesn't make sense for software_log.\n";
+      return logMetaDetail();
+   }
+
 };
 
 
