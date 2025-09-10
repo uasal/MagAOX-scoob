@@ -3,6 +3,7 @@ on:
   push:
       branches:
         - '**' # Any branch
+        - '!jrmales/logdirs' #this requires work to move gcc to 14
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -36,7 +37,7 @@ jobs:
           name: coverage-report
           path: coverage_report/
       - name: When on dev, add SSH key
-        if: github.ref == 'refs/heads/dev' 
+        if: github.ref == 'refs/heads/dev'
         env:
             SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |

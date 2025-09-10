@@ -10,7 +10,7 @@ namespace MagAOXApp_tests
 
 struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 {
-    MagAOXApp_test() : MagAOXApp( "sha1", false )
+    MagAOXApp_test(bool gitmod = false) : MagAOXApp( "sha1", gitmod )
     {
     }
 
@@ -27,34 +27,9 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         return 0;
     }
 
-    std::string MagAOXPath()
-    {
-        return MagAOX::app::MagAOXApp<true>::MagAOXPath;
-    }
-
     std::string configPathGlobal()
     {
         return MagAOX::app::MagAOXApp<true>::m_configPathGlobal;
-    }
-
-    std::string calibDir()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_calibDir;
-    }
-
-    std::string sysPath()
-    {
-        return MagAOX::app::MagAOXApp<true>::sysPath;
-    }
-
-    std::string secretsPath()
-    {
-        return MagAOX::app::MagAOXApp<true>::secretsPath;
-    }
-
-    std::string cpusetPath()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_cpusetPath;
     }
 
     std::string configPathUser()
@@ -77,19 +52,36 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         return MagAOX::app::MagAOXApp<true>::doHelp;
     }
 
-    std::string configName()
+    void setPowerMgtEnabled( bool pme)
     {
-        return MagAOX::app::MagAOXApp<true>::configName();
+        m_powerMgtEnabled = pme;
     }
 
-    void configName( const std::string &cn )
+    void setConfigName( const std::string &cn )
     {
         m_configName = cn;
 
         m_indiDriver = new MagAOX::app::indiDriver<MagAOX::app::MagAOXApp<true>>( this, m_configName, "0", "0" );
     }
 
+    void setConfigBase( const std::string &cb )
+    {
+        m_configBase = cb;
+    }
+
     int called_back{ 0 };
+
+    void doFSMClearAlert()
+    {
+        pcf::IndiProperty ip(pcf::IndiProperty::Switch);
+        ip.setDevice(configName());
+        ip.setName("fsm_clear_alert");
+        ip.add(pcf::IndiElement("request"));
+        ip["request"].setSwitchState(pcf::IndiElement::On);
+
+        st_newCallBack_clearFSMAlert(this, ip);
+    }
+
 };
 
 int callback( void *app, const pcf::IndiProperty &ipRecv )
@@ -111,7 +103,7 @@ SCENARIO( "MagAOXApp INDI NewProperty", "[app::MagAOXApp]" )
         {
             MagAOXApp_test app;
 
-            app.configName( "test" );
+            app.setConfigName( "test" );
 
             REQUIRE( app.configName() == "test" );
 
@@ -162,13 +154,15 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
         app.invokedName() = argv[0];
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.MagAOXPath() == MAGAOX_path );
-        REQUIRE( app.configDir() == app.MagAOXPath() + '/' + MAGAOX_configRelPath );
+        REQUIRE( app.basePath() == MAGAOX_path );
+        REQUIRE( app.configDir() == app.basePath() + '/' + MAGAOX_configRelPath );
         REQUIRE( app.configPathGlobal() == app.configDir() + "/magaox.conf" );
-        REQUIRE( app.calibDir() == app.MagAOXPath() + '/' + MAGAOX_calibRelPath );
-        REQUIRE( app.sysPath() == app.MagAOXPath() + '/' + MAGAOX_sysRelPath );
-        REQUIRE( app.secretsPath() == app.MagAOXPath() + '/' + MAGAOX_secretsRelPath );
+        REQUIRE( app.calibDir() == app.basePath() + '/' + MAGAOX_calibRelPath );
+        REQUIRE( app.m_log.logPath() == app.basePath() + '/' + MAGAOX_logRelPath );
+        REQUIRE( app.sysPath() == app.basePath() + '/' + MAGAOX_sysRelPath );
+        REQUIRE( app.secretsPath() == app.basePath() + '/' + MAGAOX_secretsRelPath );
         REQUIRE( app.cpusetPath() == MAGAOX_cpusetPath );
+        REQUIRE( app.configBase() == "" );
         REQUIRE( app.configPathUser() == "" );
         REQUIRE( app.configName() == "execname" );
         REQUIRE( app.configPathLocal() == app.configDir() + "/execname.conf" );
@@ -191,25 +185,28 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
 
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.MagAOXPath() == MAGAOX_path );
-        REQUIRE( app.configDir() == app.MagAOXPath() + '/' + MAGAOX_configRelPath );
+        REQUIRE( app.basePath() == MAGAOX_path );
+        REQUIRE( app.configDir() == app.basePath() + '/' + MAGAOX_configRelPath );
         REQUIRE( app.configPathGlobal() == app.configDir() + "/magaox.conf" );
-        REQUIRE( app.calibDir() == app.MagAOXPath() + '/' + MAGAOX_calibRelPath );
-        REQUIRE( app.sysPath() == app.MagAOXPath() + '/' + MAGAOX_sysRelPath );
-        REQUIRE( app.secretsPath() == app.MagAOXPath() + '/' + MAGAOX_secretsRelPath );
+        REQUIRE( app.calibDir() == app.basePath() + '/' + MAGAOX_calibRelPath );
+        REQUIRE( app.m_log.logPath() == app.basePath() + '/' + MAGAOX_logRelPath );
+
+        REQUIRE( app.sysPath() == app.basePath() + '/' + MAGAOX_sysRelPath );
+        REQUIRE( app.secretsPath() == app.basePath() + '/' + MAGAOX_secretsRelPath );
         REQUIRE( app.cpusetPath() == MAGAOX_cpusetPath );
+        REQUIRE( app.configBase() == "" );
         REQUIRE( app.configPathUser() == "" );
         REQUIRE( app.configName() == "testapp" );
         REQUIRE( app.configPathLocal() == app.configDir() + "/testapp.conf" );
         REQUIRE( app.doHelp() == false );
     }
 
-    //Something goes wrong here, third time is the charm.
-    // Hangs on config.parseCommandLine
-    /*SECTION( "using environment paths, with config-ed name" )
+    // Something goes wrong here, third time is the charm.
+    //  Hangs on config.parseCommandLine
+    SECTION( "using environment paths, with config-ed name" )
     {
         std::vector<const char *> argv;
-        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+        std::vector<std::string>  argvstr( { "./execname", "--name", "testapp2" } );
 
         argv.resize( argvstr.size() + 1, NULL );
         for( size_t index = 0; index < argvstr.size(); ++index )
@@ -217,28 +214,137 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
             argv[index] = argvstr[index].c_str();
         }
 
-        char ppath[4096];
+        char ppath[1024];
         snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
         putenv( ppath );
+
+        char cpath[1024];
+        snprintf( cpath, sizeof( cpath ), "%s=config2", MAGAOX_env_config );
+        putenv( cpath );
+
+        char cbpath[1024];
+        snprintf( cbpath, sizeof( cbpath ), "%s=calib2", MAGAOX_env_calib );
+        putenv( cbpath );
+
+        char lpath[1024];
+        snprintf( lpath, sizeof( lpath ), "%s=logs2", MAGAOX_env_log );
+        putenv( lpath );
+
+        char syspath[1024];
+        snprintf( syspath, sizeof( syspath ), "%s=sys2", MAGAOX_env_sys );
+        putenv( syspath );
+
+        char secretspath[1024];
+        snprintf( secretspath, sizeof( secretspath ), "%s=secrets2", MAGAOX_env_secrets );
+        putenv( secretspath );
+
+        char cpupath[1024];
+        snprintf( cpupath, sizeof( cpupath ), "%s=/tmp/MagAOX/cpuset", MAGAOX_env_cpuset );
+        putenv( cpupath );
 
         MagAOXApp_test app;
 
         app.invokedName() = argv[0];
+        app.setConfigBase( "cbase" );
 
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.MagAOXPath() == "/tmp/MagAOXApp_test" );
-        REQUIRE( app.configDir() == app.MagAOXPath() + '/' + MAGAOX_configRelPath );
+        REQUIRE( app.basePath() == "/tmp/MagAOXApp_test" );
+        REQUIRE( app.configDir() == app.basePath() + '/' + "config2" );
         REQUIRE( app.configPathGlobal() == app.configDir() + "/magaox.conf" );
-        REQUIRE( app.calibDir() == app.MagAOXPath() + '/' + MAGAOX_calibRelPath );
-        REQUIRE( app.sysPath() == app.MagAOXPath() + '/' + MAGAOX_sysRelPath );
-        REQUIRE( app.secretsPath() == app.MagAOXPath() + '/' + MAGAOX_secretsRelPath );
-        REQUIRE( app.cpusetPath() == MAGAOX_cpusetPath );
-        REQUIRE( app.configPathUser() == "" );
-        REQUIRE( app.configName() == "testapp" );
-        REQUIRE( app.configPathLocal() == app.configDir() + "/testapp.conf" );
+        REQUIRE( app.calibDir() == app.basePath() + '/' + "calib2" );
+        REQUIRE( app.m_log.logPath() == app.basePath() + '/' + "logs2" );
+        REQUIRE( app.sysPath() == app.basePath() + '/' + "sys2" );
+        REQUIRE( app.secretsPath() == app.basePath() + '/' + "secrets2" );
+        REQUIRE( app.cpusetPath() == "/tmp/MagAOX/cpuset" );
+        REQUIRE( app.configBase() == "cbase" );
+        REQUIRE( app.configPathUser() == app.configDir() + "/cbase.conf" );
+        REQUIRE( app.configName() == "testapp2" );
+        REQUIRE( app.configPathLocal() == app.configDir() + "/testapp2.conf" );
         REQUIRE( app.doHelp() == false );
-    }*/
+    }
+}
+
+TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
+{
+    SECTION( "setup basic config" )
+    {
+        MagAOXApp_test app;
+        app.setPowerMgtEnabled(true);
+
+        app.setupBasicConfig();
+
+        REQUIRE(app.shutdown() == false);
+    }
+
+    SECTION( "load basic config w all defaults w/out pwr management" )
+    {
+        MagAOXApp_test app;
+        app.setPowerMgtEnabled(false);
+
+        app.setupBasicConfig();
+
+        app.loadBasicConfig();
+
+        app.checkConfig();
+
+        REQUIRE(app.stateAlert() == false);
+        REQUIRE(app.gitAlert() == false);
+        REQUIRE(app.shutdown() == false);
+
+    }
+
+    SECTION( "load basic config w all defaults w/out pwr management, git modified" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "--name", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        MagAOXApp_test app(true);
+        app.setPowerMgtEnabled(false);
+
+        app.setupBasicConfig();
+
+        app.setDefaults(argv.size()-1, const_cast<char**>(argv.data()));
+
+        app.loadBasicConfig();
+
+        app.checkConfig();
+
+        REQUIRE(app.stateAlert() == true);
+        REQUIRE(app.gitAlert() == true);
+        REQUIRE(app.shutdown() == false);
+
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+        REQUIRE(app.gitAlert() == true);
+        REQUIRE(app.shutdown() == false);
+
+    }
+
+    SECTION( "load basic config w all defaults w unconfigured pwr management" )
+    {
+        MagAOXApp_test app;
+        app.setPowerMgtEnabled(true);
+
+        app.setupBasicConfig();
+
+        app.loadBasicConfig();
+
+        REQUIRE(app.shutdown() == true);
+
+        app.checkConfig();
+
+        REQUIRE(app.stateAlert() == false);
+        REQUIRE(app.gitAlert() == false);
+        REQUIRE(app.shutdown() == true);
+    }
 }
 
 } // namespace MagAOXApp_tests

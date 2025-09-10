@@ -36,7 +36,7 @@ namespace dev
   *            return telemeterT::checkRecordTimes( telem_type1(), telem_type2(), ..., telem_typeN());
   *       }
   *   \endcode
-  *   where there is one constructor-call argument for each telemetry log type recorded by this device.  The resultant 
+  *   where there is one constructor-call argument for each telemetry log type recorded by this device.  The resultant
   *   objects are not used, rather the types are just used for variadic template resolution.
   *
   * - Must provide one overload of the following function for each telemetry type:
@@ -47,21 +47,21 @@ namespace dev
   *          return m_tel<telem_type1>( { message entered here } );
   *       }
   *   \endcode
-  *   You MUST NOT use the pointer argument, it is for type resolution only -- you 
-  *   should fill in the telemetry log message using internal values. Note that calls to this function should result 
+  *   You MUST NOT use the pointer argument, it is for type resolution only -- you
+  *   should fill in the telemetry log message using internal values. Note that calls to this function should result
   *   in a telemetry log entry every time -- it is called when the minimum interval has elapsed since the last entry.
   *
-  * - Must call this class's setupConfig(), loadConfig(), appStartup(), appLogic(), and appShutdown() 
-  *   in the corresponding function of `derivedT`, with error checking. 
+  * - Must call this class's setupConfig(), loadConfig(), appStartup(), appLogic(), and appShutdown()
+  *   in the corresponding function of `derivedT`, with error checking.
   *   For convenience the following macros are defined to provide error checking:
-  *   \code  
+  *   \code
   *       TELEMETER_SETUP_CONFIG( cfig )
   *       TELEMETER_LOAD_CONFIG( cfig )
   *       TELEMETER_APP_STARTUP
   *       TELEMETER_APP_LOGIC
   *       TELEMETER_APP_SHUTDOWN
   *   \endcode
-  * 
+  *
   * \ingroup appdev
   */
 template <class derivedT>
@@ -224,7 +224,13 @@ int telemeter<derivedT>::loadConfig(mx::app::appConfigurator &config)
 {
     m_tel.m_logLevel = logPrio::LOG_TELEM;
 
-    m_tel.logPath(std::string(derived().MagAOXPath) + "/" + MAGAOX_telRelPath);
+    // Setup default log path
+    std::string tmpstr = mx::sys::getEnv( MAGAOX_env_telem );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_telRelPath;
+    }
+    m_tel.logPath(std::string(derived().basePath()) + "/" + tmpstr);
 
     m_tel.logExt("bintel");
 
@@ -309,7 +315,7 @@ int telemeter<derivedT>::checkRecordTimes(timespec &ts)
 
 /// Call telemeter::setupConfig with error checking
 /**
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define TELEMETER_SETUP_CONFIG( cfig )                                                   \
     if (telemeterT::setupConfig( cfig) < 0)                                              \
@@ -320,7 +326,7 @@ int telemeter<derivedT>::checkRecordTimes(timespec &ts)
 
 /// Call telemeter::loadConfig with error checking
 /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define TELEMETER_LOAD_CONFIG( cfig )                                                              \
     if (telemeterT::loadConfig(cfig) < 0)                                                          \

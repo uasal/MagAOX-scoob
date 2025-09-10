@@ -52,6 +52,7 @@ PATHNAME=$(dir $(TARGET))
 OBJNAME = $(PATHNAME)$(notdir $(BASENAME)).o
 TESTNAME = $(PATHNAME)$(notdir $(BASENAME))
 
+
 ######################
 # setuid             #
 ######################
@@ -67,10 +68,20 @@ $(TESTNAME): $(OBJNAME) testMain.o
 	$(LINK.o) -o $(TESTNAME) testMain.o $(OBJNAME) $(abspath $(SELF_DIR)/../libMagAOX/libMagAOX.a) $(LDFLAGS) $(LDLIBS)
 	$(SETUID)
 
+##################################################
+# Force, without building all of catch2 using -B
+#
+# for this to work TARGET must include .cpp
+#################################################
+force:
+	@echo $(TARGET)
+	@touch $(TARGET)
+	$(MAKE) -f Makefile.one all
+
 #This just prints the command name, primarily to allow easy access for running a single test
 .PHONY: pcommand
 pcommand:
-	@echo $(TESTNAME)
+	@echo "Command to run test: " $(TESTNAME)
 
 .PHONY: magaox_git_version.h
 magaox_git_version.h:
