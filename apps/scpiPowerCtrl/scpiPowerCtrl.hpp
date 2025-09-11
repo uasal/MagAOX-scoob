@@ -12,6 +12,10 @@
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
+#include <fstream>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 /** \defgroup scpiPowerCtrl SCPI Power Supply
   * \brief Control of MagAO-X SCPI-standard DC Power Supplies.
@@ -66,12 +70,24 @@ protected:
     int maxChannels = 3; // define maximum number of power channels
 
     int fd; ///< The file descriptor for the device
-    int m_pollRateHz {1000};  ///< The timeout for writing to the device [msec].
+    int m_pollRateHz {100};  ///< The polling rate for measurements [Hz].
 
     // array for voltages with length numChannels when it gets set
     // array for amps with length numChannels when it gets set
 
    std::string m_status; ///< The device status 
+
+   // Telemetry logging
+   bool m_telemetryEnabled {false}; ///< Whether telemetry logging is enabled
+   std::string m_telemetryPath {"/opt/MagAOX/telem"}; ///< Path for telemetry files
+   std::ofstream m_telemetryFile; ///< File stream for telemetry logging
+   std::string m_telemetryFilename; ///< Current telemetry filename
+   std::chrono::steady_clock::time_point m_lastTelemetryTime; ///< Last telemetry write time
+   std::chrono::milliseconds m_telemetryInterval {10}; ///< Telemetry interval in milliseconds (100Hz = 10ms)
+
+   // Polling control
+   std::chrono::steady_clock::time_point m_lastPollTime; ///< Last poll time
+   std::chrono::milliseconds m_pollInterval {10}; ///< Polling interval derived from m_pollRateHz
 
    // array for statuses on each channel (On Off) ?
 
@@ -89,6 +105,12 @@ public:
     INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet1curr);
     INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet2curr);
     INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_outlet3curr);
+    
+    // Telemetry control
+    INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_telemetryToggle);
+    
+    // Power control toggles (using outletController framework)
+    // These are handled by the outletController base class
 
     //INDI_NEWCALLBACK_DECL(scpiPowerCtrl, m_indiP_load_channels);
 
@@ -194,6 +216,15 @@ public:
     void updateAlarmsAndWarnings();
 
     bool send_scpi(const std::string& cmd, std::string& response);
+    
+    // Telemetry logging methods
+    int startTelemetryLogging();
+    int stopTelemetryLogging();
+    int writeTelemetryData();
+    std::string generateTelemetryFilename();
+    
+    // Power control methods
+    int toggleChannelPower(int channel, bool enable);
 
     ///@}
 
@@ -209,6 +240,11 @@ protected:
    pcf::IndiProperty m_indiP_outlet1curr;
    pcf::IndiProperty m_indiP_outlet2curr;
    pcf::IndiProperty m_indiP_outlet3curr;
+   
+   // Telemetry control
+   pcf::IndiProperty m_indiP_telemetryToggle;
+   
+   // Power control toggles are handled by outletController framework
 
 };
 
@@ -225,6 +261,13 @@ void scpiPowerCtrl::setupConfig()
     
     // force user to define the number of channels so that limits can be pre-defined
     config.add("device.numChannels", "", "device.numChannels", argType::Required, "device", "numChannels", false, "int", "The number of channels on the device.");
+    
+    // Polling rate configuration
+    config.add("device.pollRateHz", "", "device.pollRateHz", argType::Optional, "device", "pollRateHz", false, "int", "The polling rate for measurements [Hz] (default: 100)");
+    
+    // Telemetry configuration
+    config.add("telemetry.path", "", "telemetry.path", argType::Optional, "telemetry", "path", false, "string", "Path for telemetry files (default: /opt/MagAOX/telem)");
+    config.add("telemetry.enabled", "", "telemetry.enabled", argType::Optional, "telemetry", "enabled", false, "bool", "Enable telemetry logging on startup (default: false)");
 
     dev::ioDevice::setupConfig(config);
 
@@ -251,6 +294,11 @@ void scpiPowerCtrl::loadConfig()
 
     dev::ioDevice::loadConfig(config);
     config(m_numChannels, "device.numChannels");
+    config(m_pollRateHz, "device.pollRateHz");
+    
+    // Load telemetry configuration
+    config(m_telemetryPath, "telemetry.path");
+    config(m_telemetryEnabled, "telemetry.enabled");
 
     if (m_numChannels > maxChannels) {
         log<software_error>({__FILE__, __LINE__, "more channels defined than maximum allowed"});
@@ -346,6 +394,24 @@ int scpiPowerCtrl::appStartup()
     m_indiP_outlet3curr["current"] = m_channelCurrents[2];
     m_indiP_outlet3curr["target"] = m_channelCurrents[2];
     registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
+
+    // Telemetry toggle switch
+    m_indiP_telemetryToggle = pcf::IndiProperty(pcf::IndiProperty::Switch);
+    m_indiP_telemetryToggle.setDevice(configName());
+    m_indiP_telemetryToggle.setName("telemetry");
+    m_indiP_telemetryToggle.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_telemetryToggle.setState(pcf::IndiProperty::Idle);
+    m_indiP_telemetryToggle.setRule(pcf::IndiProperty::AtMostOne);
+    m_indiP_telemetryToggle.add(pcf::IndiElement("toggle"));
+    m_indiP_telemetryToggle["toggle"].setSwitchState(m_telemetryEnabled ? pcf::IndiElement::On : pcf::IndiElement::Off);
+    registerIndiPropertyNew(m_indiP_telemetryToggle, INDI_NEWCALLBACK(m_indiP_telemetryToggle));
+
+    // Initialize timers
+    m_lastPollTime = std::chrono::steady_clock::now();
+    m_lastTelemetryTime = m_lastPollTime;
+    if(m_pollRateHz > 0) {
+        m_pollInterval = std::chrono::milliseconds( std::max(1, 1000 / m_pollRateHz) );
+    }
     
     if(dev::outletController<scpiPowerCtrl>::setupINDI() < 0)
     {
@@ -416,11 +482,28 @@ int scpiPowerCtrl::appLogic()
           return 0;
        }
  
-       int rv = updateOutletStates();
+       // Poll at configured rate
+       auto now = std::chrono::steady_clock::now();
+       if(now - m_lastPollTime >= m_pollInterval)
+       {
+          m_lastPollTime = now;
+          int rv = updateOutletStates();
  
-       if(rv < 0) return log<software_error,-1>({__FILE__, __LINE__});
+          if(rv < 0) return log<software_error,-1>({__FILE__, __LINE__});
+       }
  
        updateAlarmsAndWarnings();
+
+       // Telemetry write at configured interval
+        if(m_telemetryEnabled)
+        {
+            auto tnow = std::chrono::steady_clock::now();
+            if(tnow - m_lastTelemetryTime >= m_telemetryInterval)
+            {
+                m_lastTelemetryTime = tnow;
+                writeTelemetryData();
+            }
+        }
  
        return 0;
     }
@@ -444,10 +527,7 @@ int scpiPowerCtrl::appShutdown()
 
 int scpiPowerCtrl::updateOutletState( int outletNum )
 {
-    int rv;
-
-    rv = devStatus();
-
+    int rv = devStatus();
     if(rv < 0)
     {
         log<software_error>({__FILE__, __LINE__, "device status error"});
@@ -455,25 +535,36 @@ int scpiPowerCtrl::updateOutletState( int outletNum )
         return 0;
     }
 
-    updateChannel(outletNum); 
+    // Select channel n
+    std::string res;
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    if (!send_scpi(cmd_sel, res)) {
+        log<software_error>({__FILE__, __LINE__, "Could not select outlet channel " + std::to_string(outletNum)});
+        return -1;
+    }
+
+    // Query present-channel output state and measurements
+    std::string outp;
+    if (send_scpi("OUTP?\n", outp)) {
+        int st = 0;
+        try { st = std::stoi(outp); } catch(...) { st = 0; }
+        m_outletStates[outletNum] = (st == 1 ? OUTLET_STATE_ON : OUTLET_STATE_OFF);
+    }
+
+    updateChannel(outletNum);
 
     updateIfChanged(m_indiP_status, "value", m_status);
 
-    std::string propName = "load_ch" + std::to_string(outletNum + 1);
-
     if( outletNum == 0 ) {
-        updateIfChanged(m_indiP_outlet1volt, "ch_1_volt", m_channelVoltages[0]);
-        updateIfChanged(m_indiP_outlet1curr, "ch_1_curr", m_channelCurrents[0]);
+        updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+        updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
     } else if( outletNum == 1 ) {
-        updateIfChanged(m_indiP_outlet2volt, "ch_2_volt", m_channelVoltages[1]);
-        updateIfChanged(m_indiP_outlet2curr, "ch_2_curr", m_channelCurrents[1]);
+        updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+        updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
     } else if( outletNum == 2) {
-        updateIfChanged(m_indiP_outlet3volt, "ch_3_volt", m_channelVoltages[2]);
-        updateIfChanged(m_indiP_outlet3curr, "ch_3_curr", m_channelCurrents[2]);
+        updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+        updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
     }
-
-    //updateIfChanged(m_indiP_load_channels[outletNum], "voltage", m_channelVoltages[outletNum]);
-    //updateIfChanged(m_indiP_load_channels[outletNum], "current", m_channelCurrents[outletNum]);
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
 
@@ -494,7 +585,10 @@ int scpiPowerCtrl::updateOutletStates()
         return 0;
     }
 
-    updateChannels(); 
+    // Update each outlet's state and measurements
+    for (int i = 0; i < m_numChannels; ++i) {
+        updateOutletState(i);
+    }
 
     updateIfChanged(m_indiP_status, "value", m_status);
 
@@ -507,12 +601,12 @@ int scpiPowerCtrl::updateOutletStates()
     }
     */
 
-    updateIfChanged(m_indiP_outlet1volt, "ch_1_volt", m_channelVoltages[0]);
-    updateIfChanged(m_indiP_outlet1curr, "ch_1_curr", m_channelCurrents[0]);
-    updateIfChanged(m_indiP_outlet2volt, "ch_2_volt", m_channelVoltages[1]);
-    updateIfChanged(m_indiP_outlet2curr, "ch_2_curr", m_channelCurrents[1]);
-    updateIfChanged(m_indiP_outlet3volt, "ch_3_volt", m_channelVoltages[2]);
-    updateIfChanged(m_indiP_outlet3curr, "ch_3_curr", m_channelCurrents[2]);
+    updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+    updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+    updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+    updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+    updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
 
@@ -523,14 +617,14 @@ int scpiPowerCtrl::turnOutletOn( int outletNum )
 {
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
-    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    // Select channel, then turn output ON (generic SCPI pattern)
     std::string res;
-
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
     if (!send_scpi(cmd_sel, res)) {
         return log<text_log,-1>("Could not select outlet channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
     }
 
-    if (!send_scpi("OUTP ON\n", res)) {
+    if (!send_scpi("OUTP 1\n", res)) {
         return log<text_log,-1>("Failed to turn output channel " + std::to_string(outletNum) + " on.", logPrio::LOG_WARNING);
     }
 
@@ -542,14 +636,14 @@ int scpiPowerCtrl::turnOutletOff( int outletNum )
  
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
-    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    // Select channel, then turn output OFF (generic SCPI pattern)
     std::string res;
-
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
     if (!send_scpi(cmd_sel, res)) {
         return log<text_log,-1>("Could not select outlet channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
     }
 
-    if (!send_scpi("OUTP OFF\n", res)) {
+    if (!send_scpi("OUTP 0\n", res)) {
         return log<text_log,-1>("Failed to turn output channel " + std::to_string(outletNum) + " off.", logPrio::LOG_WARNING);
     }
 
@@ -601,10 +695,12 @@ int scpiPowerCtrl::updateChannels()
 
 int scpiPowerCtrl::updateChannel(int channel)
 {
+    // Select channel, then query measurements (generic SCPI pattern)
+    std::string res;
     std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
-    if(write(fd, cmd_sel.c_str(), cmd_sel.size()) < 0){
-        return log<text_log,-1>("Unable to select channel.", logPrio::LOG_CRITICAL);
-    } 
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
+    }
 
     std::string volt, curr;
     bool ok_v = send_scpi("MEAS:VOLT?\n", volt);
@@ -614,10 +710,12 @@ int scpiPowerCtrl::updateChannel(int channel)
         volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
         curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
 
+        m_channelVoltages[channel] = std::stof(volt);
+        m_channelCurrents[channel] = std::stof(curr);
+    } else {
+        log<software_error>({__FILE__, __LINE__, "Failed to read voltage/current from channel " + std::to_string(channel + 1)});
+        return -1;
     }
-
-    m_channelVoltages[channel] = std::stof(volt);
-    m_channelCurrents[channel] = std::stof(curr);
 
     return 0;
 }
@@ -737,9 +835,16 @@ void scpiPowerCtrl::updateAlarmsAndWarnings()
 }
 
 bool scpiPowerCtrl::send_scpi(const std::string& cmd, std::string& response) {
+    // Write command
     if (write(fd, cmd.c_str(), cmd.size()) < 0) {
         perror("Write failed");
         return false;
+    }
+
+    // Only read if this is a query (contains '?')
+    if (cmd.find('?') == std::string::npos) {
+        response.clear();
+        return true;
     }
 
     char buffer[1024] = {0};
@@ -941,6 +1046,28 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3curr)(const pcf::IndiPropert
 
    updateIfChanged(m_indiP_outlet3curr, "target", vc);
    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_telemetryToggle.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   bool enable = false;
+   if (ipRecv.find("toggle"))
+   {
+       enable = (ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On);
+   }
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_telemetryEnabled = enable;
+   if(m_telemetryEnabled) startTelemetryLogging();
+   else stopTelemetryLogging();
 
    return 0;
 }
