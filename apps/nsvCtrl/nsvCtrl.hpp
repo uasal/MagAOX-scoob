@@ -21,6 +21,7 @@
 #include <iomanip>
 #include <sstream>
 #include <map>
+#include <filesystem>
 #include <set>
 #include <thread>
 #include <mutex>
@@ -1165,41 +1166,48 @@ void nsvCtrl::initializePowerRails()
    
    log<text_log>("Starting auto-discovery of INA3221 power sensors...", logPrio::LOG_INFO);
    
-   // Auto-discover all INA3221 devices
+   // Auto-discover all INA3221 devices (follow symlinks robustly; avoid external find)
    std::vector<std::string> devicePaths;
-   
-   // Try auto-discovery first
-   std::string basePath = "/sys/bus/i2c/drivers/ina3221";
-   std::string lsCmd = "ls " + basePath + " 2>/dev/null";
-   std::string lsResult = cmdRes(lsCmd.c_str());
-   
-   if (!lsResult.empty()) {
-      // Parse symlinked directories
-      std::istringstream iss(lsResult);
-      std::string item;
-      while (std::getline(iss, item)) {
-         if (item.empty()) continue;
-         
-         // Check if it matches the pattern (e.g., "0-0040")
-         if (item.find('-') != std::string::npos && item.find('-') == item.rfind('-')) {
-            std::string itemPath = basePath + "/" + item;
-            
-            // Look for hwmon subdirectories in the real path
-            std::string hwmonCmd = "find " + itemPath + "/hwmon -maxdepth 1 -name 'hwmon*' -type d 2>/dev/null";
-            std::string hwmonResult = cmdRes(hwmonCmd.c_str());
-            
-            if (!hwmonResult.empty()) {
-               std::istringstream hwmonIss(hwmonResult);
-               std::string hwmonDir;
-               while (std::getline(hwmonIss, hwmonDir)) {
-                  if (!hwmonDir.empty()) {
-                     devicePaths.push_back(hwmonDir);
-                     log<text_log>("Found INA3221 device: " + hwmonDir, logPrio::LOG_INFO);
+   const std::string basePath = "/sys/bus/i2c/drivers/ina3221";
+   try {
+      namespace fs = std::filesystem;
+      if (fs::exists(basePath) && fs::is_directory(basePath)) {
+         for (const auto &dirEntry : fs::directory_iterator(basePath)) {
+            const std::string entryName = dirEntry.path().filename().string();
+            // Match entries like "0-0040", "1-0043", etc. and ensure it's a symlink
+            if (entryName.find('-') != std::string::npos &&
+                entryName.find('-') == entryName.rfind('-') &&
+                fs::is_symlink(dirEntry.symlink_status())) {
+               // Resolve the real device path
+               fs::path realDevicePath;
+               try {
+                  realDevicePath = fs::read_symlink(dirEntry.path());
+                  // If the symlink is relative, make it absolute based on parent
+                  if (realDevicePath.is_relative()) {
+                     realDevicePath = dirEntry.path().parent_path() / realDevicePath;
+                  }
+               } catch (...) {
+                  // If we can't resolve symlink, skip
+                  continue;
+               }
+
+               const fs::path hwmonRoot = realDevicePath / "hwmon";
+               if (fs::exists(hwmonRoot) && fs::is_directory(hwmonRoot)) {
+                  for (const auto &hwmonEntry : fs::directory_iterator(hwmonRoot)) {
+                     const std::string hwmonName = hwmonEntry.path().filename().string();
+                     if (fs::is_directory(hwmonEntry.status()) &&
+                         hwmonName.rfind("hwmon", 0) == 0) {
+                        const std::string hwmonDir = hwmonEntry.path().string();
+                        devicePaths.push_back(hwmonDir);
+                        log<text_log>("Found INA3221 device: " + hwmonDir, logPrio::LOG_INFO);
+                     }
                   }
                }
             }
          }
       }
+   } catch (const std::exception &e) {
+      log<text_log>("Exception during auto-discovery: " + std::string(e.what()), logPrio::LOG_WARNING);
    }
    
    // If auto-discovery failed or found no devices, fall back to configured path
@@ -1216,67 +1224,71 @@ void nsvCtrl::initializePowerRails()
    // Scan each device for power rails
    for (const auto& devicePath : devicePaths) {
       log<text_log>("Scanning device: " + devicePath, logPrio::LOG_INFO);
-      
-      // Find all label files in this device
-      std::string labelFindCmd = "find " + devicePath + " -name '*_label' -type f 2>/dev/null";
-      std::string labelResult = cmdRes(labelFindCmd.c_str());
-      
-      if (labelResult.empty()) {
-         log<text_log>("No label files found in " + devicePath, logPrio::LOG_WARNING);
-         continue;
-      }
-      
-      // Parse label files
-      std::istringstream labelIss(labelResult);
-      std::string labelFile;
-      while (std::getline(labelIss, labelFile)) {
-         if (labelFile.empty()) continue;
-         
-         // Extract channel number from filename (e.g., "in1_label" -> 1)
-         std::string filename = labelFile.substr(labelFile.find_last_of("/") + 1);
-         if (filename.find("in") == 0 && filename.find("_label") != std::string::npos) {
-            std::string channelStr = filename.substr(2, filename.find("_label") - 2);
-            int channel = std::stoi(channelStr);
-            
-            // Read the label
-            std::ifstream labelStream(labelFile);
-            if (labelStream.is_open()) {
-               std::string railName;
-               std::getline(labelStream, railName);
-               
-               if (!railName.empty()) {
-                  // Create power rail entry
-                  PowerRail rail;
-                  rail.name = railName;
-                  rail.devicePath = devicePath;
-                  rail.channel = channel;
-                  rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
-                  rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
-                  rail.valid = false;
-                  
-                  // Check if voltage and current files exist and are readable
-                  std::ifstream vFile(rail.voltageFile);
-                  std::ifstream cFile(rail.currentFile);
-                  if (vFile.good() && cFile.good()) {
-                     // Try to read a sample value to test permissions
-                     std::string testValue;
-                     std::getline(vFile, testValue);
-                     if (!testValue.empty()) {
-                        rail.valid = true;
-                        log<text_log>("Discovered power rail: " + railName + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
-                     } else {
-                        log<text_log>("Power rail " + railName + " files exist but are not readable (permission issue)", logPrio::LOG_WARNING);
-                     }
-                  } else {
-                     log<text_log>("Power rail " + railName + " files not accessible", logPrio::LOG_WARNING);
-                  }
-                  
-                  m_powerRails.push_back(rail);
-               }
-            } else {
-               log<text_log>("Cannot read label file: " + labelFile + " (permission issue)", logPrio::LOG_WARNING);
+      try {
+         namespace fs = std::filesystem;
+         std::vector<std::string> labelFiles;
+         for (const auto &entry : fs::directory_iterator(devicePath)) {
+            if (!entry.is_regular_file()) continue;
+            const std::string fname = entry.path().filename().string();
+            if (fname.rfind("in", 0) == 0 && fname.size() > 7 &&
+                fname.find("_label") == fname.size() - 6) {
+               labelFiles.push_back(entry.path().string());
             }
          }
+
+         if (labelFiles.empty()) {
+            log<text_log>("No label files found in " + devicePath, logPrio::LOG_WARNING);
+            continue;
+         }
+
+         for (const auto &labelFile : labelFiles) {
+            const std::string filename = std::filesystem::path(labelFile).filename().string();
+            const std::size_t posStart = 2; // after 'in'
+            const std::size_t posEnd = filename.find("_label");
+            if (posEnd == std::string::npos || posEnd <= posStart) continue;
+            int channel = -1;
+            try {
+               channel = std::stoi(filename.substr(posStart, posEnd - posStart));
+            } catch (...) {
+               continue;
+            }
+
+            std::ifstream labelStream(labelFile);
+            if (!labelStream.is_open()) {
+               log<text_log>("Cannot read label file: " + labelFile + " (open failed)", logPrio::LOG_WARNING);
+               continue;
+            }
+
+            std::string railName;
+            std::getline(labelStream, railName);
+            if (railName.empty()) continue;
+
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Discovered power rail: " + railName + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               } else {
+                  log<text_log>("Power rail " + railName + " files exist but are not readable (empty)", logPrio::LOG_WARNING);
+               }
+            } else {
+               log<text_log>("Power rail " + railName + " files not accessible", logPrio::LOG_WARNING);
+            }
+            m_powerRails.push_back(rail);
+         }
+      } catch (const std::exception &e) {
+         log<text_log>("Exception scanning device '" + devicePath + "': " + std::string(e.what()), logPrio::LOG_WARNING);
       }
    }
    
