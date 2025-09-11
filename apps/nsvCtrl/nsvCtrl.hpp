@@ -112,6 +112,7 @@ protected:
    float m_gmslVoltage {0.0};
    float m_gmslCurrent {0.0};
    std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
+   int m_powerChannel { -1 };             // Optional fixed channel (1..3) to use with m_powerDevicePath
    int m_powerUpdateCounter = 0;          // Counter for rate limiting power updates
    int m_powerUpdateInterval = 10;        // Update power every N frames (10Hz at 100fps = every 10 frames)
    
@@ -140,6 +141,7 @@ protected:
    std::ofstream m_powerLogFile;
    std::mutex m_powerLogMutex;
    std::string m_powerLogPath;
+   bool m_powerHeaderWritten = false;
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -430,6 +432,7 @@ void nsvCtrl::setupConfig()
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
    config.add("camera.power_device_path", "", "camera.power_device_path", argType::Optional, "camera", "power_device_path", false, "str", "Direct device path for power monitoring (e.g., /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6)");
+   config.add("camera.power_channel", "", "camera.power_channel", argType::Optional, "camera", "power_channel", false, "int", "Channel index (1-3) to read when using power_device_path");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -445,6 +448,7 @@ void nsvCtrl::loadConfig()
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
    config(m_powerDevicePath, "camera.power_device_path");
+   config(m_powerChannel, "camera.power_channel");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -1226,6 +1230,40 @@ void nsvCtrl::initializePowerRails()
       log<text_log>("Scanning device: " + devicePath, logPrio::LOG_INFO);
       try {
          namespace fs = std::filesystem;
+         if (m_powerChannel >= 1 && m_powerChannel <= 3) {
+            // Config overrides: add exactly one rail from the configured device path
+            const int channel = m_powerChannel;
+            const std::string labelFile = devicePath + "/in" + std::to_string(channel) + "_label";
+            std::ifstream labelStream(labelFile);
+            std::string railName;
+            if (labelStream.is_open()) {
+               std::getline(labelStream, railName);
+            }
+            if (railName.empty()) {
+               railName = "ch" + std::to_string(channel);
+            }
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Configured power rail: " + rail.name + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               }
+            }
+            m_powerRails.push_back(rail);
+            // Skip auto enumeration if channel is forced
+            continue;
+         }
+
          std::vector<std::string> labelFiles;
          for (const auto &entry : fs::directory_iterator(devicePath)) {
             if (!entry.is_regular_file()) continue;
@@ -1392,10 +1430,8 @@ int nsvCtrl::startPowerLogging()
       return -1;
    }
    
-   // Write CSV header
-   m_powerLogFile << "system_time_ns,camera_timestamp_s,camera_timestamp_ns,voltage_v,current_a\n";
-   m_powerLogFile.flush();
-   
+   // Prepare to write header on first data write
+   m_powerHeaderWritten = false;
    m_powerLoggingEnabled = true;
    log<text_log>("Power logging started, file: " + m_powerLogPath, logPrio::LOG_INFO);
    
@@ -1446,8 +1482,7 @@ void nsvCtrl::logPowerData()
    }
    
    // Write header if this is the first write
-   static bool headerWritten = false;
-   if (!headerWritten) {
+   if (!m_powerHeaderWritten) {
       m_powerLogFile << "system_time_ns,camera_timestamp_s,camera_timestamp_ns";
       for (const auto& rail : m_powerRails) {
          if (rail.valid) {
@@ -1456,7 +1491,7 @@ void nsvCtrl::logPowerData()
          }
       }
       m_powerLogFile << "\n";
-      headerWritten = true;
+      m_powerHeaderWritten = true;
    }
    
    // Write data for all power rails
