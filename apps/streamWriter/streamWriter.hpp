@@ -525,8 +525,14 @@ void streamWriter::loadConfig()
     config( m_fgCpuset, "framegrabber.cpuset" );
 
     // Set some defaults
-    // Setup default log path
-    m_rawimageDir = MagAOXPath + "/" + MAGAOX_rawimageRelPath + "/" + m_outName;
+    // Setup default saving path
+    std::string tmpstr = mx::sys::getEnv( MAGAOX_env_rawimage );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_rawimageRelPath;
+    }
+    m_rawimageDir = basePath() + "/" + tmpstr + "/" + m_outName;
+
     config( m_rawimageDir, "writer.savePath" );
 
     if( telemeterT::loadConfig( config ) < 0 )
