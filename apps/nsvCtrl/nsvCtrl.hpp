@@ -1220,8 +1220,14 @@ void nsvCtrl::initializePowerRails()
                      if (fs::is_directory(hwmonEntry.status()) &&
                          hwmonName.rfind("hwmon", 0) == 0) {
                         const std::string hwmonDir = hwmonEntry.path().string();
-                        devicePaths.push_back(hwmonDir);
-                        log<text_log>("Found INA3221 device: " + hwmonDir, logPrio::LOG_INFO);
+                        std::string normHwmon;
+                        try {
+                           normHwmon = std::filesystem::weakly_canonical(hwmonEntry.path()).string();
+                        } catch (...) {
+                           normHwmon = hwmonDir;
+                        }
+                        devicePaths.push_back(normHwmon);
+                        log<text_log>("Found INA3221 device: " + normHwmon, logPrio::LOG_INFO);
                      }
                   }
                }
