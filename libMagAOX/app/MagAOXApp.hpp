@@ -44,6 +44,12 @@ using namespace mx::app;
 
 using namespace MagAOX::logger;
 
+//forward decl for friendship
+namespace MagAOXApp_tests
+{
+struct MagAOXApp_test;
+}
+
 namespace MagAOX
 {
 namespace app
@@ -65,6 +71,7 @@ namespace app
  *
  *
 */
+
 
 
 /// The base-class for XWCTk applications.
@@ -124,7 +131,7 @@ namespace app
 template <bool _useINDI = true>
 class MagAOXApp : public application
 {
-    friend class MagAOXApp_test;
+    friend struct MagAOXApp_tests::MagAOXApp_test;
 
   public:
     /// The log manager type.
@@ -2521,15 +2528,25 @@ int MagAOXApp<_useINDI>::clearFSMAlert()
     pcf::IndiProperty::PropertyStateType stst = INDI_IDLE;
 
     if( m_state == stateCodes::READY )
+    {
         stst = INDI_OK;
+    }
     else if( m_state == stateCodes::OPERATING || m_state == stateCodes::HOMING || m_state == stateCodes::CONFIGURING )
+    {
         stst = INDI_BUSY;
+    }
     else if( m_state < stateCodes::NODEVICE )
+    {
         stst = INDI_ALERT;
+    }
     else if( m_state <= stateCodes::LOGGEDIN )
+    {
         stst = INDI_IDLE;
+    }
     else if( m_state == stateCodes::NOTHOMED || m_state == stateCodes::SHUTDOWN )
+    {
         stst = INDI_IDLE;
+    }
 
     updateIfChanged( m_indiP_state, "state", stateCodes::codeText( m_state ), stst );
 
@@ -3401,32 +3418,14 @@ int MagAOXApp<_useINDI>::indiTargetUpdate( pcf::IndiProperty &localProperty,
     return 0;
 }
 
-/// \todo move propType to an INDI utils file, and document.
-
-template <typename T>
-pcf::IndiProperty::Type propType()
-{
-    return pcf::IndiProperty::Unknown;
-}
-
-template <>
-pcf::IndiProperty::Type propType<char *>();
-
-template <>
-pcf::IndiProperty::Type propType<std::string>();
-
-template <>
-pcf::IndiProperty::Type propType<int>();
-
-template <>
-pcf::IndiProperty::Type propType<double>();
-
 template <bool _useINDI>
 template <typename T>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend, const std::string &el, const T &newVal )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3460,7 +3459,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3574,7 +3575,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerState()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerState;
 }
@@ -3583,7 +3586,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerStateTarget()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerTargetState;
 }

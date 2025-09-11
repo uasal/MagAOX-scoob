@@ -71,6 +71,11 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 
     int called_back{ 0 };
 
+    void setAlert()
+    {
+        m_stateAlert = true;
+    }
+
     void doFSMClearAlert()
     {
         pcf::IndiProperty ip(pcf::IndiProperty::Switch);
@@ -81,6 +86,60 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 
         st_newCallBack_clearFSMAlert(this, ip);
     }
+
+    int onPowerOff()
+    {
+        return MagAOX::app::MagAOXApp<true>::onPowerOff();
+    }
+
+    int whilePowerOff()
+    {
+        return MagAOX::app::MagAOXApp<true>::whilePowerOff();
+    }
+
+    bool powerOnWaitElapsed()
+    {
+        return MagAOX::app::MagAOXApp<true>::powerOnWaitElapsed();
+    }
+
+    int powerState()
+    {
+        return MagAOX::app::MagAOXApp<true>::powerState();
+    }
+
+    void configurePowerManagement(const std::string & device, const std::string & channel)
+    {
+        m_indiP_powerChannel = pcf::IndiProperty(pcf::IndiProperty::Text);
+        m_powerDevice = device;
+        m_indiP_powerChannel.setDevice(device);
+
+        m_powerChannel = channel;
+        m_indiP_powerChannel.setName(channel);
+    }
+
+    void configurePowerOnWait( unsigned long powerOnWait, int powerOnCounter, int loopPause)
+    {
+        m_powerOnWait = powerOnWait;
+        m_powerOnCounter = powerOnCounter;
+        m_loopPause = loopPause;
+    }
+
+    int setPowerState( const std::string & state, const std::string target)
+    {
+        pcf::IndiProperty ip(pcf::IndiProperty::Text);
+        ip.setDevice(m_powerDevice);
+        ip.setName(m_powerChannel);
+        ip.add(pcf::IndiElement("state"));
+        ip["state"].setValue(state);
+
+        ip.add(pcf::IndiElement("target"));
+        ip["target"].setValue(target);
+
+        return setCallBack_m_indiP_powerChannel(ip);
+    }
+
+
+
 
 };
 
@@ -294,7 +353,7 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
 
     }
 
-    SECTION( "load basic config w all defaults w/out pwr management, git modified" )
+    SECTION( "load basic config w all defaults w/out pwr management, git modified, clear alerts" )
     {
         std::vector<const char *> argv;
         std::vector<std::string>  argvstr( { "./execname", "--name", "testapp" } );
@@ -326,6 +385,64 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE(app.gitAlert() == true);
         REQUIRE(app.shutdown() == false);
 
+        app.doFSMClearAlert(); //calls an immediate return of clearFSMAlert
+
+
+        //Now test each path out of clearFSMAlert
+        app.state(MagAOX::app::stateCodes::READY);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::READY);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
+        app.state(MagAOX::app::stateCodes::HOMING);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::HOMING);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
+        app.state(MagAOX::app::stateCodes::NODEVICE);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::NODEVICE);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
+        app.state(MagAOX::app::stateCodes::LOGGEDIN);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::LOGGEDIN);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
+        app.state(MagAOX::app::stateCodes::NODEVICE);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::NODEVICE);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
+        app.state(MagAOX::app::stateCodes::NOTHOMED);
+        REQUIRE(app.state() == MagAOX::app::stateCodes::NOTHOMED);
+
+        app.setAlert();
+        REQUIRE(app.stateAlert() == true);
+
+        app.doFSMClearAlert();
+        REQUIRE(app.stateAlert() == false);
+
     }
 
     SECTION( "load basic config w all defaults w unconfigured pwr management" )
@@ -344,6 +461,82 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE(app.stateAlert() == false);
         REQUIRE(app.gitAlert() == false);
         REQUIRE(app.shutdown() == true);
+    }
+}
+
+TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXApp]" )
+{
+    SECTION("Power Management Not Configured")
+    {
+        MagAOXApp_test app(true);
+        app.setPowerMgtEnabled(false);
+
+        REQUIRE(app.onPowerOff() == 0);
+        REQUIRE(app.whilePowerOff() == 0);
+        REQUIRE(app.powerOnWaitElapsed() == true);
+        REQUIRE(app.powerState() == 1);
+        REQUIRE(app.powerStateTarget() == 1);
+    }
+
+    SECTION("Power Management Configured")
+    {
+        MagAOXApp_test app(true);
+        app.setPowerMgtEnabled(true);
+        app.configurePowerManagement("pdu", "test");
+
+        REQUIRE(app.onPowerOff() == 0);
+        REQUIRE(app.whilePowerOff() == 0);
+        REQUIRE(app.powerOnWaitElapsed() == true);
+
+        //Comes up unknown
+        REQUIRE(app.powerState() == -1);
+        REQUIRE(app.powerStateTarget() == -1);
+
+        app.setPowerState("Off", "Off");
+        REQUIRE(app.powerState() == 0);
+        REQUIRE(app.powerStateTarget() == 0);
+
+        app.setPowerState("Off", "On");
+        REQUIRE(app.powerState() == 0);
+        REQUIRE(app.powerStateTarget() == 1);
+
+        app.configurePowerOnWait(10, 0, 1e9);
+        //10 checks, then true on 11th
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == false);
+        REQUIRE(app.powerOnWaitElapsed() == true);
+
+        app.setPowerState("On", "On");
+        REQUIRE(app.powerState() == 1);
+        REQUIRE(app.powerStateTarget() == 1);
+
+        app.setPowerState("On", "Off");
+        REQUIRE(app.powerState() == 1);
+        REQUIRE(app.powerStateTarget() == 0);
+
+        app.setPowerState("Off", "Off");
+        REQUIRE(app.powerState() == 0);
+        REQUIRE(app.powerStateTarget() == 0);
+    }
+}
+
+TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
+{
+    SECTION("sigusr1 handler")
+    {
+        //this is just to touch this function
+        MagAOX::app::sigUsr1Handler(0, nullptr, nullptr);
+
+        REQUIRE(true);
     }
 }
 
