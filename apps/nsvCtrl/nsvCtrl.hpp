@@ -586,19 +586,20 @@ int nsvCtrl::appStartup()
 
    // Initialize power monitoring
    if (!m_powerDevicePath.empty()) {
-      // Test if power monitoring files exist
-      std::string currentFile = m_powerDevicePath + "/curr1_input";
-      std::string voltageFile = m_powerDevicePath + "/in1_input";
-      
+      // Determine channel to test (default to 1 if unspecified)
+      const int channel = (m_powerChannel >= 1 && m_powerChannel <= 3) ? m_powerChannel : 1;
+      const std::string currentFile = m_powerDevicePath + "/curr" + std::to_string(channel) + "_input";
+      const std::string voltageFile = m_powerDevicePath + "/in" + std::to_string(channel) + "_input";
+
       std::ifstream testCurrent(currentFile);
       std::ifstream testVoltage(voltageFile);
-      
+
       if (testCurrent.is_open() && testVoltage.is_open()) {
-         log<text_log>("Power monitoring initialized: " + m_powerDevicePath, logPrio::LOG_INFO);
-         
-         // Initialize all power rails
+         log<text_log>("Power monitoring initialized: " + m_powerDevicePath + " (ch" + std::to_string(channel) + ")", logPrio::LOG_INFO);
+
+         // Initialize all power rails (respects m_powerChannel if set)
          initializePowerRails();
-         
+
          // Start power monitoring thread
          m_powerThreadRunning = true;
          m_powerThread = std::thread(&nsvCtrl::powerMonitoringThread, this);
