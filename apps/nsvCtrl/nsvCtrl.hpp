@@ -1135,12 +1135,29 @@ void nsvCtrl::powerMonitoringThread()
       // Update legacy GMSL variables for backward compatibility
       {
          std::lock_guard<std::mutex> lock(m_powerMutex);
-         // Find any GMSL rail for legacy compatibility (prefer B over A)
-         for (const auto& rail : m_powerRails) {
-            if ((rail.name.find("GMSL") != std::string::npos) && rail.valid) {
-               m_gmslVoltage = rail.voltage;
-               m_gmslCurrent = rail.current;
-               break; // Use first GMSL rail found
+         // Use only the explicitly configured device+channel if provided
+         if (!m_powerDevicePath.empty() && m_powerChannel >= 1 && m_powerChannel <= 3) {
+            bool foundConfigured = false;
+            for (const auto &rail : m_powerRails) {
+               if (rail.valid && rail.devicePath == m_powerDevicePath && rail.channel == m_powerChannel) {
+                  m_gmslVoltage = rail.voltage;
+                  m_gmslCurrent = rail.current;
+                  foundConfigured = true;
+                  break;
+               }
+            }
+            if (!foundConfigured) {
+               static bool warnedMissingConfiguredRail = false;
+               if (!warnedMissingConfiguredRail) {
+                  log<text_log>(
+                     std::string("Configured power_device_path '") + m_powerDevicePath +
+                     "' with power_channel " + std::to_string(m_powerChannel) +
+                     " not found among discovered rails; legacy INDI values will remain 0",
+                     logPrio::LOG_WARNING);
+                  warnedMissingConfiguredRail = true;
+               }
+               m_gmslVoltage = 0.0f;
+               m_gmslCurrent = 0.0f;
             }
          }
       }
