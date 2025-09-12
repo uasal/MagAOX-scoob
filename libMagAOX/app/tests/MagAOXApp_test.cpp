@@ -529,6 +529,102 @@ TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXA
     }
 }
 
+TEST_CASE( "INDI preperty creation utilities", "[app::MagAOXApp]" )
+{
+    SECTION("createStandardIndiText")
+    {
+        MagAOXApp_test app;
+        app.setConfigName("test");
+
+        pcf::IndiProperty ip;
+
+        app.createStandardIndiText(ip, "tprop", "tlabel", "tgroup");
+
+        REQUIRE(ip.getType() == pcf::IndiProperty::Text);
+        REQUIRE(ip.getDevice() == "test");
+        REQUIRE(ip.getName() == "tprop");
+        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadWrite);
+        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
+        REQUIRE(ip.find("current") == true);
+        REQUIRE(ip.find("target") == true);
+        REQUIRE(ip.getLabel() == "tlabel");
+        REQUIRE(ip.getGroup() == "tgroup");
+    }
+
+    SECTION("createROIndiText")
+    {
+        MagAOXApp_test app;
+        app.setConfigName("test");
+
+        pcf::IndiProperty ip;
+
+        app.createROIndiText(ip, "tprop", "tel", "tlabel", "tgroup", "ellabel");
+
+        REQUIRE(ip.getType() == pcf::IndiProperty::Text);
+        REQUIRE(ip.getDevice() == "test");
+        REQUIRE(ip.getName() == "tprop");
+        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadOnly);
+        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
+        REQUIRE(ip.getLabel() == "tlabel");
+        REQUIRE(ip.getGroup() == "tgroup");
+
+        REQUIRE(ip.find("tel") == true);
+        REQUIRE(ip["tel"].getLabel() == "ellabel");
+
+    }
+
+    SECTION("createStandardIndiNumber")
+    {
+        MagAOXApp_test app;
+        app.setConfigName("test");
+
+        pcf::IndiProperty ip;
+
+        app.createStandardIndiNumber<double>(ip, "tprop",  0.001, 1, 0.002, "%0.23g", "tlabel", "tgroup");
+
+        REQUIRE(ip.getType() == pcf::IndiProperty::Number);
+        REQUIRE(ip.getDevice() == "test");
+        REQUIRE(ip.getName() == "tprop");
+        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadWrite);
+        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
+
+        REQUIRE(ip.find("current") == true);
+        REQUIRE(ip["current"].getMin() == "0.001");
+        REQUIRE(ip["current"].getMax() == "1");
+        REQUIRE(ip["current"].getStep() == "0.002");
+        REQUIRE(ip["current"].getFormat() == "%0.23g");
+
+        REQUIRE(ip.find("target") == true);
+        REQUIRE(ip["target"].getMin() == "0.001");
+        REQUIRE(ip["target"].getMax() == "1");
+        REQUIRE(ip["target"].getStep() == "0.002");
+        REQUIRE(ip["target"].getFormat() == "%0.23g");
+
+        REQUIRE(ip.getLabel() == "tlabel");
+        REQUIRE(ip.getGroup() == "tgroup");
+    }
+
+    SECTION("createROIndiNumber")
+    {
+        MagAOXApp_test app;
+        app.setConfigName("test");
+
+        pcf::IndiProperty ip;
+
+        app.createROIndiNumber(ip, "tprop", "tlabel", "tgroup");
+
+        REQUIRE(ip.getType() == pcf::IndiProperty::Number);
+        REQUIRE(ip.getDevice() == "test");
+        REQUIRE(ip.getName() == "tprop");
+        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadOnly);
+        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
+        REQUIRE(ip.getLabel() == "tlabel");
+        REQUIRE(ip.getGroup() == "tgroup");
+
+
+    }
+}
+
 TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
 {
     SECTION("sigusr1 handler")
