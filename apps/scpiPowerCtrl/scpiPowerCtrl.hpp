@@ -16,6 +16,8 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <thread>
+#include <atomic>
 
 /** \defgroup scpiPowerCtrl SCPI Power Supply
   * \brief Control of MagAO-X SCPI-standard DC Power Supplies.
@@ -88,6 +90,11 @@ protected:
    // Polling control
    std::chrono::steady_clock::time_point m_lastPollTime; ///< Last poll time
    std::chrono::milliseconds m_pollInterval {10}; ///< Polling interval derived from m_pollRateHz
+
+   // High-rate polling thread
+   std::thread m_pollThread;
+   std::atomic<bool> m_polling {false};
+   bool m_pollThreadStarted {false};
 
    // array for statuses on each channel (On Off) ?
 
@@ -216,6 +223,11 @@ public:
     void updateAlarmsAndWarnings();
 
     bool send_scpi(const std::string& cmd, std::string& response);
+    
+    // High-rate polling helpers
+    void startPollThread();
+    void stopPollThread();
+    void pollLoop();
     
     // Telemetry logging methods
     int startTelemetryLogging();
@@ -412,6 +424,11 @@ int scpiPowerCtrl::appStartup()
     if(m_pollRateHz > 0) {
         m_pollInterval = std::chrono::milliseconds( std::max(1, 1000 / m_pollRateHz) );
     }
+
+    // If enabled by config, begin logging immediately
+    if(m_telemetryEnabled) {
+        startTelemetryLogging();
+    }
     
     if(dev::outletController<scpiPowerCtrl>::setupINDI() < 0)
     {
@@ -471,6 +488,7 @@ int scpiPowerCtrl::appLogic()
         // CONF:SETPT 3
 
         state(stateCodes::READY);
+        startPollThread();
     }
  
     if(state() == stateCodes::READY)
@@ -516,13 +534,8 @@ int scpiPowerCtrl::appLogic()
 
 int scpiPowerCtrl::appShutdown()
 {
-
-    // release power supply to user control 
-    // CONF:SETPT 0 (ROTARY) | 1 (KEYPAD) | 2 (EXT PGM) | 3 (REMOTE)
-
-    // CONF:SETPT 1
-
-   return 0;
+    stopPollThread();
+    return 0;
 }
 
 int scpiPowerCtrl::updateOutletState( int outletNum )
@@ -1068,6 +1081,9 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_telemetryToggle)(const pcf::IndiPro
    m_telemetryEnabled = enable;
    if(m_telemetryEnabled) startTelemetryLogging();
    else stopTelemetryLogging();
+
+   // Reflect new state back to INDI so GUI shows it
+   updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", m_telemetryEnabled ? pcf::IndiElement::On : pcf::IndiElement::Off);
 
    return 0;
 }
