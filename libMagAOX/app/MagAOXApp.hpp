@@ -1249,8 +1249,7 @@ MagAOXApp<_useINDI>::MagAOXApp( const std::string &git_sha1, const bool git_modi
 {
     if( m_self != nullptr )
     {
-        std::cerr << "Attempt to instantiate 2nd MagAOXApp.  Exiting immediately.\n";
-        exit( -1 );
+        throw std::logic_error("Attempt to instantiate 2nd MagAOXApp");
     }
 
     m_self = this;
@@ -2778,7 +2777,10 @@ int MagAOXApp<_useINDI>::createStandardIndiSelectionSw( pcf::IndiProperty &prop,
     for( size_t n = 0; n < elements.size(); ++n )
     {
         pcf::IndiElement elem = pcf::IndiElement( elements[n], pcf::IndiElement::Off );
-        elem.setLabel( elementLabels[n] );
+        if(elementLabels[n] != "")
+        {
+            elem.setLabel( elementLabels[n] );
+        }
         prop.add( elem );
     }
 
@@ -2983,10 +2985,12 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::createINDIFIFOS()
 {
     if( !m_useINDI )
+    {
         return 0;
+    }
 
     ///\todo make driver FIFO path full configurable.
-    std::string driverFIFOPath = MAGAOX_path;
+    std::string driverFIFOPath = m_basePath;
     driverFIFOPath += "/";
     driverFIFOPath += MAGAOX_driverFIFORelPath;
 

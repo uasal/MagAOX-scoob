@@ -5,12 +5,20 @@
 
 #include "../MagAOXApp.hpp"
 
+// changes f's internal behaviour
+void exit( int status )
+{
+    static_cast<void>( status );
+
+    throw "exit";
+}
+
 namespace MagAOXApp_tests
 {
 
 struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 {
-    MagAOXApp_test(bool gitmod = false) : MagAOXApp( "sha1", gitmod )
+    MagAOXApp_test( bool gitmod = false ) : MagAOXApp( "sha1", gitmod )
     {
     }
 
@@ -52,7 +60,7 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         return MagAOX::app::MagAOXApp<true>::doHelp;
     }
 
-    void setPowerMgtEnabled( bool pme)
+    void setPowerMgtEnabled( bool pme )
     {
         m_powerMgtEnabled = pme;
     }
@@ -78,13 +86,13 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 
     void doFSMClearAlert()
     {
-        pcf::IndiProperty ip(pcf::IndiProperty::Switch);
-        ip.setDevice(configName());
-        ip.setName("fsm_clear_alert");
-        ip.add(pcf::IndiElement("request"));
-        ip["request"].setSwitchState(pcf::IndiElement::On);
+        pcf::IndiProperty ip( pcf::IndiProperty::Switch );
+        ip.setDevice( configName() );
+        ip.setName( "fsm_clear_alert" );
+        ip.add( pcf::IndiElement( "request" ) );
+        ip["request"].setSwitchState( pcf::IndiElement::On );
 
-        st_newCallBack_clearFSMAlert(this, ip);
+        st_newCallBack_clearFSMAlert( this, ip );
     }
 
     int onPowerOff()
@@ -107,40 +115,36 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         return MagAOX::app::MagAOXApp<true>::powerState();
     }
 
-    void configurePowerManagement(const std::string & device, const std::string & channel)
+    void configurePowerManagement( const std::string &device, const std::string &channel )
     {
-        m_indiP_powerChannel = pcf::IndiProperty(pcf::IndiProperty::Text);
-        m_powerDevice = device;
-        m_indiP_powerChannel.setDevice(device);
+        m_indiP_powerChannel = pcf::IndiProperty( pcf::IndiProperty::Text );
+        m_powerDevice        = device;
+        m_indiP_powerChannel.setDevice( device );
 
         m_powerChannel = channel;
-        m_indiP_powerChannel.setName(channel);
+        m_indiP_powerChannel.setName( channel );
     }
 
-    void configurePowerOnWait( unsigned long powerOnWait, int powerOnCounter, int loopPause)
+    void configurePowerOnWait( unsigned long powerOnWait, int powerOnCounter, int loopPause )
     {
-        m_powerOnWait = powerOnWait;
+        m_powerOnWait    = powerOnWait;
         m_powerOnCounter = powerOnCounter;
-        m_loopPause = loopPause;
+        m_loopPause      = loopPause;
     }
 
-    int setPowerState( const std::string & state, const std::string target)
+    int setPowerState( const std::string &state, const std::string target )
     {
-        pcf::IndiProperty ip(pcf::IndiProperty::Text);
-        ip.setDevice(m_powerDevice);
-        ip.setName(m_powerChannel);
-        ip.add(pcf::IndiElement("state"));
-        ip["state"].setValue(state);
+        pcf::IndiProperty ip( pcf::IndiProperty::Text );
+        ip.setDevice( m_powerDevice );
+        ip.setName( m_powerChannel );
+        ip.add( pcf::IndiElement( "state" ) );
+        ip["state"].setValue( state );
 
-        ip.add(pcf::IndiElement("target"));
-        ip["target"].setValue(target);
+        ip.add( pcf::IndiElement( "target" ) );
+        ip["target"].setValue( target );
 
-        return setCallBack_m_indiP_powerChannel(ip);
+        return setCallBack_m_indiP_powerChannel( ip );
     }
-
-
-
-
 };
 
 int callback( void *app, const pcf::IndiProperty &ipRecv )
@@ -152,6 +156,28 @@ int callback( void *app, const pcf::IndiProperty &ipRecv )
     appt->called_back = 1;
 
     return 0;
+}
+
+TEST_CASE( "MagAOXApp 2nd instance", "[app::MagAOXApp]" )
+{
+
+    SECTION( "test 2nd app" )
+    {
+        bool caught = false;
+
+        MagAOXApp_test app1;
+
+        try
+        {
+            MagAOXApp_test app2;
+        }
+        catch( const std::logic_error &e )
+        {
+            caught = true;
+        }
+
+        REQUIRE( caught == true );
+    }
 }
 
 SCENARIO( "MagAOXApp INDI NewProperty", "[app::MagAOXApp]" )
@@ -211,7 +237,9 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
         MagAOXApp_test app;
 
         app.invokedName() = argv[0];
+        REQUIRE( app.doHelp() == false );
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+        REQUIRE( app.doHelp() == true );
 
         REQUIRE( app.basePath() == MAGAOX_path );
         REQUIRE( app.configDir() == app.basePath() + '/' + MAGAOX_configRelPath );
@@ -329,17 +357,17 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
     SECTION( "setup basic config" )
     {
         MagAOXApp_test app;
-        app.setPowerMgtEnabled(true);
+        app.setPowerMgtEnabled( true );
 
         app.setupBasicConfig();
 
-        REQUIRE(app.shutdown() == false);
+        REQUIRE( app.shutdown() == false );
     }
 
     SECTION( "load basic config w all defaults w/out pwr management" )
     {
         MagAOXApp_test app;
-        app.setPowerMgtEnabled(false);
+        app.setPowerMgtEnabled( false );
 
         app.setupBasicConfig();
 
@@ -347,13 +375,12 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
 
         app.checkConfig();
 
-        REQUIRE(app.stateAlert() == false);
-        REQUIRE(app.gitAlert() == false);
-        REQUIRE(app.shutdown() == false);
-
+        REQUIRE( app.stateAlert() == false );
+        REQUIRE( app.gitAlert() == false );
+        REQUIRE( app.shutdown() == false );
     }
 
-    SECTION( "load basic config w all defaults w/out pwr management, git modified, clear alerts" )
+    SECTION( "load basic config w all defaults w/out pwr management, setting state and clearing alerts" )
     {
         std::vector<const char *> argv;
         std::vector<std::string>  argvstr( { "./execname", "--name", "testapp" } );
@@ -364,275 +391,391 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
             argv[index] = argvstr[index].c_str();
         }
 
-        MagAOXApp_test app(true);
-        app.setPowerMgtEnabled(false);
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( false );
 
         app.setupBasicConfig();
 
-        app.setDefaults(argv.size()-1, const_cast<char**>(argv.data()));
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
         app.loadBasicConfig();
 
         app.checkConfig();
 
-        REQUIRE(app.stateAlert() == true);
-        REQUIRE(app.gitAlert() == true);
-        REQUIRE(app.shutdown() == false);
-
+        REQUIRE( app.stateAlert() == true );
+        REQUIRE( app.gitAlert() == true );
+        REQUIRE( app.shutdown() == false );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
-        REQUIRE(app.gitAlert() == true);
-        REQUIRE(app.shutdown() == false);
+        REQUIRE( app.stateAlert() == false );
+        REQUIRE( app.gitAlert() == true );
+        REQUIRE( app.shutdown() == false );
 
-        app.doFSMClearAlert(); //calls an immediate return of clearFSMAlert
+        app.doFSMClearAlert(); // calls an immediate return of clearFSMAlert
 
+        // Now test each path out of clearFSMAlert
+        app.state( MagAOX::app::stateCodes::READY );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::READY );
 
-        //Now test each path out of clearFSMAlert
-        app.state(MagAOX::app::stateCodes::READY);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::READY);
+        REQUIRE( app.stateLogged() == 0 );
+        REQUIRE( app.stateLogged() == 1 );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
+        REQUIRE( app.stateAlert() == false );
 
-        app.state(MagAOX::app::stateCodes::HOMING);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::HOMING);
+        app.state( MagAOX::app::stateCodes::HOMING );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::HOMING );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
+        REQUIRE( app.stateAlert() == false );
 
-        app.state(MagAOX::app::stateCodes::NODEVICE);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::NODEVICE);
+        app.state( MagAOX::app::stateCodes::NODEVICE );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::NODEVICE );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
+        REQUIRE( app.stateAlert() == false );
 
-        app.state(MagAOX::app::stateCodes::LOGGEDIN);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::LOGGEDIN);
+        app.state( MagAOX::app::stateCodes::LOGGEDIN );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::LOGGEDIN );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
+        REQUIRE( app.stateAlert() == false );
 
-        app.state(MagAOX::app::stateCodes::NODEVICE);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::NODEVICE);
+        app.state( MagAOX::app::stateCodes::NODEVICE );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::NODEVICE );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
+        REQUIRE( app.stateAlert() == false );
 
-        app.state(MagAOX::app::stateCodes::NOTHOMED);
-        REQUIRE(app.state() == MagAOX::app::stateCodes::NOTHOMED);
+        app.state( MagAOX::app::stateCodes::NOTHOMED );
+        REQUIRE( app.state() == MagAOX::app::stateCodes::NOTHOMED );
 
         app.setAlert();
-        REQUIRE(app.stateAlert() == true);
+        REQUIRE( app.stateAlert() == true );
 
         app.doFSMClearAlert();
-        REQUIRE(app.stateAlert() == false);
-
+        REQUIRE( app.stateAlert() == false );
     }
 
     SECTION( "load basic config w all defaults w unconfigured pwr management" )
     {
         MagAOXApp_test app;
-        app.setPowerMgtEnabled(true);
+        app.setPowerMgtEnabled( true );
 
         app.setupBasicConfig();
 
         app.loadBasicConfig();
 
-        REQUIRE(app.shutdown() == true);
+        REQUIRE( app.shutdown() == true );
 
         app.checkConfig();
 
-        REQUIRE(app.stateAlert() == false);
-        REQUIRE(app.gitAlert() == false);
-        REQUIRE(app.shutdown() == true);
+        REQUIRE( app.stateAlert() == false );
+        REQUIRE( app.gitAlert() == false );
+        REQUIRE( app.shutdown() == true );
     }
 }
 
 TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXApp]" )
 {
-    SECTION("Power Management Not Configured")
+    SECTION( "Power Management Not Configured" )
     {
-        MagAOXApp_test app(true);
-        app.setPowerMgtEnabled(false);
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( false );
 
-        REQUIRE(app.onPowerOff() == 0);
-        REQUIRE(app.whilePowerOff() == 0);
-        REQUIRE(app.powerOnWaitElapsed() == true);
-        REQUIRE(app.powerState() == 1);
-        REQUIRE(app.powerStateTarget() == 1);
+        REQUIRE( app.onPowerOff() == 0 );
+        REQUIRE( app.whilePowerOff() == 0 );
+        REQUIRE( app.powerOnWaitElapsed() == true );
+        REQUIRE( app.powerState() == 1 );
+        REQUIRE( app.powerStateTarget() == 1 );
     }
 
-    SECTION("Power Management Configured")
+    SECTION( "Power Management Configured" )
     {
-        MagAOXApp_test app(true);
-        app.setPowerMgtEnabled(true);
-        app.configurePowerManagement("pdu", "test");
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( true );
+        app.configurePowerManagement( "pdu", "test" );
 
-        REQUIRE(app.onPowerOff() == 0);
-        REQUIRE(app.whilePowerOff() == 0);
-        REQUIRE(app.powerOnWaitElapsed() == true);
+        REQUIRE( app.onPowerOff() == 0 );
+        REQUIRE( app.whilePowerOff() == 0 );
+        REQUIRE( app.powerOnWaitElapsed() == true );
 
-        //Comes up unknown
-        REQUIRE(app.powerState() == -1);
-        REQUIRE(app.powerStateTarget() == -1);
+        // Comes up unknown
+        REQUIRE( app.powerState() == -1 );
+        REQUIRE( app.powerStateTarget() == -1 );
 
-        app.setPowerState("Off", "Off");
-        REQUIRE(app.powerState() == 0);
-        REQUIRE(app.powerStateTarget() == 0);
+        app.setPowerState( "Off", "Off" );
+        REQUIRE( app.powerState() == 0 );
+        REQUIRE( app.powerStateTarget() == 0 );
 
-        app.setPowerState("Off", "On");
-        REQUIRE(app.powerState() == 0);
-        REQUIRE(app.powerStateTarget() == 1);
+        app.setPowerState( "Off", "On" );
+        REQUIRE( app.powerState() == 0 );
+        REQUIRE( app.powerStateTarget() == 1 );
 
-        app.configurePowerOnWait(10, 0, 1e9);
-        //10 checks, then true on 11th
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == false);
-        REQUIRE(app.powerOnWaitElapsed() == true);
+        app.configurePowerOnWait( 10, 0, 1e9 );
+        REQUIRE(app.loopPause() == 1e9);
 
-        app.setPowerState("On", "On");
-        REQUIRE(app.powerState() == 1);
-        REQUIRE(app.powerStateTarget() == 1);
+        // 10 checks, then true on 11th
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == false );
+        REQUIRE( app.powerOnWaitElapsed() == true );
 
-        app.setPowerState("On", "Off");
-        REQUIRE(app.powerState() == 1);
-        REQUIRE(app.powerStateTarget() == 0);
+        app.setPowerState( "On", "On" );
+        REQUIRE( app.powerState() == 1 );
+        REQUIRE( app.powerStateTarget() == 1 );
 
-        app.setPowerState("Off", "Off");
-        REQUIRE(app.powerState() == 0);
-        REQUIRE(app.powerStateTarget() == 0);
+        app.setPowerState( "On", "Off" );
+        REQUIRE( app.powerState() == 1 );
+        REQUIRE( app.powerStateTarget() == 0 );
+
+        app.setPowerState( "Off", "Off" );
+        REQUIRE( app.powerState() == 0 );
+        REQUIRE( app.powerStateTarget() == 0 );
     }
 }
 
 TEST_CASE( "INDI preperty creation utilities", "[app::MagAOXApp]" )
 {
-    SECTION("createStandardIndiText")
+    SECTION( "createStandardIndiText" )
     {
         MagAOXApp_test app;
-        app.setConfigName("test");
+        app.setConfigName( "test" );
 
         pcf::IndiProperty ip;
 
-        app.createStandardIndiText(ip, "tprop", "tlabel", "tgroup");
+        app.createStandardIndiText( ip, "tprop", "tlabel", "tgroup" );
 
-        REQUIRE(ip.getType() == pcf::IndiProperty::Text);
-        REQUIRE(ip.getDevice() == "test");
-        REQUIRE(ip.getName() == "tprop");
-        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadWrite);
-        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
-        REQUIRE(ip.find("current") == true);
-        REQUIRE(ip.find("target") == true);
-        REQUIRE(ip.getLabel() == "tlabel");
-        REQUIRE(ip.getGroup() == "tgroup");
+        REQUIRE( ip.getType() == pcf::IndiProperty::Text );
+        REQUIRE( ip.getDevice() == "test" );
+        REQUIRE( ip.getName() == "tprop" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.find( "current" ) == true );
+        REQUIRE( ip.find( "target" ) == true );
+        REQUIRE( ip.getLabel() == "tlabel" );
+        REQUIRE( ip.getGroup() == "tgroup" );
     }
 
-    SECTION("createROIndiText")
+    SECTION( "createROIndiText" )
     {
         MagAOXApp_test app;
-        app.setConfigName("test");
+        app.setConfigName( "test" );
 
         pcf::IndiProperty ip;
 
-        app.createROIndiText(ip, "tprop", "tel", "tlabel", "tgroup", "ellabel");
+        app.createROIndiText( ip, "tprop", "tel", "tlabel", "tgroup", "ellabel" );
 
-        REQUIRE(ip.getType() == pcf::IndiProperty::Text);
-        REQUIRE(ip.getDevice() == "test");
-        REQUIRE(ip.getName() == "tprop");
-        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadOnly);
-        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
-        REQUIRE(ip.getLabel() == "tlabel");
-        REQUIRE(ip.getGroup() == "tgroup");
+        REQUIRE( ip.getType() == pcf::IndiProperty::Text );
+        REQUIRE( ip.getDevice() == "test" );
+        REQUIRE( ip.getName() == "tprop" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadOnly );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getLabel() == "tlabel" );
+        REQUIRE( ip.getGroup() == "tgroup" );
 
-        REQUIRE(ip.find("tel") == true);
-        REQUIRE(ip["tel"].getLabel() == "ellabel");
-
+        REQUIRE( ip.find( "tel" ) == true );
+        REQUIRE( ip["tel"].getLabel() == "ellabel" );
     }
 
-    SECTION("createStandardIndiNumber")
+    SECTION( "createStandardIndiNumber" )
     {
         MagAOXApp_test app;
-        app.setConfigName("test");
+        app.setConfigName( "test" );
 
         pcf::IndiProperty ip;
 
-        app.createStandardIndiNumber<double>(ip, "tprop",  0.001, 1, 0.002, "%0.23g", "tlabel", "tgroup");
+        app.createStandardIndiNumber<double>( ip, "tprop", 0.001, 1, 0.002, "%0.23g", "tlabel", "tgroup" );
 
-        REQUIRE(ip.getType() == pcf::IndiProperty::Number);
-        REQUIRE(ip.getDevice() == "test");
-        REQUIRE(ip.getName() == "tprop");
-        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadWrite);
-        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
+        REQUIRE( ip.getType() == pcf::IndiProperty::Number );
+        REQUIRE( ip.getDevice() == "test" );
+        REQUIRE( ip.getName() == "tprop" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
 
-        REQUIRE(ip.find("current") == true);
-        REQUIRE(ip["current"].getMin() == "0.001");
-        REQUIRE(ip["current"].getMax() == "1");
-        REQUIRE(ip["current"].getStep() == "0.002");
-        REQUIRE(ip["current"].getFormat() == "%0.23g");
+        REQUIRE( ip.find( "current" ) == true );
+        REQUIRE( ip["current"].getMin() == "0.001" );
+        REQUIRE( ip["current"].getMax() == "1" );
+        REQUIRE( ip["current"].getStep() == "0.002" );
+        REQUIRE( ip["current"].getFormat() == "%0.23g" );
 
-        REQUIRE(ip.find("target") == true);
-        REQUIRE(ip["target"].getMin() == "0.001");
-        REQUIRE(ip["target"].getMax() == "1");
-        REQUIRE(ip["target"].getStep() == "0.002");
-        REQUIRE(ip["target"].getFormat() == "%0.23g");
+        REQUIRE( ip.find( "target" ) == true );
+        REQUIRE( ip["target"].getMin() == "0.001" );
+        REQUIRE( ip["target"].getMax() == "1" );
+        REQUIRE( ip["target"].getStep() == "0.002" );
+        REQUIRE( ip["target"].getFormat() == "%0.23g" );
 
-        REQUIRE(ip.getLabel() == "tlabel");
-        REQUIRE(ip.getGroup() == "tgroup");
+        REQUIRE( ip.getLabel() == "tlabel" );
+        REQUIRE( ip.getGroup() == "tgroup" );
     }
 
-    SECTION("createROIndiNumber")
+    SECTION( "createROIndiNumber" )
     {
         MagAOXApp_test app;
-        app.setConfigName("test");
+        app.setConfigName( "test" );
 
         pcf::IndiProperty ip;
 
-        app.createROIndiNumber(ip, "tprop", "tlabel", "tgroup");
+        app.createROIndiNumber( ip, "tprop", "tlabel", "tgroup" );
 
-        REQUIRE(ip.getType() == pcf::IndiProperty::Number);
-        REQUIRE(ip.getDevice() == "test");
-        REQUIRE(ip.getName() == "tprop");
-        REQUIRE(ip.getPerm() == pcf::IndiProperty::ReadOnly);
-        REQUIRE(ip.getState() == pcf::IndiProperty::Idle);
-        REQUIRE(ip.getLabel() == "tlabel");
-        REQUIRE(ip.getGroup() == "tgroup");
+        REQUIRE( ip.getType() == pcf::IndiProperty::Number );
+        REQUIRE( ip.getDevice() == "test" );
+        REQUIRE( ip.getName() == "tprop" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadOnly );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getLabel() == "tlabel" );
+        REQUIRE( ip.getGroup() == "tgroup" );
+    }
 
+    SECTION( "createStandardIndiToggleSw" )
+    {
+        MagAOXApp_test app;
+        app.setConfigName( "testz" );
 
+        pcf::IndiProperty ip;
+
+        app.createStandardIndiToggleSw( ip, "tpropz", "tlabelz", "tgroupz" );
+
+        REQUIRE( ip.getType() == pcf::IndiProperty::Switch );
+        REQUIRE( ip.getDevice() == "testz" );
+        REQUIRE( ip.getName() == "tpropz" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getRule() == pcf::IndiProperty::AtMostOne );
+
+        REQUIRE( ip.getNumElements() == 1 );
+        REQUIRE( ip.find( "toggle" ) == true );
+        REQUIRE( ip["toggle"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip.getLabel() == "tlabelz" );
+        REQUIRE( ip.getGroup() == "tgroupz" );
+    }
+
+    SECTION( "createStandardIndiRequestSw" )
+    {
+        MagAOXApp_test app;
+        app.setConfigName( "testz" );
+
+        pcf::IndiProperty ip;
+
+        app.createStandardIndiRequestSw( ip, "tpropz", "tlabelz", "tgroupz" );
+
+        REQUIRE( ip.getType() == pcf::IndiProperty::Switch );
+        REQUIRE( ip.getDevice() == "testz" );
+        REQUIRE( ip.getName() == "tpropz" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getRule() == pcf::IndiProperty::AtMostOne );
+
+        REQUIRE( ip.getNumElements() == 1 );
+        REQUIRE( ip.find( "request" ) == true );
+        REQUIRE( ip["request"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip.getLabel() == "tlabelz" );
+        REQUIRE( ip.getGroup() == "tgroupz" );
+    }
+
+    SECTION( "createStandardIndiSelectionSw, w/ labels" )
+    {
+        MagAOXApp_test app;
+        app.setConfigName( "testy" );
+
+        pcf::IndiProperty ip;
+
+        std::vector<std::string> els( { "el1", "el2", "el3" } );
+        std::vector<std::string> labs( { "l1", "", "l3" } );
+
+        app.createStandardIndiSelectionSw( ip, "tpropy", els, labs, "tlabely", "tgroupy" );
+
+        REQUIRE( ip.getType() == pcf::IndiProperty::Switch );
+        REQUIRE( ip.getDevice() == "testy" );
+        REQUIRE( ip.getName() == "tpropy" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getRule() == pcf::IndiProperty::OneOfMany );
+
+        REQUIRE( ip.getNumElements() == 3 );
+        REQUIRE( ip.find( "el1" ) == true );
+        REQUIRE( ip["el1"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el1"].getLabel() == "l1" );
+
+        REQUIRE( ip.find( "el2" ) == true );
+        REQUIRE( ip["el2"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el2"].getLabel() == "" );
+
+        REQUIRE( ip.find( "el3" ) == true );
+        REQUIRE( ip["el3"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el3"].getLabel() == "l3" );
+
+        REQUIRE( ip.getLabel() == "tlabely" );
+        REQUIRE( ip.getGroup() == "tgroupy" );
+    }
+
+    SECTION( "createStandardIndiSelectionSw, no labels" )
+    {
+        MagAOXApp_test app;
+        app.setConfigName( "testy" );
+
+        pcf::IndiProperty ip;
+
+        std::vector<std::string> els( { "el1", "el2", "el3" } );
+
+        app.createStandardIndiSelectionSw( ip, "tpropy", els, "tlabely", "tgroupy" );
+
+        REQUIRE( ip.getType() == pcf::IndiProperty::Switch );
+        REQUIRE( ip.getDevice() == "testy" );
+        REQUIRE( ip.getName() == "tpropy" );
+        REQUIRE( ip.getPerm() == pcf::IndiProperty::ReadWrite );
+        REQUIRE( ip.getState() == pcf::IndiProperty::Idle );
+        REQUIRE( ip.getRule() == pcf::IndiProperty::OneOfMany );
+
+        REQUIRE( ip.getNumElements() == 3 );
+        REQUIRE( ip.find( "el1" ) == true );
+        REQUIRE( ip["el1"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el1"].getLabel() == "el1" );
+
+        REQUIRE( ip.find( "el2" ) == true );
+        REQUIRE( ip["el2"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el2"].getLabel() == "el2" );
+
+        REQUIRE( ip.find( "el3" ) == true );
+        REQUIRE( ip["el3"].getSwitchState() == pcf::IndiElement::Off );
+        REQUIRE( ip["el3"].getLabel() == "el3" );
+
+        REQUIRE( ip.getLabel() == "tlabely" );
+        REQUIRE( ip.getGroup() == "tgroupy" );
     }
 }
 
 TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
 {
-    SECTION("sigusr1 handler")
+    SECTION( "sigusr1 handler" )
     {
-        //this is just to touch this function
-        MagAOX::app::sigUsr1Handler(0, nullptr, nullptr);
+        // this is just to touch this function
+        MagAOX::app::sigUsr1Handler( 0, nullptr, nullptr );
 
-        REQUIRE(true);
+        REQUIRE( true );
     }
 }
 
