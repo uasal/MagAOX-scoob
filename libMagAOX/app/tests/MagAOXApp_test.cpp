@@ -145,6 +145,38 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
 
         return setCallBack_m_indiP_powerChannel( ip );
     }
+
+    int setSigTermHandler()
+    {
+        return MagAOX::app::MagAOXApp<true>::setSigTermHandler();
+    }
+
+    void _handlerSigTerm( int signum, siginfo_t *siginf, void *ucont )
+    {
+        MagAOX::app::MagAOXApp<true>::_handlerSigTerm( signum, siginf, ucont );
+    }
+
+    int setEuidReal()
+    {
+        return MagAOX::app::MagAOXApp<true>::setEuidReal();
+    }
+
+    int setEuidReal( int euidr )
+    {
+        m_euidReal = euidr;
+        return MagAOX::app::MagAOXApp<true>::setEuidReal();
+    }
+
+    int setEuidCalled()
+    {
+        return MagAOX::app::MagAOXApp<true>::setEuidCalled();
+    }
+
+    int setEuidCalled( int euidc )
+    {
+        m_euidCalled = euidc;
+        return MagAOX::app::MagAOXApp<true>::setEuidCalled();
+    }
 };
 
 int callback( void *app, const pcf::IndiProperty &ipRecv )
@@ -528,7 +560,7 @@ TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXA
         REQUIRE( app.powerStateTarget() == 1 );
 
         app.configurePowerOnWait( 10, 0, 1e9 );
-        REQUIRE(app.loopPause() == 1e9);
+        REQUIRE( app.loopPause() == 1e9 );
 
         // 10 checks, then true on 11th
         REQUIRE( app.powerOnWaitElapsed() == false );
@@ -766,6 +798,74 @@ TEST_CASE( "INDI preperty creation utilities", "[app::MagAOXApp]" )
         REQUIRE( ip.getLabel() == "tlabely" );
         REQUIRE( ip.getGroup() == "tgroupy" );
     }
+}
+
+TEST_CASE( "Signal Handlers", "[app::MagAOXApp]" )
+{
+    SECTION( "Setting and calling signal handler: SIGTERM" )
+    {
+
+        MagAOXApp_test app;
+
+        // this is just to touch this function
+        REQUIRE( app.setSigTermHandler() == 0 );
+
+        REQUIRE( app.shutdown() == 0 );
+        app._handlerSigTerm( SIGTERM, nullptr, nullptr );
+        REQUIRE( app.shutdown() == 1 );
+    }
+
+    SECTION( "Setting and calling signal handler: SIGINT" )
+    {
+
+        MagAOXApp_test app;
+
+        // this is just to touch this function
+        REQUIRE( app.setSigTermHandler() == 0 );
+
+        REQUIRE( app.shutdown() == 0 );
+        app._handlerSigTerm( SIGINT, nullptr, nullptr );
+        REQUIRE( app.shutdown() == 1 );
+    }
+
+    SECTION( "Setting and calling signal handler: SIGQUIT" )
+    {
+
+        MagAOXApp_test app;
+
+        // this is just to touch this function
+        REQUIRE( app.setSigTermHandler() == 0 );
+
+        REQUIRE( app.shutdown() == 0 );
+        app._handlerSigTerm( SIGQUIT, nullptr, nullptr );
+        REQUIRE( app.shutdown() == 1 );
+    }
+
+    SECTION( "Setting and calling signal handler: SIGHUP" )
+    {
+
+        MagAOXApp_test app;
+
+        // this is just to touch this function
+        REQUIRE( app.setSigTermHandler() == 0 );
+
+        REQUIRE( app.shutdown() == 0 );
+        app._handlerSigTerm( SIGHUP, nullptr, nullptr );
+        REQUIRE( app.shutdown() == 1 );
+    }
+}
+
+TEST_CASE( "Setting Euid", "[app::MagAOXApp]" )
+{
+
+    MagAOXApp_test app;
+
+    REQUIRE( app.setEuidReal() == 0 );
+
+    REQUIRE( app.setEuidCalled() == 0 );
+
+    REQUIRE( app.setEuidReal( 0 ) == -1 );
+    REQUIRE( app.setEuidCalled( 0 ) == -1 );
 }
 
 TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
