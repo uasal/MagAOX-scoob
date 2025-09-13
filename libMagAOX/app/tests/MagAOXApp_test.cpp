@@ -696,9 +696,13 @@ TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
         REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
-        REQUIRE( app.lockPID() == 0 );
+
+        int rv = app.lockPID();
+        REQUIRE( rv == 0 );
         REQUIRE( std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
-        REQUIRE( app.unlockPID() == 0 );
+
+        rv = app.unlockPID();
+        REQUIRE( rv == 0 );
         REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
     }
 
@@ -724,8 +728,11 @@ TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
         app.invokedName() = argv[0];
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.lockPID() == -1 );
-        REQUIRE( app.unlockPID() == -1 );
+        int rv = app.lockPID();
+        REQUIRE( rv == -1 );
+
+        rv = app.unlockPID();
+        REQUIRE( rv == -1 );
     }
 
     SECTION( "Stale lock" )
@@ -754,9 +761,12 @@ TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
         app.invokedName() = argv[0];
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.lockPID() == 0 );
+        int rv = app.lockPID();
+        REQUIRE( rv == 0 );
         REQUIRE( std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
-        REQUIRE( app.unlockPID() == 0 );
+
+        rv = app.unlockPID();
+        REQUIRE( rv == 0 );
         REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
     }
 
@@ -786,7 +796,8 @@ TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
         app.invokedName() = argv[0];
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.lockPID() == -1 );
+        int rv = app.lockPID();
+        REQUIRE( rv == -1 );
     }
 
     SECTION( "write fails" )
@@ -815,7 +826,8 @@ TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
         app.invokedName() = argv[0];
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
 
-        REQUIRE( app.lockPID() == -1 );
+        int rv = app.lockPID();
+        REQUIRE( rv == -1 );
     }
 }
 
