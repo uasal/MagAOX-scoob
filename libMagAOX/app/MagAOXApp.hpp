@@ -44,16 +44,37 @@ using namespace mx::app;
 
 using namespace MagAOX::logger;
 
-//forward decl for friendship
-namespace MagAOXApp_tests
+//forward decl for test harnass friendship
+namespace libXWCTest
 {
+namespace appTest
+{
+namespace MagAOXAppTest
+{
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
 struct MagAOXApp_test;
+
+#ifdef XWCTEST_NAMESPACE
 }
+#endif
+} // namespace MagAOXAppTest
+} // namespace appTest
+} // namespace libXWCTest
 
 namespace MagAOX
 {
 namespace app
 {
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
 
 /** \addtogroup magaoxapp
  *
@@ -131,7 +152,13 @@ namespace app
 template <bool _useINDI = true>
 class MagAOXApp : public application
 {
-    friend struct MagAOXApp_tests::MagAOXApp_test;
+    // clang-format off
+    #ifdef XWCTEST_NAMESPACE
+    friend struct libXWCTest::appTest::MagAOXAppTest::XWCTEST_NAMESPACE::MagAOXApp_test;
+    #else
+    friend struct libXWCTest::appTest::MagAOXAppTest::MagAOXApp_test;
+    #endif
+    //clang-format on
 
   public:
     /// The log manager type.
@@ -2140,10 +2167,8 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create root of statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "Failed to create root of statusDir (" + statusDir + ").  "
+                                                                               "Errno says: " + strerror( errno ) } );
         }
     }
 
@@ -2159,10 +2184,9 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0,
+                                                 "Failed to create statusDir (" + statusDir + ").  "
+                                                 "Errno says: " + strerror( errno )} );
         }
 
         // If here, then we need to check the pid file.
@@ -2188,13 +2212,14 @@ int MagAOXApp<_useINDI>::lockPID()
             {
                 procIn.open( procN.str() );
                 if( procIn.good() )
+                {
                     procIn >> pidCmdLine;
+                }
                 procIn.close();
             }
             catch( ... )
             {
-                log<software_critical>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
-                return -1;
+                log<software_critical, -1>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
             }
 
             // If pidCmdLine == "" at this point we just allow the rest of the
@@ -2206,19 +2231,24 @@ int MagAOXApp<_useINDI>::lockPID()
             // If invokedName found, then we check for configName.
             size_t configPos = std::string::npos;
             if( invokedPos != std::string::npos )
+            {
                 configPos = pidCmdLine.find( m_configName );
+            }
+
+            // clang-format off
+            #ifdef XWCTEST_MAGAOXAPP_PID_LOCKED
+            invokedPos = 0; // LCOV_EXCL_LINE
+            configPos = 0; // LCOV_EXCL_LINE
+            #endif
+            // clang-format on
 
             // Check if PID is already locked by this program+config combo:
             if( invokedPos != std::string::npos && configPos != std::string::npos )
             {
                 // This means that this app already exists for this config, and we need to die.
-                std::stringstream logss;
-                logss << "PID already locked (" << testPid << ").  Time to die.";
-                std::cerr << logss.str() << std::endl;
+                std::cerr << "PID already locked (" + std::to_string(testPid) + ").  Time to die." << std::endl;
 
-                log<text_log>( logss.str(), logPrio::LOG_CRITICAL );
-
-                return -1;
+                return log<text_log, -1>( "PID already locked (" + std::to_string(testPid) + ").  Time to die." );
             }
         }
         else
@@ -2232,29 +2262,20 @@ int MagAOXApp<_useINDI>::lockPID()
     std::ofstream pidOut;
     pidOut.open( pidFileName );
 
-    if( !pidOut.good() )
-    {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "could not open pid file for writing." } );
-        // euidReal();
-        return -1;
-    }
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_PID_WRITE_FAIL
+    pidOut.close(); // LCOV_EXCL_LINE
+    #endif
+    // clang-format on
 
-    pidOut << m_pid;
+    if( !(pidOut << m_pid) )
+    {
+        return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "failed to write to pid file." } );
+    }
 
     pidOut.close();
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") locked.";
-    log<text_log>( logss.str() );
-
-    // Go back to regular privileges
-    /*if( euidReal() < 0 )
-    {
-       log<software_error>({__FILE__, __LINE__, 0, 0, "Seeting euid to real failed."});
-       return -1;
-    }*/
-
-    return 0;
+    return log<text_log, 0>( "PID (" + std::to_string(m_pid)  + ") locked." );
 }
 
 template <bool _useINDI>
@@ -2273,11 +2294,8 @@ int MagAOXApp<_useINDI>::unlockPID()
         }
     }
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") unlocked.";
-    log<text_log>( logss.str() );
+    return log<text_log, 0>( "PID (" + std::to_string(m_pid) + ") unlocked." );
 
-    return 0;
 }
 
 template <bool _useINDI>
@@ -3532,15 +3550,15 @@ int MagAOXApp<_useINDI>::newCallBack_clearFSMAlert( const pcf::IndiProperty &ipR
         return log<software_error, -1>( { __FILE__, __LINE__, "wrong indi property received" } );
     }
 
-    if( !ipRecv.find( "request" ) )
-        return 0;
-
-    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    if( ipRecv.find( "request" ) )
     {
-        clearFSMAlert();
-        updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
-    }
+        if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+        {
+            clearFSMAlert();
+            updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
+        }
 
+    }
     return 0;
 }
 
@@ -3719,6 +3737,11 @@ std::string MagAOXApp<_useINDI>::driverCtrlName()
 {
     return m_driverCtrlName;
 }
+
+#ifdef XWCTEST_NAMESPACE
+} //namespace XWCTEST_NAMESPACE
+#endif
+
 
 extern template class MagAOXApp<true>;
 extern template class MagAOXApp<false>;

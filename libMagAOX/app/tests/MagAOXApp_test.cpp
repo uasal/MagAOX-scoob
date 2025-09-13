@@ -1,235 +1,51 @@
 // #define CATCH_CONFIG_MAIN
 #include "../../../tests/catch2/catch.hpp"
 
+#include <filesystem>
+
 #include <mx/sys/timeUtils.hpp>
 
 #include "../MagAOXApp.hpp"
+#include "MagAOXApp_test.hpp"
 
-// changes f's internal behaviour
-void exit( int status )
+#undef app_MagAOXApp_hpp
+#undef app_tests_MagAOXApp_test_hpp
+#define XWCTEST_NAMESPACE XWCTEST_MAGAOXAPP_PID_LOCKED_ns
+#define XWCTEST_MAGAOXAPP_PID_LOCKED
+#include "../MagAOXApp.hpp"
+#include "MagAOXApp_test.hpp"
+#undef XWCTEST_NAMESPACE
+#undef XWCTEST_MAGAOXAPP_PID_LOCKED
+
+#undef app_MagAOXApp_hpp
+#undef app_tests_MagAOXApp_test_hpp
+#define XWCTEST_NAMESPACE XWCTEST_MAGAOXAPP_PID_WRITE_FAIL_ns
+#define XWCTEST_MAGAOXAPP_PID_WRITE_FAIL
+#include "../MagAOXApp.hpp"
+#include "MagAOXApp_test.hpp"
+#undef XWCTEST_NAMESPACE
+#undef XWCTEST_MAGAOXAPP_PID_WRITE_FAIL
+
+namespace libXWCTest
 {
-    static_cast<void>( status );
-
-    throw "exit";
-}
-
-namespace MagAOXApp_tests
+namespace appTest
 {
 
-struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
+/** \defgroup MagAOXApp_unit_test stdFileName Unit Tests
+ * \ingroup app_unit_test
+ */
+
+/// Namespace for XWC::app::MagAOXApp tests
+/** \ingroup MagAOXApp_unit_test
+ *
+ */
+namespace MagAOXAppTest
 {
-    MagAOXApp_test( bool gitmod = false ) : MagAOXApp( "sha1", gitmod )
-    {
-    }
 
-    void addUnusedConfig()
-    {
-        config.add( "name2", "", "name2", argType::Required, "", "", true, "string", "" );
-    }
-
-    void setup( int argc, char **argv )
-    {
-        MagAOX::app::MagAOXApp<true>::setup( argc, argv );
-    }
-
-    virtual int appStartup()
-    {
-        return 0;
-    }
-    virtual int appLogic()
-    {
-        return 0;
-    }
-    virtual int appShutdown()
-    {
-        return 0;
-    }
-
-    std::string configPathGlobal()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_configPathGlobal;
-    }
-
-    std::string configPathUser()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_configPathUser;
-    }
-
-    std::string configPathLocal()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_configPathLocal;
-    }
-
-    std::string &invokedName()
-    {
-        return MagAOX::app::MagAOXApp<true>::invokedName;
-    }
-
-    bool &doHelp()
-    {
-        return MagAOX::app::MagAOXApp<true>::doHelp;
-    }
-
-    bool configOnly()
-    {
-        return MagAOX::app::MagAOXApp<true>::m_configOnly;
-    }
-
-    void setPowerMgtEnabled( bool pme )
-    {
-        m_powerMgtEnabled = pme;
-    }
-
-    void setConfigName( const std::string &cn )
-    {
-        m_configName = cn;
-
-        m_indiDriver = new MagAOX::app::indiDriver<MagAOX::app::MagAOXApp<true>>( this, m_configName, "0", "0" );
-    }
-
-    void setConfigBase( const std::string &cb )
-    {
-        m_configBase = cb;
-    }
-
-    int called_back{ 0 };
-
-    void setAlert()
-    {
-        m_stateAlert = true;
-    }
-
-    void doFSMClearAlert()
-    {
-        pcf::IndiProperty ip( pcf::IndiProperty::Switch );
-        ip.setDevice( configName() );
-        ip.setName( "fsm_clear_alert" );
-        ip.add( pcf::IndiElement( "request" ) );
-        ip["request"].setSwitchState( pcf::IndiElement::On );
-
-        st_newCallBack_clearFSMAlert( this, ip );
-    }
-
-    std::string powerDevice()
-    {
-        return m_powerDevice;
-    }
-
-    std::string powerChannel()
-    {
-        return m_powerChannel;
-    }
-
-    std::string powerElement()
-    {
-        return m_powerElement;
-    }
-
-    std::string powerTargetElement()
-    {
-        return m_powerTargetElement;
-    }
-
-    int powerOnWait()
-    {
-        return m_powerOnWait;
-    }
-
-    int onPowerOff()
-    {
-        return MagAOX::app::MagAOXApp<true>::onPowerOff();
-    }
-
-    int whilePowerOff()
-    {
-        return MagAOX::app::MagAOXApp<true>::whilePowerOff();
-    }
-
-    bool powerOnWaitElapsed()
-    {
-        return MagAOX::app::MagAOXApp<true>::powerOnWaitElapsed();
-    }
-
-    int powerState()
-    {
-        return MagAOX::app::MagAOXApp<true>::powerState();
-    }
-
-    void configurePowerManagement( const std::string &device, const std::string &channel )
-    {
-        m_indiP_powerChannel = pcf::IndiProperty( pcf::IndiProperty::Text );
-        m_powerDevice        = device;
-        m_indiP_powerChannel.setDevice( device );
-
-        m_powerChannel = channel;
-        m_indiP_powerChannel.setName( channel );
-    }
-
-    void configurePowerOnWait( unsigned long powerOnWait, int powerOnCounter, int loopPause )
-    {
-        m_powerOnWait    = powerOnWait;
-        m_powerOnCounter = powerOnCounter;
-        m_loopPause      = loopPause;
-    }
-
-    int setPowerState( const std::string &state, const std::string target )
-    {
-        pcf::IndiProperty ip( pcf::IndiProperty::Text );
-        ip.setDevice( m_powerDevice );
-        ip.setName( m_powerChannel );
-        ip.add( pcf::IndiElement( "state" ) );
-        ip["state"].setValue( state );
-
-        ip.add( pcf::IndiElement( "target" ) );
-        ip["target"].setValue( target );
-
-        return setCallBack_m_indiP_powerChannel( ip );
-    }
-
-    int setSigTermHandler()
-    {
-        return MagAOX::app::MagAOXApp<true>::setSigTermHandler();
-    }
-
-    void _handlerSigTerm( int signum, siginfo_t *siginf, void *ucont )
-    {
-        MagAOX::app::MagAOXApp<true>::_handlerSigTerm( signum, siginf, ucont );
-    }
-
-    int setEuidReal()
-    {
-        return MagAOX::app::MagAOXApp<true>::setEuidReal();
-    }
-
-    int setEuidReal( int euidr )
-    {
-        m_euidReal = euidr;
-        return MagAOX::app::MagAOXApp<true>::setEuidReal();
-    }
-
-    int setEuidCalled()
-    {
-        return MagAOX::app::MagAOXApp<true>::setEuidCalled();
-    }
-
-    int setEuidCalled( int euidc )
-    {
-        m_euidCalled = euidc;
-        return MagAOX::app::MagAOXApp<true>::setEuidCalled();
-    }
-};
-
-int callback( void *app, const pcf::IndiProperty &ipRecv )
-{
-    static_cast<void>( ipRecv ); // be unused
-
-    MagAOXApp_test *appt = static_cast<MagAOXApp_test *>( app );
-
-    appt->called_back = 1;
-
-    return 0;
-}
-
+/// MagAOXApp 2nd instance
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "MagAOXApp 2nd instance", "[app::MagAOXApp]" )
 {
 
@@ -252,6 +68,10 @@ TEST_CASE( "MagAOXApp 2nd instance", "[app::MagAOXApp]" )
     }
 }
 
+/// MagAOXApp INDI NewProperty
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 SCENARIO( "MagAOXApp INDI NewProperty", "[app::MagAOXApp]" )
 {
     GIVEN( "a new property request" )
@@ -294,6 +114,10 @@ SCENARIO( "MagAOXApp INDI NewProperty", "[app::MagAOXApp]" )
     }
 }
 
+/// MagAOXApp_unit_test
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
 {
     SECTION( "using default paths, configname is invoked name" )
@@ -313,14 +137,21 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
         app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
         REQUIRE( app.doHelp() == true );
 
+        app.basePath(); // make lcov records this call
         REQUIRE( app.basePath() == MAGAOX_path );
+        app.configDir(); // make lcov records this call
         REQUIRE( app.configDir() == app.basePath() + '/' + MAGAOX_configRelPath );
         REQUIRE( app.configPathGlobal() == app.configDir() + "/magaox.conf" );
+        app.calibDir(); // make lcov records this call
         REQUIRE( app.calibDir() == app.basePath() + '/' + MAGAOX_calibRelPath );
         REQUIRE( app.m_log.logPath() == app.basePath() + '/' + MAGAOX_logRelPath );
+        app.sysPath(); // make lcov records this call
         REQUIRE( app.sysPath() == app.basePath() + '/' + MAGAOX_sysRelPath );
+        app.secretsPath(); // make lcov records this call
         REQUIRE( app.secretsPath() == app.basePath() + '/' + MAGAOX_secretsRelPath );
+        app.cpusetPath(); // make lcov records this call
         REQUIRE( app.cpusetPath() == MAGAOX_cpusetPath );
+        app.configBase(); // make lcov records this call
         REQUIRE( app.configBase() == "" );
         REQUIRE( app.configPathUser() == "" );
         REQUIRE( app.configName() == "execname" );
@@ -424,6 +255,10 @@ TEST_CASE( "Setting defaults", "[app::MagAOXApp]" )
     }
 }
 
+/// Configuring MagAOXApp
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
 {
     SECTION( "setup basic config" )
@@ -647,7 +482,7 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE( app.powerTargetElement() == "thistgtel" );
         REQUIRE( app.powerOnWait() == 500 );
 
-        REQUIRE( app.doHelp() == true);
+        REQUIRE( app.doHelp() == true );
         REQUIRE( app.shutdown() == true );
     }
 
@@ -693,7 +528,7 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE( app.powerTargetElement() == "thistgtel" );
         REQUIRE( app.powerOnWait() == 0 );
 
-        REQUIRE( app.doHelp() == false);
+        REQUIRE( app.doHelp() == false );
         REQUIRE( app.shutdown() == true );
     }
 
@@ -762,10 +597,7 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
         fout.close();
 
-        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf",
-                                  { "" },
-                                  { "loopPause" },
-                                  { "2500"} );
+        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf", { "" }, { "loopPause" }, { "2500" } );
 
         MagAOXApp_test app( false );
         app.setPowerMgtEnabled( true );
@@ -807,11 +639,10 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         fout.close();
 
         // this adds unknown=value
-        mx::app::writeConfigFile(
-            "/tmp/MagAOXApp_test/config/testapp.conf",
-            { "", "power", "power", "power", "power", "power"},
-            { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait" },
-            { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000"} );
+        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf",
+                                  { "", "power", "power", "power", "power", "power" },
+                                  { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait" },
+                                  { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000" } );
 
         MagAOXApp_test app( true );
         app.setPowerMgtEnabled( true );
@@ -829,11 +660,169 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE( app.powerTargetElement() == "thistgtel" );
         REQUIRE( app.powerOnWait() == 0 );
 
-        REQUIRE( app.doHelp() == false);
+        REQUIRE( app.doHelp() == false );
         REQUIRE( app.shutdown() == false );
     }
 }
 
+/// PID Locking
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
+TEST_CASE( "PID Locking", "[app::MagAOXApp]" )
+{
+    SECTION( "Basic PID Lock" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/sys/" );
+
+        // First delete the directory and files in case this is a repeat call
+        std::filesystem::remove_all( "/tmp/MagAOXApp_test/sys/testapp" );
+
+        MagAOXApp_test app;
+        app.invokedName() = argv[0];
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
+        REQUIRE( app.lockPID() == 0 );
+        REQUIRE( std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
+        REQUIRE( app.unlockPID() == 0 );
+        REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
+    }
+
+    SECTION( "PID Lock, app directory creation erryr" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        // First delete the directory and files in case this is a repeat call
+        std::filesystem::remove_all( "/tmp/MagAOXApp_test" );
+
+        MagAOXApp_test app;
+        app.invokedName() = argv[0];
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.lockPID() == -1 );
+        REQUIRE( app.unlockPID() == -1 );
+    }
+
+    SECTION( "Stale lock" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/sys/testapp" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/sys/testapp/pid" );
+        fout << 1;
+        fout.close();
+
+        MagAOXApp_test app;
+        app.invokedName() = argv[0];
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.lockPID() == 0 );
+        REQUIRE( std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
+        REQUIRE( app.unlockPID() == 0 );
+        REQUIRE( !std::filesystem::exists( "/tmp/MagAOXApp_test/sys/testapp/pid" ) );
+    }
+
+    SECTION( "already locked" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/sys/testapp" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/sys/testapp/pid" );
+        fout << 1;
+        fout.close();
+
+        XWCTEST_MAGAOXAPP_PID_LOCKED_ns::MagAOXApp_test app;
+        app.invokedName() = argv[0];
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.lockPID() == -1 );
+    }
+
+    SECTION( "write fails" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/sys/testapp" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/sys/testapp/pid" );
+        fout << 1;
+        fout.close();
+
+        XWCTEST_MAGAOXAPP_PID_WRITE_FAIL_ns::MagAOXApp_test app;
+        app.invokedName() = argv[0];
+        app.setDefaults( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.lockPID() == -1 );
+    }
+}
+
+/// MagAOXApp Power Management Logic Outside of Execute
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXApp]" )
 {
     SECTION( "Power Management Not Configured" )
@@ -865,6 +854,10 @@ TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXA
         app.setPowerState( "Off", "Off" );
         REQUIRE( app.powerState() == 0 );
         REQUIRE( app.powerStateTarget() == 0 );
+
+        app.setPowerState( "Int", "Int" );
+        REQUIRE( app.powerState() == -1 );
+        REQUIRE( app.powerStateTarget() == -1 );
 
         app.setPowerState( "Off", "On" );
         REQUIRE( app.powerState() == 0 );
@@ -901,6 +894,10 @@ TEST_CASE( "MagAOXApp Power Management Logic Outside of Execute", "[app::MagAOXA
     }
 }
 
+/// INDI preperty creation utilities
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "INDI preperty creation utilities", "[app::MagAOXApp]" )
 {
     SECTION( "createStandardIndiText" )
@@ -1111,6 +1108,10 @@ TEST_CASE( "INDI preperty creation utilities", "[app::MagAOXApp]" )
     }
 }
 
+/// Signal Handlers
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "Signal Handlers", "[app::MagAOXApp]" )
 {
     SECTION( "Setting and calling signal handler: SIGTERM" )
@@ -1166,6 +1167,10 @@ TEST_CASE( "Signal Handlers", "[app::MagAOXApp]" )
     }
 }
 
+/// Setting Euid
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "Setting Euid", "[app::MagAOXApp]" )
 {
 
@@ -1179,6 +1184,10 @@ TEST_CASE( "Setting Euid", "[app::MagAOXApp]" )
     REQUIRE( app.setEuidCalled( 0 ) == -1 );
 }
 
+/// Tests of utilities in cpp
+/**
+ * \ingroup MagAOXApp_unit_test
+ */
 TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
 {
     SECTION( "sigusr1 handler" )
@@ -1190,4 +1199,6 @@ TEST_CASE( "Tests of utilities in cpp", "[app::MagAOXApp]" )
     }
 }
 
-} // namespace MagAOXApp_tests
+} // namespace MagAOXAppTest
+} // namespace appTest
+} // namespace libXWCTest
