@@ -22,6 +22,16 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
     {
     }
 
+    void addUnusedConfig()
+    {
+        config.add( "name2", "", "name2", argType::Required, "", "", true, "string", "" );
+    }
+
+    void setup( int argc, char **argv )
+    {
+        MagAOX::app::MagAOXApp<true>::setup( argc, argv );
+    }
+
     virtual int appStartup()
     {
         return 0;
@@ -60,6 +70,11 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         return MagAOX::app::MagAOXApp<true>::doHelp;
     }
 
+    bool configOnly()
+    {
+        return MagAOX::app::MagAOXApp<true>::m_configOnly;
+    }
+
     void setPowerMgtEnabled( bool pme )
     {
         m_powerMgtEnabled = pme;
@@ -93,6 +108,31 @@ struct MagAOXApp_test : public MagAOX::app::MagAOXApp<true>
         ip["request"].setSwitchState( pcf::IndiElement::On );
 
         st_newCallBack_clearFSMAlert( this, ip );
+    }
+
+    std::string powerDevice()
+    {
+        return m_powerDevice;
+    }
+
+    std::string powerChannel()
+    {
+        return m_powerChannel;
+    }
+
+    std::string powerElement()
+    {
+        return m_powerElement;
+    }
+
+    std::string powerTargetElement()
+    {
+        return m_powerTargetElement;
+    }
+
+    int powerOnWait()
+    {
+        return m_powerOnWait;
     }
 
     int onPowerOff()
@@ -520,6 +560,277 @@ TEST_CASE( "Configuring MagAOXApp", "[app::MagAOXApp]" )
         REQUIRE( app.stateAlert() == false );
         REQUIRE( app.gitAlert() == false );
         REQUIRE( app.shutdown() == true );
+    }
+
+    SECTION( "load a full config" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp", "--config.validate" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf",
+                                  { "", "power", "power", "power", "power", "power" },
+                                  { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait" },
+                                  { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000" } );
+
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( true );
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == true ); // due to git
+        REQUIRE( app.configOnly() == true );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "pdu9" );
+        REQUIRE( app.powerChannel() == "thisch" );
+        REQUIRE( app.powerElement() == "thisel" );
+        REQUIRE( app.powerTargetElement() == "thistgtel" );
+        REQUIRE( app.powerOnWait() == 0 );
+
+        REQUIRE( app.shutdown() == false );
+    }
+
+    SECTION( "load a full config w unknown config in file, do help" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        // this adds unknown=value
+        mx::app::writeConfigFile(
+            "/tmp/MagAOXApp_test/config/testapp.conf",
+            { "", "power", "power", "power", "power", "power", "" },
+            { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait", "unknown" },
+            { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500", "value" } );
+
+        MagAOXApp_test app( false );
+        app.setPowerMgtEnabled( true );
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == false );
+        REQUIRE( app.configOnly() == false );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "pdu9" );
+        REQUIRE( app.powerChannel() == "thisch" );
+        REQUIRE( app.powerElement() == "thisel" );
+        REQUIRE( app.powerTargetElement() == "thistgtel" );
+        REQUIRE( app.powerOnWait() == 500 );
+
+        REQUIRE( app.doHelp() == true);
+        REQUIRE( app.shutdown() == true );
+    }
+
+    SECTION( "load a full config w unknown config in file, validate" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp", "--config.validate" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        // this adds unknown=value
+        mx::app::writeConfigFile(
+            "/tmp/MagAOXApp_test/config/testapp.conf",
+            { "", "power", "power", "power", "power", "power", "" },
+            { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait", "unknown" },
+            { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000", "value" } );
+
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( true );
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == true ); // due to git
+        REQUIRE( app.configOnly() == true );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "pdu9" );
+        REQUIRE( app.powerChannel() == "thisch" );
+        REQUIRE( app.powerElement() == "thisel" );
+        REQUIRE( app.powerTargetElement() == "thistgtel" );
+        REQUIRE( app.powerOnWait() == 0 );
+
+        REQUIRE( app.doHelp() == false);
+        REQUIRE( app.shutdown() == true );
+    }
+
+    SECTION( "load a full config w non-option clopt" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp", "straylight" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf",
+                                  { "", "power", "power", "power", "power", "power" },
+                                  { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait" },
+                                  { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000" } );
+
+        MagAOXApp_test app( false );
+        app.setPowerMgtEnabled( true );
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == false ); // due to git
+        REQUIRE( app.configOnly() == false );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "pdu9" );
+        REQUIRE( app.powerChannel() == "thisch" );
+        REQUIRE( app.powerElement() == "thisel" );
+        REQUIRE( app.powerTargetElement() == "thistgtel" );
+        REQUIRE( app.powerOnWait() == 0 );
+
+        REQUIRE( app.doHelp() == true );
+        REQUIRE( app.shutdown() == true );
+    }
+
+    SECTION( "load a full config w no power mgt opts" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        mx::app::writeConfigFile( "/tmp/MagAOXApp_test/config/testapp.conf",
+                                  { "" },
+                                  { "loopPause" },
+                                  { "2500"} );
+
+        MagAOXApp_test app( false );
+        app.setPowerMgtEnabled( true );
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == false ); // due to git
+        REQUIRE( app.configOnly() == false );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "" );
+        REQUIRE( app.powerChannel() == "" );
+        REQUIRE( app.powerElement() == "state" );
+        REQUIRE( app.powerTargetElement() == "target" );
+        REQUIRE( app.powerOnWait() == 0 );
+
+        REQUIRE( app.doHelp() == true );
+        REQUIRE( app.shutdown() == true );
+    }
+
+    SECTION( "load a full config w unused config options" )
+    {
+        std::vector<const char *> argv;
+        std::vector<std::string>  argvstr( { "./execname", "-n", "testapp", "--config.validate" } );
+
+        argv.resize( argvstr.size() + 1, NULL );
+        for( size_t index = 0; index < argvstr.size(); ++index )
+        {
+            argv[index] = argvstr[index].c_str();
+        }
+
+        char ppath[1024];
+        snprintf( ppath, sizeof( ppath ), "%s=/tmp/MagAOXApp_test", MAGAOX_env_path );
+        putenv( ppath );
+
+        mx::ioutils::createDirectories( "/tmp/MagAOXApp_test/config" );
+
+        std::ofstream fout;
+        fout.open( "/tmp/MagAOXApp_test/config/magaox.conf" );
+        fout.close();
+
+        // this adds unknown=value
+        mx::app::writeConfigFile(
+            "/tmp/MagAOXApp_test/config/testapp.conf",
+            { "", "power", "power", "power", "power", "power"},
+            { "loopPause", "device", "channel", "element", "targetElement", "powerOnWait" },
+            { "2500", "pdu9", "thisch", "thisel", "thistgtel", "500000"} );
+
+        MagAOXApp_test app( true );
+        app.setPowerMgtEnabled( true );
+
+        app.addUnusedConfig();
+
+        app.setup( argv.size() - 1, const_cast<char **>( argv.data() ) );
+
+        REQUIRE( app.stateAlert() == true ); // due to git
+        REQUIRE( app.configOnly() == true );
+        REQUIRE( app.loopPause() == 2500 );
+        REQUIRE( app.powerDevice() == "pdu9" );
+        REQUIRE( app.powerChannel() == "thisch" );
+        REQUIRE( app.powerElement() == "thisel" );
+        REQUIRE( app.powerTargetElement() == "thistgtel" );
+        REQUIRE( app.powerOnWait() == 0 );
+
+        REQUIRE( app.doHelp() == false);
+        REQUIRE( app.shutdown() == false );
     }
 }
 
