@@ -20,6 +20,8 @@
 
 #include <boost/filesystem/operations.hpp>
 
+#include "shmimMonitor.hpp"
+
 #include "../../ImageStreamIO/ImageStruct.hpp"
 
 namespace MagAOX
@@ -848,7 +850,7 @@ int dm<derivedT, realT>::appLogic()
     if(m_piTimes.size() >= m_piTimes.maxEntries() && m_piTimes.maxEntries() > 0 && m_piTimes.mono() != lastMono)
     {
        cbIndexT refEntry = m_piTimes.earliest();
-         
+
        m_piTimesD.resize(m_piTimes.maxEntries());
        m_satSemD.resize(m_satSem.maxEntries());
        m_actProcD.resize(m_actProc.maxEntries());
@@ -1013,7 +1015,7 @@ int dm<derivedT, realT>::processImage(void *curr_src,
     #ifdef XWC_DMTIMINGS
     m_t0 = mx::sys::get_curr_time();
     #endif
-    
+
     int rv = derived().commandDM(curr_src);
 
     #ifdef XWC_DMTIMINGS

@@ -29,6 +29,7 @@ struct MagAOXApp_test : public APP_XWCTEST_BASE
     void addUnusedConfig()
     {
         config.add( "name2", "", "name2", argType::Required, "", "", true, "string", "" );
+        config.m_sources = true;
     }
 
     void setup( int argc, char **argv )

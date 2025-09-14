@@ -55,7 +55,7 @@
 ../apps/xt1121Ctrl/tests/xt1121Ctrl_test
 ../apps/xt1121Ctrl/tests/xtChannels_test
 ../apps/xt1121DCDU/tests/xt1121DCDU_test
-../apps/zaberCtrl/tests/zaberCtrl_test 
+../apps/zaberCtrl/tests/zaberCtrl_test
 ../apps/zaberLowLevel/tests/zaberLowLevel_test
 ../apps/zaberLowLevel/tests/zaberStage_test
 ../apps/zaberLowLevel/tests/zaberUtils_test
@@ -68,8 +68,8 @@
 ../libMagAOX/app/tests/MagAOXApp_test
 ../libMagAOX/app/tests/semUtils_test
 ../libMagAOX/app/tests/stateCodes_test
-../libMagAOX/app/tests/dev/tests/outletController_test
-../libMagAOX/app/tests/dev/tests/dev_test
+../libMagAOX/app/dev/tests/dev_test
+../libMagAOX/app/dev/tests/outletController_test
 ../libMagAOX/common/tests/common_test
 ../libMagAOX/ImageStreamIO/tests/ImageStreamIO_test
 ../libMagAOX/modbus/tests/modbus_test
