@@ -84,7 +84,8 @@ apps_tic = \
 	acronameUsbHub \
 	baslerCtrl \
 	bmcCtrl \
-	trippLitePDU
+	trippLitePDU \
+	rhusbMon
 
 #     cameraSim
 apps_sim = \

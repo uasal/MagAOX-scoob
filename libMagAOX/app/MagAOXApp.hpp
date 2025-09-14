@@ -44,10 +44,37 @@ using namespace mx::app;
 
 using namespace MagAOX::logger;
 
+//forward decl for test harnass friendship
+namespace libXWCTest
+{
+namespace appTest
+{
+namespace MagAOXAppTest
+{
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
+struct MagAOXApp_test;
+
+#ifdef XWCTEST_NAMESPACE
+}
+#endif
+} // namespace MagAOXAppTest
+} // namespace appTest
+} // namespace libXWCTest
+
 namespace MagAOX
 {
 namespace app
 {
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
 
 /** \addtogroup magaoxapp
  *
@@ -65,6 +92,7 @@ namespace app
  *
  *
 */
+
 
 
 /// The base-class for XWCTk applications.
@@ -124,7 +152,13 @@ namespace app
 template <bool _useINDI = true>
 class MagAOXApp : public application
 {
-    friend class MagAOXApp_test;
+    // clang-format off
+    #ifdef XWCTEST_NAMESPACE
+    friend struct libXWCTest::appTest::MagAOXAppTest::XWCTEST_NAMESPACE::MagAOXApp_test;
+    #else
+    friend struct libXWCTest::appTest::MagAOXAppTest::MagAOXApp_test;
+    #endif
+    //clang-format on
 
   public:
     typedef XWC_DEFAULT_VERBOSITY verboseT;
@@ -133,7 +167,7 @@ class MagAOXApp : public application
     typedef logger::logManager<MagAOXApp<_useINDI>, logFileRaw<verboseT>> logManagerT;
 
   protected:
-    std::string MagAOXPath; ///< The base path of the MagAO-X system.
+    std::string m_basePath; ///< The base path of the MagAO-X system.
 
     std::string m_configName; ///< The name of the configuration file (minus .conf).
 
@@ -143,9 +177,16 @@ class MagAOXApp : public application
 
     std::string m_calibDir; ///< The path to calibration files for MagAOX.
 
-    std::string sysPath; ///< The path to the system directory, for PID file, etc.
+    std::string m_sysPath; ///< The path to the system directory, for PID file, etc.
 
-    std::string secretsPath; ///< Path to the secrets directory, where passwords, etc, are stored.
+    std::string m_secretsPath; ///< Path to the secrets directory, where passwords, etc, are stored.
+
+    /// Path to the cpusets mount
+    /** The path to the cpusets mount is configured by the environment variable defined by MAGOX_env_cpuset
+     * in environment.hpp.  This environment variable is normally named "CGROUPS1_CPUSET_MOUNTPOINT".  If
+     * the environment variable is not set, the default defined by MAGAOX_cpusetPath in paths.hpp is used.
+     */
+    std::string m_cpusetPath{ MAGAOX_cpusetPath };
 
     unsigned long m_loopPause{ MAGAOX_default_loopPause }; /**< The time in nanoseconds to pause the main loop.
                                                                 The appLogic() function of the derived class is called
@@ -179,12 +220,6 @@ class MagAOXApp : public application
     );
 
     ~MagAOXApp() noexcept( true );
-
-    /// Get the value of the shutdown flag.
-    /**
-     * \returns the current value of m_shutdown
-     */
-    int shutdown();
 
     /// Set the paths for config files
     /** Replaces the mx::application defaults with the MagAO-X config system.
@@ -469,14 +504,6 @@ class MagAOXApp : public application
 
     ///@} -- PID Locking
 
-    /** \name cpusets
-     * The path to the cpusets mount is configured by the environment varialbe defined by MAGOX_env_cpuset
-     * in environment.hpp.  This environment varialbe is normally named "CGROUPS1_CPUSET_MOUNTPOINT".  If
-     * the environment variable is not set, the default defined by MAGAOX_cpusetPath in paths.hpp is used.
-     * This is normally "/opt/MagAOX/cpuset/"
-     */
-
-    std::string m_cpusetPath{ MAGAOX_cpusetPath };
 
     /** \name Threads
      *
@@ -551,6 +578,18 @@ class MagAOXApp : public application
                 bool stateAlert = false          ///< [in] [optional] flag to set the alert state of the FSM property.
     );
 
+    /// Get the value of the state alert flag
+    /**
+     * \returns the current value of m_stateAlert
+     */
+    bool stateAlert();
+
+    /// Get the value of the git alert flag
+    /**
+     * \returns the current value of m_gitAlert
+     */
+    bool gitAlert();
+
     /// Updates and returns the value of m_stateLogged.  Will be 0 on first call after a state change, \>0 afterwards.
     /** This method exists to facilitate logging the reason for a state change once, but not
       * logging it on subsequent event loops.  Returns the current value upon entry, but updates
@@ -569,6 +608,7 @@ class MagAOXApp : public application
       * \returns current value of m_stateLogged, that is the value before it is incremented.
       */
     int stateLogged();
+
 
     ///@} --Application State
 
@@ -1150,6 +1190,12 @@ class MagAOXApp : public application
      * @{
      */
 
+    /// Get the
+    /**
+     * \returns the value of m_ *
+     */
+    std::string basePath();
+
     /// Get the config name
     /**
      * \returns the current value of m_configName
@@ -1161,6 +1207,42 @@ class MagAOXApp : public application
      * \returns the current value of m_configDir
      */
     std::string configDir();
+
+    /// Get the config base file
+    /** \returns the value of m_confgBase
+     */
+    std::string configBase();
+
+    /// Get the calibration directory
+    /** \returns the value of m_calibDir
+     */
+    std::string calibDir();
+
+    /// Get the system path
+    /** \returns the value of m_sysPath
+     */
+    std::string sysPath();
+
+    /// Get the secrets path
+    /** \returns the value of m_secretsPath
+     */
+    std::string secretsPath();
+
+    /// Get the cpuset path
+    /** \returns the value of m_cpusetPath
+     */
+    std::string cpusetPath();
+
+    /// Get the loop pause time
+    /** \returns the value of m_loopPause
+     */
+    unsigned long loopPause();
+
+    /// Get the value of the shutdown flag.
+    /**
+     * \returns the current value of m_shutdown
+     */
+    int shutdown();
 
     /// Get the INDI input FIFO file name
     /**
@@ -1196,8 +1278,7 @@ MagAOXApp<_useINDI>::MagAOXApp( const std::string &git_sha1, const bool git_modi
 {
     if( m_self != nullptr )
     {
-        std::cerr << "Attempt to instantiate 2nd MagAOXApp.  Exiting immediately.\n";
-        exit( -1 );
+        throw std::logic_error("Attempt to instantiate 2nd MagAOXApp");
     }
 
     m_self = this;
@@ -1241,11 +1322,6 @@ MagAOXApp<_useINDI>::~MagAOXApp() noexcept( true )
     MagAOXApp<_useINDI>::m_self = nullptr;
 }
 
-template <bool _useINDI>
-int MagAOXApp<_useINDI>::shutdown()
-{
-    return m_shutdown;
-}
 
 template <bool _useINDI>
 void MagAOXApp<_useINDI>::setDefaults( int argc,
@@ -1256,42 +1332,53 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
     tmpstr = mx::sys::getEnv( MAGAOX_env_path );
     if( tmpstr != "" )
     {
-        MagAOXPath = tmpstr;
+        m_basePath = tmpstr;
     }
     else
     {
-        MagAOXPath = MAGAOX_path;
+        m_basePath = MAGAOX_path;
     }
 
-    // Set the config path relative to MagAOXPath
+    // Set the config path relative to m_basePath
     tmpstr = mx::sys::getEnv( MAGAOX_env_config );
     if( tmpstr == "" )
     {
         tmpstr = MAGAOX_configRelPath;
     }
-    m_configDir = MagAOXPath + "/" + tmpstr;
+    m_configDir = m_basePath + "/" + tmpstr;
     m_configPathGlobal = m_configDir + "/magaox.conf";
 
-    // Set the calib path relative to MagAOXPath
+    // Set the calib path relative to m_basePath
     tmpstr = mx::sys::getEnv( MAGAOX_env_calib );
     if( tmpstr == "" )
     {
         tmpstr = MAGAOX_calibRelPath;
     }
-    m_calibDir = MagAOXPath + "/" + tmpstr;
+    m_calibDir = m_basePath + "/" + tmpstr;
 
     // Setup default log path
-    tmpstr = MagAOXPath + "/" + MAGAOX_logRelPath;
-
-    m_log.logPath( tmpstr );
+    tmpstr = mx::sys::getEnv( MAGAOX_env_log );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_logRelPath;
+    }
+    m_log.logPath( m_basePath + "/" + tmpstr );
 
     // Setup default sys path
-    tmpstr = MagAOXPath + "/" + MAGAOX_sysRelPath;
-    sysPath = tmpstr;
+    tmpstr = mx::sys::getEnv( MAGAOX_env_sys );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_sysRelPath;
+    }
+    m_sysPath = m_basePath + "/" + tmpstr;
 
     // Setup default secrets path
-    tmpstr = MagAOXPath + "/" + MAGAOX_secretsRelPath;
-    secretsPath = tmpstr;
+    tmpstr = mx::sys::getEnv( MAGAOX_env_secrets );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_secretsRelPath;
+    }
+    m_secretsPath = m_basePath + "/" + tmpstr;
 
     // Setup default cpuset path
     tmpstr = mx::sys::getEnv( MAGAOX_env_cpuset );
@@ -1379,7 +1466,8 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                 "The main loop pause time in ns" );
 
     config.add(
-        "ignore_git", "", "ignore-git", argType::True, "", "", false, "bool", "set to true to ignore git status to prevent the fsm_alert" );
+        "ignore_git", "", "ignore-git", argType::True, "", "", false, "bool", "set to true to ignore git "
+        "status to prevent the fsm_alert" );
 
     // Logger Stuff
     m_log.setupConfig( config );
@@ -1403,6 +1491,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "Device controlling power for this app's device (INDI name)." );
+
         config.add( "power.channel",
                     "",
                     "power.channel",
@@ -1412,6 +1501,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "Channel on device for this app's device (INDI name)." );
+
         config.add( "power.element",
                     "",
                     "power.element",
@@ -1421,6 +1511,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "INDI power state element name.  Default is \"state\", only need to specify if different." );
+
         config.add( "power.targetElement",
                     "",
                     "power.targetElement",
@@ -1430,6 +1521,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "INDI power target element name.  Default is \"target\", only need to specify if different." );
+
         config.add( "power.powerOnWait",
                     "",
                     "power.powerOnWait",
@@ -1439,6 +1531,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "int",
                     "Time after power-on to wait before continuing [sec].  Default is 0 sec, max is 3600 sec." );
+
     }
 }
 
@@ -1496,6 +1589,7 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         if( m_powerOnWait > 3600 )
         {
             log<text_log>( "powerOnWait longer than 1 hour.  Setting to 0.", logPrio::LOG_ERROR );
+            m_powerOnWait = 0;
         }
     }
 }
@@ -2061,7 +2155,7 @@ int MagAOXApp<_useINDI>::lockPID()
 {
     m_pid = getpid();
 
-    std::string statusDir = sysPath;
+    std::string statusDir = m_sysPath;
 
     // Get the maximum privileges available
     elevatedPrivileges elPriv( this );
@@ -2073,10 +2167,8 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create root of statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "Failed to create root of statusDir (" + statusDir + ").  "
+                                                                               "Errno says: " + strerror( errno ) } );
         }
     }
 
@@ -2092,10 +2184,9 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0,
+                                                 "Failed to create statusDir (" + statusDir + ").  "
+                                                 "Errno says: " + strerror( errno )} );
         }
 
         // If here, then we need to check the pid file.
@@ -2121,13 +2212,14 @@ int MagAOXApp<_useINDI>::lockPID()
             {
                 procIn.open( procN.str() );
                 if( procIn.good() )
+                {
                     procIn >> pidCmdLine;
+                }
                 procIn.close();
             }
             catch( ... )
             {
-                log<software_critical>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
-                return -1;
+                log<software_critical, -1>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
             }
 
             // If pidCmdLine == "" at this point we just allow the rest of the
@@ -2139,19 +2231,24 @@ int MagAOXApp<_useINDI>::lockPID()
             // If invokedName found, then we check for configName.
             size_t configPos = std::string::npos;
             if( invokedPos != std::string::npos )
+            {
                 configPos = pidCmdLine.find( m_configName );
+            }
+
+            // clang-format off
+            #ifdef XWCTEST_MAGAOXAPP_PID_LOCKED
+            invokedPos = 0; // LCOV_EXCL_LINE
+            configPos = 0; // LCOV_EXCL_LINE
+            #endif
+            // clang-format on
 
             // Check if PID is already locked by this program+config combo:
             if( invokedPos != std::string::npos && configPos != std::string::npos )
             {
                 // This means that this app already exists for this config, and we need to die.
-                std::stringstream logss;
-                logss << "PID already locked (" << testPid << ").  Time to die.";
-                std::cerr << logss.str() << std::endl;
+                std::cerr << "PID already locked (" + std::to_string(testPid) + ").  Time to die." << std::endl;
 
-                log<text_log>( logss.str(), logPrio::LOG_CRITICAL );
-
-                return -1;
+                return log<text_log, -1>( "PID already locked (" + std::to_string(testPid) + ").  Time to die." );
             }
         }
         else
@@ -2165,29 +2262,20 @@ int MagAOXApp<_useINDI>::lockPID()
     std::ofstream pidOut;
     pidOut.open( pidFileName );
 
-    if( !pidOut.good() )
-    {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "could not open pid file for writing." } );
-        // euidReal();
-        return -1;
-    }
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_PID_WRITE_FAIL
+    pidOut.close(); // LCOV_EXCL_LINE
+    #endif
+    // clang-format on
 
-    pidOut << m_pid;
+    if( !(pidOut << m_pid) )
+    {
+        return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "failed to write to pid file." } );
+    }
 
     pidOut.close();
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") locked.";
-    log<text_log>( logss.str() );
-
-    // Go back to regular privileges
-    /*if( euidReal() < 0 )
-    {
-       log<software_error>({__FILE__, __LINE__, 0, 0, "Seeting euid to real failed."});
-       return -1;
-    }*/
-
-    return 0;
+    return log<text_log, 0>( "PID (" + std::to_string(m_pid)  + ") locked." );
 }
 
 template <bool _useINDI>
@@ -2206,11 +2294,8 @@ int MagAOXApp<_useINDI>::unlockPID()
         }
     }
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") unlocked.";
-    log<text_log>( logss.str() );
+    return log<text_log, 0>( "PID (" + std::to_string(m_pid) + ") unlocked." );
 
-    return 0;
 }
 
 template <bool _useINDI>
@@ -2419,6 +2504,18 @@ void MagAOXApp<_useINDI>::state( const stateCodes::stateCodeT &s, bool stateAler
 }
 
 template <bool _useINDI>
+bool MagAOXApp<_useINDI>::stateAlert()
+{
+    return m_stateAlert;
+}
+
+template <bool _useINDI>
+bool MagAOXApp<_useINDI>::gitAlert()
+{
+    return m_gitAlert;
+}
+
+template <bool _useINDI>
 int MagAOXApp<_useINDI>::stateLogged()
 {
     if( m_stateLogged > 0 )
@@ -2437,22 +2534,36 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::clearFSMAlert()
 {
     if( m_stateAlert == false )
+    {
         return 0;
+    }
+
     m_stateAlert = false;
+
     log<text_log>( "FSM alert cleared", logPrio::LOG_WARNING );
 
     pcf::IndiProperty::PropertyStateType stst = INDI_IDLE;
 
     if( m_state == stateCodes::READY )
+    {
         stst = INDI_OK;
+    }
     else if( m_state == stateCodes::OPERATING || m_state == stateCodes::HOMING || m_state == stateCodes::CONFIGURING )
+    {
         stst = INDI_BUSY;
+    }
     else if( m_state < stateCodes::NODEVICE )
+    {
         stst = INDI_ALERT;
+    }
     else if( m_state <= stateCodes::LOGGEDIN )
+    {
         stst = INDI_IDLE;
+    }
     else if( m_state == stateCodes::NOTHOMED || m_state == stateCodes::SHUTDOWN )
+    {
         stst = INDI_IDLE;
+    }
 
     updateIfChanged( m_indiP_state, "state", stateCodes::codeText( m_state ), stst );
 
@@ -2684,7 +2795,10 @@ int MagAOXApp<_useINDI>::createStandardIndiSelectionSw( pcf::IndiProperty &prop,
     for( size_t n = 0; n < elements.size(); ++n )
     {
         pcf::IndiElement elem = pcf::IndiElement( elements[n], pcf::IndiElement::Off );
-        elem.setLabel( elementLabels[n] );
+        if(elementLabels[n] != "")
+        {
+            elem.setLabel( elementLabels[n] );
+        }
         prop.add( elem );
     }
 
@@ -2889,10 +3003,12 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::createINDIFIFOS()
 {
     if( !m_useINDI )
+    {
         return 0;
+    }
 
     ///\todo make driver FIFO path full configurable.
-    std::string driverFIFOPath = MAGAOX_path;
+    std::string driverFIFOPath = m_basePath;
     driverFIFOPath += "/";
     driverFIFOPath += MAGAOX_driverFIFORelPath;
 
@@ -3324,32 +3440,14 @@ int MagAOXApp<_useINDI>::indiTargetUpdate( pcf::IndiProperty &localProperty,
     return 0;
 }
 
-/// \todo move propType to an INDI utils file, and document.
-
-template <typename T>
-pcf::IndiProperty::Type propType()
-{
-    return pcf::IndiProperty::Unknown;
-}
-
-template <>
-pcf::IndiProperty::Type propType<char *>();
-
-template <>
-pcf::IndiProperty::Type propType<std::string>();
-
-template <>
-pcf::IndiProperty::Type propType<int>();
-
-template <>
-pcf::IndiProperty::Type propType<double>();
-
 template <bool _useINDI>
 template <typename T>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend, const std::string &el, const T &newVal )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3383,7 +3481,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3450,15 +3550,15 @@ int MagAOXApp<_useINDI>::newCallBack_clearFSMAlert( const pcf::IndiProperty &ipR
         return log<software_error, -1>( { __FILE__, __LINE__, "wrong indi property received" } );
     }
 
-    if( !ipRecv.find( "request" ) )
-        return 0;
-
-    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    if( ipRecv.find( "request" ) )
     {
-        clearFSMAlert();
-        updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
-    }
+        if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+        {
+            clearFSMAlert();
+            updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
+        }
 
+    }
     return 0;
 }
 
@@ -3497,7 +3597,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerState()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerState;
 }
@@ -3506,7 +3608,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerStateTarget()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerTargetState;
 }
@@ -3557,6 +3661,12 @@ INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
 }
 
 template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::basePath()
+{
+    return m_basePath;
+}
+
+template <bool _useINDI>
 std::string MagAOXApp<_useINDI>::configName()
 {
     return m_configName;
@@ -3566,6 +3676,48 @@ template <bool _useINDI>
 std::string MagAOXApp<_useINDI>::configDir()
 {
     return m_configDir;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::configBase()
+{
+    return m_configBase;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::calibDir()
+{
+    return m_calibDir;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::sysPath()
+{
+    return m_sysPath;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::secretsPath()
+{
+    return m_secretsPath;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::cpusetPath()
+{
+    return m_cpusetPath;
+}
+
+template <bool _useINDI>
+unsigned long MagAOXApp<_useINDI>::loopPause()
+{
+    return m_loopPause;
+}
+
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::shutdown()
+{
+    return m_shutdown;
 }
 
 template <bool _useINDI>
@@ -3585,6 +3737,11 @@ std::string MagAOXApp<_useINDI>::driverCtrlName()
 {
     return m_driverCtrlName;
 }
+
+#ifdef XWCTEST_NAMESPACE
+} //namespace XWCTEST_NAMESPACE
+#endif
+
 
 extern template class MagAOXApp<true>;
 extern template class MagAOXApp<false>;

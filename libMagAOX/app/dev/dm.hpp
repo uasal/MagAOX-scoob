@@ -20,6 +20,8 @@
 
 #include <boost/filesystem/operations.hpp>
 
+#include "shmimMonitor.hpp"
+
 #include "../../ImageStreamIO/ImageStruct.hpp"
 
 namespace MagAOX

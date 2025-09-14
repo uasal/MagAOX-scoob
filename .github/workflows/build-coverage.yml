@@ -3,7 +3,7 @@ on:
   push:
       branches:
         - '**' # Any branch
-        - '!jrmales/logdirs'
+        - '!jrmales/logdirs' #this requires work to move gcc to 14
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -52,4 +52,4 @@ jobs:
         env:
             SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
-            rsync -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/
+            rsync -e 'ssh -o "UserKnownHostsFile /home/runner/.ssh/known_hosts"' -rz --delete coverage_report/ gary@xwcl.science:/srv/www/main/docs/coverage/

@@ -927,7 +927,7 @@ int picoMotorCtrl::appShutdown()
 
 picoMotorCtrl::posT picoMotorCtrl::readChannelCounts(const std::string & chName)
 {
-   std::string statusDir = sysPath;
+   std::string statusDir = m_sysPath;
    statusDir += "/";
    statusDir += m_configName;
 
@@ -956,7 +956,7 @@ int picoMotorCtrl::writeChannelCounts( const std::string & chName,
                                        posT counts
                                      )
 {
-   std::string statusDir = sysPath;
+   std::string statusDir = m_sysPath;
    statusDir += "/";
    statusDir += m_configName;
 

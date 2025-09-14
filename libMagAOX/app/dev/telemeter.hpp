@@ -226,7 +226,13 @@ int telemeter<derivedT>::loadConfig(mx::app::appConfigurator &config)
 {
     m_tel.m_logLevel = logPrio::LOG_TELEM;
 
-    m_tel.logPath(std::string(derived().MagAOXPath) + "/" + MAGAOX_telRelPath);
+    // Setup default log path
+    std::string tmpstr = mx::sys::getEnv( MAGAOX_env_telem );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_telRelPath;
+    }
+    m_tel.logPath(std::string(derived().basePath()) + "/" + tmpstr);
 
     m_tel.logExt("bintel");
 
