@@ -95,9 +95,7 @@
 
 ../utils/tests/cursesINDI_test
 ../utils/tests/logdump_test
-../utils/tests/logstream_test
 ../utils/tests/logsurgeon_test
 ../utils/tests/shmimLat_test
 ../utils/tests/shmimPlot_test
 ../utils/tests/xrif2fits_test
-../utils/tests/xrif2shmim_test

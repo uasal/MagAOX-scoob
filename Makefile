@@ -92,7 +92,6 @@ apps_sim = \
 	trippLitePDU
 
 all_buildable_apps = \
-	acesxeCtrl \
 	adcTracker \
 	alignLoop \
 	cacaoInterface \
@@ -184,7 +183,7 @@ all_guis = \
 
 # If building for coverage, don't build guis for now
 ifeq ($(NO_GUIS),1)
-	all_guis := 
+	all_guis :=
 endif
 
 
