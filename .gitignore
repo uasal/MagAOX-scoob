@@ -126,6 +126,7 @@ apps/rhusbMon/rhusbMon
 apps/refRMS/refRMS
 
 #s
+apps/scpiPowerCtrl/scpiPowerCtrl
 apps/shmimIntegrator/shmimIntegrator
 apps/siglentSDG/siglentSDG
 apps/siglentSDG/tests/siglentSDG_test
