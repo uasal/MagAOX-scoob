@@ -574,6 +574,7 @@ int scpiCtrl::appStartup()
     m_indiP_samplingRateHz.setDevice(configName());
     m_indiP_samplingRateHz.setName("samplingRateHz");
     m_indiP_samplingRateHz.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_samplingRateHz.setState(pcf::IndiProperty::Idle);
     m_indiP_samplingRateHz.add(pcf::IndiElement("value"));
     m_indiP_samplingRateHz["value"].set<double>(m_sampleRateHz);
     registerIndiPropertyNew(m_indiP_samplingRateHz, INDI_NEWCALLBACK(m_indiP_samplingRateHz));
@@ -582,6 +583,7 @@ int scpiCtrl::appStartup()
     m_indiP_bufferSize.setDevice(configName());
     m_indiP_bufferSize.setName("bufferSize");
     m_indiP_bufferSize.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
     m_indiP_bufferSize.add(pcf::IndiElement("value"));
     m_indiP_bufferSize["value"].set<int>(m_bufferSize);
     registerIndiPropertyNew(m_indiP_bufferSize, INDI_NEWCALLBACK(m_indiP_bufferSize));
@@ -590,6 +592,7 @@ int scpiCtrl::appStartup()
     m_indiP_measurementMode.setDevice(configName());
     m_indiP_measurementMode.setName("measurementMode");
     m_indiP_measurementMode.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_measurementMode.setState(pcf::IndiProperty::Idle);
     m_indiP_measurementMode.add(pcf::IndiElement("value"));
     std::string modeStrInit = (m_measurementMode == MeasurementMode::BUFFERED ? "buffered" : (m_measurementMode == MeasurementMode::DIGITIZED ? "digitized" : "polling"));
     m_indiP_measurementMode["value"].set<std::string>(modeStrInit);
@@ -599,6 +602,7 @@ int scpiCtrl::appStartup()
     m_indiP_measurementFunction.setDevice(configName());
     m_indiP_measurementFunction.setName("measurementFunction");
     m_indiP_measurementFunction.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_measurementFunction.setState(pcf::IndiProperty::Idle);
     m_indiP_measurementFunction.add(pcf::IndiElement("value"));
     std::string functionStrInit = (m_measurementFunction == MeasurementFunction::CURRENT ? "current" : "voltage");
     m_indiP_measurementFunction["value"].set<std::string>(functionStrInit);
@@ -608,6 +612,7 @@ int scpiCtrl::appStartup()
     m_indiP_currentConversionFactor.setDevice(configName());
     m_indiP_currentConversionFactor.setName("currentConversionFactor");
     m_indiP_currentConversionFactor.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_currentConversionFactor.setState(pcf::IndiProperty::Idle);
     m_indiP_currentConversionFactor.add(pcf::IndiElement("value"));
     m_indiP_currentConversionFactor["value"].set<double>(m_currentConversionFactor);
     registerIndiPropertyNew(m_indiP_currentConversionFactor, INDI_NEWCALLBACK(m_indiP_currentConversionFactor));
@@ -1046,11 +1051,12 @@ int scpiCtrl::updateChannel(int channel)
             log<software_error>({__FILE__, __LINE__, "Failed to parse current reading: " + curr});
             m_channelCurrents[channel] = 0.0f;
         }
-    } else {
-        // For measurement devices, current might not be available
+    } else if (m_isPowerSupply) {
+        // For power supplies, current might not be available
         m_channelCurrents[channel] = 0.0f;
-        log<text_log>("Channel " + std::to_string(channel) + " current set to 0.0A (measurement device or command failed)");
+        log<text_log>("Channel " + std::to_string(channel) + " current set to 0.0A (power supply command failed)");
     }
+    // For measurement devices, current is already calculated from voltage above, so no action needed
 
     log<text_log>("updateChannel(" + std::to_string(channel) + ") completed successfully");
     return 0;
@@ -1194,8 +1200,18 @@ bool scpiCtrl::send_scpi(const std::string& cmd, std::string& response) {
     char buffer[1024] = {0};
     ssize_t n = read(active_fd, buffer, sizeof(buffer) - 1);
     if (n < 0) {
-        log<software_error>({__FILE__, __LINE__, "SCPI read failed: " + std::string(strerror(errno))});
-        return false;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // No data available yet, try again after a short delay
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            n = read(active_fd, buffer, sizeof(buffer) - 1);
+            if (n < 0) {
+                log<software_error>({__FILE__, __LINE__, "SCPI read failed after retry: " + std::string(strerror(errno))});
+                return false;
+            }
+        } else {
+            log<software_error>({__FILE__, __LINE__, "SCPI read failed: " + std::string(strerror(errno))});
+            return false;
+        }
     }
 
     response.assign(buffer, n);
@@ -1701,6 +1717,8 @@ inline int scpiCtrl::setupBufferedAcquisition()
     if (!send_scpi(buffer_cmd, res)) {
         return log<text_log,-1>("Failed to configure buffer size", logPrio::LOG_ERROR);
     }
+    // Give the device time to process the buffer configuration
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
     // Apply base speed settings and auto-tune NPLC for target rate with zero delay
     if (applyBaseSpeedSettings() < 0) {
@@ -1714,6 +1732,8 @@ inline int scpiCtrl::setupBufferedAcquisition()
     if (!send_scpi(trigger_cmd, res)) {
         return log<text_log,-1>("Failed to configure trigger system (SimpleLoop,0)", logPrio::LOG_ERROR);
     }
+    // Give the device time to process the trigger configuration
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
     log<text_log>("Buffered acquisition configured successfully");
     return 0;
@@ -1919,10 +1939,16 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
     std::vector<float> all_data;
     
     while (std::getline(ss, token, ',')) {
-        try {
-            all_data.push_back(std::stof(token));
-        } catch (...) {
-            log<software_error>({__FILE__, __LINE__, "Failed to parse data token: " + token});
+        // Trim whitespace from token
+        token.erase(0, token.find_first_not_of(" \t\r\n"));
+        token.erase(token.find_last_not_of(" \t\r\n") + 1);
+        
+        if (!token.empty()) {
+            try {
+                all_data.push_back(std::stof(token));
+            } catch (...) {
+                log<software_error>({__FILE__, __LINE__, "Failed to parse data token: '" + token + "'"});
+            }
         }
     }
     
