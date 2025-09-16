@@ -79,6 +79,14 @@ protected:
        DIGITIZED       ///< High-speed digitized acquisition
    };
    MeasurementMode m_measurementMode {MeasurementMode::POLLING};
+
+   enum class MeasurementFunction {
+       VOLTAGE,        ///< Direct voltage measurement
+       CURRENT         ///< Current measurement via voltage conversion
+   };
+   MeasurementFunction m_measurementFunction {MeasurementFunction::VOLTAGE};
+   
+   double m_currentConversionFactor {0.1}; ///< V-to-A conversion factor (default: 100mV/A)
    
    // Buffered acquisition parameters
    int m_bufferSize {1000}; ///< Number of samples per buffer
@@ -163,6 +171,8 @@ public:
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_samplingRateHz);
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_bufferSize);
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_measurementMode);
+    INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_measurementFunction);
+    INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_currentConversionFactor);
     
     // Power control toggles (using outletController framework)
     // These are handled by the outletController base class
@@ -335,9 +345,11 @@ protected:
    pcf::IndiProperty m_indiP_telemetryToggle;
    
    // Dynamic measurement configuration via INDI
-   pcf::IndiProperty m_indiP_samplingRateHz;  ///< User-selectable sampling rate (Hz)
-   pcf::IndiProperty m_indiP_bufferSize;      ///< User-selectable buffer size (samples)
-   pcf::IndiProperty m_indiP_measurementMode; ///< User-selectable measurement mode
+   pcf::IndiProperty m_indiP_samplingRateHz;        ///< User-selectable sampling rate (Hz)
+   pcf::IndiProperty m_indiP_bufferSize;            ///< User-selectable buffer size (samples)
+   pcf::IndiProperty m_indiP_measurementMode;       ///< User-selectable measurement mode
+   pcf::IndiProperty m_indiP_measurementFunction;   ///< Voltage/current measurement toggle
+   pcf::IndiProperty m_indiP_currentConversionFactor; ///< V-to-A conversion factor
    
    // Power control toggles are handled by outletController framework
 
@@ -359,11 +371,14 @@ void scpiCtrl::setupConfig()
     
     // Measurement mode configuration
     config.add("device.measurementMode", "", "device.measurementMode", argType::Optional, "device", "measurementMode", false, "string", "Measurement mode: polling, buffered, or digitized (default: polling)");
+    config.add("device.measurementFunction", "", "device.measurementFunction", argType::Optional, "device", "measurementFunction", false, "string", "Measurement function: voltage or current (default: voltage)");
+    config.add("device.currentConversionFactor", "", "device.currentConversionFactor", argType::Optional, "device", "currentConversionFactor", false, "float", "V-to-A conversion factor for current mode (default: 0.1 = 100mV/A)");
     config.add("device.bufferSize", "", "device.bufferSize", argType::Optional, "device", "bufferSize", false, "int", "Buffer size for buffered/digitized modes (default: 1000)");
     config.add("device.sampleInterval", "", "device.sampleInterval", argType::Optional, "device", "sampleInterval", false, "float", "[Deprecated] Sample interval (s). Prefer device.samplingRateHz.");
     config.add("device.samplingRateHz", "", "device.samplingRateHz", argType::Optional, "device", "samplingRateHz", false, "float", "Target sampling rate in Hz for polling/buffered (default: 100)");
     config.add("device.maxAcquisitionTime", "", "device.maxAcquisitionTime", argType::Optional, "device", "maxAcquisitionTime", false, "float", "Maximum acquisition time in seconds to prevent overruns (default: 300)");
     config.add("device.bufferDataPath", "", "device.bufferDataPath", argType::Optional, "device", "bufferDataPath", false, "string", "Path for saving buffer data files (default: /opt/MagAOX/data)");
+    config.add("device.telemetryPath", "", "device.telemetryPath", argType::Optional, "device", "telemetryPath", false, "string", "Path for telemetry files (default: /opt/MagAOX/telem)");
     
     // TCP/IP specific configuration
     config.add("device.port", "", "device.port", argType::Optional, "device", "port", false, "int", "TCP port for Ethernet connections (default: 5025)");
@@ -417,6 +432,14 @@ void scpiCtrl::loadConfig()
     else if (modeStr == "digitized") m_measurementMode = MeasurementMode::DIGITIZED;
     else m_measurementMode = MeasurementMode::POLLING;
     
+    // Load measurement function and conversion factor
+    std::string functionStr = "voltage";
+    config(functionStr, "device.measurementFunction");
+    if (functionStr == "current") m_measurementFunction = MeasurementFunction::CURRENT;
+    else m_measurementFunction = MeasurementFunction::VOLTAGE;
+    
+    config(m_currentConversionFactor, "device.currentConversionFactor");
+    
     config(m_bufferSize, "device.bufferSize");
     // Backward compatibility: if sampleInterval present and samplingRateHz missing, map it
     double cfgSampleInterval = m_sampleInterval;
@@ -437,7 +460,7 @@ void scpiCtrl::loadConfig()
     config(m_pollRateHz, "device.pollRateHz");
     
     // Load telemetry configuration
-    config(m_telemetryPath, "telemetry.path");
+    config(m_telemetryPath, "device.telemetryPath");
     config(m_telemetryEnabled, "telemetry.enabled");
 
     if (m_numChannels > maxChannels) {
@@ -571,6 +594,23 @@ int scpiCtrl::appStartup()
     std::string modeStrInit = (m_measurementMode == MeasurementMode::BUFFERED ? "buffered" : (m_measurementMode == MeasurementMode::DIGITIZED ? "digitized" : "polling"));
     m_indiP_measurementMode["value"].set<std::string>(modeStrInit);
     registerIndiPropertyNew(m_indiP_measurementMode, INDI_NEWCALLBACK(m_indiP_measurementMode));
+
+    m_indiP_measurementFunction = pcf::IndiProperty(pcf::IndiProperty::Text);
+    m_indiP_measurementFunction.setDevice(configName());
+    m_indiP_measurementFunction.setName("measurementFunction");
+    m_indiP_measurementFunction.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_measurementFunction.add(pcf::IndiElement("value"));
+    std::string functionStrInit = (m_measurementFunction == MeasurementFunction::CURRENT ? "current" : "voltage");
+    m_indiP_measurementFunction["value"].set<std::string>(functionStrInit);
+    registerIndiPropertyNew(m_indiP_measurementFunction, INDI_NEWCALLBACK(m_indiP_measurementFunction));
+
+    m_indiP_currentConversionFactor = pcf::IndiProperty(pcf::IndiProperty::Number);
+    m_indiP_currentConversionFactor.setDevice(configName());
+    m_indiP_currentConversionFactor.setName("currentConversionFactor");
+    m_indiP_currentConversionFactor.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_currentConversionFactor.add(pcf::IndiElement("value"));
+    m_indiP_currentConversionFactor["value"].set<double>(m_currentConversionFactor);
+    registerIndiPropertyNew(m_indiP_currentConversionFactor, INDI_NEWCALLBACK(m_indiP_currentConversionFactor));
 
     // Initialize timers
     m_lastPollTime = std::chrono::steady_clock::now();
@@ -935,43 +975,62 @@ int scpiCtrl::updateChannel(int channel)
             if (m_measurementMode == MeasurementMode::BUFFERED) {
                 if (getBufferedData(voltages, timestamps) == 0 && !voltages.empty()) {
                     // Use the most recent value for real-time display
-                    volt = std::to_string(voltages.back());
+                    float latestVoltage = voltages.back();
+                    volt = std::to_string(latestVoltage);
                     ok_v = true;
-                    log<text_log>("Buffered mode: got " + std::to_string(voltages.size()) + " samples, latest: " + volt + "V");
+                    log<text_log>("Buffered mode: got " + std::to_string(voltages.size()) + " samples, latest: " + std::to_string(latestVoltage) + "V");
                 }
             } else {
                 if (getDigitizedData(voltages, timestamps) == 0 && !voltages.empty()) {
                     // Use the most recent value for real-time display
-                    volt = std::to_string(voltages.back());
+                    float latestVoltage = voltages.back();
+                    volt = std::to_string(latestVoltage);
                     ok_v = true;
-                    log<text_log>("Digitized mode: got " + std::to_string(voltages.size()) + " samples, latest: " + volt + "V");
+                    log<text_log>("Digitized mode: got " + std::to_string(voltages.size()) + " samples, latest: " + std::to_string(latestVoltage) + "V");
                 }
             }
             
-            // For measurement devices, current is typically not available
+            // For buffered/digitized modes, current will be calculated from voltage using conversion factor
+            // The actual current calculation happens in the voltage processing section below
             curr = "0.0";
             ok_c = true;
         } else {
             // Polling mode - use single READ? queries
             ok_v = send_scpi("READ?\n", volt);  // Keithley DMMs typically use READ? for measurements
-            // For DMMs, current measurement might not be available or use different command
-            ok_c = send_scpi("SENS:CURR?\n", curr);  // Try current sense if available
-            if (!ok_c) {
-                // If current measurement fails, set to 0 (many DMMs don't measure current)
-                curr = "0.0";
-                ok_c = true;
-            }
+            // For measurement devices, current will be calculated from voltage using conversion factor
+            // The actual current calculation happens in the voltage processing section below
+            curr = "0.0";
+            ok_c = true;
         }
     }
 
     if (ok_v) {
         volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
         try {
-            m_channelVoltages[channel] = std::stof(volt);
-            log<text_log>("Channel " + std::to_string(channel) + " voltage: " + std::to_string(m_channelVoltages[channel]) + "V (raw: '" + volt + "')");
+            float voltageValue = std::stof(volt);
+            
+            // Always store the raw voltage measurement
+            m_channelVoltages[channel] = voltageValue;
+            
+            // Always calculate current using conversion factor (for both voltage and current modes)
+            if (!m_isPowerSupply && m_currentConversionFactor > 0) {
+                float currentValue = voltageValue / m_currentConversionFactor;
+                m_channelCurrents[channel] = currentValue;
+                
+                if (m_measurementFunction == MeasurementFunction::CURRENT) {
+                    log<text_log>("Channel " + std::to_string(channel) + " current: " + std::to_string(currentValue) + "A (from " + std::to_string(voltageValue) + "V, factor: " + std::to_string(m_currentConversionFactor) + ")");
+                } else {
+                    log<text_log>("Channel " + std::to_string(channel) + " voltage: " + std::to_string(voltageValue) + "V, current: " + std::to_string(currentValue) + "A (factor: " + std::to_string(m_currentConversionFactor) + ")");
+                }
+            } else {
+                // No conversion factor or power supply - set current to 0
+                m_channelCurrents[channel] = 0.0f;
+                log<text_log>("Channel " + std::to_string(channel) + " voltage: " + std::to_string(voltageValue) + "V (no current conversion)");
+            }
         } catch (...) {
             log<software_error>({__FILE__, __LINE__, "Failed to parse voltage reading: " + volt});
             m_channelVoltages[channel] = 0.0f;
+            m_channelCurrents[channel] = 0.0f;
         }
     } else {
         log<software_error>({__FILE__, __LINE__, "Failed to read voltage from channel " + std::to_string(channel + 1)});
@@ -1443,6 +1502,35 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_measurementMode)(const pcf::IndiProperty
             if (!m_polling.load()) startPollThread();
         }
     }
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_measurementFunction)(const pcf::IndiProperty &ipRecv)
+{
+    if (ipRecv.getName() != m_indiP_measurementFunction.getName()) return -1;
+    if (!ipRecv.find("value")) return -1;
+    std::string function = ipRecv["value"].get<std::string>();
+    std::unique_lock<std::mutex> lock(m_indiMutex);
+    if (function == "current") m_measurementFunction = MeasurementFunction::CURRENT;
+    else m_measurementFunction = MeasurementFunction::VOLTAGE;
+    updateIfChanged(m_indiP_measurementFunction, "value", function);
+    log<text_log>("Measurement function changed to: " + function);
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_currentConversionFactor)(const pcf::IndiProperty &ipRecv)
+{
+    if (ipRecv.getName() != m_indiP_currentConversionFactor.getName()) return -1;
+    if (!ipRecv.find("value")) return -1;
+    double factor = ipRecv["value"].get<double>();
+    if (factor <= 0) {
+        log<software_error>({__FILE__, __LINE__, "Invalid conversion factor: " + std::to_string(factor)});
+        return -1;
+    }
+    std::unique_lock<std::mutex> lock(m_indiMutex);
+    m_currentConversionFactor = factor;
+    updateIfChanged(m_indiP_currentConversionFactor, "value", m_currentConversionFactor);
+    log<text_log>("Current conversion factor changed to: " + std::to_string(factor) + " V/A");
     return 0;
 }
 
