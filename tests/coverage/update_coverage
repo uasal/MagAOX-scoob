@@ -28,5 +28,5 @@ genhtml coverage_filtered.info --output-directory coverage_report \
                                --suppress-aliases \
                                --filter function \
                                --demangle-cpp \
-                               #--css-file tests/coverage/gcov.css
+                               --css-file tests/coverage/gcov.css
 
