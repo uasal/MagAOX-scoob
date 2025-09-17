@@ -528,32 +528,32 @@ int scpiCtrl::appStartup()
     
     //}
     
-    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%.3f");
     m_indiP_outlet1volt["current"] = m_channelVoltages[0];
     m_indiP_outlet1volt["target"] = m_channelVoltages[0];
     registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%.3f");
     m_indiP_outlet1curr["current"] = m_channelCurrents[0];
     m_indiP_outlet1curr["target"] = m_channelCurrents[0];
     registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
 
-    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%.3f");
     m_indiP_outlet2volt["current"] = m_channelVoltages[1];
     m_indiP_outlet2volt["target"] = m_channelVoltages[1];
     registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%.3f");
     m_indiP_outlet2curr["current"] = m_channelCurrents[1];
     m_indiP_outlet2curr["target"] = m_channelCurrents[1];
     registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
 
-    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%.3f");
     m_indiP_outlet3volt["current"] = m_channelVoltages[2];
     m_indiP_outlet3volt["target"] = m_channelVoltages[2];
     registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%.3f");
     m_indiP_outlet3curr["current"] = m_channelCurrents[2];
     m_indiP_outlet3curr["target"] = m_channelCurrents[2];
     registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
@@ -682,6 +682,17 @@ int scpiCtrl::appLogic()
  
     if(state() == stateCodes::CONNECTED)
     {
+        // Test device communication with a simple SCPI command
+        std::string idn_response;
+        if (!send_scpi("*IDN?\n", idn_response)) {
+            log<software_error>({__FILE__, __LINE__, "Device not responding to SCPI commands - disconnecting"});
+            devDisconnect();
+            state(stateCodes::NOTCONNECTED);
+            return 0;
+        }
+        
+        log<text_log>("Device handshake successful: " + idn_response);
+        
         // Configure measurement mode for measurement devices
         if (!m_isPowerSupply) {
             if (m_measurementMode == MeasurementMode::BUFFERED) {
@@ -718,8 +729,23 @@ int scpiCtrl::appLogic()
        if(now - m_lastPollTime >= m_pollInterval)
        {
           m_lastPollTime = now;
+          
+          // Periodic connection validation (every 10 polls)
+          static int poll_count = 0;
+          poll_count++;
+          if (poll_count >= 10) {
+              poll_count = 0;
+              std::string test_response;
+              if (!send_scpi("*IDN?\n", test_response)) {
+                  log<software_error>({__FILE__, __LINE__, "Device no longer responding - disconnecting"});
+                  devDisconnect();
+                  state(stateCodes::NOTCONNECTED);
+                  return 0;
+              }
+          }
+          
           int rv = updateOutletStates();
- 
+
           if(rv < 0) return log<software_error,-1>({__FILE__, __LINE__});
        }
  
@@ -949,6 +975,12 @@ int scpiCtrl::updateChannels()
 
 int scpiCtrl::updateChannel(int channel)
 {
+    // Check if device is properly connected before attempting to read
+    if (state() != stateCodes::READY && state() != stateCodes::CONNECTED) {
+        log<text_log>("updateChannel(" + std::to_string(channel) + ") called but device not ready (state: " + std::to_string(state()) + ")");
+        return -1;
+    }
+    
     // Debug logging
     log<text_log>("updateChannel(" + std::to_string(channel) + ") called - device type: " + 
                   std::string(m_isPowerSupply ? "PowerSupply" : "Measurement"));
@@ -1947,55 +1979,37 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
     // For SimpleLoop trigger, we read all available data
     std::string data_cmd = "TRAC:DATA? 1," + std::to_string(m_bufferSize) + ",'defbuffer1',READ,REL\n";
     std::string data_str;
+    log<text_log>("Sending buffer data command: " + data_cmd);
     if (!send_scpi(data_cmd, data_str)) {
         return log<text_log,-1>("Failed to read buffered data", logPrio::LOG_ERROR);
     }
+    log<text_log>("Received buffer data length: " + std::to_string(data_str.length()));
     
     // Parse the data - format is [value1, time1, value2, time2, ...]
     voltages.clear();
     timestamps.clear();
     
-    // Debug: log first 200 characters of data to understand format (only if parsing fails)
-    // std::string debug_data = data_str.substr(0, std::min(200, (int)data_str.length()));
-    // log<text_log>("Buffer data sample: " + debug_data);
+    // Debug: log first 200 characters of data to understand format
+    std::string debug_data = data_str.substr(0, std::min(200, (int)data_str.length()));
+    log<text_log>("Buffer data sample: " + debug_data);
     
-    // Don't remove all whitespace - just trim around commas
-    // Split by commas while preserving scientific notation
+    // Use a simpler approach: split by commas and handle each token
     std::vector<std::string> tokens;
-    std::string current_token;
-    bool in_scientific = false;
+    std::stringstream ss(data_str);
+    std::string token;
     
-    for (char c : data_str) {
-        if (c == ',' && !in_scientific) {
-            if (!current_token.empty()) {
-                // Trim whitespace from token
-                current_token.erase(0, current_token.find_first_not_of(" \t\r\n"));
-                current_token.erase(current_token.find_last_not_of(" \t\r\n") + 1);
-                tokens.push_back(current_token);
-                current_token.clear();
-            }
-        } else {
-            current_token += c;
-            // Track if we're in scientific notation (E+ or E-)
-            if (c == 'E' || c == 'e') {
-                in_scientific = true;
-            } else if (in_scientific && (c == '+' || c == '-' || isdigit(c))) {
-                // Still in scientific notation
-            } else if (in_scientific && !isdigit(c) && c != '+' && c != '-') {
-                // End of scientific notation
-                in_scientific = false;
-            }
+    while (std::getline(ss, token, ',')) {
+        // Trim whitespace from token
+        token.erase(0, token.find_first_not_of(" \t\r\n"));
+        token.erase(token.find_last_not_of(" \t\r\n") + 1);
+        
+        if (!token.empty()) {
+            tokens.push_back(token);
         }
     }
     
-    // Add the last token
-    if (!current_token.empty()) {
-        current_token.erase(0, current_token.find_first_not_of(" \t\r\n"));
-        current_token.erase(current_token.find_last_not_of(" \t\r\n") + 1);
-        tokens.push_back(current_token);
-    }
-    
     // Parse tokens to floats
+    log<text_log>("Parsed " + std::to_string(tokens.size()) + " tokens from buffer data");
     std::vector<float> all_data;
     for (const auto& token : tokens) {
         if (!token.empty()) {
