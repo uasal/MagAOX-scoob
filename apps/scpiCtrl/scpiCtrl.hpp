@@ -167,6 +167,7 @@ public:
     
     // Telemetry control
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_telemetryToggle);
+    INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_resetToggle);
     // Measurement configuration controls
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_samplingRateHz);
     INDI_NEWCALLBACK_DECL(scpiCtrl, m_indiP_bufferSize);
@@ -276,6 +277,15 @@ public:
     
     int updateChannel(int channel);
     
+    // Telemetry data collection using selected measurement mode
+    int collectTelemetryData(std::vector<float>& voltages, std::vector<double>& timestamps);
+    
+    // Device parameter readback functions
+    int readDeviceBufferSize();
+    int readDeviceSamplingRate();
+    int readDeviceMeasurementMode();
+    int readDeviceMeasurementFunction();
+    
     // Buffered acquisition methods
     int setupBufferedAcquisition();
     int startBufferAcquisition();
@@ -342,13 +352,16 @@ protected:
    pcf::IndiProperty m_indiP_outlet3curr;
    
    // Telemetry control
-   pcf::IndiProperty m_indiP_telemetryToggle;
+    pcf::IndiProperty m_indiP_telemetryToggle;
+    pcf::IndiProperty m_indiP_resetToggle;
    
    // Dynamic measurement configuration via INDI
    pcf::IndiProperty m_indiP_samplingRateHz;        ///< User-selectable sampling rate (Hz)
    pcf::IndiProperty m_indiP_bufferSize;            ///< User-selectable buffer size (samples)
+   pcf::IndiProperty m_indiP_bufferSizeCurrent;     ///< Current buffer size from device (read-only)
    pcf::IndiProperty m_indiP_measurementMode;       ///< User-selectable measurement mode
    pcf::IndiProperty m_indiP_measurementFunction;   ///< Voltage/current measurement toggle
+   pcf::IndiProperty m_indiP_measurementFunctionCurrent; ///< Current measurement function from device (read-only)
    pcf::IndiProperty m_indiP_currentConversionFactor; ///< V-to-A conversion factor
    
    // Power control toggles are handled by outletController framework
@@ -578,6 +591,17 @@ int scpiCtrl::appStartup()
     m_indiP_telemetryToggle.add(pcf::IndiElement("toggle"));
     m_indiP_telemetryToggle["toggle"].setSwitchState(m_telemetryEnabled ? pcf::IndiElement::On : pcf::IndiElement::Off);
     registerIndiPropertyNew(m_indiP_telemetryToggle, INDI_NEWCALLBACK(m_indiP_telemetryToggle));
+    
+    // Reset toggle
+    m_indiP_resetToggle = pcf::IndiProperty(pcf::IndiProperty::Switch);
+    m_indiP_resetToggle.setDevice(configName());
+    m_indiP_resetToggle.setName("reset");
+    m_indiP_resetToggle.setPerm(pcf::IndiProperty::WriteOnly);
+    m_indiP_resetToggle.setState(pcf::IndiProperty::Idle);
+    m_indiP_resetToggle.setRule(pcf::IndiProperty::AtMostOne);
+    m_indiP_resetToggle.add(pcf::IndiElement("reset"));
+    m_indiP_resetToggle["reset"].setSwitchState(pcf::IndiElement::Off);
+    registerIndiPropertyNew(m_indiP_resetToggle, INDI_NEWCALLBACK(m_indiP_resetToggle));
 
     // Measurement configuration via INDI
     m_indiP_samplingRateHz = pcf::IndiProperty(pcf::IndiProperty::Number);
@@ -594,9 +618,19 @@ int scpiCtrl::appStartup()
     m_indiP_bufferSize.setName("bufferSize");
     m_indiP_bufferSize.setPerm(pcf::IndiProperty::ReadWrite);
     m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
-    m_indiP_bufferSize.add(pcf::IndiElement("value"));
-    m_indiP_bufferSize["value"].set<int>(m_bufferSize);
+    m_indiP_bufferSize.add(pcf::IndiElement("target"));
+    m_indiP_bufferSize["target"].set<int>(m_bufferSize);
     registerIndiPropertyNew(m_indiP_bufferSize, INDI_NEWCALLBACK(m_indiP_bufferSize));
+    
+    // Current buffer size (read-only)
+    m_indiP_bufferSizeCurrent = pcf::IndiProperty(pcf::IndiProperty::Number);
+    m_indiP_bufferSizeCurrent.setDevice(configName());
+    m_indiP_bufferSizeCurrent.setName("bufferSizeCurrent");
+    m_indiP_bufferSizeCurrent.setPerm(pcf::IndiProperty::ReadOnly);
+    m_indiP_bufferSizeCurrent.setState(pcf::IndiProperty::Idle);
+    m_indiP_bufferSizeCurrent.add(pcf::IndiElement("current"));
+    m_indiP_bufferSizeCurrent["current"].set<int>(m_bufferSize);
+    registerIndiPropertyNew(m_indiP_bufferSizeCurrent, nullptr);
 
     m_indiP_measurementMode = pcf::IndiProperty(pcf::IndiProperty::Text);
     m_indiP_measurementMode.setDevice(configName());
@@ -613,10 +647,20 @@ int scpiCtrl::appStartup()
     m_indiP_measurementFunction.setName("measurementFunction");
     m_indiP_measurementFunction.setPerm(pcf::IndiProperty::ReadWrite);
     m_indiP_measurementFunction.setState(pcf::IndiProperty::Idle);
-    m_indiP_measurementFunction.add(pcf::IndiElement("value"));
+    m_indiP_measurementFunction.add(pcf::IndiElement("target"));
     std::string functionStrInit = (m_measurementFunction == MeasurementFunction::CURRENT ? "current" : "voltage");
-    m_indiP_measurementFunction["value"].set<std::string>(functionStrInit);
+    m_indiP_measurementFunction["target"].set<std::string>(functionStrInit);
     registerIndiPropertyNew(m_indiP_measurementFunction, INDI_NEWCALLBACK(m_indiP_measurementFunction));
+    
+    // Current measurement function (read-only)
+    m_indiP_measurementFunctionCurrent = pcf::IndiProperty(pcf::IndiProperty::Text);
+    m_indiP_measurementFunctionCurrent.setDevice(configName());
+    m_indiP_measurementFunctionCurrent.setName("measurementFunctionCurrent");
+    m_indiP_measurementFunctionCurrent.setPerm(pcf::IndiProperty::ReadOnly);
+    m_indiP_measurementFunctionCurrent.setState(pcf::IndiProperty::Idle);
+    m_indiP_measurementFunctionCurrent.add(pcf::IndiElement("current"));
+    m_indiP_measurementFunctionCurrent["current"].set<std::string>(functionStrInit);
+    registerIndiPropertyNew(m_indiP_measurementFunctionCurrent, nullptr);
 
     m_indiP_currentConversionFactor = pcf::IndiProperty(pcf::IndiProperty::Number);
     m_indiP_currentConversionFactor.setDevice(configName());
@@ -740,7 +784,7 @@ int scpiCtrl::appLogic()
        {
           m_lastPollTime = now;
           
-          // Periodic connection validation (every 10 polls)
+          // Periodic connection validation and parameter checking (every 10 polls)
           static int poll_count = 0;
           poll_count++;
           if (poll_count >= 10) {
@@ -751,6 +795,12 @@ int scpiCtrl::appLogic()
                   devDisconnect();
                   state(stateCodes::NOTCONNECTED);
                   return 0;
+              }
+              
+              // Check for external changes to device parameters
+              if (!m_isPowerSupply) {
+                  readDeviceBufferSize();
+                  readDeviceMeasurementFunction();
               }
           }
           
@@ -1020,42 +1070,13 @@ int scpiCtrl::updateChannel(int channel)
         ok_v = send_scpi("MEAS:VOLT?\n", volt);
         ok_c = send_scpi("MEAS:CURR?\n", curr);
     } else {
-        // Measurement device (DMM, etc.) - handle different measurement modes
-        if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
-            // For buffered/digitized modes, get data from buffer
-            std::vector<float> voltages;
-            std::vector<double> timestamps;
-            
-            if (m_measurementMode == MeasurementMode::BUFFERED) {
-                if (getBufferedData(voltages, timestamps) == 0 && !voltages.empty()) {
-                    // Use the most recent value for real-time display
-                    float latestVoltage = voltages.back();
-                    volt = std::to_string(latestVoltage);
-                    ok_v = true;
-                    log<text_log>("Buffered mode: got " + std::to_string(voltages.size()) + " samples, latest: " + std::to_string(latestVoltage) + "V");
-                }
-            } else {
-                if (getDigitizedData(voltages, timestamps) == 0 && !voltages.empty()) {
-                    // Use the most recent value for real-time display
-                    float latestVoltage = voltages.back();
-                    volt = std::to_string(latestVoltage);
-                    ok_v = true;
-                    log<text_log>("Digitized mode: got " + std::to_string(voltages.size()) + " samples, latest: " + std::to_string(latestVoltage) + "V");
-                }
-            }
-            
-            // For buffered/digitized modes, current will be calculated from voltage using conversion factor
-            // The actual current calculation happens in the voltage processing section below
-            curr = "0.0";
-            ok_c = true;
-        } else {
-            // Polling mode - use single READ? queries
-            ok_v = send_scpi("READ?\n", volt);  // Keithley DMMs typically use READ? for measurements
-            // For measurement devices, current will be calculated from voltage using conversion factor
-            // The actual current calculation happens in the voltage processing section below
-            curr = "0.0";
-            ok_c = true;
-        }
+        // Measurement device (DMM, etc.) - always use simple READ? for INDI display
+        // Measurement modes (polling/buffered/digitized) only apply to telemetry recording, not real-time display
+        ok_v = send_scpi("READ?\n", volt);  // Keithley DMMs typically use READ? for measurements
+        // For measurement devices, current will be calculated from voltage using conversion factor
+        // The actual current calculation happens in the voltage processing section below
+        curr = "0.0";
+        ok_c = true;
     }
 
     if (ok_v) {
@@ -1108,6 +1129,151 @@ int scpiCtrl::updateChannel(int channel)
     // For measurement devices, current is already calculated from voltage above, so no action needed
 
     log<text_log>("updateChannel(" + std::to_string(channel) + ") completed successfully");
+    return 0;
+}
+
+int scpiCtrl::collectTelemetryData(std::vector<float>& voltages, std::vector<double>& timestamps)
+{
+    // This function collects data for telemetry logging using the selected measurement mode
+    // It's separate from updateChannel() which is used for real-time INDI display
+    
+    if (m_isPowerSupply) {
+        // For power supplies, use simple polling for telemetry too
+        std::string volt_str;
+        if (send_scpi("MEAS:VOLT?\n", volt_str)) {
+            try {
+                float voltage = std::stof(volt_str);
+                voltages.push_back(voltage);
+                timestamps.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+            } catch (...) {
+                log<software_error>({__FILE__, __LINE__, "Failed to parse voltage for telemetry: " + volt_str});
+                return -1;
+            }
+        } else {
+            log<software_error>({__FILE__, __LINE__, "Failed to read voltage for telemetry"});
+            return -1;
+        }
+    } else {
+        // For measurement devices, use the selected measurement mode
+        if (m_measurementMode == MeasurementMode::BUFFERED) {
+            return getBufferedData(voltages, timestamps);
+        } else if (m_measurementMode == MeasurementMode::DIGITIZED) {
+            return getDigitizedData(voltages, timestamps);
+        } else {
+            // Polling mode - single measurement
+            std::string volt_str;
+            if (send_scpi("READ?\n", volt_str)) {
+                try {
+                    float voltage = std::stof(volt_str);
+                    voltages.push_back(voltage);
+                    timestamps.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+                } catch (...) {
+                    log<software_error>({__FILE__, __LINE__, "Failed to parse voltage for telemetry: " + volt_str});
+                    return -1;
+                }
+            } else {
+                log<software_error>({__FILE__, __LINE__, "Failed to read voltage for telemetry"});
+                return -1;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+int scpiCtrl::readDeviceBufferSize()
+{
+    if (m_isPowerSupply) {
+        // Power supplies don't have buffer size
+        return 0;
+    }
+    
+    std::string res;
+    if (!send_scpi("TRAC:POIN?\n", res)) {
+        log<software_error>({__FILE__, __LINE__, "Failed to read buffer size from device"});
+        return -1;
+    }
+    
+    try {
+        int deviceBufferSize = std::stoi(res);
+        if (deviceBufferSize != m_bufferSize) {
+            log<text_log>("Device buffer size changed from " + std::to_string(m_bufferSize) + 
+                         " to " + std::to_string(deviceBufferSize) + " (external change detected)");
+            m_bufferSize = deviceBufferSize;
+            
+            // Update INDI properties
+            updateIfChanged(m_indiP_bufferSize, "target", m_bufferSize);
+            updateIfChanged(m_indiP_bufferSizeCurrent, "current", m_bufferSize);
+        }
+    } catch (...) {
+        log<software_error>({__FILE__, __LINE__, "Failed to parse buffer size from device: " + res});
+        return -1;
+    }
+    
+    return 0;
+}
+
+int scpiCtrl::readDeviceSamplingRate()
+{
+    // For now, we can't directly read sampling rate from device
+    // This would require reading NPLC and calculating the rate
+    // For now, just return 0 (no change detected)
+    return 0;
+}
+
+int scpiCtrl::readDeviceMeasurementMode()
+{
+    // For now, we can't directly read measurement mode from device
+    // This would require checking various device settings
+    // For now, just return 0 (no change detected)
+    return 0;
+}
+
+int scpiCtrl::readDeviceMeasurementFunction()
+{
+    if (m_isPowerSupply) {
+        // Power supplies don't have measurement function
+        return 0;
+    }
+    
+    std::string res;
+    if (!send_scpi("SENS:FUNC?\n", res)) {
+        log<software_error>({__FILE__, __LINE__, "Failed to read measurement function from device"});
+        return -1;
+    }
+    
+    // Parse the response - typically returns something like "VOLT" or "CURR"
+    std::string deviceFunction = res;
+    // Remove quotes and whitespace
+    deviceFunction.erase(std::remove(deviceFunction.begin(), deviceFunction.end(), '"'), deviceFunction.end());
+    deviceFunction.erase(0, deviceFunction.find_first_not_of(" \t\r\n"));
+    deviceFunction.erase(deviceFunction.find_last_not_of(" \t\r\n") + 1);
+    
+    // Convert to our enum
+    MeasurementFunction deviceMeasurementFunction;
+    if (deviceFunction == "VOLT" || deviceFunction == "VOLTAGE") {
+        deviceMeasurementFunction = MeasurementFunction::VOLTAGE;
+    } else if (deviceFunction == "CURR" || deviceFunction == "CURRENT") {
+        deviceMeasurementFunction = MeasurementFunction::CURRENT;
+    } else {
+        log<software_error>({__FILE__, __LINE__, "Unknown measurement function from device: " + deviceFunction});
+        return -1;
+    }
+    
+    if (deviceMeasurementFunction != m_measurementFunction) {
+        std::string oldStr = (m_measurementFunction == MeasurementFunction::CURRENT ? "current" : "voltage");
+        std::string newStr = (deviceMeasurementFunction == MeasurementFunction::CURRENT ? "current" : "voltage");
+        log<text_log>("Device measurement function changed from " + oldStr + 
+                     " to " + newStr + " (external change detected)");
+        m_measurementFunction = deviceMeasurementFunction;
+        
+        // Update INDI properties
+        updateIfChanged(m_indiP_measurementFunction, "target", newStr);
+        updateIfChanged(m_indiP_measurementFunctionCurrent, "current", newStr);
+    }
+    
     return 0;
 }
 
@@ -1471,6 +1637,38 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet3curr)(const pcf::IndiProperty &ip
    return 0;
 }
 
+INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_resetToggle)(const pcf::IndiProperty &ipRecv)
+{
+    if (ipRecv.getName() != m_indiP_resetToggle.getName())
+    {
+        return log<software_error>({__FILE__, __LINE__, "Unexpected INDI property name: " + ipRecv.getName()});
+    }
+    
+    // Check if reset was toggled on
+    if (ipRecv["reset"].getSwitchState() == pcf::IndiElement::On)
+    {
+        log<text_log>("Reset toggle activated - sending *RST command");
+        
+        // Send reset command
+        std::string res;
+        if (send_scpi("*RST\n", res)) {
+            log<text_log>("Device reset successful");
+            
+            // Reconfigure device based on current settings
+            if (m_measurementMode == MeasurementMode::BUFFERED) {
+                setupBufferedAcquisition();
+            }
+        } else {
+            log<software_error>({__FILE__, __LINE__, "Failed to reset device"});
+        }
+        
+        // Reset the toggle back to off
+        updateSwitchIfChanged(m_indiP_resetToggle, "reset", pcf::IndiElement::Off);
+    }
+    
+    return 0;
+}
+
 INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty &ipRecv)
 {
    if (ipRecv.getName() != m_indiP_telemetryToggle.getName())
@@ -1554,15 +1752,39 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_samplingRateHz)(const pcf::IndiProperty 
 INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipRecv)
 {
     if (ipRecv.getName() != m_indiP_bufferSize.getName()) return -1;
-    if (!ipRecv.find("value")) return -1;
-    int newSize = ipRecv["value"].get<int>();
-    if (newSize <= 0) return -1;
+    if (!ipRecv.find("target")) return -1;
+    int targetSize = ipRecv["target"].get<int>();
+    if (targetSize <= 0) return -1;
+    
     std::unique_lock<std::mutex> lock(m_indiMutex);
-    m_bufferSize = newSize;
-    updateIfChanged(m_indiP_bufferSize, "value", m_bufferSize);
-    if (state() == stateCodes::READY && !m_isPowerSupply && m_measurementMode == MeasurementMode::BUFFERED) {
-        setupBufferedAcquisition();
+    
+    // Apply the change to the device
+    if (!m_isPowerSupply && state() == stateCodes::READY) {
+        std::string res;
+        std::string cmd = "TRAC:POIN " + std::to_string(targetSize) + ",'defbuffer1'\n";
+        if (send_scpi(cmd, res)) {
+            m_bufferSize = targetSize;
+            log<text_log>("Buffer size set to " + std::to_string(targetSize) + " samples");
+            
+            // Update both target and current values
+            updateIfChanged(m_indiP_bufferSize, "target", m_bufferSize);
+            updateIfChanged(m_indiP_bufferSizeCurrent, "current", m_bufferSize);
+            
+            // Reconfigure buffered acquisition if active
+            if (m_measurementMode == MeasurementMode::BUFFERED) {
+                setupBufferedAcquisition();
+            }
+        } else {
+            log<software_error>({__FILE__, __LINE__, "Failed to set buffer size on device"});
+            // Read back current value from device
+            readDeviceBufferSize();
+        }
+    } else {
+        // Just update the target value (will be applied when device is ready)
+        m_bufferSize = targetSize;
+        updateIfChanged(m_indiP_bufferSize, "target", m_bufferSize);
     }
+    
     return 0;
 }
 
@@ -1592,13 +1814,47 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_measurementMode)(const pcf::IndiProperty
 INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_measurementFunction)(const pcf::IndiProperty &ipRecv)
 {
     if (ipRecv.getName() != m_indiP_measurementFunction.getName()) return -1;
-    if (!ipRecv.find("value")) return -1;
-    std::string function = ipRecv["value"].get<std::string>();
+    if (!ipRecv.find("target")) return -1;
+    std::string targetFunction = ipRecv["target"].get<std::string>();
+    
     std::unique_lock<std::mutex> lock(m_indiMutex);
-    if (function == "current") m_measurementFunction = MeasurementFunction::CURRENT;
-    else m_measurementFunction = MeasurementFunction::VOLTAGE;
-    updateIfChanged(m_indiP_measurementFunction, "value", function);
-    log<text_log>("Measurement function changed to: " + function);
+    
+    // Apply the change to the device
+    if (!m_isPowerSupply && state() == stateCodes::READY) {
+        std::string res;
+        std::string cmd;
+        if (targetFunction == "current") {
+            cmd = "SENS:FUNC 'CURR'\n";
+        } else {
+            cmd = "SENS:FUNC 'VOLT'\n";
+        }
+        
+        if (send_scpi(cmd, res)) {
+            if (targetFunction == "current") {
+                m_measurementFunction = MeasurementFunction::CURRENT;
+            } else {
+                m_measurementFunction = MeasurementFunction::VOLTAGE;
+            }
+            log<text_log>("Measurement function set to: " + targetFunction);
+            
+            // Update both target and current values
+            updateIfChanged(m_indiP_measurementFunction, "target", targetFunction);
+            updateIfChanged(m_indiP_measurementFunctionCurrent, "current", targetFunction);
+        } else {
+            log<software_error>({__FILE__, __LINE__, "Failed to set measurement function on device"});
+            // Read back current value from device
+            readDeviceMeasurementFunction();
+        }
+    } else {
+        // Just update the target value (will be applied when device is ready)
+        if (targetFunction == "current") {
+            m_measurementFunction = MeasurementFunction::CURRENT;
+        } else {
+            m_measurementFunction = MeasurementFunction::VOLTAGE;
+        }
+        updateIfChanged(m_indiP_measurementFunction, "target", targetFunction);
+    }
+    
     return 0;
 }
 
@@ -2004,13 +2260,37 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
 {
     std::string res;
     
-    // Read data from buffer with timestamps (like Python getDataSet)
-    // For SimpleLoop trigger, we read all available data
-    std::string data_cmd = "TRAC:DATA? 1," + std::to_string(m_bufferSize) + ",'defbuffer1',READ,REL\n";
+    // First check how many samples are actually available
+    std::string count_cmd = "TRAC:ACT?\n";
+    std::string count_res;
+    if (!send_scpi(count_cmd, count_res)) {
+        log<software_error>({__FILE__, __LINE__, "Failed to check buffer status"});
+        return -1;
+    }
+    
+    int available_samples = 0;
+    try {
+        available_samples = std::stoi(count_res);
+    } catch (...) {
+        log<software_error>({__FILE__, __LINE__, "Failed to parse buffer count: " + count_res});
+        return -1;
+    }
+    
+    log<text_log>("Buffer has " + std::to_string(available_samples) + " samples available");
+    
+    if (available_samples == 0) {
+        log<text_log>("No samples available in buffer");
+        return 0;
+    }
+    
+    // Read data from buffer - only read what's available
+    int samples_to_read = std::min(available_samples, m_bufferSize);
+    std::string data_cmd = "TRAC:DATA? 1," + std::to_string(samples_to_read) + ",'defbuffer1',READ,REL\n";
     std::string data_str;
     log<text_log>("Sending buffer data command: " + data_cmd);
     if (!send_scpi(data_cmd, data_str)) {
-        return log<text_log,-1>("Failed to read buffered data", logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, "Failed to read buffered data - device may be unresponsive"});
+        return -1;
     }
     log<text_log>("Received buffer data length: " + std::to_string(data_str.length()));
     
@@ -2073,13 +2353,26 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
         }
     }
     
-    // Split into voltages and timestamps (data[2*i] = voltage, data[2*i+1] = time)
-    // Convert timestamps from seconds to nanoseconds for precision
-    for (size_t i = 0; i < all_data.size(); i += 2) {
-        if (i + 1 < all_data.size()) {
+    // The data format from TRAC:DATA? with READ,REL is [value1, time1, value2, time2, ...]
+    // But we need to check if we actually have pairs or just values
+    if (all_data.size() % 2 == 0) {
+        // We have pairs: [value1, time1, value2, time2, ...]
+        for (size_t i = 0; i < all_data.size(); i += 2) {
+            if (i + 1 < all_data.size()) {
+                voltages.push_back(all_data[i]);
+                // Convert seconds to nanoseconds (multiply by 1e9)
+                timestamps.push_back(static_cast<double>(all_data[i + 1]) * 1e9);
+            }
+        }
+    } else {
+        // We only have values, no timestamps - create dummy timestamps
+        for (size_t i = 0; i < all_data.size(); i++) {
             voltages.push_back(all_data[i]);
-            // Convert seconds to nanoseconds (multiply by 1e9)
-            timestamps.push_back(static_cast<double>(all_data[i + 1]) * 1e9);
+            // Create dummy timestamp (current time + i * sample interval)
+            double dummy_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch()).count() + 
+                i * (1.0 / m_sampleRateHz) * 1e9;
+            timestamps.push_back(dummy_time);
         }
     }
     
