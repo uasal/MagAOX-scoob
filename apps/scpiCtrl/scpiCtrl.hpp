@@ -1428,21 +1428,27 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty
    m_telemetryEnabled = enable;
    
    if(m_telemetryEnabled) {
-       startTelemetryLogging();
        // Start acquisition depending on mode
        if (!m_isPowerSupply) {
            if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
-               // Reset/resize buffer and start
+               // For buffered/digitized modes, only use buffer data logging (not regular telemetry)
                if (startBufferAcquisition() < 0) {
                    log<software_error>({__FILE__, __LINE__, "Failed to start buffer acquisition"});
                } else {
                    log<text_log>("Started buffer acquisition for " + std::string(m_measurementMode == MeasurementMode::BUFFERED ? "buffered" : "digitized") + " mode");
                }
            } else {
-               // POLLING: just enable the polling thread to write telemetry every tick
+               // POLLING: use regular telemetry logging
+               startTelemetryLogging();
                if (!m_polling.load()) startPollThread();
            }
+       } else {
+           // Power supply: use regular telemetry logging
+           startTelemetryLogging();
        }
+       
+       // Always start polling thread to keep INDI properties updated
+       if (!m_polling.load()) startPollThread();
    } else {
        // Stop acquisition and save data
         if (!m_isPowerSupply) {
@@ -1453,12 +1459,13 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty
                     log<text_log>("Stopped buffer acquisition and saved data");
                 }
             }
-            if (m_measurementMode == MeasurementMode::POLLING && m_polling.load()) {
-                stopPollThread();
-            }
+            // Don't stop polling thread - we need it to keep INDI properties updated
         }
        
-       stopTelemetryLogging();
+       // Only stop telemetry logging if it was started (for polling mode or power supplies)
+       if (m_measurementMode == MeasurementMode::POLLING || m_isPowerSupply) {
+           stopTelemetryLogging();
+       }
    }
 
    // Reflect new state back to INDI so GUI shows it
@@ -1837,13 +1844,30 @@ inline int scpiCtrl::checkBufferStatus()
         try {
             int count = std::stoi(act);
             if (count >= m_bufferSize) {
-                log<text_log>("Buffer full (" + std::to_string(count) + "/" + std::to_string(m_bufferSize) + ") - stopping acquisition");
-                int rv = stopBufferAcquisition();
-                // Auto-toggle telemetry OFF
-                m_telemetryEnabled = false;
-                updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
-                stopTelemetryLogging();
-                return rv;
+                // Wait a bit more to ensure buffer is completely full
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                
+                // Check again to make sure we have the full buffer
+                std::string act2;
+                if (send_scpi("TRAC:ACT? 'defbuffer1'\n", act2)) {
+                    try {
+                        int count2 = std::stoi(act2);
+                        log<text_log>("Buffer full (" + std::to_string(count2) + "/" + std::to_string(m_bufferSize) + ") - stopping acquisition");
+                        int rv = stopBufferAcquisition();
+                        // Auto-toggle telemetry OFF
+                        m_telemetryEnabled = false;
+                        updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
+                        // Don't stop telemetry logging here - it's not started for buffered mode
+                        return rv;
+                    } catch(...) {
+                        // If second check fails, proceed with first count
+                        log<text_log>("Buffer full (" + std::to_string(count) + "/" + std::to_string(m_bufferSize) + ") - stopping acquisition");
+                        int rv = stopBufferAcquisition();
+                        m_telemetryEnabled = false;
+                        updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
+                        return rv;
+                    }
+                }
             }
         } catch(...) {}
     }
@@ -1931,23 +1955,77 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
     voltages.clear();
     timestamps.clear();
     
-    // Remove whitespace and split by commas
-    data_str.erase(std::remove_if(data_str.begin(), data_str.end(), ::isspace), data_str.end());
+    // Debug: log first 200 characters of data to understand format (only if parsing fails)
+    // std::string debug_data = data_str.substr(0, std::min(200, (int)data_str.length()));
+    // log<text_log>("Buffer data sample: " + debug_data);
     
-    std::stringstream ss(data_str);
-    std::string token;
+    // Don't remove all whitespace - just trim around commas
+    // Split by commas while preserving scientific notation
+    std::vector<std::string> tokens;
+    std::string current_token;
+    bool in_scientific = false;
+    
+    for (char c : data_str) {
+        if (c == ',' && !in_scientific) {
+            if (!current_token.empty()) {
+                // Trim whitespace from token
+                current_token.erase(0, current_token.find_first_not_of(" \t\r\n"));
+                current_token.erase(current_token.find_last_not_of(" \t\r\n") + 1);
+                tokens.push_back(current_token);
+                current_token.clear();
+            }
+        } else {
+            current_token += c;
+            // Track if we're in scientific notation (E+ or E-)
+            if (c == 'E' || c == 'e') {
+                in_scientific = true;
+            } else if (in_scientific && (c == '+' || c == '-' || isdigit(c))) {
+                // Still in scientific notation
+            } else if (in_scientific && !isdigit(c) && c != '+' && c != '-') {
+                // End of scientific notation
+                in_scientific = false;
+            }
+        }
+    }
+    
+    // Add the last token
+    if (!current_token.empty()) {
+        current_token.erase(0, current_token.find_first_not_of(" \t\r\n"));
+        current_token.erase(current_token.find_last_not_of(" \t\r\n") + 1);
+        tokens.push_back(current_token);
+    }
+    
+    // Parse tokens to floats
     std::vector<float> all_data;
-    
-    while (std::getline(ss, token, ',')) {
-        // Trim whitespace from token
-        token.erase(0, token.find_first_not_of(" \t\r\n"));
-        token.erase(token.find_last_not_of(" \t\r\n") + 1);
-        
+    for (const auto& token : tokens) {
         if (!token.empty()) {
             try {
                 all_data.push_back(std::stof(token));
             } catch (...) {
-                log<software_error>({__FILE__, __LINE__, "Failed to parse data token: '" + token + "'"});
+                // Try to handle common parsing issues
+                std::string clean_token = token;
+                
+                // Remove any remaining whitespace
+                clean_token.erase(std::remove_if(clean_token.begin(), clean_token.end(), ::isspace), clean_token.end());
+                
+                // Try parsing again
+                try {
+                    all_data.push_back(std::stof(clean_token));
+                } catch (...) {
+                    // If still failing, try to handle scientific notation manually
+                    if (clean_token.find('E') != std::string::npos || clean_token.find('e') != std::string::npos) {
+                        try {
+                            // Convert to lowercase for consistent parsing
+                            std::string lower_token = clean_token;
+                            std::transform(lower_token.begin(), lower_token.end(), lower_token.begin(), ::tolower);
+                            all_data.push_back(std::stof(lower_token));
+                        } catch (...) {
+                            log<software_error>({__FILE__, __LINE__, "Failed to parse scientific notation token: '" + token + "' (cleaned: '" + clean_token + "')"});
+                        }
+                    } else {
+                        log<software_error>({__FILE__, __LINE__, "Failed to parse data token: '" + token + "' (cleaned: '" + clean_token + "')"});
+                    }
+                }
             }
         }
     }
