@@ -7,16 +7,13 @@
 #define logger_logFileRaw_hpp
 
 #include <iostream>
-#include <string>
-#include <filesystem>
-//#include <cstring>
 
+#include <mx/ioutils/fileUtils.hpp>
 #include <mx/ioutils/stringUtils.hpp>
 
 #include <flatlogs/flatlogs.hpp>
 
 #include "../file/fileTimes.hpp"
-
 
 namespace MagAOX
 {
@@ -35,7 +32,7 @@ namespace logger
  * The timestamp in the file name is from the first entry of the file.
  *
  */
-template<class verboseT=XWC_DEFAULT_VERBOSITY>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 class logFileRaw
 {
 
@@ -343,54 +340,45 @@ mx::error_t logFileRaw<verboseT>::createFile( flatlogs::timespecX &ts )
 
     try
     {
-        file::fileTimeRelPath( fileName, relPath, m_logName, m_logExt, ts.time_s, ts.time_ns );
+        mx::error_t errc = file::fileTimeRelPath( fileName, relPath, m_logName, m_logExt, ts.time_s, ts.time_ns );
+
+        if( !!errc )
+        {
+            return mx::error_report<verboseT>( errc );
+        }
     }
     catch( ... )
     {
-        std::throw_with_nested( xwcException( "logFileRaw<verboseT>::createFile: Error from fileTimePath" ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::exception));
     }
 
     std::string fullPath = m_logPath + '/' + relPath + '/';
 
     // Create directory
-    try
+    mx::error_t errc = mx::ioutils::createDirectories( fullPath );
+
+    if( !!errc )
     {
-        std::filesystem::create_directories( fullPath ); // this does nothing if fname already exists
-    }
-    catch( ... )
-    {
-        std::throw_with_nested(
-            xwcException( "logFileRaw<verboseT>::createFile: filesystem_error from std::create_directories" ) );
+        return mx::error_report<verboseT>( errc, "creating directory" );
     }
 
     fullPath += fileName;
 
-    // Check if file exists
-    try
+    if( mx::ioutils::exists( fullPath, errc ) )
     {
-        // This will be true only if another instance with same name (essentially impossible) tries
-        // at same ns, which is pathological
-        if( std::filesystem::exists( fullPath ) )
-        {
-            return mx::error_report<verboseT>( mx::error_t::eexist, "file " + fullPath + " exists" );
-        }
+        return mx::error_report<verboseT>( mx::error_t::eexist, "file " + fullPath + " exists" );
     }
-    catch( const std::filesystem::filesystem_error &e )
+
+    if( !!errc )
     {
-        return mx::error_report<verboseT>( mx::error_t::std_filesystem_error,
-                                           std::string( "from std::filesystem::exists " ) + e.what() );
-    }
-    catch( const std::exception &e )
-    {
-        return mx::error_report<verboseT>( mx::error_t::std_exception,
-                                           std::string( "from std::filesystem::exists " ) + e.what() );
+        return mx::error_report<verboseT>( errc, "checking directory" );
     }
 
     // Close current file if it's open
-    if( close() != mx::error_t::noerror )
+    errc = close();
+    if( errc != mx::error_t::noerror )
     {
-        std::cerr << "logFileRaw<verboseT>::createFile: Error from close, attempting to continue. At: ";
-        std::cerr << __FILE__ << " " << __LINE__ << '\n';
+        mx::error_report<verboseT>( errc, "Error from close, attempting to continue");
     }
 
     errno = 0;

@@ -1,17 +1,23 @@
+
 ../libMagAOX/app/tests/indiUtils_test
 ../libMagAOX/app/tests/MagAOXApp_test
+../libMagAOX/app/tests/MagAOXAppExecute_test
 ../libMagAOX/app/tests/stateCodes_test
+../libMagAOX/app/tests/semUtils_test
 ../libMagAOX/app/dev/tests/outletController_test
+../libMagAOX/app/dev/tests/dev_test
+
 ../libMagAOX/file/tests/fileTimes_test
-../libMagAOX/file/tests/fileTimes_errors_test
-../libMagAOX/file/tests/fileTimes_relPath_errors_test
 ../libMagAOX/file/tests/stdFileName_test
 ../libMagAOX/file/tests/stdSubDir_test
+
 ../libMagAOX/logger/tests/logFileRaw_test
 ../libMagAOX/logger/tests/logFileRaw_fileTime_error_test
 ../libMagAOX/logger/tests/logMap_test
 ../libMagAOX/logger/tests/logTypes_Accessor_test
+
 ../libMagAOX/sys/tests/thSetuid_test
+
 ../libMagAOX/tty/tests/ttyIOUtils_test
 
 ../apps/adcTracker/tests/adcTracker_test
@@ -79,12 +85,7 @@
 
 ../INDI/tests/INDI_test
 
-../libMagAOX/app/tests/indiUtils_test
-../libMagAOX/app/tests/MagAOXApp_test
-../libMagAOX/app/tests/semUtils_test
-../libMagAOX/app/tests/stateCodes_test
-../libMagAOX/app/dev/tests/dev_test
-../libMagAOX/app/dev/tests/outletController_test
+
 ../libMagAOX/common/tests/common_test
 ../libMagAOX/ImageStreamIO/tests/ImageStreamIO_test
 ../libMagAOX/modbus/tests/modbus_test

@@ -37,10 +37,10 @@ namespace XWCTEST_NAMESPACE
  * \returns mx::error_t::format_error if std::format throws and exception
  * \returns mx::error_t::std_exception if any other exception other than bad_alloc is caught
  *
- * \returns throws nested xwcException if std::bad_alloc is caught from std::format
+ * \returns throws nested mx::exception if std::bad_alloc is caught from std::format
  *
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        const tm    &uttime, /**< [in] the broken down time*/
                        long         ts_nsec /**< [in] the nanosecond*/
@@ -78,7 +78,7 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "bad_alloc from std::format", -12 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::std_bad_alloc, "from std::format") );
     }
     catch( const std::format_error &e )
     {
@@ -107,11 +107,11 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns mx::error_t::std_exception if any other exception other than bad_alloc is caught in \ref
  * timestamp(std::string &, const tm&, long) "timestamp"
  *
- * \returns throws nested xwcException if an exception is caught from \ref timestamp(std::string &, const tm&, long)
+ * \returns throws nested mx::exception if an exception is caught from \ref timestamp(std::string &, const tm&, long)
  * "timestamp" , which means std::bad_alloc was thrown
  *
  */
-template <typename verboseT = mx::verbose::vvv>
+template <typename verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        tm          &uttime, /**< [out] the broken down time*/
                        time_t       ts_sec, /**< [in] the unix time second*/
@@ -144,9 +144,9 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
     {
         mx_error_return( timestamp<verboseT>( tstamp, uttime, ts_nsec ) );
     }
-    catch( const std::exception &e )
+    catch( ... )
     {
-        std::throw_with_nested( xwcException( "exception from timestamp", -5 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::exception) );
     }
 }
 
@@ -164,11 +164,11 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns mx::error_t::std_exception if an exception other than bad_alloc is caught in \ref timestamp(std::string &,
  * const tm&, long) "timestamp"
  *
- * \returns throws nested xwcException if an exception is caught from \ref timestamp(std::string &, const tm&, long)
+ * \returns throws nested mx::exception if an exception is caught from \ref timestamp(std::string &, const tm&, long)
  * "timestamp" , which means std::bad_alloc was thrown
  *
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
                        time_t       ts_sec, /**< [in] the unix time second*/
                        long         ts_nsec /**< [in] the nanosecond*/
@@ -181,9 +181,9 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
     {
         mx_error_return( timestamp<verboseT>( tstamp, uttime, ts_sec, ts_nsec ) );
     }
-    catch( const std::exception &e )
+    catch( ... )
     {
-        std::throw_with_nested( xwcException( "exception from timestamp", -5 ) );
+        std::throw_with_nested( mx::exception<verboseT>( mx::error_t::exception));
     }
 }
 
@@ -205,13 +205,18 @@ mx::error_t timestamp( std::string &tstamp, /**< [out] the timestamp string*/
  * \returns -5 if snprintf does not write enough characters to relPath
  *
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
                              std::string &relPath, /**< [out] */
                              time_t       ts_sec,  /**< [in] the unix time second*/
                              long         ts_nsec  /**< [in] the nanosecond*/
 )
 {
+    if(ts_sec == 0 && ts_nsec == 0)
+    {
+        return mx::error_report<verboseT>( mx::error_t::invalidarg, "all 0 time");
+    }
+
     tm uttime;
     memset( &uttime, 0, sizeof( uttime ) );
 
@@ -235,19 +240,19 @@ mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
         #endif
         // clang-format on
 
-        mx_error_check( timestamp( tstamp, uttime, ts_sec, ts_nsec ) );
+        mx_error_check( timestamp<verboseT>( tstamp, uttime, ts_sec, ts_nsec ) );
 
         relPath = std::format( "{:04}_{:02}_{:02}", uttime.tm_year + 1900, uttime.tm_mon + 1, uttime.tm_mday );
 
         return mx::error_t::noerror;
     }
-    catch( const xwcException &e ) // This is from previous bad_alloc
-    {
-        std::throw_with_nested( xwcException( "getting relPath", -5 ) );
-    }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "getting relPath", -6 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::std_bad_alloc, "getting relPath") );
+    }
+    catch( const mx::exception<verboseT> & e ) // This is from previous bad_alloc
+    {
+        std::throw_with_nested( mx::exception<verboseT>(e.code(), "getting relPath") );
     }
     catch( const std::format_error &e )
     {
@@ -258,6 +263,7 @@ mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
     {
         return mx::error_report<verboseT>( mx::error_t::std_exception, e.what() );
     }
+
 }
 
 /// Construct the filename and full relative path based on a time and a device name and extension
@@ -272,15 +278,12 @@ mx::error_t fileTimeRelPath( std::string &tstamp,  /**< [out] */
  *
  * \overload
  *
- * \returns 0 on success
- * \returns -1 if gmtime_r returns an error (from \ref timestamp)
- * \returns -2 if snprintf returns an error writing tstamp (from \ref timestamp)
- * \returns -3 if snprintf does not write enough characters to tstamp (from \ref timestamp)
- * \returns -4 if snprintf returns an error writing relPath
- * \returns -5 if snprintf does not write enough characters to relPath
- *
+ * \returns mx::error_t::noerror on success
+ * \returns errors from fileTimeRelPath(std::string&,std::string&, time_t, long)
+ * \returns mx::error_t::std_exception if an exception other than std::bad_alloc is caught
+ * \throws nested mx::excpetion if std::bad_alloc is thrown
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulting file name*/
                              std::string       &relPath,  /**< [out] the resulting relative path*/
                              const std::string &devName,  /**< [in] the device name part of the path.  No '/'. */
@@ -295,9 +298,9 @@ mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
     {
         mx_error_check( fileTimeRelPath<verboseT>( tstamp, tmprelpath, ts_sec, ts_nsec ) );
     }
-    catch( const xwcException &e ) // This is from previous bad_alloc
+    catch( ... ) // This is from previous bad_alloc
     {
-        std::throw_with_nested( xwcException( "from fileTimeRelPath", -5 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::exception));
     }
 
     try
@@ -321,12 +324,12 @@ mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "std::string error assembling paths", -6 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::std_bad_alloc, "std::string assembling paths" ) );
     }
     catch( const std::exception &e )
     {
         return mx::error_report<verboseT>( mx::error_t::std_exception,
-                                           std::string( "std::string error assembling paths" ) + e.what() );
+                                           std::string( "std::string assembling paths" ) + e.what() );
     }
 }
 
@@ -342,10 +345,10 @@ mx::error_t fileTimeRelPath( std::string       &fileName, /**< [out] the resulti
  * \returns mx::error_t::std_out_of_range if std::out_of_range is thrown by std::substr
  * \returns mx::error_t::exception if any other exception other than bad_alloc is thrown by std::string::substr
  *
- * \throws nested mxException if std::bad_alloc is thrown
+ * \throws nested mx::exception if std::bad_alloc is thrown
  *
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit year*/
                             std::string       &MM,    /**< [out] the 2 digit month*/
                             std::string       &DD,    /**< [out] the 2 digit day*/
@@ -393,7 +396,7 @@ mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "parsing timestamp", -6 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::std_bad_alloc));
     }
     catch( const std::out_of_range &e )
     {
@@ -423,7 +426,7 @@ mx::error_t parseTimestamp( std::string       &YYYY,  /**< [out] the 4 digit yea
  * \returns -1 on error
  *
  */
-template <class verboseT = mx::verbose::vvv>
+template <class verboseT = XWC_DEFAULT_VERBOSITY>
 mx::error_t parseFilePath( std::string       &devName, /**< [out] the device name */
                            std::string       &YYYY,    /**< [out] the 4 digit year*/
                            std::string       &MM,      /**< [out] the 2 digit month*/
@@ -525,15 +528,15 @@ mx::error_t parseFilePath( std::string       &devName, /**< [out] the device nam
         #endif
         // clang-format on
 
-        mx_error_return( parseTimestamp( YYYY, MM, DD, hh, mm, ss, nn, fname.substr( dst, dend - dst ) ) );
-    }
-    catch( const xwcException &e ) // from a previous bad_alloc
-    {
-        std::throw_with_nested( xwcException( "parsing filepath", -6 ) );
+        mx_error_return( parseTimestamp<verboseT>( YYYY, MM, DD, hh, mm, ss, nn, fname.substr( dst, dend - dst ) ) );
     }
     catch( const std::bad_alloc &e )
     {
-        std::throw_with_nested( xwcException( "parsing filepath", -6 ) );
+        std::throw_with_nested( mx::exception<verboseT>(mx::error_t::std_bad_alloc, "parsing filepath") );
+    }
+    catch( const mx::exception<verboseT> &e ) // from a previous bad_alloc
+    {
+        std::throw_with_nested( mx::exception<verboseT>(e.code(), "parsing filepath") );
     }
     catch( const std::out_of_range &e )
     {
@@ -543,6 +546,7 @@ mx::error_t parseFilePath( std::string       &devName, /**< [out] the device nam
     {
         return mx::error_report<verboseT>( mx::error_t::std_exception, e.what() );
     }
+
 }
 
 #ifdef XWCTEST_NAMESPACE

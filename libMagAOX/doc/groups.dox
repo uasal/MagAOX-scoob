@@ -104,12 +104,5 @@
   * These programs assist with operating MagAO-X and analyzing its various outputs.
   */
 
-/** \defgroup tests Testing
-  * \brief Testing XWCTk.
-  */
 
-/** \defgroup unit_test Unit Testing
-  * \brief Unit tests in XWCTk.
-  * \ingroup tests
-  */
 

@@ -120,6 +120,19 @@ public:
      */
    parentT * parent();
 
+   /// Set a new value of logShutdown
+   /** Updates m_logShutdown with new value.
+     *
+     * \returns 0 on success
+     * \returns -1 on error (if wp == 0).
+     */
+   int logShutdown( bool ls );
+
+   /// Get the current value of logShutdown
+   /** \returns the value m_logShutdown.
+     */
+   bool logShutdown();
+
    /// Set a new value of writePause
    /** Updates m_writePause with new value.
      *
@@ -277,6 +290,19 @@ template<class parentT, class logFileT>
 parentT * logManager<parentT, logFileT>::parent()
 {
    return m_parent;
+}
+
+template<class parentT, class logFileT>
+int logManager<parentT, logFileT>::logShutdown( bool ls )
+{
+    m_logShutdown = ls;
+    return 0;
+}
+
+template<class parentT, class logFileT>
+bool logManager<parentT, logFileT>::logShutdown()
+{
+    return m_logShutdown;
 }
 
 template<class parentT, class logFileT>

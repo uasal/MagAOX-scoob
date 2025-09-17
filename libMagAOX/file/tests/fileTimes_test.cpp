@@ -311,7 +311,7 @@ TEST_CASE( "Getting timestamp string and broken-down time causes bad_alloc", "[l
 
             XWCTEST_DOXYGEN_REF( MagAOX::file::timestamp( tstamp, uttime, ts_sec, ts_nsec ) );
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY>  &e )
         {
             caught = true;
         }
@@ -340,7 +340,7 @@ TEST_CASE( "Getting timestamp only causes bad_alloc", "[libMagAOX::file::fileTim
             MagAOX::file::XWCTEST_TIMESTAMP_THROW_BAD_ALLOC_ns::timestamp( tstamp, ts_sec, ts_nsec );
             XWCTEST_DOXYGEN_REF( MagAOX::file::timestamp( tstamp, ts_sec, ts_nsec ) );
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY> &e )
         {
             caught = true;
         }
@@ -495,7 +495,7 @@ TEST_CASE( "Getting filename and relative path for a given time causes bad_alloc
             XWCTEST_DOXYGEN_REF(
                 MagAOX::file::fileTimeRelPath( fileName, relPath, "tdevice", "txt", ts_sec, ts_nsec ) );
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY> &e )
         {
             caught = true;
         }
@@ -573,7 +573,7 @@ TEST_CASE( "Getting filename and relative path for a given time causes bad_alloc
             XWCTEST_DOXYGEN_REF(
                 MagAOX::file::fileTimeRelPath( fileName, relPath, "tdevice", "txt", ts_sec, ts_nsec ) );
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY> &e )
         {
             caught = true;
         }
@@ -605,7 +605,7 @@ TEST_CASE( "Getting filename and relative path for a given time causes bad_alloc
             XWCTEST_DOXYGEN_REF(
                 MagAOX::file::fileTimeRelPath( fileName, relPath, "tdevice", "txt", ts_sec, ts_nsec ) );
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY>  &e )
         {
             caught = true;
         }
@@ -951,10 +951,11 @@ TEST_CASE( "Parsing filenames and paths with errors", "[libMagAOX::file::fileTim
             XWCTEST_DOXYGEN_REF(MagAOX::file::parseFilePath(
                 devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_20241121063300000000000.txt" ));
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY> & e )
         {
             caught = true;
         }
+
         REQUIRE( caught == true );
     }
 
@@ -997,7 +998,7 @@ TEST_CASE( "Parsing filenames and paths with errors", "[libMagAOX::file::fileTim
             XWCTEST_DOXYGEN_REF(MagAOX::file::parseFilePath(
                 devName, YYYY, MM, DD, hh, mm, ss, nn, "/path/to/device_20241121063300000000000.txt" ));
         }
-        catch( const MagAOX::xwcException &e )
+        catch( const mx::exception<XWC_DEFAULT_VERBOSITY>  &e )
         {
             caught = true;
         }

@@ -10,28 +10,31 @@
 namespace logFileRaw_test
 {
 
-class logFileRawTest : public MagAOX::logger::logFileRaw
+class logFileRawTest : public MagAOX::logger::logFileRaw<XWC_DEFAULT_VERBOSITY>
 {
+
+  typedef MagAOX::logger::logFileRaw<XWC_DEFAULT_VERBOSITY> logFileRawT;
+
   public:
     std::string testPath;
 
     logFileRawTest()
     {
-        m_logPath = "/tmp";
+        logFileRawT::m_logPath = "/tmp";
 
-        testPath = m_logPath + '/' + m_logName;
+        testPath = logFileRawT::m_logPath + '/' + logFileRawT::m_logName;
     }
 
     explicit logFileRawTest( const std::string &lp )
     {
-        m_logPath = lp;
+        logFileRawT::m_logPath = lp;
 
-        testPath = m_logPath + '/' + m_logName;
+        testPath = logFileRawT::m_logPath + '/' + logFileRawT::m_logName;
     }
 
-    int test_createFile( flatlogs::timespecX &ts )
+    mx::error_t test_createFile( flatlogs::timespecX &ts )
     {
-        return createFile( ts );
+        return logFileRawT::createFile( ts );
     }
 };
 
@@ -54,11 +57,11 @@ SCENARIO( "Creating a log file with error from fileTimeRelPath", "[libMagAOX::lo
         // First delete the directory and files in case this is a repeat call
         std::filesystem::remove_all( lfr.testPath );
 
-        flatlogs::timespecX ts1( 1732170780, 1 );
+        flatlogs::timespecX ts1( 0, 0 ); //0,0 is an error in fileTimeRelPath
 
-        int rv = lfr.test_createFile( ts1 );
+        mx::error_t rv = lfr.test_createFile( ts1 );
 
-        REQUIRE( rv == -1 );
+        REQUIRE( rv != mx::error_t::noerror );
 
     }
 

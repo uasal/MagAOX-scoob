@@ -156,17 +156,10 @@ TEST_CASE( "Creating a log file", "[libMagAOX::logger::logFileRaw]" )
 
         flatlogs::timespecX ts1( 1732170780, 1 );
 
-        bool caught = false;
-        try
-        {
-            lfr.test_createFile( ts1 );
-        }
-        catch( ... )
-        {
-            caught = true;
-        }
+        mx::error_t errc = lfr.test_createFile( ts1 );
 
-        REQUIRE( caught == true );
+
+        REQUIRE( errc != mx::error_t::noerror );
     }
 
     SECTION( "2nd timestamp is the same as the first, file already exists" )
