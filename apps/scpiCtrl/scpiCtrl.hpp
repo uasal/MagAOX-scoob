@@ -528,35 +528,45 @@ int scpiCtrl::appStartup()
     
     //}
     
-    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%.3f");
-    m_indiP_outlet1volt["current"] = m_channelVoltages[0];
-    m_indiP_outlet1volt["target"] = m_channelVoltages[0];
-    registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
+    // Create INDI properties only for configured number of channels
+    // Channel 1 (always created if numChannels >= 1)
+    if (m_numChannels >= 1) {
+        createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%.3f");
+        m_indiP_outlet1volt["current"] = m_channelVoltages[0];
+        m_indiP_outlet1volt["target"] = m_channelVoltages[0];
+        registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%.3f");
-    m_indiP_outlet1curr["current"] = m_channelCurrents[0];
-    m_indiP_outlet1curr["target"] = m_channelCurrents[0];
-    registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
+        createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%.3f");
+        m_indiP_outlet1curr["current"] = m_channelCurrents[0];
+        m_indiP_outlet1curr["target"] = m_channelCurrents[0];
+        registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
+    }
 
-    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%.3f");
-    m_indiP_outlet2volt["current"] = m_channelVoltages[1];
-    m_indiP_outlet2volt["target"] = m_channelVoltages[1];
-    registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
+    // Channel 2 (only created if numChannels >= 2)
+    if (m_numChannels >= 2) {
+        createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%.3f");
+        m_indiP_outlet2volt["current"] = m_channelVoltages[1];
+        m_indiP_outlet2volt["target"] = m_channelVoltages[1];
+        registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%.3f");
-    m_indiP_outlet2curr["current"] = m_channelCurrents[1];
-    m_indiP_outlet2curr["target"] = m_channelCurrents[1];
-    registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
+        createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%.3f");
+        m_indiP_outlet2curr["current"] = m_channelCurrents[1];
+        m_indiP_outlet2curr["target"] = m_channelCurrents[1];
+        registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
+    }
 
-    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%.3f");
-    m_indiP_outlet3volt["current"] = m_channelVoltages[2];
-    m_indiP_outlet3volt["target"] = m_channelVoltages[2];
-    registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
+    // Channel 3 (only created if numChannels >= 3)
+    if (m_numChannels >= 3) {
+        createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%.3f");
+        m_indiP_outlet3volt["current"] = m_channelVoltages[2];
+        m_indiP_outlet3volt["target"] = m_channelVoltages[2];
+        registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%.3f");
-    m_indiP_outlet3curr["current"] = m_channelCurrents[2];
-    m_indiP_outlet3curr["target"] = m_channelCurrents[2];
-    registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
+        createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%.3f");
+        m_indiP_outlet3curr["current"] = m_channelCurrents[2];
+        m_indiP_outlet3curr["target"] = m_channelCurrents[2];
+        registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
+    }
 
     // Telemetry toggle switch
     m_indiP_telemetryToggle = pcf::IndiProperty(pcf::IndiProperty::Switch);
@@ -815,13 +825,13 @@ int scpiCtrl::updateOutletState( int outletNum )
 
     updateIfChanged(m_indiP_status, "value", m_status);
 
-    if( outletNum == 0 ) {
+    if( outletNum == 0 && m_numChannels >= 1 ) {
         updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
         updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
-    } else if( outletNum == 1 ) {
+    } else if( outletNum == 1 && m_numChannels >= 2 ) {
         updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
         updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
-    } else if( outletNum == 2) {
+    } else if( outletNum == 2 && m_numChannels >= 3 ) {
         updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
         updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
     }
@@ -861,12 +871,19 @@ int scpiCtrl::updateOutletStates()
     }
     */
 
-    updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
-    updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
-    updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
-    updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
-    updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
-    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+    // Update INDI properties only for configured channels
+    if (m_numChannels >= 1) {
+        updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+        updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+    }
+    if (m_numChannels >= 2) {
+        updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+        updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+    }
+    if (m_numChannels >= 3) {
+        updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+        updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+    }
 
     dev::outletController<scpiCtrl>::updateINDI();
 
@@ -1276,8 +1293,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet1volt)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet1volt, "target", vc);
-   updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+   if (m_numChannels >= 1) {
+       updateIfChanged(m_indiP_outlet1volt, "target", vc);
+       updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+   }
 
    return 0;
 }
@@ -1308,8 +1327,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet2volt)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet2volt, "target", vc);
-   updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+   if (m_numChannels >= 2) {
+       updateIfChanged(m_indiP_outlet2volt, "target", vc);
+       updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+   }
 
    return 0;
 }
@@ -1340,8 +1361,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet3volt)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet3volt, "target", vc);
-   updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+   if (m_numChannels >= 3) {
+       updateIfChanged(m_indiP_outlet3volt, "target", vc);
+       updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+   }
 
    return 0;
 }
@@ -1372,8 +1395,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet1curr)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet1curr, "target", vc);
-   updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+   if (m_numChannels >= 1) {
+       updateIfChanged(m_indiP_outlet1curr, "target", vc);
+       updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+   }
 
    return 0;
 }
@@ -1404,8 +1429,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet2curr)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet2curr, "target", vc);
-   updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+   if (m_numChannels >= 2) {
+       updateIfChanged(m_indiP_outlet2curr, "target", vc);
+       updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+   }
 
    return 0;
 }
@@ -1436,8 +1463,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet3curr)(const pcf::IndiProperty &ip
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet3curr, "target", vc);
-   updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+   if (m_numChannels >= 3) {
+       updateIfChanged(m_indiP_outlet3curr, "target", vc);
+       updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+   }
 
    return 0;
 }
