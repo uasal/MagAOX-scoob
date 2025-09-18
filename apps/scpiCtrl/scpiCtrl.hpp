@@ -99,7 +99,7 @@ protected:
    std::chrono::steady_clock::time_point m_acquisitionStartTime; ///< When current acquisition started
    double m_maxAcquisitionTime {300.0}; ///< Maximum acquisition time in seconds (prevent overruns)
    std::string m_bufferDataPath {"/opt/MagAOX/data"}; ///< Path for saving buffer data files
-   std::string m_experimentDirectory {"default"}; ///< Experiment directory name
+   std::string m_telemDir {"default"}; ///< Telemetry directory name
    
    // TCP/IP specific members
    std::string m_ipAddress; ///< IP address for TCP/IP connections
@@ -364,13 +364,13 @@ protected:
    pcf::IndiProperty m_indiP_measurementFunction;   ///< Voltage/current measurement toggle
    pcf::IndiProperty m_indiP_measurementFunctionCurrent; ///< Current measurement function from device (read-only)
    pcf::IndiProperty m_indiP_currentConversionFactor; ///< V-to-A conversion factor
-   pcf::IndiProperty m_indiP_experimentDirectory; ///< Experiment directory name for data storage
+   pcf::IndiProperty m_indiP_telemDir; ///< Telemetry directory name for data storage
    
    // Power control toggles are handled by outletController framework
 
    // INDI callback declarations
-   int newCallBack_m_indiP_experimentDirectory(const pcf::IndiProperty &ipRecv);
-   static int st_newCallBack_m_indiP_experimentDirectory(void * p, const pcf::IndiProperty &ipRecv);
+   int newCallBack_m_indiP_telemDir(const pcf::IndiProperty &ipRecv);
+   static int st_newCallBack_m_indiP_telemDir(void * p, const pcf::IndiProperty &ipRecv);
 
 };
 
@@ -469,7 +469,7 @@ void scpiCtrl::loadConfig()
     }
     config(m_maxAcquisitionTime, "device.maxAcquisitionTime");
     config(m_bufferDataPath, "device.bufferDataPath");
-    config(m_experimentDirectory, "device.experimentDirectory");
+    config(m_telemDir, "device.telemDir");
     
     // Load TCP configuration
     config(m_port, "device.port");
@@ -678,10 +678,10 @@ int scpiCtrl::appStartup()
     m_indiP_currentConversionFactor["value"].set<double>(m_currentConversionFactor);
     registerIndiPropertyNew(m_indiP_currentConversionFactor, INDI_NEWCALLBACK(m_indiP_currentConversionFactor));
 
-    // Experiment directory
-    REG_INDI_NEWPROP(m_indiP_experimentDirectory, "experimentDirectory", pcf::IndiProperty::Text);
-    m_indiP_experimentDirectory.add(pcf::IndiElement("value"));
-    m_indiP_experimentDirectory["value"].set<std::string>(m_experimentDirectory);
+    // Telemetry directory
+    REG_INDI_NEWPROP(m_indiP_telemDir, "telemDir", pcf::IndiProperty::Text);
+    m_indiP_telemDir.add(pcf::IndiElement("value"));
+    m_indiP_telemDir["value"].set<std::string>(m_telemDir);
 
     // Initialize timers
     m_lastPollTime = std::chrono::steady_clock::now();
@@ -823,8 +823,8 @@ int scpiCtrl::appLogic()
  
        updateAlarmsAndWarnings();
 
-       // Telemetry write at configured interval
-        if(m_telemetryEnabled)
+       // Telemetry write at configured interval (only for polling mode)
+        if(m_telemetryEnabled && m_measurementMode == MeasurementMode::POLLING)
         {
             auto tnow = std::chrono::steady_clock::now();
             if(tnow - m_lastTelemetryTime >= m_telemetryInterval)
@@ -1947,25 +1947,25 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_currentConversionFactor)(const pcf::Indi
    return 0;
 }
 
-INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_experimentDirectory)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemDir)(const pcf::IndiProperty &ipRecv)
 {
-    if (ipRecv.getName() != m_indiP_experimentDirectory.getName()) return -1;
+    if (ipRecv.getName() != m_indiP_telemDir.getName()) return -1;
     if (!ipRecv.find("value")) return -1;
     std::string newDir = ipRecv["value"].get<std::string>();
     if (newDir.empty()) {
-        log<software_error>({__FILE__, __LINE__, "Experiment directory cannot be empty"});
+        log<software_error>({__FILE__, __LINE__, "Telemetry directory cannot be empty"});
         return -1;
     }
     std::unique_lock<std::mutex> lock(m_indiMutex);
-    m_experimentDirectory = newDir;
-    updateIfChanged(m_indiP_experimentDirectory, "value", m_experimentDirectory);
-    log<text_log>("Experiment directory changed to: " + m_experimentDirectory);
+    m_telemDir = newDir;
+    updateIfChanged(m_indiP_telemDir, "value", m_telemDir);
+    log<text_log>("Telemetry directory changed to: " + m_telemDir);
     return 0;
 }
 
-int scpiCtrl::st_newCallBack_m_indiP_experimentDirectory(void * p, const pcf::IndiProperty &ipRecv)
+int scpiCtrl::st_newCallBack_m_indiP_telemDir(void * p, const pcf::IndiProperty &ipRecv)
 {
-    return static_cast<scpiCtrl *>(p)->newCallBack_m_indiP_experimentDirectory(ipRecv);
+    return static_cast<scpiCtrl *>(p)->newCallBack_m_indiP_telemDir(ipRecv);
 }
 
 
@@ -2175,18 +2175,19 @@ inline int scpiCtrl::startBufferAcquisition()
     log<text_log>("Starting buffer acquisition...");
     std::string res;
     
-    // Start acquisition (no need to clear buffer again for SimpleLoop)
+    // Clear the buffer before starting acquisition
+    log<text_log>("Clearing buffer before acquisition...");
+    if (!send_scpi("TRAC:CLE 'defbuffer1'\n", res)) {
+        return log<text_log,-1>("Failed to clear buffer", logPrio::LOG_ERROR);
+    }
+    
+    // Start acquisition
     log<text_log>("Sending INIT command...");
     if (!send_scpi("INIT\n", res)) {
         return log<text_log,-1>("Failed to initiate buffer acquisition", logPrio::LOG_ERROR);
     }
     
-    // Wait for acquisition to complete
-    log<text_log>("Sending *WAI command...");
-    if (!send_scpi("*WAI\n", res)) {
-        return log<text_log,-1>("Failed to wait for completion", logPrio::LOG_ERROR);
-    }
-    
+    // Don't wait for completion with *WAI - let the device run and check status periodically
     m_bufferAcquisitionActive = true;
     m_acquisitionStartTime = std::chrono::steady_clock::now();
     
@@ -2245,6 +2246,14 @@ inline int scpiCtrl::checkBufferStatus()
         return 0;
     }
     
+    // Check for timeout - if acquisition has been running too long, stop it
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_acquisitionStartTime);
+    if (elapsed.count() > 30) { // 30 second timeout
+        log<text_log>("Buffer acquisition timeout - stopping after " + std::to_string(elapsed.count()) + " seconds", logPrio::LOG_WARNING);
+        return stopBufferAcquisition();
+    }
+    
     // Check for overrun risk
     if (isBufferOverrunRisk()) {
         log<text_log>("Buffer overrun risk detected - stopping acquisition", logPrio::LOG_WARNING);
@@ -2265,6 +2274,7 @@ inline int scpiCtrl::checkBufferStatus()
     if (send_scpi("TRAC:ACT? 'defbuffer1'\n", act)) {
         try {
             int count = std::stoi(act);
+            log<text_log>("Buffer status check: " + std::to_string(count) + "/" + std::to_string(m_bufferSize) + " samples");
             if (count >= m_bufferSize) {
                 // Wait a bit more to ensure buffer is completely full
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -2321,8 +2331,8 @@ inline std::string scpiCtrl::generateBufferFilename()
     std::tm tm_now;
     gmtime_r(&now_time_t, &tm_now);
     
-    // Create full path with experiment directory
-    std::string fullPath = m_bufferDataPath + "/" + m_experimentDirectory;
+    // Create full path with telemetry directory
+    std::string fullPath = m_bufferDataPath + "/" + m_telemDir;
     
     // Determine mode-specific filename prefix
     std::string modePrefix;
@@ -2351,8 +2361,8 @@ inline int scpiCtrl::saveBufferData(const std::vector<float>& voltages, const st
     
     std::string fname = filename.empty() ? generateBufferFilename() : filename;
     
-    // Create directory if it doesn't exist (including experiment subdirectory)
-    std::string dir = m_bufferDataPath + "/" + m_experimentDirectory;
+    // Create directory if it doesn't exist (including telemetry subdirectory)
+    std::string dir = m_bufferDataPath + "/" + m_telemDir;
     if (mkdir(dir.c_str(), 0755) < 0 && errno != EEXIST) {
         return log<text_log,-1>("Failed to create data directory: " + dir, logPrio::LOG_ERROR);
     }
@@ -2726,8 +2736,8 @@ inline void scpiCtrl::pollLoop()
                     checkBufferStatus();
                 }
                 
-                // Telemetry write at high rate if enabled
-                if(m_telemetryEnabled)
+                // Telemetry write at high rate if enabled (only for polling mode)
+                if(m_telemetryEnabled && m_measurementMode == MeasurementMode::POLLING)
                 {
                     writeTelemetryData();
                 }
@@ -2746,8 +2756,8 @@ inline int scpiCtrl::startTelemetryLogging()
 {
     if(!m_telemetryFile.is_open())
     {
-        // Create experiment directory if it doesn't exist
-        std::string dir = m_telemetryPath + "/" + m_experimentDirectory;
+        // Create telemetry directory if it doesn't exist
+        std::string dir = m_telemetryPath + "/" + m_telemDir;
         if (mkdir(dir.c_str(), 0755) < 0 && errno != EEXIST) {
             return log<text_log,-1>("Failed to create telemetry directory: " + dir, logPrio::LOG_ERROR);
         }
@@ -2798,10 +2808,10 @@ inline int scpiCtrl::writeTelemetryData()
     float v2 = (m_channelVoltages.size() > 1 ? m_channelVoltages[1] : 0.0f);
     float a2 = (m_channelCurrents.size() > 1 ? m_channelCurrents[1] : 0.0f);
 
-    // Debug log every 50 writes to avoid spam
+    // Debug log every 500 writes to avoid spam
     static int write_count = 0;
     write_count++;
-    if (write_count % 50 == 0) {
+    if (write_count % 500 == 0) {
         log<text_log>("Writing telemetry #" + std::to_string(write_count) + ": V1=" + std::to_string(v1) + 
                      ", A1=" + std::to_string(a1) + ", V2=" + std::to_string(v2) + ", A2=" + std::to_string(a2));
     }
@@ -2818,8 +2828,8 @@ inline std::string scpiCtrl::generateTelemetryFilename()
     std::tm tm_now;
     gmtime_r(&now_time_t, &tm_now);
     
-    // Create full path with experiment directory
-    std::string fullPath = m_telemetryPath + "/" + m_experimentDirectory;
+    // Create full path with telemetry directory
+    std::string fullPath = m_telemetryPath + "/" + m_telemDir;
     
     char fname[512];
     std::snprintf(fname, sizeof(fname), "%s/scpiCtrl_polling_%04d%02d%02d_%02d%02d%02d.csv", fullPath.c_str(),
