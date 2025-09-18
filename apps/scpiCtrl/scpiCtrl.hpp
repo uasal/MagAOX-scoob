@@ -99,6 +99,7 @@ protected:
    std::chrono::steady_clock::time_point m_acquisitionStartTime; ///< When current acquisition started
    double m_maxAcquisitionTime {300.0}; ///< Maximum acquisition time in seconds (prevent overruns)
    std::string m_bufferDataPath {"/opt/MagAOX/data"}; ///< Path for saving buffer data files
+   std::string m_experimentDirectory {"default"}; ///< Experiment directory name
    
    // TCP/IP specific members
    std::string m_ipAddress; ///< IP address for TCP/IP connections
@@ -363,8 +364,13 @@ protected:
    pcf::IndiProperty m_indiP_measurementFunction;   ///< Voltage/current measurement toggle
    pcf::IndiProperty m_indiP_measurementFunctionCurrent; ///< Current measurement function from device (read-only)
    pcf::IndiProperty m_indiP_currentConversionFactor; ///< V-to-A conversion factor
+   pcf::IndiProperty m_indiP_experimentDirectory; ///< Experiment directory name for data storage
    
    // Power control toggles are handled by outletController framework
+
+   // INDI callback declarations
+   int newCallBack_m_indiP_experimentDirectory(const pcf::IndiProperty &ipRecv);
+   static int st_newCallBack_m_indiP_experimentDirectory(void * p, const pcf::IndiProperty &ipRecv);
 
 };
 
@@ -463,6 +469,7 @@ void scpiCtrl::loadConfig()
     }
     config(m_maxAcquisitionTime, "device.maxAcquisitionTime");
     config(m_bufferDataPath, "device.bufferDataPath");
+    config(m_experimentDirectory, "device.experimentDirectory");
     
     // Load TCP configuration
     config(m_port, "device.port");
@@ -670,6 +677,16 @@ int scpiCtrl::appStartup()
     m_indiP_currentConversionFactor.add(pcf::IndiElement("value"));
     m_indiP_currentConversionFactor["value"].set<double>(m_currentConversionFactor);
     registerIndiPropertyNew(m_indiP_currentConversionFactor, INDI_NEWCALLBACK(m_indiP_currentConversionFactor));
+
+    // Experiment directory
+    m_indiP_experimentDirectory = pcf::IndiProperty(pcf::IndiProperty::Text);
+    m_indiP_experimentDirectory.setDevice(configName());
+    m_indiP_experimentDirectory.setName("experimentDirectory");
+    m_indiP_experimentDirectory.setPerm(pcf::IndiProperty::ReadWrite);
+    m_indiP_experimentDirectory.setState(pcf::IndiProperty::Idle);
+    m_indiP_experimentDirectory.add(pcf::IndiElement("value"));
+    m_indiP_experimentDirectory["value"].set<std::string>(m_experimentDirectory);
+    registerIndiPropertyNew(m_indiP_experimentDirectory, st_newCallBack_m_indiP_experimentDirectory);
 
     // Initialize timers
     m_lastPollTime = std::chrono::steady_clock::now();
@@ -1687,12 +1704,21 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty
    m_telemetryEnabled = enable;
    
    if(m_telemetryEnabled) {
+       std::string modeStr = (m_measurementMode == MeasurementMode::BUFFERED ? "buffered" : 
+                             m_measurementMode == MeasurementMode::DIGITIZED ? "digitized" : "polling");
+       log<text_log>("Telemetry toggle ON - starting acquisition for mode: " + modeStr);
+       
        // Start acquisition depending on mode
        if (!m_isPowerSupply) {
            if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
                // For buffered/digitized modes, only use buffer data logging (not regular telemetry)
+               log<text_log>("Attempting to start buffer acquisition...");
                if (startBufferAcquisition() < 0) {
                    log<software_error>({__FILE__, __LINE__, "Failed to start buffer acquisition"});
+                   // Reset telemetry toggle to OFF if buffer acquisition fails
+                   m_telemetryEnabled = false;
+                   updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
+                   return -1;
                } else {
                    log<text_log>("Started buffer acquisition for " + std::string(m_measurementMode == MeasurementMode::BUFFERED ? "buffered" : "digitized") + " mode");
                }
@@ -1876,6 +1902,27 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_currentConversionFactor)(const pcf::Indi
    return 0;
 }
 
+INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_experimentDirectory)(const pcf::IndiProperty &ipRecv)
+{
+    if (ipRecv.getName() != m_indiP_experimentDirectory.getName()) return -1;
+    if (!ipRecv.find("value")) return -1;
+    std::string newDir = ipRecv["value"].get<std::string>();
+    if (newDir.empty()) {
+        log<software_error>({__FILE__, __LINE__, "Experiment directory cannot be empty"});
+        return -1;
+    }
+    std::unique_lock<std::mutex> lock(m_indiMutex);
+    m_experimentDirectory = newDir;
+    updateIfChanged(m_indiP_experimentDirectory, "value", m_experimentDirectory);
+    log<text_log>("Experiment directory changed to: " + m_experimentDirectory);
+    return 0;
+}
+
+int scpiCtrl::st_newCallBack_m_indiP_experimentDirectory(void * p, const pcf::IndiProperty &ipRecv)
+{
+    return static_cast<scpiCtrl *>(p)->newCallBack_m_indiP_experimentDirectory(ipRecv);
+}
+
 
 }//namespace app
 } //namespace MagAOX
@@ -2025,18 +2072,26 @@ inline int scpiCtrl::setupBufferedAcquisition()
     
     std::string res;
     
-    // Reset and configure for voltage measurement
-    if (!send_scpi("*RST\n", res)) {
-        return log<text_log,-1>("Failed to reset device", logPrio::LOG_ERROR);
-    }
-    
+    // Configure for voltage measurement (skip reset to avoid connection issues)
     if (!send_scpi("SENS:FUNC 'VOLT'\n", res)) {
-        return log<text_log,-1>("Failed to set voltage function", logPrio::LOG_ERROR);
+        log<text_log>("Warning: Failed to set voltage function, trying reset", logPrio::LOG_WARNING);
+        // Only reset if the function setting fails
+        if (!send_scpi("*RST\n", res)) {
+            return log<text_log,-1>("Failed to reset device", logPrio::LOG_ERROR);
+        }
+        if (!send_scpi("SENS:FUNC 'VOLT'\n", res)) {
+            return log<text_log,-1>("Failed to set voltage function after reset", logPrio::LOG_ERROR);
+        }
     }
     
     // Clear and resize buffer to exactly what we need
     if (!send_scpi("TRAC:CLE 'defbuffer1'\n", res)) {
         return log<text_log,-1>("Failed to clear buffer", logPrio::LOG_ERROR);
+    }
+    
+    // Configure buffer to store timestamps
+    if (!send_scpi("TRAC:FORMAT TST\n", res)) {
+        log<text_log>("Warning: Failed to set buffer format to include timestamps", logPrio::LOG_WARNING);
     }
     
     std::string buffer_cmd = "TRAC:POIN " + std::to_string(m_bufferSize) + ",'defbuffer1'\n";
@@ -2072,14 +2127,17 @@ inline int scpiCtrl::startBufferAcquisition()
         return 0;
     }
     
+    log<text_log>("Starting buffer acquisition...");
     std::string res;
     
     // Start acquisition (no need to clear buffer again for SimpleLoop)
+    log<text_log>("Sending INIT command...");
     if (!send_scpi("INIT\n", res)) {
         return log<text_log,-1>("Failed to initiate buffer acquisition", logPrio::LOG_ERROR);
     }
     
     // Wait for acquisition to complete
+    log<text_log>("Sending *WAI command...");
     if (!send_scpi("*WAI\n", res)) {
         return log<text_log,-1>("Failed to wait for completion", logPrio::LOG_ERROR);
     }
@@ -2218,9 +2276,22 @@ inline std::string scpiCtrl::generateBufferFilename()
     std::tm tm_now;
     gmtime_r(&now_time_t, &tm_now);
     
-    char fname[256];
-    std::snprintf(fname, sizeof(fname), "%s/scpiCtrl_buffer_%04d%02d%02d_%02d%02d%02d.csv", 
-                  m_bufferDataPath.c_str(),
+    // Create full path with experiment directory
+    std::string fullPath = m_bufferDataPath + "/" + m_experimentDirectory;
+    
+    // Determine mode-specific filename prefix
+    std::string modePrefix;
+    if (m_measurementMode == MeasurementMode::BUFFERED) {
+        modePrefix = "scpiCtrl_buffered";
+    } else if (m_measurementMode == MeasurementMode::DIGITIZED) {
+        modePrefix = "scpiCtrl_digitized";
+    } else {
+        modePrefix = "scpiCtrl_polling";
+    }
+    
+    char fname[512];
+    std::snprintf(fname, sizeof(fname), "%s/%s_%04d%02d%02d_%02d%02d%02d.csv", 
+                  fullPath.c_str(), modePrefix.c_str(),
                   tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday,
                   tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
     
@@ -2235,8 +2306,8 @@ inline int scpiCtrl::saveBufferData(const std::vector<float>& voltages, const st
     
     std::string fname = filename.empty() ? generateBufferFilename() : filename;
     
-    // Create directory if it doesn't exist
-    std::string dir = m_bufferDataPath;
+    // Create directory if it doesn't exist (including experiment subdirectory)
+    std::string dir = m_bufferDataPath + "/" + m_experimentDirectory;
     if (mkdir(dir.c_str(), 0755) < 0 && errno != EEXIST) {
         return log<text_log,-1>("Failed to create data directory: " + dir, logPrio::LOG_ERROR);
     }
@@ -2317,8 +2388,16 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
         return -1;
     }
     log<text_log>("Received buffer data length: " + std::to_string(data_str.length()));
+    log<text_log>("Buffer data sample: " + data_str.substr(0, std::min(100, (int)data_str.length())));
     
-    // Parse the data - format is [value1, time1, value2, time2, ...]
+    // Debug: Check if we have timestamps by looking for the pattern
+    if (data_str.find(',') != std::string::npos) {
+        log<text_log>("Buffer data contains commas - likely has timestamps");
+    } else {
+        log<text_log>("Buffer data has no commas - likely values only");
+    }
+    
+    // Parse the data - format should be [timestamp1, voltage1, timestamp2, voltage2, ...]
     voltages.clear();
     timestamps.clear();
     
@@ -2377,46 +2456,30 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
         }
     }
     
-    // The data format from TRAC:DATA? with READ,REL depends on what we're measuring:
-    // - Voltage only: [timestamp1, voltage1, timestamp2, voltage2, ...] (pairs)
-    // - Current only: [timestamp1, current1, timestamp2, current2, ...] (pairs)  
-    // - Both voltage and current: [timestamp1, voltage1, current1, timestamp2, voltage2, current2, ...] (triplets)
-    
-    if (all_data.size() % 3 == 0) {
-        // We have triplets: [timestamp1, voltage1, current1, timestamp2, voltage2, current2, ...]
-        // This means we're measuring both voltage and current
-        for (size_t i = 0; i < all_data.size(); i += 3) {
-            if (i + 2 < all_data.size()) {
-                // Convert seconds to nanoseconds (multiply by 1e9)
-                timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
-                voltages.push_back(all_data[i + 1]);
-                // Note: current is in all_data[i + 2], but we're not storing it here
-                // since we calculate current from voltage using conversion factor
-            }
-        }
-        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with timestamps, voltage, and current");
-    } else if (all_data.size() % 2 == 0) {
-        // We have pairs: [timestamp1, voltage1, timestamp2, voltage2, ...]
-        // This means we're measuring voltage only
-        for (size_t i = 0; i < all_data.size(); i += 2) {
-            if (i + 1 < all_data.size()) {
-                // Convert seconds to nanoseconds (multiply by 1e9)
-                timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
-                voltages.push_back(all_data[i + 1]);
-            }
-        }
-        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with timestamps and voltage only");
-    } else {
-        // We have just values: [value1, value2, value3, ...]
-        // In this case, we don't have timestamps, so we'll generate them
-        for (size_t i = 0; i < all_data.size(); i++) {
-            voltages.push_back(all_data[i]);
-            // Generate timestamps based on sampling rate
+     // The data format from TRAC:DATA? with READ,REL should be [timestamp1, voltage1, timestamp2, voltage2, ...]
+     // Timestamps are in seconds from the start of acquisition
+     
+     if (all_data.size() % 2 == 0) {
+         // We have pairs: [timestamp1, voltage1, timestamp2, voltage2, ...]
+         for (size_t i = 0; i < all_data.size(); i += 2) {
+             if (i + 1 < all_data.size()) {
+                 // Timestamps are already in seconds, convert to nanoseconds
+                 timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
+                 voltages.push_back(all_data[i + 1]);
+             }
+         }
+         log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with device timestamps");
+     } else {
+         // We have just values: [value1, value2, value3, ...]
+         // This means timestamps weren't stored in buffer, generate them
+         for (size_t i = 0; i < all_data.size(); i++) {
+             voltages.push_back(all_data[i]);
+             // Generate timestamps based on sampling rate
              double timestamp = static_cast<double>(i) / m_sampleRateHz;
-            timestamps.push_back(timestamp * 1e9); // Convert to nanoseconds
-        }
-        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with generated timestamps");
-    }
+             timestamps.push_back(timestamp * 1e9); // Convert to nanoseconds
+         }
+         log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with generated timestamps (buffer not configured for timestamps)");
+     }
     
     log<text_log>("Retrieved " + std::to_string(voltages.size()) + " buffered samples");
     return 0;
@@ -2465,6 +2528,11 @@ inline int scpiCtrl::setupDigitizedAcquisition(double sampleRate, double apertur
     std::string count_cmd = "SENS:DIG:COUN " + std::to_string(m_bufferSize) + "\n";
     if (!send_scpi(count_cmd, res)) {
         return log<text_log,-1>("Failed to set sample count", logPrio::LOG_ERROR);
+    }
+    
+    // Configure buffer to store timestamps
+    if (!send_scpi("TRAC:FORMAT TST\n", res)) {
+        log<text_log>("Warning: Failed to set buffer format to include timestamps", logPrio::LOG_WARNING);
     }
     
     // Configure buffer
@@ -2633,6 +2701,12 @@ inline int scpiCtrl::startTelemetryLogging()
 {
     if(!m_telemetryFile.is_open())
     {
+        // Create experiment directory if it doesn't exist
+        std::string dir = m_telemetryPath + "/" + m_experimentDirectory;
+        if (mkdir(dir.c_str(), 0755) < 0 && errno != EEXIST) {
+            return log<text_log,-1>("Failed to create telemetry directory: " + dir, logPrio::LOG_ERROR);
+        }
+        
         m_telemetryFilename = generateTelemetryFilename();
         m_telemetryFile.open(m_telemetryFilename, std::ios::out | std::ios::app);
         if(!m_telemetryFile.is_open())
@@ -2698,8 +2772,12 @@ inline std::string scpiCtrl::generateTelemetryFilename()
     auto now_time_t = std::chrono::system_clock::to_time_t(now);
     std::tm tm_now;
     gmtime_r(&now_time_t, &tm_now);
-    char fname[256];
-    std::snprintf(fname, sizeof(fname), "%s/scpiCtrl_%04d%02d%02d_%02d%02d%02d.csv", m_telemetryPath.c_str(),
+    
+    // Create full path with experiment directory
+    std::string fullPath = m_telemetryPath + "/" + m_experimentDirectory;
+    
+    char fname[512];
+    std::snprintf(fname, sizeof(fname), "%s/scpiCtrl_polling_%04d%02d%02d_%02d%02d%02d.csv", fullPath.c_str(),
                   tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday,
                   tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
     return std::string(fname);
