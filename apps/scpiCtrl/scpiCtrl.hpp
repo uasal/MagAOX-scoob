@@ -1065,9 +1065,7 @@ int scpiCtrl::updateChannel(int channel)
         return 0;
     }
     
-    // Debug logging
-    log<text_log>("updateChannel(" + std::to_string(channel) + ") called - device type: " + 
-                  std::string(m_isPowerSupply ? "PowerSupply" : "Measurement"));
+    // Debug logging removed - only log errors
     
     std::string volt, curr;
     bool ok_v = false, ok_c = false;
@@ -1109,11 +1107,7 @@ int scpiCtrl::updateChannel(int channel)
                 float currentValue = voltageValue / m_currentConversionFactor;
                 m_channelCurrents[channel] = currentValue;
                 
-                if (m_measurementFunction == MeasurementFunction::CURRENT) {
-                    log<text_log>("Channel " + std::to_string(channel) + " current: " + std::to_string(currentValue) + "A (from " + std::to_string(voltageValue) + "V, factor: " + std::to_string(m_currentConversionFactor) + ")");
-                } else {
-                    log<text_log>("Channel " + std::to_string(channel) + " voltage: " + std::to_string(voltageValue) + "V, current: " + std::to_string(currentValue) + "A (factor: " + std::to_string(m_currentConversionFactor) + ")");
-                }
+                // Channel values updated successfully (logging removed for performance)
             } else {
                 // No conversion factor or power supply - set current to 0
                 m_channelCurrents[channel] = 0.0f;
@@ -1145,7 +1139,6 @@ int scpiCtrl::updateChannel(int channel)
     }
     // For measurement devices, current is already calculated from voltage above, so no action needed
 
-    log<text_log>("updateChannel(" + std::to_string(channel) + ") completed successfully");
     return 0;
 }
 
@@ -1814,7 +1807,9 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_samplingRateHz)(const pcf::IndiProperty 
     if (newRate <= 0) return -1;
     std::unique_lock<std::mutex> lock(m_indiMutex);
     m_sampleRateHz = newRate;
-    updateIfChanged(m_indiP_samplingRateHz, "value", m_sampleRateHz);
+    m_indiP_samplingRateHz["value"].set<double>(m_sampleRateHz);
+    m_indiP_samplingRateHz.setState(pcf::IndiProperty::Idle);
+    sendNewProperty(m_indiP_samplingRateHz);
     // If in buffered mode and ready, reconfigure and auto-tune
     if (state() == stateCodes::READY && !m_isPowerSupply && m_measurementMode == MeasurementMode::BUFFERED) {
         setupBufferedAcquisition();
@@ -1840,8 +1835,12 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
             log<text_log>("Buffer size set to " + std::to_string(targetSize) + " samples");
             
             // Update both target and current values
-            updateIfChanged(m_indiP_bufferSize, "target", m_bufferSize);
-            updateIfChanged(m_indiP_bufferSizeCurrent, "current", m_bufferSize);
+            m_indiP_bufferSize["target"].set<int>(m_bufferSize);
+            m_indiP_bufferSizeCurrent["current"].set<int>(m_bufferSize);
+            m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
+            m_indiP_bufferSizeCurrent.setState(pcf::IndiProperty::Idle);
+            sendNewProperty(m_indiP_bufferSize);
+            sendNewProperty(m_indiP_bufferSizeCurrent);
             
             // Reconfigure buffered acquisition if active
             if (m_measurementMode == MeasurementMode::BUFFERED) {
@@ -1855,7 +1854,9 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
     } else {
         // Just update the target value (will be applied when device is ready)
         m_bufferSize = targetSize;
-        updateIfChanged(m_indiP_bufferSize, "target", m_bufferSize);
+        m_indiP_bufferSize["target"].set<int>(m_bufferSize);
+        m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
+        sendNewProperty(m_indiP_bufferSize);
     }
     
     return 0;
@@ -1958,7 +1959,9 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemDir)(const pcf::IndiProperty &ipRec
     }
     std::unique_lock<std::mutex> lock(m_indiMutex);
     m_telemDir = newDir;
-    updateIfChanged(m_indiP_telemDir, "value", m_telemDir);
+    m_indiP_telemDir["value"].set<std::string>(m_telemDir);
+    m_indiP_telemDir.setState(pcf::IndiProperty::Idle);
+    sendNewProperty(m_indiP_telemDir);
     log<text_log>("Telemetry directory changed to: " + m_telemDir);
     return 0;
 }
@@ -2511,19 +2514,20 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
         }
     }
     
-     // The data format from TRAC:DATA? with READ,REL should be [timestamp1, voltage1, timestamp2, voltage2, ...]
+     // The data format from TRAC:DATA? with READ,REL and TST format should be [voltage1, timestamp1, voltage2, timestamp2, ...]
      // Timestamps are in seconds from the start of acquisition
      
      if (all_data.size() % 2 == 0) {
-         // We have pairs: [timestamp1, voltage1, timestamp2, voltage2, ...]
+         // We have pairs: [voltage1, timestamp1, voltage2, timestamp2, ...]
          for (size_t i = 0; i < all_data.size(); i += 2) {
              if (i + 1 < all_data.size()) {
+                 // First value is voltage, second is timestamp
+                 voltages.push_back(all_data[i]);
                  // Timestamps are already in seconds, convert to nanoseconds
-                 timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
-                 voltages.push_back(all_data[i + 1]);
+                 timestamps.push_back(static_cast<double>(all_data[i + 1]) * 1e9);
              }
          }
-         log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with device timestamps");
+         log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with device timestamps (voltage, timestamp pairs)");
      } else {
          // We have just values: [value1, value2, value3, ...]
          // This means timestamps weren't stored in buffer, generate them
@@ -2634,11 +2638,11 @@ inline int scpiCtrl::getDigitizedData(std::vector<float>& voltages, std::vector<
         }
     }
     
-    // Split into voltages and timestamps
+    // Split into voltages and timestamps - format is [voltage1, timestamp1, voltage2, timestamp2, ...]
     for (size_t i = 0; i < all_data.size(); i += 2) {
         if (i + 1 < all_data.size()) {
             voltages.push_back(all_data[i]);
-            timestamps.push_back(static_cast<double>(all_data[i + 1]));
+            timestamps.push_back(static_cast<double>(all_data[i + 1]) * 1e9); // Convert to nanoseconds
         }
     }
     
