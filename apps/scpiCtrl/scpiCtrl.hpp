@@ -812,7 +812,14 @@ int scpiCtrl::appLogic()
               // Check for external changes to device parameters
               if (!m_isPowerSupply) {
                   readDeviceBufferSize();
+                  readDeviceSamplingRate();
+                  readDeviceMeasurementMode();
                   readDeviceMeasurementFunction();
+                  
+                  // Check buffer status for buffered/digitized modes
+                  if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
+                      checkBufferStatus();
+                  }
               }
           }
           
@@ -2704,12 +2711,18 @@ inline void scpiCtrl::pollLoop()
     {
         auto loop_start = std::chrono::steady_clock::now();
         
-        // Debug log every 10 seconds
+        // Debug log every 60 seconds (only when mode changes or periodically)
         static auto last_debug = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(loop_start - last_debug).count() >= 10) {
+        static int last_mode = -1;
+        int current_mode = static_cast<int>(m_measurementMode);
+        if (std::chrono::duration_cast<std::chrono::seconds>(loop_start - last_debug).count() >= 60 || 
+            current_mode != last_mode) {
             log<text_log>("Poll loop active - device type: " + std::string(m_isPowerSupply ? "PowerSupply" : "Measurement") + 
-                         ", channels: " + std::to_string(m_numChannels));
+                         ", channels: " + std::to_string(m_numChannels) + 
+                         ", mode: " + std::string(m_measurementMode == MeasurementMode::POLLING ? "POLLING" : 
+                                                 m_measurementMode == MeasurementMode::BUFFERED ? "BUFFERED" : "DIGITIZED"));
             last_debug = loop_start;
+            last_mode = current_mode;
         }
 
         {
@@ -2760,11 +2773,6 @@ inline void scpiCtrl::pollLoop()
                     updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
                 }
                 dev::outletController<scpiCtrl>::updateINDI();
-
-                // Check buffer status for buffered/digitized modes
-                if (!m_isPowerSupply && (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED)) {
-                    checkBufferStatus();
-                }
                 
                 // Telemetry write at high rate if enabled (only for polling mode)
                 if(m_telemetryEnabled && m_measurementMode == MeasurementMode::POLLING)
