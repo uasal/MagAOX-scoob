@@ -352,7 +352,7 @@ protected:
    pcf::IndiProperty m_indiP_outlet3curr;
    
    // Telemetry control
-    pcf::IndiProperty m_indiP_telemetryToggle;
+   pcf::IndiProperty m_indiP_telemetryToggle;
     pcf::IndiProperty m_indiP_resetToggle;
    
    // Dynamic measurement configuration via INDI
@@ -545,40 +545,40 @@ int scpiCtrl::appStartup()
     // Channel 1 (always created if numChannels >= 1)
     if (m_numChannels >= 1) {
         createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%.3f");
-        m_indiP_outlet1volt["current"] = m_channelVoltages[0];
-        m_indiP_outlet1volt["target"] = m_channelVoltages[0];
-        registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
+    m_indiP_outlet1volt["current"] = m_channelVoltages[0];
+    m_indiP_outlet1volt["target"] = m_channelVoltages[0];
+    registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
 
         createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%.3f");
-        m_indiP_outlet1curr["current"] = m_channelCurrents[0];
-        m_indiP_outlet1curr["target"] = m_channelCurrents[0];
-        registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
+    m_indiP_outlet1curr["current"] = m_channelCurrents[0];
+    m_indiP_outlet1curr["target"] = m_channelCurrents[0];
+    registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
     }
 
     // Channel 2 (only created if numChannels >= 2)
     if (m_numChannels >= 2) {
         createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%.3f");
-        m_indiP_outlet2volt["current"] = m_channelVoltages[1];
-        m_indiP_outlet2volt["target"] = m_channelVoltages[1];
-        registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
+    m_indiP_outlet2volt["current"] = m_channelVoltages[1];
+    m_indiP_outlet2volt["target"] = m_channelVoltages[1];
+    registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
 
         createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%.3f");
-        m_indiP_outlet2curr["current"] = m_channelCurrents[1];
-        m_indiP_outlet2curr["target"] = m_channelCurrents[1];
-        registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
+    m_indiP_outlet2curr["current"] = m_channelCurrents[1];
+    m_indiP_outlet2curr["target"] = m_channelCurrents[1];
+    registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
     }
 
     // Channel 3 (only created if numChannels >= 3)
     if (m_numChannels >= 3) {
         createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%.3f");
-        m_indiP_outlet3volt["current"] = m_channelVoltages[2];
-        m_indiP_outlet3volt["target"] = m_channelVoltages[2];
-        registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
+    m_indiP_outlet3volt["current"] = m_channelVoltages[2];
+    m_indiP_outlet3volt["target"] = m_channelVoltages[2];
+    registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
 
         createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%.3f");
-        m_indiP_outlet3curr["current"] = m_channelCurrents[2];
-        m_indiP_outlet3curr["target"] = m_channelCurrents[2];
-        registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
+    m_indiP_outlet3curr["current"] = m_channelCurrents[2];
+    m_indiP_outlet3curr["target"] = m_channelCurrents[2];
+    registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
     }
 
     // Telemetry toggle switch
@@ -805,7 +805,7 @@ int scpiCtrl::appLogic()
           }
           
           int rv = updateOutletStates();
-
+ 
           if(rv < 0) return log<software_error,-1>({__FILE__, __LINE__});
        }
  
@@ -855,19 +855,19 @@ int scpiCtrl::updateOutletState( int outletNum )
         m_outletStates[outletNum] = OUTLET_STATE_ON;
     } else {
         // Select channel n for power supplies
-        std::string res;
-        std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
-        if (!send_scpi(cmd_sel, res)) {
-            log<software_error>({__FILE__, __LINE__, "Could not select outlet channel " + std::to_string(outletNum)});
-            return -1;
-        }
+    std::string res;
+    std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
+    if (!send_scpi(cmd_sel, res)) {
+        log<software_error>({__FILE__, __LINE__, "Could not select outlet channel " + std::to_string(outletNum)});
+        return -1;
+    }
 
-        // Query present-channel output state and measurements
-        std::string outp;
-        if (send_scpi("OUTP?\n", outp)) {
-            int st = 0;
-            try { st = std::stoi(outp); } catch(...) { st = 0; }
-            m_outletStates[outletNum] = (st == 1 ? OUTLET_STATE_ON : OUTLET_STATE_OFF);
+    // Query present-channel output state and measurements
+    std::string outp;
+    if (send_scpi("OUTP?\n", outp)) {
+        int st = 0;
+        try { st = std::stoi(outp); } catch(...) { st = 0; }
+        m_outletStates[outletNum] = (st == 1 ? OUTLET_STATE_ON : OUTLET_STATE_OFF);
         }
     }
 
@@ -923,16 +923,16 @@ int scpiCtrl::updateOutletStates()
 
     // Update INDI properties only for configured channels
     if (m_numChannels >= 1) {
-        updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
-        updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+    updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+    updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
     }
     if (m_numChannels >= 2) {
-        updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
-        updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+    updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+    updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
     }
     if (m_numChannels >= 3) {
-        updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
-        updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+    updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
     }
 
     dev::outletController<scpiCtrl>::updateINDI();
@@ -1057,12 +1057,12 @@ int scpiCtrl::updateChannel(int channel)
 
     if (m_isPowerSupply && m_numChannels > 1) {
         // Multi-channel power supply - select channel first
-        std::string res;
-        std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
-        if (!send_scpi(cmd_sel, res)) {
-            return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
-        }
-        
+    std::string res;
+    std::string cmd_sel = "INST:NSEL " + std::to_string(channel + 1) + "\n";
+    if (!send_scpi(cmd_sel, res)) {
+        return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
+    }
+
         ok_v = send_scpi("MEAS:VOLT?\n", volt);
         ok_c = send_scpi("MEAS:CURR?\n", curr);
     } else if (m_isPowerSupply) {
@@ -1115,7 +1115,7 @@ int scpiCtrl::updateChannel(int channel)
     if (ok_c) {
         curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
         try {
-            m_channelCurrents[channel] = std::stof(curr);
+        m_channelCurrents[channel] = std::stof(curr);
             log<text_log>("Channel " + std::to_string(channel) + " current: " + std::to_string(m_channelCurrents[channel]) + "A (raw: '" + curr + "')");
         } catch (...) {
             log<software_error>({__FILE__, __LINE__, "Failed to parse current reading: " + curr});
@@ -1150,9 +1150,9 @@ int scpiCtrl::collectTelemetryData(std::vector<float>& voltages, std::vector<dou
                 log<software_error>({__FILE__, __LINE__, "Failed to parse voltage for telemetry: " + volt_str});
                 return -1;
             }
-        } else {
+    } else {
             log<software_error>({__FILE__, __LINE__, "Failed to read voltage for telemetry"});
-            return -1;
+        return -1;
         }
     } else {
         // For measurement devices, use the selected measurement mode
@@ -1273,7 +1273,7 @@ int scpiCtrl::readDeviceMeasurementFunction()
         updateIfChanged(m_indiP_measurementFunction, "target", newStr);
         updateIfChanged(m_indiP_measurementFunctionCurrent, "current", newStr);
     }
-    
+
     return 0;
 }
 
@@ -1421,7 +1421,7 @@ bool scpiCtrl::send_scpi(const std::string& cmd, std::string& response) {
             n = read(active_fd, buffer, sizeof(buffer) - 1);
             if (n < 0) {
                 log<software_error>({__FILE__, __LINE__, "SCPI read failed after retry: " + std::string(strerror(errno))});
-                return false;
+        return false;
             }
         } else {
             log<software_error>({__FILE__, __LINE__, "SCPI read failed: " + std::string(strerror(errno))});
@@ -1460,8 +1460,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet1volt)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 1) {
-       updateIfChanged(m_indiP_outlet1volt, "target", vc);
-       updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+   updateIfChanged(m_indiP_outlet1volt, "target", vc);
+   updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
    }
 
    return 0;
@@ -1494,8 +1494,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet2volt)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 2) {
-       updateIfChanged(m_indiP_outlet2volt, "target", vc);
-       updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+   updateIfChanged(m_indiP_outlet2volt, "target", vc);
+   updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
    }
 
    return 0;
@@ -1528,8 +1528,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet3volt)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 3) {
-       updateIfChanged(m_indiP_outlet3volt, "target", vc);
-       updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+   updateIfChanged(m_indiP_outlet3volt, "target", vc);
+   updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
    }
 
    return 0;
@@ -1562,8 +1562,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet1curr)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 1) {
-       updateIfChanged(m_indiP_outlet1curr, "target", vc);
-       updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+   updateIfChanged(m_indiP_outlet1curr, "target", vc);
+   updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
    }
 
    return 0;
@@ -1596,8 +1596,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet2curr)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 2) {
-       updateIfChanged(m_indiP_outlet2curr, "target", vc);
-       updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+   updateIfChanged(m_indiP_outlet2curr, "target", vc);
+   updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
    }
 
    return 0;
@@ -1630,8 +1630,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_outlet3curr)(const pcf::IndiProperty &ip
    }
 
    if (m_numChannels >= 3) {
-       updateIfChanged(m_indiP_outlet3curr, "target", vc);
-       updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+   updateIfChanged(m_indiP_outlet3curr, "target", vc);
+   updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
    }
 
    return 0;
@@ -1665,8 +1665,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_resetToggle)(const pcf::IndiProperty &ip
         // Reset the toggle back to off
         updateSwitchIfChanged(m_indiP_resetToggle, "reset", pcf::IndiElement::Off);
     }
-    
-    return 0;
+
+   return 0;
 }
 
 INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty &ipRecv)
@@ -1873,7 +1873,7 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_currentConversionFactor)(const pcf::Indi
     m_currentConversionFactor = factor;
     updateIfChanged(m_indiP_currentConversionFactor, "value", m_currentConversionFactor);
     log<text_log>("Current conversion factor changed to: " + std::to_string(factor) + " V/A");
-    return 0;
+   return 0;
 }
 
 
@@ -2177,7 +2177,7 @@ inline int scpiCtrl::checkBufferStatus()
                         m_telemetryEnabled = false;
                         m_indiP_telemetryToggle["toggle"].setSwitchState(pcf::IndiElement::Off);
                         m_indiP_telemetryToggle.setState(pcf::IndiProperty::Idle);
-                        sendSetProperty(m_indiP_telemetryToggle);
+                        sendNewProperty(m_indiP_telemetryToggle);
                         // Don't stop telemetry logging here - it's not started for buffered mode
                         return rv;
                     } catch(...) {
@@ -2188,7 +2188,7 @@ inline int scpiCtrl::checkBufferStatus()
                         m_telemetryEnabled = false;
                         m_indiP_telemetryToggle["toggle"].setSwitchState(pcf::IndiElement::Off);
                         m_indiP_telemetryToggle.setState(pcf::IndiProperty::Idle);
-                        sendSetProperty(m_indiP_telemetryToggle);
+                        sendNewProperty(m_indiP_telemetryToggle);
                         return rv;
                     }
                 }
@@ -2377,27 +2377,45 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
         }
     }
     
-    // The data format from TRAC:DATA? with READ,REL is [value1, time1, value2, time2, ...]
-    // But we need to check if we actually have pairs or just values
-    if (all_data.size() % 2 == 0) {
-        // We have pairs: [value1, time1, value2, time2, ...]
-        for (size_t i = 0; i < all_data.size(); i += 2) {
-            if (i + 1 < all_data.size()) {
-                voltages.push_back(all_data[i]);
+    // The data format from TRAC:DATA? with READ,REL depends on what we're measuring:
+    // - Voltage only: [timestamp1, voltage1, timestamp2, voltage2, ...] (pairs)
+    // - Current only: [timestamp1, current1, timestamp2, current2, ...] (pairs)  
+    // - Both voltage and current: [timestamp1, voltage1, current1, timestamp2, voltage2, current2, ...] (triplets)
+    
+    if (all_data.size() % 3 == 0) {
+        // We have triplets: [timestamp1, voltage1, current1, timestamp2, voltage2, current2, ...]
+        // This means we're measuring both voltage and current
+        for (size_t i = 0; i < all_data.size(); i += 3) {
+            if (i + 2 < all_data.size()) {
                 // Convert seconds to nanoseconds (multiply by 1e9)
-                timestamps.push_back(static_cast<double>(all_data[i + 1]) * 1e9);
+                timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
+                voltages.push_back(all_data[i + 1]);
+                // Note: current is in all_data[i + 2], but we're not storing it here
+                // since we calculate current from voltage using conversion factor
             }
         }
+        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with timestamps, voltage, and current");
+    } else if (all_data.size() % 2 == 0) {
+        // We have pairs: [timestamp1, voltage1, timestamp2, voltage2, ...]
+        // This means we're measuring voltage only
+        for (size_t i = 0; i < all_data.size(); i += 2) {
+            if (i + 1 < all_data.size()) {
+                // Convert seconds to nanoseconds (multiply by 1e9)
+                timestamps.push_back(static_cast<double>(all_data[i]) * 1e9);
+                voltages.push_back(all_data[i + 1]);
+            }
+        }
+        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with timestamps and voltage only");
     } else {
-        // We only have values, no timestamps - create dummy timestamps
+        // We have just values: [value1, value2, value3, ...]
+        // In this case, we don't have timestamps, so we'll generate them
         for (size_t i = 0; i < all_data.size(); i++) {
             voltages.push_back(all_data[i]);
-            // Create dummy timestamp (current time + i * sample interval)
-            double dummy_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::high_resolution_clock::now().time_since_epoch()).count() + 
-                i * (1.0 / m_sampleRateHz) * 1e9;
-            timestamps.push_back(dummy_time);
+            // Generate timestamps based on sampling rate
+             double timestamp = static_cast<double>(i) / m_sampleRateHz;
+            timestamps.push_back(timestamp * 1e9); // Convert to nanoseconds
         }
+        log<text_log>("Parsed " + std::to_string(timestamps.size()) + " samples with generated timestamps");
     }
     
     log<text_log>("Retrieved " + std::to_string(voltages.size()) + " buffered samples");
