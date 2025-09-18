@@ -1717,6 +1717,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty
                 } else {
                     log<text_log>("Stopped buffer acquisition and saved data");
                 }
+            } else {
+                log<text_log>("Buffer acquisition already stopped");
             }
             // Don't stop polling thread - we need it to keep INDI properties updated
         }
@@ -2171,17 +2173,22 @@ inline int scpiCtrl::checkBufferStatus()
                         int count2 = std::stoi(act2);
                         log<text_log>("Buffer full (" + std::to_string(count2) + "/" + std::to_string(m_bufferSize) + ") - stopping acquisition");
                         int rv = stopBufferAcquisition();
-                        // Auto-toggle telemetry OFF
+                        // Auto-toggle telemetry OFF (but don't call callback to avoid double-stop)
                         m_telemetryEnabled = false;
-                        updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
+                        m_indiP_telemetryToggle["toggle"].setSwitchState(pcf::IndiElement::Off);
+                        m_indiP_telemetryToggle.setState(pcf::IndiProperty::Idle);
+                        sendSetProperty(m_indiP_telemetryToggle);
                         // Don't stop telemetry logging here - it's not started for buffered mode
                         return rv;
                     } catch(...) {
                         // If second check fails, proceed with first count
                         log<text_log>("Buffer full (" + std::to_string(count) + "/" + std::to_string(m_bufferSize) + ") - stopping acquisition");
                         int rv = stopBufferAcquisition();
+                        // Auto-toggle telemetry OFF (but don't call callback to avoid double-stop)
                         m_telemetryEnabled = false;
-                        updateSwitchIfChanged(m_indiP_telemetryToggle, "toggle", pcf::IndiElement::Off);
+                        m_indiP_telemetryToggle["toggle"].setSwitchState(pcf::IndiElement::Off);
+                        m_indiP_telemetryToggle.setState(pcf::IndiProperty::Idle);
+                        sendSetProperty(m_indiP_telemetryToggle);
                         return rv;
                     }
                 }
@@ -2263,8 +2270,25 @@ inline int scpiCtrl::getBufferedData(std::vector<float>& voltages, std::vector<d
     // First check how many samples are actually available
     std::string count_cmd = "TRAC:ACT?\n";
     std::string count_res;
-    if (!send_scpi(count_cmd, count_res)) {
-        log<software_error>({__FILE__, __LINE__, "Failed to check buffer status"});
+    
+    // Add a small delay to ensure device is ready
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Retry logic for buffer status check
+    int retry_count = 0;
+    while (retry_count < 3) {
+        if (send_scpi(count_cmd, count_res)) {
+            break;
+        }
+        retry_count++;
+        if (retry_count < 3) {
+            log<text_log>("Buffer status check failed, retrying... (" + std::to_string(retry_count) + "/3)");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+    }
+    
+    if (retry_count >= 3) {
+        log<software_error>({__FILE__, __LINE__, "Failed to check buffer status after retries"});
         return -1;
     }
     
