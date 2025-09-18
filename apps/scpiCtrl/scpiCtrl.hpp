@@ -796,10 +796,10 @@ int scpiCtrl::appLogic()
        {
           m_lastPollTime = now;
           
-          // Periodic connection validation and parameter checking (every 10 polls)
+          // Periodic connection validation and parameter checking (every 20 polls to reduce load)
           static int poll_count = 0;
           poll_count++;
-          if (poll_count >= 10) {
+          if (poll_count >= 20) {
               poll_count = 0;
               std::string test_response;
               if (!send_scpi("*IDN?\n", test_response)) {
@@ -809,16 +809,30 @@ int scpiCtrl::appLogic()
                   return 0;
               }
               
-              // Check for external changes to device parameters
+              // Add small delay between commands to avoid overwhelming the device
+              std::this_thread::sleep_for(std::chrono::milliseconds(50));
+              
+              // Check for external changes to device parameters (spread out over multiple cycles)
               if (!m_isPowerSupply) {
-                  readDeviceBufferSize();
-                  readDeviceSamplingRate();
-                  readDeviceMeasurementMode();
-                  readDeviceMeasurementFunction();
+                  static int param_check_cycle = 0;
+                  param_check_cycle++;
                   
-                  // Check buffer status for buffered/digitized modes
+                  // Spread parameter checks across multiple cycles to reduce device load
+                  if (param_check_cycle % 4 == 0) {
+                      readDeviceBufferSize();
+                  } else if (param_check_cycle % 4 == 1) {
+                      readDeviceSamplingRate();
+                  } else if (param_check_cycle % 4 == 2) {
+                      readDeviceMeasurementMode();
+                  } else if (param_check_cycle % 4 == 3) {
+                      readDeviceMeasurementFunction();
+                  }
+                  
+                  // Check buffer status for buffered/digitized modes (less frequently)
                   if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
-                      checkBufferStatus();
+                      if (param_check_cycle % 8 == 0) { // Only check every 8 cycles
+                          checkBufferStatus();
+                      }
                   }
               }
           }
@@ -1456,11 +1470,15 @@ bool scpiCtrl::send_scpi(const std::string& cmd, std::string& response) {
         ssize_t n = read(active_fd, buffer.data(), buffer.size() - 1);
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // No data available yet, try again after a short delay
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                n = read(active_fd, buffer.data(), buffer.size() - 1);
+                // No data available yet, try multiple times with increasing delays
+                for (int retry = 0; retry < 5; retry++) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20 * (retry + 1))); // 20ms, 40ms, 60ms, 80ms, 100ms
+                    n = read(active_fd, buffer.data(), buffer.size() - 1);
+                    if (n >= 0) break; // Success
+                    if (errno != EAGAIN && errno != EWOULDBLOCK) break; // Different error
+                }
                 if (n < 0) {
-                    log<software_error>({__FILE__, __LINE__, "SCPI read failed after retry: " + std::string(strerror(errno))});
+                    log<software_error>({__FILE__, __LINE__, "SCPI read failed after " + std::to_string(5) + " retries: " + std::string(strerror(errno))});
                     return false;
                 }
             } else {
