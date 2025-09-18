@@ -1111,7 +1111,6 @@ int scpiCtrl::updateChannel(int channel)
             } else {
                 // No conversion factor or power supply - set current to 0
                 m_channelCurrents[channel] = 0.0f;
-                log<text_log>("Channel " + std::to_string(channel) + " voltage: " + std::to_string(voltageValue) + "V (no current conversion)");
             }
         } catch (...) {
             log<software_error>({__FILE__, __LINE__, "Failed to parse voltage reading: " + volt});
@@ -1127,7 +1126,6 @@ int scpiCtrl::updateChannel(int channel)
         curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
         try {
         m_channelCurrents[channel] = std::stof(curr);
-            log<text_log>("Channel " + std::to_string(channel) + " current: " + std::to_string(m_channelCurrents[channel]) + "A (raw: '" + curr + "')");
         } catch (...) {
             log<software_error>({__FILE__, __LINE__, "Failed to parse current reading: " + curr});
             m_channelCurrents[channel] = 0.0f;
@@ -1135,7 +1133,6 @@ int scpiCtrl::updateChannel(int channel)
     } else if (m_isPowerSupply) {
         // For power supplies, current might not be available
         m_channelCurrents[channel] = 0.0f;
-        log<text_log>("Channel " + std::to_string(channel) + " current set to 0.0A (power supply command failed)");
     }
     // For measurement devices, current is already calculated from voltage above, so no action needed
 
@@ -1804,12 +1801,18 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_samplingRateHz)(const pcf::IndiProperty 
     if (ipRecv.getName() != m_indiP_samplingRateHz.getName()) return -1;
     if (!ipRecv.find("value")) return -1;
     double newRate = ipRecv["value"].get<double>();
-    if (newRate <= 0) return -1;
+    if (newRate <= 0) {
+        log<software_error>({__FILE__, __LINE__, "Invalid sampling rate: " + std::to_string(newRate) + " Hz (must be > 0)"});
+        return -1;
+    }
     std::unique_lock<std::mutex> lock(m_indiMutex);
     m_sampleRateHz = newRate;
     m_indiP_samplingRateHz["value"].set<double>(m_sampleRateHz);
+    m_indiP_samplingRateHz.setState(pcf::IndiProperty::Busy);
+    sendNewProperty(m_indiP_samplingRateHz);
     m_indiP_samplingRateHz.setState(pcf::IndiProperty::Idle);
     sendNewProperty(m_indiP_samplingRateHz);
+    log<text_log>("Sampling rate changed to " + std::to_string(m_sampleRateHz) + " Hz");
     // If in buffered mode and ready, reconfigure and auto-tune
     if (state() == stateCodes::READY && !m_isPowerSupply && m_measurementMode == MeasurementMode::BUFFERED) {
         setupBufferedAcquisition();
@@ -1837,6 +1840,10 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
             // Update both target and current values
             m_indiP_bufferSize["target"].set<int>(m_bufferSize);
             m_indiP_bufferSizeCurrent["current"].set<int>(m_bufferSize);
+            m_indiP_bufferSize.setState(pcf::IndiProperty::Busy);
+            m_indiP_bufferSizeCurrent.setState(pcf::IndiProperty::Busy);
+            sendNewProperty(m_indiP_bufferSize);
+            sendNewProperty(m_indiP_bufferSizeCurrent);
             m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
             m_indiP_bufferSizeCurrent.setState(pcf::IndiProperty::Idle);
             sendNewProperty(m_indiP_bufferSize);
@@ -1848,13 +1855,15 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
             }
         } else {
             log<software_error>({__FILE__, __LINE__, "Failed to set buffer size on device"});
-            // Read back current value from device
-            readDeviceBufferSize();
+            // Don't call readDeviceBufferSize() here as it can cause recursive callbacks
+            // The device will be checked on the next regular update cycle
         }
     } else {
         // Just update the target value (will be applied when device is ready)
         m_bufferSize = targetSize;
         m_indiP_bufferSize["target"].set<int>(m_bufferSize);
+        m_indiP_bufferSize.setState(pcf::IndiProperty::Busy);
+        sendNewProperty(m_indiP_bufferSize);
         m_indiP_bufferSize.setState(pcf::IndiProperty::Idle);
         sendNewProperty(m_indiP_bufferSize);
     }
@@ -1960,6 +1969,8 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_telemDir)(const pcf::IndiProperty &ipRec
     std::unique_lock<std::mutex> lock(m_indiMutex);
     m_telemDir = newDir;
     m_indiP_telemDir["value"].set<std::string>(m_telemDir);
+    m_indiP_telemDir.setState(pcf::IndiProperty::Busy);
+    sendNewProperty(m_indiP_telemDir);
     m_indiP_telemDir.setState(pcf::IndiProperty::Idle);
     sendNewProperty(m_indiP_telemDir);
     log<text_log>("Telemetry directory changed to: " + m_telemDir);
@@ -2115,6 +2126,21 @@ inline int scpiCtrl::autoTuneBuffered(double targetRateHz, int maxIterations, do
 // ---- Buffered acquisition methods ----
 inline int scpiCtrl::setupBufferedAcquisition()
 {
+    // Prevent recursive calls during setup
+    static bool setupInProgress = false;
+    if (setupInProgress) {
+        log<text_log>("Buffered acquisition setup already in progress, skipping");
+        return 0;
+    }
+    setupInProgress = true;
+    
+    // RAII helper to ensure flag is reset on any exit
+    struct SetupGuard {
+        bool& flag;
+        SetupGuard(bool& f) : flag(f) {}
+        ~SetupGuard() { flag = false; }
+    } guard(setupInProgress);
+    
     log<text_log>("Setting up buffered acquisition: " + std::to_string(m_bufferSize) + " samples, target rate " + 
                   std::to_string(m_sampleRateHz) + " Hz");
     
