@@ -679,14 +679,9 @@ int scpiCtrl::appStartup()
     registerIndiPropertyNew(m_indiP_currentConversionFactor, INDI_NEWCALLBACK(m_indiP_currentConversionFactor));
 
     // Experiment directory
-    m_indiP_experimentDirectory = pcf::IndiProperty(pcf::IndiProperty::Text);
-    m_indiP_experimentDirectory.setDevice(configName());
-    m_indiP_experimentDirectory.setName("experimentDirectory");
-    m_indiP_experimentDirectory.setPerm(pcf::IndiProperty::ReadWrite);
-    m_indiP_experimentDirectory.setState(pcf::IndiProperty::Idle);
+    REG_INDI_NEWPROP(m_indiP_experimentDirectory, "experimentDirectory", pcf::IndiProperty::Text);
     m_indiP_experimentDirectory.add(pcf::IndiElement("value"));
     m_indiP_experimentDirectory["value"].set<std::string>(m_experimentDirectory);
-    registerIndiPropertyNew(m_indiP_experimentDirectory, st_newCallBack_m_indiP_experimentDirectory);
 
     // Initialize timers
     m_lastPollTime = std::chrono::steady_clock::now();
@@ -1065,6 +1060,11 @@ int scpiCtrl::updateChannel(int channel)
         return -1;
     }
     
+    // Skip updateChannel during buffer acquisition to avoid interference
+    if (m_bufferAcquisitionActive) {
+        return 0;
+    }
+    
     // Debug logging
     log<text_log>("updateChannel(" + std::to_string(channel) + ") called - device type: " + 
                   std::string(m_isPowerSupply ? "PowerSupply" : "Measurement"));
@@ -1207,9 +1207,20 @@ int scpiCtrl::readDeviceBufferSize()
         return 0;
     }
     
+    // Skip during buffer acquisition to avoid interference
+    if (m_bufferAcquisitionActive) {
+        return 0;
+    }
+    
     std::string res;
     if (!send_scpi("TRAC:POIN?\n", res)) {
         log<software_error>({__FILE__, __LINE__, "Failed to read buffer size from device"});
+        return -1;
+    }
+    
+    // Check if we got a valid response (should be a number)
+    if (res.find("KEITHLEY") != std::string::npos || res.find("MODEL") != std::string::npos) {
+        log<software_error>({__FILE__, __LINE__, "Got device ID instead of buffer size - device may be confused"});
         return -1;
     }
     
@@ -1255,9 +1266,20 @@ int scpiCtrl::readDeviceMeasurementFunction()
         return 0;
     }
     
+    // Skip during buffer acquisition to avoid interference
+    if (m_bufferAcquisitionActive) {
+        return 0;
+    }
+    
     std::string res;
     if (!send_scpi("SENS:FUNC?\n", res)) {
         log<software_error>({__FILE__, __LINE__, "Failed to read measurement function from device"});
+        return -1;
+    }
+    
+    // Check if we got a valid response
+    if (res.find("KEITHLEY") != std::string::npos || res.find("MODEL") != std::string::npos) {
+        log<software_error>({__FILE__, __LINE__, "Got device ID instead of measurement function - device may be confused"});
         return -1;
     }
     
@@ -1429,24 +1451,47 @@ bool scpiCtrl::send_scpi(const std::string& cmd, std::string& response) {
         return true;
     }
 
-    char buffer[1024] = {0};
-    ssize_t n = read(active_fd, buffer, sizeof(buffer) - 1);
-    if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // No data available yet, try again after a short delay
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            n = read(active_fd, buffer, sizeof(buffer) - 1);
-            if (n < 0) {
-                log<software_error>({__FILE__, __LINE__, "SCPI read failed after retry: " + std::string(strerror(errno))});
-        return false;
+    // For large responses (like buffer data), use a larger buffer and read in chunks
+    std::vector<char> buffer(8192); // 8KB buffer for large responses
+    response.clear();
+    
+    while (true) {
+        ssize_t n = read(active_fd, buffer.data(), buffer.size() - 1);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // No data available yet, try again after a short delay
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                n = read(active_fd, buffer.data(), buffer.size() - 1);
+                if (n < 0) {
+                    log<software_error>({__FILE__, __LINE__, "SCPI read failed after retry: " + std::string(strerror(errno))});
+                    return false;
+                }
+            } else {
+                log<software_error>({__FILE__, __LINE__, "SCPI read failed: " + std::string(strerror(errno))});
+                return false;
             }
-        } else {
-            log<software_error>({__FILE__, __LINE__, "SCPI read failed: " + std::string(strerror(errno))});
-            return false;
+        }
+        
+        if (n == 0) {
+            // End of data
+            break;
+        }
+        
+        // Append to response
+        response.append(buffer.data(), n);
+        
+        // Check if we have a complete response (ends with newline)
+        if (response.back() == '\n') {
+            break;
+        }
+        
+        // If response is getting too large, break to avoid infinite loop
+        if (response.size() > 100000) { // 100KB limit
+            log<software_error>({__FILE__, __LINE__, "Response too large, truncating at 100KB"});
+            break;
         }
     }
-
-    response.assign(buffer, n);
+    
     return true;
 }
 
