@@ -34,4 +34,4 @@ jobs:
           tags: ${{ steps.meta_full.outputs.tags }}
           labels: ${{ steps.meta_full.outputs.labels }}
           build-args: |
-            BASE_IMAGE=magao-x-build@latest
+            BASE_IMAGE=${{ env.REGISTRY }}/magao-x-build@latest
