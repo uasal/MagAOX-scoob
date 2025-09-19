@@ -1856,6 +1856,12 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
     
     // Apply the change to the device
     if (!m_isPowerSupply && state() == stateCodes::READY) {
+        // If buffer acquisition is active, we need to stop it first before changing buffer size
+        if (m_bufferAcquisitionActive) {
+            log<text_log>("Stopping active buffer acquisition to change buffer size");
+            stopBufferAcquisition();
+        }
+        
         std::string res;
         std::string cmd = "TRAC:POIN " + std::to_string(targetSize) + ",'defbuffer1'\n";
         if (send_scpi(cmd, res)) {
@@ -1874,7 +1880,7 @@ INDI_NEWCALLBACK_DEFN(scpiCtrl, m_indiP_bufferSize)(const pcf::IndiProperty &ipR
             sendNewProperty(m_indiP_bufferSize);
             sendNewProperty(m_indiP_bufferSizeCurrent);
             
-            // Reconfigure buffered acquisition if active
+            // Reconfigure buffered acquisition if in buffered mode
             if (m_measurementMode == MeasurementMode::BUFFERED) {
                 setupBufferedAcquisition();
             }
@@ -2171,6 +2177,12 @@ inline int scpiCtrl::setupBufferedAcquisition()
     
     std::string res;
     
+    // Stop any active acquisition first
+    if (m_bufferAcquisitionActive) {
+        log<text_log>("Stopping active buffer acquisition before reconfiguration");
+        stopBufferAcquisition();
+    }
+    
     // Configure for voltage measurement (skip reset to avoid connection issues)
     if (!send_scpi("SENS:FUNC 'VOLT'\n", res)) {
         log<text_log>("Warning: Failed to set voltage function, trying reset", logPrio::LOG_WARNING);
@@ -2183,22 +2195,34 @@ inline int scpiCtrl::setupBufferedAcquisition()
         }
     }
     
-    // Clear and resize buffer to exactly what we need
-    if (!send_scpi("TRAC:CLE 'defbuffer1'\n", res)) {
-        return log<text_log,-1>("Failed to clear buffer", logPrio::LOG_ERROR);
-    }
-    
-    // Configure buffer to store timestamps
+    // Configure buffer to store timestamps FIRST
     if (!send_scpi("TRAC:FORMAT TST\n", res)) {
         log<text_log>("Warning: Failed to set buffer format to include timestamps", logPrio::LOG_WARNING);
     }
     
+    // Clear buffer
+    if (!send_scpi("TRAC:CLE 'defbuffer1'\n", res)) {
+        return log<text_log,-1>("Failed to clear buffer", logPrio::LOG_ERROR);
+    }
+    
+    // Set buffer size
     std::string buffer_cmd = "TRAC:POIN " + std::to_string(m_bufferSize) + ",'defbuffer1'\n";
     if (!send_scpi(buffer_cmd, res)) {
         return log<text_log,-1>("Failed to configure buffer size", logPrio::LOG_ERROR);
     }
+    
+    // Set buffer fill mode to TRIGGERED (not continuous)
+    if (!send_scpi("TRAC:FILL:MODE TRIG\n", res)) {
+        log<text_log>("Warning: Failed to set buffer fill mode to triggered", logPrio::LOG_WARNING);
+    }
+    
+    // Ensure buffer logging is enabled
+    if (!send_scpi("TRAC:LOG:STAT ON\n", res)) {
+        log<text_log>("Warning: Failed to enable buffer logging", logPrio::LOG_WARNING);
+    }
+    
     // Give the device time to process the buffer configuration
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
     // Apply base speed settings and auto-tune NPLC for target rate with zero delay
     if (applyBaseSpeedSettings() < 0) {
@@ -2207,15 +2231,17 @@ inline int scpiCtrl::setupBufferedAcquisition()
     if (autoTuneBuffered(m_sampleRateHz, 6, 0.0005) < 0) {
         log<text_log>("Auto-tune did not converge; proceeding with best effort", logPrio::LOG_WARNING);
     }
-    // Configure zero-delay SimpleLoop
+    
+    // Configure zero-delay SimpleLoop for triggered mode
     std::string trigger_cmd = "TRIG:LOAD 'SimpleLoop'," + std::to_string(m_bufferSize) + ",0\n";
     if (!send_scpi(trigger_cmd, res)) {
         return log<text_log,-1>("Failed to configure trigger system (SimpleLoop,0)", logPrio::LOG_ERROR);
     }
-    // Give the device time to process the trigger configuration
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
-    log<text_log>("Buffered acquisition configured successfully");
+    // Give the device time to process the trigger configuration
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    log<text_log>("Buffered acquisition configured successfully (triggered mode)");
     return 0;
 }
 
@@ -2323,7 +2349,8 @@ inline int scpiCtrl::checkBufferStatus()
             return stopBufferAcquisition();
         }
     }
-    // If buffer reached size, stop and save
+    
+    // Check buffer fill status using proper SCPI commands
     std::string act;
     if (send_scpi("TRAC:ACT? 'defbuffer1'\n", act)) {
         try {
