@@ -4,7 +4,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  BASE_IMAGE_NAME: magao-x/magao-x-build
+  BASE_IMAGE_NAME: magao-x/magao-x-setup:main
 jobs:
   build-and-push-rocky-full:
     runs-on: ubuntu-latest
@@ -34,4 +34,4 @@ jobs:
           tags: ${{ steps.meta_full.outputs.tags }}
           labels: ${{ steps.meta_full.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/magao-x/magao-x-build:main
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
