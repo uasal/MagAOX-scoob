@@ -796,6 +796,11 @@ int scpiCtrl::appLogic()
        {
           m_lastPollTime = now;
           
+          // Check buffer status for buffered/digitized modes (frequently for triggered mode)
+          if (!m_isPowerSupply && m_bufferAcquisitionActive) {
+              checkBufferStatus();
+          }
+          
           // Periodic connection validation and parameter checking (every 20 polls to reduce load)
           static int poll_count = 0;
           poll_count++;
@@ -828,12 +833,6 @@ int scpiCtrl::appLogic()
                       readDeviceMeasurementFunction();
                   }
                   
-                  // Check buffer status for buffered/digitized modes (less frequently)
-                  if (m_measurementMode == MeasurementMode::BUFFERED || m_measurementMode == MeasurementMode::DIGITIZED) {
-                      if (param_check_cycle % 8 == 0) { // Only check every 8 cycles
-                          checkBufferStatus();
-                      }
-                  }
               }
           }
           
@@ -2261,8 +2260,13 @@ inline int scpiCtrl::startBufferAcquisition()
         return log<text_log,-1>("Failed to clear buffer", logPrio::LOG_ERROR);
     }
     
-    // Start acquisition
-    log<text_log>("Sending INIT command...");
+    // Ensure buffer is in triggered mode
+    if (!send_scpi("TRAC:FILL:MODE TRIG\n", res)) {
+        log<text_log>("Warning: Failed to set buffer fill mode to triggered", logPrio::LOG_WARNING);
+    }
+    
+    // Start acquisition with INIT command (triggers the buffer acquisition)
+    log<text_log>("Sending INIT command to trigger buffer acquisition...");
     if (!send_scpi("INIT\n", res)) {
         return log<text_log,-1>("Failed to initiate buffer acquisition", logPrio::LOG_ERROR);
     }
