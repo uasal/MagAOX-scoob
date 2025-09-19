@@ -30,8 +30,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/dev' }}
           tags: ${{ steps.meta_full.outputs.tags }}
           labels: ${{ steps.meta_full.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ env.REGISTRY }}/magao-x-build:main
+            BASE_IMAGE=${{ env.REGISTRY }}/magao-x/magao-x-build:main
