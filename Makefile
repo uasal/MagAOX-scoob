@@ -223,7 +223,8 @@ utils_to_build = \
 	logdump \
 	logsurgeon \
 	cursesINDI \
-	xrif2fits
+	xrif2fits \
+	xrif2shmim
 
 scripts_to_install = \
 	query_seeing \
