@@ -148,7 +148,7 @@ def organize_store(store_root: pathlib.Path, dry_run):
         pass
     
     for child in store_root.glob('*'):
-        if 'lookyloo' in child.name:
+        if 'lookyloo' in child.name or 'selfRM' in child.name:
             continue
         if child.is_dir():
             log.debug(f'Descending to {child}')
