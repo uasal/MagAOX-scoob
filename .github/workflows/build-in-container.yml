@@ -64,6 +64,7 @@ jobs:
           labels: ${{ steps.meta_full.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:cli
+            MAGAOX_ROLE=container
       - name: Build and push Docker image (no GUIs)
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
@@ -74,3 +75,4 @@ jobs:
           labels: ${{ steps.meta_full.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:gui
+            MAGAOX_ROLE=workstation
