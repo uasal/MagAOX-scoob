@@ -147,20 +147,25 @@ all_buildable_apps = \
 libs_to_build = libtelnet
 
 ifeq ($(MAGAOX_ROLE),AOC)
+  apps_to_build += $(apps_basic)
   apps_to_build += $(apps_common)
   apps_to_build += $(apps_aoc)
 else ifeq ($(MAGAOX_ROLE),ICC)
+  apps_to_build += $(apps_basic)  
   apps_to_build += $(apps_common)
   apps_to_build += $(apps_rtcicc)
   apps_to_build += $(apps_icc)
 else ifeq ($(MAGAOX_ROLE),RTC)
+  apps_to_build += $(apps_basic)
   apps_to_build += $(apps_common)
   apps_to_build += $(apps_rtcicc)
   apps_to_build += $(apps_rtc)
 else ifeq ($(MAGAOX_ROLE),TIC)
+  apps_to_build += $(apps_basic)
   apps_to_build += $(apps_common)
   apps_to_build += $(apps_tic)
 else ifeq ($(MAGAOX_ROLE),SS)
+  apps_to_build += $(apps_basic)
   apps_to_build += $(apps_sim)
 endif
 
