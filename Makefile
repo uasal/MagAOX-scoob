@@ -69,7 +69,9 @@ apps_icc = \
 	xt1121DCDU \
 	koolanceCtrl \
 	corAlign \
-	adcCtrl
+	adcCtrl \
+	picamCtrl \
+	pvcamCtrl
 
 # 	audibleAlerts
 apps_aoc = \
