@@ -133,7 +133,7 @@ def remove_file(src, dry_run):
 
 def mkdir_and_chown(dir_path: pathlib.Path, dry_run: bool):
     if not dir_path.parent.is_dir():
-        mkdir_and_chown(dir_path, dry_run=dry_run)
+        mkdir_and_chown(dir_path.parent, dry_run=dry_run)
     if dry_run:
         log.debug(f"Would have made {dir_path} dir")
     else:
