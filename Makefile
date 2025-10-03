@@ -54,7 +54,9 @@ apps_rtc = \
 	pwfsSlopeCalc \
     kcubeCtrl \
 	dmPokeXCorr \
-	psfAcq
+	psfAcq \
+	strehlEstimator \
+	modalFilter
 
 # 	picamCtrl
 # 	pvcamCtrl
