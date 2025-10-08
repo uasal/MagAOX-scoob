@@ -441,6 +441,8 @@ int frameGrabber<derivedT>::loadConfig( mx::app::appConfigurator &config )
                 logPrio::LOG_ERROR );
             m_defaultFlip = fgFlipNone;
         }
+
+        m_currentFlip = m_defaultFlip;
     }
 
     return 0;
@@ -794,7 +796,7 @@ void frameGrabber<derivedT>::fgThreadExec()
         m_typeSize = ImageStreamIO_typesize( m_dataType );
 
         // Here we resolve currentFlip somehow.
-        m_currentFlip = m_defaultFlip;
+        //m_currentFlip = m_defaultFlip; //-delete after testing.  
 
         if( configCircBuffs() < 0 )
         {

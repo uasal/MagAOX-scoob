@@ -58,6 +58,10 @@ class baslerCtrl : public MagAOXApp<>,
                    public dev::telemeter<baslerCtrl>
 {
 
+    typedef dev::stdCamera<baslerCtrl>    stdCameraT;
+    typedef dev::frameGrabber<baslerCtrl> frameGrabberT;
+    typedef dev::telemeter<baslerCtrl>    telemeterT;
+
     friend class dev::stdCamera<baslerCtrl>;
     friend class dev::frameGrabber<baslerCtrl>;
     friend class dev::telemeter<baslerCtrl>;
@@ -154,6 +158,13 @@ class baslerCtrl : public MagAOXApp<>,
 
     /// Setup the configuration system (called by MagAOXApp::setup())
     virtual void setupConfig();
+
+    /// Implementation of loadConfig logic, separated for testing.
+    /** This is called by loadConfig().
+     */
+    int loadConfigImpl( mx::app::appConfigurator &_config /**< [in] an application configuration
+                                                                    from which to load values*/
+    );
 
     /// load the configuration system results (called by MagAOXApp::setup())
     virtual void loadConfig();
@@ -267,6 +278,11 @@ inline baslerCtrl::baslerCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MO
 {
     m_powerMgtEnabled = false;
 
+    m_full_x = 335.5;
+    m_full_y = 255.5;
+    m_full_w = 672;
+    m_full_h = 512;
+
     return;
 }
 
@@ -275,7 +291,7 @@ inline baslerCtrl::~baslerCtrl() noexcept
     return;
 }
 
-inline void baslerCtrl::setupConfig()
+void baslerCtrl::setupConfig()
 {
     dev::stdCamera<baslerCtrl>::setupConfig( config );
 
@@ -303,19 +319,30 @@ inline void baslerCtrl::setupConfig()
     dev::telemeter<baslerCtrl>::setupConfig( config );
 }
 
-inline void baslerCtrl::loadConfig()
+int baslerCtrl::loadConfigImpl( mx::app::appConfigurator &_config )
 {
-    dev::stdCamera<baslerCtrl>::loadConfig( config );
-
     config( m_serialNumber, "camera.serialNumber" );
     config( m_bits, "camera.bits" );
 
-    dev::frameGrabber<baslerCtrl>::loadConfig( config );
+    STDCAMERA_LOAD_CONFIG( _config );
 
-    dev::telemeter<baslerCtrl>::loadConfig( config );
+    FRAMEGRABBER_LOAD_CONFIG( _config );
+
+    TELEMETER_LOAD_CONFIG( _config );
+
+    return 0;
 }
 
-inline int baslerCtrl::appStartup()
+void baslerCtrl::loadConfig()
+{
+    if( loadConfigImpl( config ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, "error loading config" } );
+        m_shutdown = 1;
+    }
+}
+
+int baslerCtrl::appStartup()
 {
 
     //=================================
@@ -345,7 +372,7 @@ inline int baslerCtrl::appStartup()
     return 0;
 }
 
-inline int baslerCtrl::appLogic()
+int baslerCtrl::appLogic()
 {
     // and run stdCamera's appLogic
     if( dev::stdCamera<baslerCtrl>::appLogic() < 0 )
@@ -435,7 +462,7 @@ inline int baslerCtrl::appLogic()
     return 0;
 }
 
-inline int baslerCtrl::appShutdown()
+int baslerCtrl::appShutdown()
 {
     dev::stdCamera<baslerCtrl>::appShutdown();
 
@@ -451,7 +478,7 @@ inline int baslerCtrl::appShutdown()
     return 0;
 }
 
-inline int baslerCtrl::connect()
+int baslerCtrl::connect()
 {
     CDeviceInfo info;
     // info.SetDeviceClass(Camera_t::DeviceClass());
@@ -657,30 +684,25 @@ inline int baslerCtrl::connect()
         */
     }
 
-    m_full_w = m_camera->SensorWidth.GetValue();
-    m_full_h = m_camera->SensorHeight.GetValue();
-    m_full_x = 0.5 * ( (float)m_full_w - 1.0 );
-    m_full_y = 0.5 * ( (float)m_full_h - 1.0 );
+    if(m_full_w != m_camera->SensorWidth.GetValue())
+    {
+        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI w (camera.full_w) mismatch with camera"});
+    }
 
-    if( m_default_w == 0 )
-        m_default_w = m_full_w;
-    if( m_default_h == 0 )
-        m_default_h = m_full_h;
-    if( m_default_x == 0 )
-        m_default_x = m_full_x;
-    if( m_default_y == 0 )
-        m_default_y = m_full_y;
-    if( m_default_bin_x == 0 )
-        m_default_bin_x = m_binXs[0];
-    if( m_default_bin_y == 0 )
-        m_default_bin_y = m_binYs[0];
+    if(m_full_h != m_camera->SensorHeight.GetValue())
+    {
+        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI h (camera.full_h) mismatch with camera"});
+    }
+    
+    if(m_full_x != 0.5 * ( (float)m_full_w - 1.0 ))
+    {
+        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI x (camera.full_x) mismatch with camera"});
+    }
 
-    m_nextROI.x     = m_default_x;
-    m_nextROI.y     = m_default_y;
-    m_nextROI.w     = m_default_w;
-    m_nextROI.h     = m_default_h;
-    m_nextROI.bin_x = m_default_bin_x;
-    m_nextROI.bin_y = m_default_bin_y;
+    if(m_full_y != 0.5 * ( (float)m_full_h - 1.0 ))
+    {
+        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI y (camera.full_y) mismatch with camera"});
+    }
 
     return 0;
 }
@@ -688,7 +710,9 @@ inline int baslerCtrl::connect()
 int baslerCtrl::configureAcquisition()
 {
     if( !m_camera )
+    {
         return -1;
+    }
 
     try
     {
@@ -742,6 +766,7 @@ int baslerCtrl::configureAcquisition()
         }
         else
         {
+            std::cerr << "m_nextROI.x: " << m_nextROI.x << " m_nextROI.w:" << m_nextROI.w << '\n';
             xoff = m_nextROI.x - 0.5 * ( (float)m_nextROI.w - 1 );
         }
 
@@ -751,6 +776,7 @@ int baslerCtrl::configureAcquisition()
         }
         else
         {
+            std::cerr << "m_nextROI.y: " << m_nextROI.y << " m_nextROI.h:" << m_nextROI.h << '\n';
             yoff = m_nextROI.y - 0.5 * ( (float)m_nextROI.h - 1 );
         }
 
@@ -762,6 +788,8 @@ int baslerCtrl::configureAcquisition()
 
         m_camera->Width.SetValue( m_nextROI.w );
         m_camera->Height.SetValue( m_nextROI.h );
+
+        std::cerr << "xoff: " << xoff << " yoff: " << yoff << '\n';
 
         m_camera->OffsetX.SetValue( xoff );
         m_camera->OffsetY.SetValue( yoff );
@@ -927,7 +955,7 @@ int baslerCtrl::reconfig()
     return 0;
 }
 
-inline int baslerCtrl::getTemp()
+int baslerCtrl::getTemp()
 {
     if( m_camera == nullptr )
         return 0;
@@ -958,7 +986,7 @@ inline int baslerCtrl::getTemp()
     return 0;
 }
 
-inline int baslerCtrl::getExpTime()
+int baslerCtrl::getExpTime()
 {
     if( m_camera == nullptr )
         return 0;
@@ -979,7 +1007,7 @@ inline int baslerCtrl::getExpTime()
     return 0;
 }
 
-inline int baslerCtrl::getFPS()
+int baslerCtrl::getFPS()
 {
     if( m_camera == nullptr )
         return 0;
@@ -1005,19 +1033,19 @@ inline float baslerCtrl::fps()
     return m_fps;
 }
 
-inline int baslerCtrl::powerOnDefaults()
+int baslerCtrl::powerOnDefaults()
 {
-    m_nextROI.x     = m_default_x;
+    /*m_nextROI.x     = m_default_x;
     m_nextROI.y     = m_default_y;
     m_nextROI.w     = m_default_w;
     m_nextROI.h     = m_default_h;
     m_nextROI.bin_x = m_default_bin_x;
-    m_nextROI.bin_y = m_default_bin_y;
+    m_nextROI.bin_y = m_default_bin_y;*/
 
     return 0;
 }
 
-inline int baslerCtrl::setFPS()
+int baslerCtrl::setFPS()
 {
     if( m_camera == nullptr )
         return 0;
@@ -1051,7 +1079,7 @@ inline int baslerCtrl::setFPS()
     return 0;
 }
 
-inline int baslerCtrl::setExpTime()
+int baslerCtrl::setExpTime()
 {
     if( m_camera == nullptr )
         return 0;
@@ -1072,7 +1100,7 @@ inline int baslerCtrl::setExpTime()
     return 0;
 }
 
-inline int baslerCtrl::checkNextROI()
+int baslerCtrl::checkNextROI()
 {
     std::cerr << "checkNextROI!\n";
 
@@ -1226,7 +1254,7 @@ inline int baslerCtrl::checkNextROI()
     }
 }
 
-inline int baslerCtrl::setNextROI()
+int baslerCtrl::setNextROI()
 {
     std::cerr << "setNextROI:\n";
     std::cerr << "  m_nextROI.x = " << m_nextROI.x << "\n";
@@ -1263,12 +1291,12 @@ bool baslerCtrl::stateStringValid()
     return true;
 }
 
-inline int baslerCtrl::checkRecordTimes()
+int baslerCtrl::checkRecordTimes()
 {
     return telemeter<baslerCtrl>::checkRecordTimes( telem_stdcam() );
 }
 
-inline int baslerCtrl::recordTelem( const telem_stdcam * )
+int baslerCtrl::recordTelem( const telem_stdcam * )
 {
     return recordCamera( true );
 }
