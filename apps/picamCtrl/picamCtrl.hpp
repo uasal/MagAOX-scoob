@@ -1464,7 +1464,7 @@ int picamCtrl::configureAcquisition()
    nextrois.roi_count = 1;
    
    int roi_err = false;
-   if(m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR)
+   if(m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR)
    {
       nextroi.x = ((1023-m_nextROI.x) - 0.5*( (float) m_nextROI.w - 1.0));
    }
@@ -1486,7 +1486,7 @@ int picamCtrl::configureAcquisition()
    }
    
 
-   if(m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR)
+   if(m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR)
    {
       nextroi.y = ((1023 - m_nextROI.y) - 0.5*( (float) m_nextROI.h - 1.0));
    }
@@ -1628,7 +1628,7 @@ int picamCtrl::configureAcquisition()
    std::cerr << 0.5*( (float) (rois->roi_array[0].width - 1.0)) << "\n";
    
 
-   if(m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR)
+   if(m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR)
    {
       m_currentROI.x = (1023.0-rois->roi_array[0].x) - 0.5*( (float) (rois->roi_array[0].width - 1.0)) ;
       //nextroi.x = ((1023-m_nextROI.x) - 0.5*( (float) m_nextROI.w - 1.0));
@@ -1639,7 +1639,7 @@ int picamCtrl::configureAcquisition()
    }
 
    
-   if(m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR)
+   if(m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR)
    {
       m_currentROI.y = (1023.0-rois->roi_array[0].y) - 0.5*( (float) (rois->roi_array[0].height - 1.0)) ;
       //nextroi.y = ((1023 - m_nextROI.y) - 0.5*( (float) m_nextROI.h - 1.0));

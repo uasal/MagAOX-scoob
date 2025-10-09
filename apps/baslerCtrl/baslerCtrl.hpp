@@ -293,9 +293,6 @@ inline baslerCtrl::~baslerCtrl() noexcept
 
 void baslerCtrl::setupConfig()
 {
-    dev::stdCamera<baslerCtrl>::setupConfig( config );
-
-    dev::frameGrabber<baslerCtrl>::setupConfig( config );
 
     config.add( "camera.serialNumber",
                 "",
@@ -306,6 +303,7 @@ void baslerCtrl::setupConfig()
                 false,
                 "int",
                 "The identifying serial number of the camera." );
+
     config.add( "camera.bits",
                 "",
                 "camera.bits",
@@ -316,7 +314,11 @@ void baslerCtrl::setupConfig()
                 "int",
                 "The number of bits used by the camera.  Default is 10." );
 
-    dev::telemeter<baslerCtrl>::setupConfig( config );
+    STDCAMERA_SETUP_CONFIG( config );
+
+    FRAMEGRABBER_SETUP_CONFIG( config );
+
+    TELEMETER_SETUP_CONFIG( config );
 }
 
 int baslerCtrl::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -344,26 +346,13 @@ void baslerCtrl::loadConfig()
 
 int baslerCtrl::appStartup()
 {
-
-    //=================================
-    // Do camera configuration here
-
     PylonInitialize(); // Initializes pylon runtime before using any pylon methods
 
-    if( dev::stdCamera<baslerCtrl>::appStartup() < 0 )
-    {
-        return log<software_critical, -1>( { __FILE__, __LINE__ } );
-    }
+    STDCAMERA_APP_STARTUP;
 
-    if( dev::frameGrabber<baslerCtrl>::appStartup() < 0 )
-    {
-        return log<software_critical, -1>( { __FILE__, __LINE__ } );
-    }
+    FRAMEGRABBER_APP_STARTUP;
 
-    if( dev::telemeter<baslerCtrl>::appStartup() < 0 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
-    }
+    TELEMETER_APP_STARTUP;
 
     m_tempHist.maxEntries( 30 );
 
@@ -374,17 +363,9 @@ int baslerCtrl::appStartup()
 
 int baslerCtrl::appLogic()
 {
-    // and run stdCamera's appLogic
-    if( dev::stdCamera<baslerCtrl>::appLogic() < 0 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
-    }
+    STDCAMERA_APP_LOGIC;
 
-    // and run frameGrabber's appLogic to see if the f.g. thread has exited.
-    if( dev::frameGrabber<baslerCtrl>::appLogic() < 0 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
-    }
+    FRAMEGRABBER_APP_LOGIC;
 
     if( state() == stateCodes::NOTCONNECTED || state() == stateCodes::NODEVICE || state() == stateCodes::ERROR )
     {
@@ -395,7 +376,9 @@ int baslerCtrl::appLogic()
         }
 
         if( state() != stateCodes::CONNECTED )
+        {
             return 0;
+        }
     }
 
     if( state() == stateCodes::CONNECTED )
@@ -413,48 +396,45 @@ int baslerCtrl::appLogic()
 
         // but don't wait for it, just go back around.
         if( !lock.owns_lock() )
+        {
             return 0;
+        }
 
         if( getTemp() < 0 )
         {
             if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
+            {
                 state( stateCodes::ERROR );
+            }
+
             return 0;
         }
 
         if( getExpTime() < 0 )
         {
             if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
+            {
                 state( stateCodes::ERROR );
+            }
+
             return 0;
         }
 
         if( getFPS() < 0 )
         {
             if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
+            {
                 state( stateCodes::ERROR );
+            }
+
             return 0;
         }
 
-        if( stdCamera<baslerCtrl>::updateINDI() < 0 )
-        {
-            log<software_error>( { __FILE__, __LINE__ } );
-            state( stateCodes::ERROR );
-            return 0;
-        }
+        STDCAMERA_UPDATE_INDI;
 
-        if( frameGrabber<baslerCtrl>::updateINDI() < 0 )
-        {
-            log<software_error>( { __FILE__, __LINE__ } );
-            state( stateCodes::ERROR );
-            return 0;
-        }
+        FRAMEGRABBER_UPDATE_INDI;
 
-        if( telemeter<baslerCtrl>::appLogic() < 0 )
-        {
-            log<software_error>( { __FILE__, __LINE__ } );
-            return 0;
-        }
+        TELEMETER_APP_LOGIC;
     }
 
     ///\todo Fall through check?
@@ -464,16 +444,18 @@ int baslerCtrl::appLogic()
 
 int baslerCtrl::appShutdown()
 {
-    dev::stdCamera<baslerCtrl>::appShutdown();
+    STDCAMERA_APP_SHUTDOWN;
 
-    dev::frameGrabber<baslerCtrl>::appShutdown();
+    FRAMEGRABBER_APP_SHUTDOWN;
 
     if( m_camera )
+    {
         m_camera->Close();
+    }
 
     PylonTerminate();
 
-    dev::telemeter<baslerCtrl>::appShutdown();
+    TELEMETER_APP_SHUTDOWN;
 
     return 0;
 }
@@ -684,24 +666,24 @@ int baslerCtrl::connect()
         */
     }
 
-    if(m_full_w != m_camera->SensorWidth.GetValue())
+    if( m_full_w != m_camera->SensorWidth.GetValue() )
     {
-        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI w (camera.full_w) mismatch with camera"});
+        return log<software_critical, -1>( { __FILE__, __LINE__, "full ROI w (camera.full_w) mismatch with camera" } );
     }
 
-    if(m_full_h != m_camera->SensorHeight.GetValue())
+    if( m_full_h != m_camera->SensorHeight.GetValue() )
     {
-        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI h (camera.full_h) mismatch with camera"});
-    }
-    
-    if(m_full_x != 0.5 * ( (float)m_full_w - 1.0 ))
-    {
-        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI x (camera.full_x) mismatch with camera"});
+        return log<software_critical, -1>( { __FILE__, __LINE__, "full ROI h (camera.full_h) mismatch with camera" } );
     }
 
-    if(m_full_y != 0.5 * ( (float)m_full_h - 1.0 ))
+    if( m_full_x != 0.5 * ( (float)m_full_w - 1.0 ) )
     {
-        return log<software_critical,-1>({__FILE__, __LINE__, "full ROI y (camera.full_y) mismatch with camera"});
+        return log<software_critical, -1>( { __FILE__, __LINE__, "full ROI x (camera.full_x) mismatch with camera" } );
+    }
+
+    if( m_full_y != 0.5 * ( (float)m_full_h - 1.0 ) )
+    {
+        return log<software_critical, -1>( { __FILE__, __LINE__, "full ROI y (camera.full_y) mismatch with camera" } );
     }
 
     return 0;
@@ -760,7 +742,7 @@ int baslerCtrl::configureAcquisition()
         // Set ROI.
         int xoff;
         int yoff;
-        if( m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR )
+        if( m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR )
         {
             xoff = ( m_maxWs[bx] - 1 - m_nextROI.x ) - 0.5 * ( (float)m_nextROI.w - 1 );
         }
@@ -770,7 +752,7 @@ int baslerCtrl::configureAcquisition()
             xoff = m_nextROI.x - 0.5 * ( (float)m_nextROI.w - 1 );
         }
 
-        if( m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR )
+        if( m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR )
         {
             yoff = ( m_maxHs[by] - 1 - m_nextROI.y ) - 0.5 * ( (float)m_nextROI.h - 1 );
         }
@@ -821,7 +803,7 @@ int baslerCtrl::configureAcquisition()
         m_currentROI.w = m_camera->Width.GetValue();
         m_currentROI.h = m_camera->Height.GetValue();
 
-        if( m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR )
+        if( m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR )
         {
             m_currentROI.x = m_maxWs[bx] - 1 - ( m_camera->OffsetX.GetValue() + 0.5 * ( (float)m_currentROI.w - 1 ) );
         }
@@ -830,7 +812,7 @@ int baslerCtrl::configureAcquisition()
             m_currentROI.x = m_camera->OffsetX.GetValue() + 0.5 * ( (float)m_currentROI.w - 1 );
         }
 
-        if( m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR )
+        if( m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR )
         {
             m_currentROI.y = m_maxHs[by] - 1 - ( m_camera->OffsetY.GetValue() + 0.5 * ( (float)m_currentROI.h - 1 ) );
         }
@@ -1152,7 +1134,7 @@ int baslerCtrl::checkNextROI()
     //-- round to nearest increment
     //-- recalculate center
     int x;
-    if( m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR )
+    if( m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR )
     {
         x = ( m_maxWs[bx] - 1 - m_nextROI.x ) - 0.5 * ( (float)w - 1 );
     }
@@ -1173,7 +1155,7 @@ int baslerCtrl::checkNextROI()
         x = m_maxWs[bx] - w;
 
     std::cerr << "req x: " << m_nextROI.x;
-    if( m_currentFlip == fgFlipLR || m_currentFlip == fgFlipUDLR )
+    if( m_defaultFlip == fgFlipLR || m_defaultFlip == fgFlipUDLR )
     {
         m_nextROI.x = m_maxWs[bx] - 1 - ( x + 0.5 * ( (float)w - 1.0 ) );
     }
@@ -1206,7 +1188,7 @@ int baslerCtrl::checkNextROI()
     //-- round to nearest increment
     //-- recalculate center
     int y;
-    if( m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR )
+    if( m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR )
     {
         y = ( m_maxHs[by] - 1 - m_nextROI.y ) - 0.5 * ( (float)h - 1 );
     }
@@ -1227,7 +1209,7 @@ int baslerCtrl::checkNextROI()
         y = m_maxHs[by] - h;
 
     std::cerr << "req y: " << m_nextROI.y;
-    if( m_currentFlip == fgFlipUD || m_currentFlip == fgFlipUDLR )
+    if( m_defaultFlip == fgFlipUD || m_defaultFlip == fgFlipUDLR )
     {
         m_nextROI.y = m_maxHs[by] - 1 - ( y + 0.5 * ( (float)h - 1 ) );
     }

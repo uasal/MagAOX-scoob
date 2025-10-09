@@ -135,7 +135,7 @@ class pvcamCtrl : public MagAOXApp<true>,
         false; ///< app::dev confg to tell stdCamera to expose the state string property
 
     static constexpr bool c_frameGrabber_flippable =
-        false; ///< app:dev config to tell framegrabber this camera can be flipped
+        false; ///< app:dev config to tell framegrabber this camera can not be flipped
 
     ///@}
 
