@@ -3259,6 +3259,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
     static bool        last_synchro      = false;
     static float       last_vshiftSpeed  = -1;
     static bool        last_cropMode     = false;
+    static std::string last_readoutSpeed;
 
     if( force || m_modeName != last_mode || m_currentROI.x != last_roi.x || m_currentROI.y != last_roi.y ||
         m_currentROI.w != last_roi.w || m_currentROI.h != last_roi.h || m_currentROI.bin_x != last_roi.bin_x ||
@@ -3267,7 +3268,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
         m_ccdTempSetpt != last_ccdTempSetpt || m_tempControlStatus != last_tempControlStatus ||
         m_tempControlOnTarget != last_tempControlOnTarget || m_tempControlStatusStr != last_tempControlStatusStr ||
         m_shutterStatus != last_shutterStatus || m_shutterState != last_shutterState || m_synchro != last_synchro ||
-        m_vshiftSpeed != last_vshiftSpeed || m_cropMode != last_cropMode )
+        m_vshiftSpeed != last_vshiftSpeed || m_cropMode != last_cropMode || m_readoutSpeedName != last_readoutSpeed)
     {
         derived().template telem<telem_stdcam>( { m_modeName,
                                                   m_currentROI.x,
@@ -3289,7 +3290,8 @@ int stdCamera<derivedT>::recordCamera( bool force )
                                                   (int8_t)m_shutterState,
                                                   (uint8_t)m_synchro,
                                                   m_vshiftSpeed,
-                                                  (uint8_t)m_cropMode } );
+                                                  (uint8_t)m_cropMode,
+                                                  m_readoutSpeedName } );
 
         last_mode                 = m_modeName;
         last_roi                  = m_currentROI;
@@ -3307,6 +3309,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
         last_synchro              = m_synchro;
         last_vshiftSpeed          = m_vshiftSpeed;
         last_cropMode             = m_cropMode;
+        last_readoutSpeed         = m_readoutSpeedName;
     }
 
     return 0;

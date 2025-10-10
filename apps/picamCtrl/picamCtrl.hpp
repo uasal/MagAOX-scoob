@@ -1085,19 +1085,19 @@ int picamCtrl::getTemps()
       return -1;
    }
 
-   if(status == 1) 
+   if(status == PicamSensorTemperatureStatus_Unlocked) 
    {
       m_tempControlStatus = true;
       m_tempControlOnTarget = false;
       m_tempControlStatusStr = "UNLOCKED";
    }
-   else if(status == 2) 
+   else if(status == PicamSensorTemperatureStatus_Locked) 
    {
       m_tempControlStatus = true;
       m_tempControlOnTarget = true;
       m_tempControlStatusStr = "LOCKED";
    }
-   else if(status == 3) 
+   else if(status == PicamSensorTemperatureStatus_Faulted) 
    {
       m_tempControlStatus = false;
       m_tempControlOnTarget = false;
