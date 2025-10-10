@@ -184,8 +184,11 @@ struct telem_stdcam : public flatbuffer_log
 
       if(fbs->readout_speed() != nullptr)
       {
-         msg += " rospd: ";
-         msg += fbs->readout_speed()->c_str();
+         if(fbs->readout_speed()->Length() > 0)
+         {
+            msg += " rospd: ";
+            msg += fbs->readout_speed()->c_str();
+         }
       }
 
       return msg;
