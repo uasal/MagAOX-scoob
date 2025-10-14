@@ -81,8 +81,14 @@ def _run_logdump_thread(logger_name, logdump_dir, logdump_args, name, message_qu
             if p.returncode != 0:
                 raise RuntimeError(f"{name} logdump exited with {p.returncode} ({repr(' '.join(args))})")
         except Exception as e:
-            log.exception(f"Exception in log/telem follower for {name}")
-            time.sleep(RETRY_WAIT_SEC)
+            glob_pattern = logdump_dir + f"/{name}/*/{name}_*"
+            if len(glob.glob(glob_pattern)):
+                log.exception(f"Exception in log/telem follower for {name}")
+                time.sleep(RETRY_WAIT_SEC)
+            else:
+                log.info(f"No files found for {name}, waiting for them to appear")
+            while not len(glob.glob(glob_pattern)):
+                time.sleep(RETRY_WAIT_SEC)
 
 @xconf.config
 class dbIngestConfig(BaseDbDeviceConfig):
