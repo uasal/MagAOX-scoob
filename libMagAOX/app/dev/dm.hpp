@@ -114,6 +114,8 @@ protected:
     ///\todo satThreadPrio configuration is not actually implemented.
     int m_satThreadPrio{0}; ///< Priority of the saturation thread, should normally be > 0.
 
+    std::string m_shmimShape; ///< The name of the shmim stream to write the desaturated true shape to.
+
     uint32_t m_dmWidth{0};  ///< The width of the images in the stream
     uint32_t m_dmHeight{0}; ///< The height of the images in the stream
 
@@ -154,10 +156,12 @@ protected:
     int m_intervalSatExceeds{0}; // counter
     bool m_intervalSatTrip{0};   // flag to trip the loop opening
 
+    mx::improc::milkImage<realT> m_outputShape; ///< The true output shape after saturation.
+
 public:
 
-    
-        
+
+
 
     /// Setup the configuration system
     /**
@@ -634,6 +638,8 @@ int dm<derivedT, realT>::setupConfig(mx::app::appConfigurator &config)
 
     config.add("dm.satAvgInt", "", "dm.satAvgInt", argType::Required, "dm", "satAvgInt", false, "int", "The interval in milliseconds over which saturation is accumulated before updating.  Default is 100 ms.");
 
+    config.add("dm.shmimShape", "", "dm.shmimShape", argType::Required, "dm", "shmimShape", false, "string", "The name of the ImageStreamIO shared memory image to write the desaturated shape to.  Default is shmimName with _shape apended (i.e. dm00disp -> dm00disp_shape).  This is created.");
+
     config.add("dm.width", "", "dm.width", argType::Required, "dm", "width", false, "string", "The width of the DM in actuators.");
     config.add("dm.height", "", "dm.height", argType::Required, "dm", "height", false, "string", "The height of the DM in actuators.");
 
@@ -698,6 +704,9 @@ int dm<derivedT, realT>::loadConfig(mx::app::appConfigurator &config)
         config(m_shmimSatPerc, "dm.shmimSatPerc");
 
         config(m_satAvgInt, "dm.satAvgInt");
+
+        m_shmimShape = derived().m_shmimName + "_shape";
+        config(m_shmimShape, "dm.shmimShape");
     }
     else
     {
@@ -718,7 +727,7 @@ int dm<derivedT, realT>::loadConfig(mx::app::appConfigurator &config)
     config(m_satTriggerProperty, "dm.satTriggerProperty");
 
     derived().m_getExistingFirst = true;
-    
+
     return 0;
 }
 
@@ -1031,6 +1040,16 @@ int dm<derivedT, realT>::allocate(const dev::shmimT &sp)
         return -1;
     }
 
+    try
+    {
+        m_outputImage.create(derived().m_shmimName+"_shape", m_dmWidth, m_dmHeight);
+    }
+    catch(const std::exception& e)
+    {
+        return derivedT::template log<software_error, -1>({__FILE__, __LINE__, "creating output shape shmim: " e.what()});
+    }
+
+
     #ifdef XWC_DMTIMINGS
     m_piTimes.maxEntries(2000);
     m_satSem.maxEntries(2000);
@@ -1113,7 +1132,7 @@ int dm<derivedT, realT>::initDM()
         return rv;
     }
 
-    
+
 
     return 0;
 }
@@ -1917,7 +1936,7 @@ int dm<derivedT, realT>::zeroAll(bool nosem)
     {
         derived().state(stateCodes::READY);
     }
-    
+
     // Also cleanup flat and test
     m_testSet = false;
     derived().updateSwitchIfChanged(m_indiP_setTest, "toggle", pcf::IndiElement::Off, pcf::IndiProperty::Idle);
