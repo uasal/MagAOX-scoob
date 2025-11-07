@@ -1042,7 +1042,7 @@ int dm<derivedT, realT>::allocate(const dev::shmimT &sp)
 
     try
     {
-        m_outputImage.create(derived().m_shmimName+"_shape", m_dmWidth, m_dmHeight);
+        m_outputShape.create(m_shmimShape , m_dmWidth, m_dmHeight);
     }
     catch(const std::exception& e)
     {
