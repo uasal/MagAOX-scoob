@@ -10,6 +10,7 @@
 #define dm_hpp
 
 #include <mx/improc/eigenImage.hpp>
+#include <mx/improc/milkImage.hpp>
 #include <mx/ioutils/fits/fitsFile.hpp>
 
 #include <boost/filesystem/operations.hpp>
@@ -1046,7 +1047,7 @@ int dm<derivedT, realT>::allocate(const dev::shmimT &sp)
     }
     catch(const std::exception& e)
     {
-        return derivedT::template log<software_error, -1>({__FILE__, __LINE__, "creating output shape shmim: " e.what()});
+        return derivedT::template log<software_error, -1>({__FILE__, __LINE__, std::string("creating output shape shmim: ") +  e.what()});
     }
 
 
