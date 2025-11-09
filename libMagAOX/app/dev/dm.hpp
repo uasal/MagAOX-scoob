@@ -114,29 +114,37 @@ class dm
 
     int m_satAvgInt{ 100 }; ///< The time in milliseconds to accumulate saturation over.
 
-    ///\todo satThreadPrio configuration is not actually implemented.
-    int m_satThreadPrio{ 0 }; ///< Priority of the saturation thread, should normally be > 0.
+    int m_satThreadPrio{ 0 }; ///< Priority of the saturation thread.  Usually ok to be 0.
 
     std::string m_shmimShape; ///< The name of the shmim stream to write the desaturated true shape to.
+    std::string m_shmimDelta; ///< The name of the shmim stream to write the desaturated delta command to.
 
     uint32_t m_dmWidth{ 0 };  ///< The width of the images in the stream
     uint32_t m_dmHeight{ 0 }; ///< The height of the images in the stream
 
     static constexpr uint8_t m_dmDataType = ImageStreamTypeCode<realT>(); ///< The ImageStreamIO type code.
 
-    float m_percThreshold{ 0.98 };           // percentage of frames saturated over interval
-    float m_intervalSatThreshold{ 0.50 };    //
-    int   m_intervalSatCountThreshold{ 10 }; //
+    float m_percThreshold{ 0.98 }; ///<  Threshold on percentage of frames an actuator is saturated over an interval.
 
-    std::vector<std::string> m_satTriggerDevice;
-    std::vector<std::string> m_satTriggerProperty;
+    float m_intervalSatThreshold{ 0.50 }; /**< Threshold on percentage of actuators which exceed
+                                               percThreshold in an interval.*/
+
+    int m_intervalSatCountThreshold{ 10 }; /**< Threshold on number of consecutive intervals
+                                                the intervalSatThreshold is exceeded. */
+
+    std::vector<std::string> m_satTriggerDevice; ///< Device(s) with a toggle switch to toggle on saturation trigger.
+
+    std::vector<std::string> m_satTriggerProperty; /**< Property with a toggle switch to toggle on saturation trigger,
+                                                        one per entry in satTriggerDevice.*/
 
     ///@}
 
     std::string m_calibRelDir; ///< The directory relative to the calibPath.  Set this before calling
                                ///< dm<derivedT,realT>::loadConfig().
 
-    int m_channels{ 0 }; ///< The number of dmcomb channels found as part of allocation.
+    int m_numChannels{ 0 }; ///< The number of dmcomb channels found as part of allocation.
+
+    std::vector<mx::improc::milkImage<realT> *> m_channels;
 
     std::map<std::string, std::string> m_flatCommands; ///< Map of flat file name to full path
     std::string                        m_flatCurrent;  ///< The name of the current flat command
@@ -156,13 +164,198 @@ class dm
     IMAGE m_testImageStream;  ///< The ImageStreamIO shared memory buffer for the test.
     bool  m_testSet{ false }; ///< Flag indicating whether the test command has been set.
 
+    mx::improc::eigenImage<uint8_t> m_instSatMap; /**< The instantaneous saturation map, 0/1, set by the commandDM()
+                                    function of the derived class.*/
+
+    mx::improc::eigenImage<uint16_t> m_accumSatMap; /**< The accumulated saturation map, which acccumulates for
+                                                     m_satAvgInt then is publised as a 0/1 image. */
+
+    mx::improc::eigenImage<float> m_satPercMap; /**< Map of the percentage of time each actuator was
+                                                     saturated during the avg. interval.*/
+
+    IMAGE m_satImageStream;     ///< The ImageStreamIO shared memory buffer for the sat map.
+    IMAGE m_satPercImageStream; ///< The ImageStreamIO shared memory buffer for the sat percentage map.
+
     int  m_overSatAct{ 0 };         // counter
     int  m_intervalSatExceeds{ 0 }; // counter
     bool m_intervalSatTrip{ 0 };    // flag to trip the loop opening
 
     mx::improc::milkImage<realT> m_outputShape; ///< The true output shape after saturation.
 
+    std::vector<std::string> m_deltaChannels; ///< The names of channels which are treated as delta commands
+
+    std::vector<size_t> m_notDeltas; ///< Indices of the channels which are not delta commands
+
+    mx::improc::eigenImage<realT> m_totalFlat; ///< the total of all non-delta channels
+
+    mx::improc::milkImage<realT> m_outputDelta; ///< The true output delta command after saturation.
+
+    /** \name Saturation Thread Data
+     * This thread processes the saturation maps
+     * @{
+     */
+
+    sem_t m_satSemaphore; ///< Semaphore used to tell the saturation thread to run.
+
+    bool m_satThreadInit{ true }; ///< Synchronizer for thread startup, to allow priority setting to finish.
+
+    pid_t m_satThreadID{ 0 }; ///< The ID of the saturation thread.
+
+    pcf::IndiProperty m_satThreadProp; ///< The property to hold the saturation thread details.
+
+    std::thread m_satThread; ///< A separate thread for the actual saturation processing
+
+    ///@}
+
   public:
+    /// Destructor
+    /** deallocates the m_channels vector
+     *
+     */
+    ~dm();
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &calibPath() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &flatPath() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &testPath() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &flatDefault() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &testDefault() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &shmimFlat() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &shmimTest() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &shmimSat() const;
+
+    /// Get the stream name for saturation percentage
+    /**
+     * \returns the current value of m_shmimSatPerc
+     */
+    const std::string &shmimSatPerc() const;
+
+    /// Get the saturation accumulation interval
+    /**
+     * \returns the current value of m_satAvgInt
+     */
+    int satAvgInt() const;
+
+    /// Get the saturation thread priority
+    /**
+     * \returns the current value of m_satThreadPrio
+     */
+    int satThreadPrio() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &shmimShape() const;
+
+    /// Get the
+    /**
+     * \returns the current value of
+     */
+    const std::string &shmimDelta() const;
+
+    /// Get the DM Width
+    /**
+     * \returns the current value of m_dmWidth
+     */
+    uint32_t dmWidth() const;
+
+    /// Get the DM Height
+    /**
+     * \returns the current value of m_dmHeight
+     */
+    uint32_t dmHeight() const;
+
+    /// Get the DM data type
+    /**
+     * \returns the current value of m_dmDataType
+     */
+    uint8_t dmDataType() const;
+
+    /// Get the saturation percentage threshold
+    /**
+     * \returns the current value of m_percThreshold
+     */
+    float percThreshold() const;
+
+    /// Get the interval saturation threshold
+    /**
+     * \returns the current value of m_intervalSatThreshold
+     */
+    float intervalSatThreshold() const;
+
+    /// Get the interval saturation count threshold
+    /**
+     * \returns the current value of m_intervalSatCountThreshold
+     */
+    int intervalSatCountThreshold() const;
+
+    /// Get the saturation trigger device(s)
+    /**
+     * \returns the current value of m_satTriggerDevice
+     */
+    const std::vector<std::string> &satTriggerDevice() const;
+
+    /// Get the saturation trigger property(ies)
+    /**
+     * \returns the current value of m_satTriggerProperty
+     */
+    const std::vector<std::string> &satTriggerProperty() const;
+
+    const std::string &calibRelDir() const;
+
+    int numChannels() const;
+
+    const mx::improc::eigenImage<uint8_t> &instSatMap() const;
+
+    const mx::improc::eigenImage<uint16_t> &accumSatMap() const;
+
+    const mx::improc::eigenImage<float> &satPercMap() const;
+
+    const std::vector<std::string> &deltaChannels() const;
+
+    const std::vector<size_t> &notDeltas() const;
+
+    const mx::improc::eigenImage<float> &totalFlat() const;
+
     /// Setup the configuration system
     /**
       * This should be called in `derivedT::setupConfig` as
@@ -266,7 +459,7 @@ class dm
      * \returns 0 on success
      * \returns -1 on error from derived()->initDM()
      */
-    int initDM();
+    int baseInitDM();
 
     /// Calls derived()->releaseDM() and then 0s all channels and the sat map.
     /** This is called by the relevant INDI callback
@@ -274,7 +467,7 @@ class dm
      * \returns 0 on success
      * \returns -1 on error
      */
-    int releaseDM();
+    int baseReleaseDM();
 
     /// Check the flats directory and update the list of flats if anything changes
     /** This is called once per appLogic and whilePowerOff loops.
@@ -346,19 +539,12 @@ class dm
      * \returns 0 on sucess
      * \returns \<0 on an error
      */
-    int zeroAll(
-        bool nosem = false /**< [in] [optional] if true then the semaphore is not raised after zeroing all channels*/ );
+    int zeroAll( bool nosem = false /**< [in] [optional] if true then the semaphore
+                                                         is not raised after zeroing all channels*/
+    );
 
-  protected:
-    mx::improc::eigenImage<uint8_t>
-        m_instSatMap; ///< The instantaneous saturation map, 0/1, set by the commandDM() function of the derived class.
-    mx::improc::eigenImage<uint16_t> m_accumSatMap; ///< The accumulated saturation map, which acccumulates for
-                                                    ///< m_satAvgInt then is publised as a 0/1 image.
-    mx::improc::eigenImage<float>
-        m_satPercMap; ///< Map of the percentage of time each actator was saturated during the avg. interval.
-
-    IMAGE m_satImageStream;     ///< The ImageStreamIO shared memory buffer for the sat map.
-    IMAGE m_satPercImageStream; ///< The ImageStreamIO shared memory buffer for the sat percentage map.
+    /// Calculate the delta command from the output shape.
+    int makeDelta();
 
     /// Clear the saturation maps and zero the shared memory.
     /**
@@ -367,20 +553,11 @@ class dm
      */
     int clearSat();
 
-    /** \name Saturation Thread
+  protected:
+    /** \name Saturation Thread Functions
      * This thread processes the saturation maps
      * @{
      */
-
-    sem_t m_satSemaphore; ///< Semaphore used to tell the saturation thread to run.
-
-    bool m_satThreadInit{ true }; ///< Synchronizer for thread startup, to allow priority setting to finish.
-
-    pid_t m_satThreadID{ 0 }; ///< The ID of the saturation thread.
-
-    pcf::IndiProperty m_satThreadProp; ///< The property to hold the saturation thread details.
-
-    std::thread m_satThread; ///< A separate thread for the actual saturation processing
 
     /// Thread starter, called by MagAOXApp::threadStart on thread construction.  Calls satThreadExec.
     static void satThreadStart( dm *d /**< [in] a pointer to a dm instance (normally this) */ );
@@ -423,9 +600,10 @@ class dm
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    static int st_newCallBack_init(
-        void                    *app,   ///< [in] a pointer to this, will be static_cast-ed to derivedT.
-        const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+    static int st_newCallBack_init( void *app,                      /**< [in] a pointer to this, will be
+                                                                              static_cast-ed to derivedT.*/
+                                    const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the
+                                                                              the new property request.*/
     );
 
     /// The callback called by the static version, to actually process the new request.
@@ -433,17 +611,19 @@ class dm
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    int newCallBack_init(
-        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/ );
+    int newCallBack_init( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                                    the the new property request.*/
+    );
 
     /// The static callback function to be registered for initializing the DM.
     /**
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    static int st_newCallBack_zero(
-        void                    *app,   ///< [in] a pointer to this, will be static_cast-ed to derivedT.
-        const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+    static int st_newCallBack_zero( void *app,                      /**< [in] a pointer to this, will be
+                                                                              static_cast-ed to derivedT.*/
+                                    const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                                              the the new property request.*/
     );
 
     /// The callback called by the static version, to actually process the new request.
@@ -452,16 +632,18 @@ class dm
      * \returns -1 on error.
      */
     int newCallBack_zero(
-        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/ );
+        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the
+        the new property request.*/ );
 
     /// The static callback function to be registered for initializing the DM.
     /**
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    static int st_newCallBack_release(
-        void                    *app,   ///< [in] a pointer to this, will be static_cast-ed to derivedT.
-        const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+    static int st_newCallBack_release( void *app,                      /**< [in] a pointer to this, will be
+                                                                                 static_cast-ed to derivedT.*/
+                                       const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                                                 the the new property request.*/
     );
 
     /// The callback called by the static version, to actually process the new request.
@@ -469,17 +651,19 @@ class dm
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    int newCallBack_release(
-        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/ );
+    int newCallBack_release( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                             the new property request.*/
+    );
 
     /// The static callback function to be registered for selecting the flat file
     /**
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    static int st_newCallBack_flats(
-        void                    *app,   ///< [in] a pointer to this, will be static_cast-ed to derivedT.
-        const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+    static int st_newCallBack_flats( void *app,                      /**< [in] a pointer to this, will be
+                                                                               static_cast-ed to derivedT.*/
+                                     const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                                               the new property request.*/
     );
 
     /// The callback called by the static version, to actually process the new request.
@@ -531,9 +715,10 @@ class dm
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    static int st_newCallBack_setTest(
-        void                    *app,   ///< [in] a pointer to this, will be static_cast-ed to derivedT.
-        const pcf::IndiProperty &ipRecv ///< [in] the INDI property sent with the the new property request.
+    static int st_newCallBack_setTest( void *app,                      /**< [in] a pointer to this, will be
+                                                                                 static_cast-ed to derivedT.*/
+                                       const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with
+                                                                                 the the new property request.*/
     );
 
     /// The callback called by the static version, to actually process the new request.
@@ -541,8 +726,9 @@ class dm
      * \returns 0 on success.
      * \returns -1 on error.
      */
-    int newCallBack_setTest(
-        const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the the new property request.*/ );
+    int newCallBack_setTest( const pcf::IndiProperty &ipRecv /**< [in] the INDI property sent with the
+                                                                       the new property request.*/
+    );
 
     /// The static callback function to be registered for zeroing all channels
     /**
@@ -574,11 +760,14 @@ class dm
     ///@}
 
   public:
-#ifdef XWC_DMTIMINGS
+    // clang-format off
+    #ifdef XWC_DMTIMINGS //clang-format on
+
     typedef int32_t cbIndexT;
 
     double m_t0{ 0 }, m_tf{ 0 }, m_tsat0{ 0 }, m_tsatf{ 0 };
     double m_tact0{ 0 }, m_tact1{ 0 }, m_tact2{ 0 }, m_tact3{ 0 }, m_tact4{ 0 };
+    double m_tdelta0 {0}, m_tdeltaf{0};
 
     mx::sigproc::circularBufferIndex<double, cbIndexT> m_piTimes;
 
@@ -590,13 +779,17 @@ class dm
 
     mx::sigproc::circularBufferIndex<double, cbIndexT> m_satUp;
 
+    mx::sigproc::circularBufferIndex<double, cbIndexT> m_deltaUp; ///< timing c-buff for the delta command
+
     std::vector<double> m_piTimesD;
     std::vector<double> m_satSemD;
     std::vector<double> m_actProcD;
     std::vector<double> m_actComD;
     std::vector<double> m_satUpD;
+    std::vector<double> m_deltaUpD;
 
-#endif
+    // clang-format off
+    #endif // clang-format on
 
   private:
     derivedT &derived()
@@ -604,6 +797,180 @@ class dm
         return *static_cast<derivedT *>( this );
     }
 };
+
+template <class derivedT, typename realT>
+dm<derivedT, realT>::~dm()
+{
+    for( auto &mi : m_channels )
+    {
+        if( mi != nullptr )
+        {
+            delete mi;
+        }
+    }
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::calibPath() const
+{
+    return m_calibPath;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::flatPath() const
+{
+    return m_flatPath;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::testPath() const
+{
+    return m_testPath;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::flatDefault() const
+{
+    return m_flatDefault;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::testDefault() const
+{
+    return m_testDefault;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimFlat() const
+{
+    return m_shmimFlat;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimTest() const
+{
+    return m_shmimTest;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimSat() const
+{
+    return m_shmimSat;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimSatPerc() const
+{
+    return m_shmimSatPerc;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimShape() const
+{
+    return m_shmimShape;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::shmimDelta() const
+{
+    return m_shmimDelta;
+}
+
+template <class derivedT, typename realT>
+uint32_t dm<derivedT, realT>::dmWidth() const
+{
+    return m_dmWidth;
+}
+
+template <class derivedT, typename realT>
+uint32_t dm<derivedT, realT>::dmHeight() const
+{
+    return m_dmHeight;
+}
+
+template <class derivedT, typename realT>
+uint8_t dm<derivedT, realT>::dmDataType() const
+{
+    return m_dmDataType;
+}
+
+template <class derivedT, typename realT>
+float dm<derivedT, realT>::percThreshold() const
+{
+    return m_percThreshold;
+}
+
+template <class derivedT, typename realT>
+float dm<derivedT, realT>::intervalSatThreshold() const
+{
+    return m_intervalSatThreshold;
+}
+
+template <class derivedT, typename realT>
+int dm<derivedT, realT>::intervalSatCountThreshold() const
+{
+    return m_intervalSatCountThreshold;
+}
+
+template <class derivedT, typename realT>
+const std::vector<std::string> &dm<derivedT, realT>::satTriggerDevice() const
+{
+    return m_satTriggerDevice;
+}
+
+template <class derivedT, typename realT>
+const std::vector<std::string> &dm<derivedT, realT>::satTriggerProperty() const
+{
+    return m_satTriggerProperty;
+}
+
+template <class derivedT, typename realT>
+const std::string &dm<derivedT, realT>::calibRelDir() const
+{
+    return m_calibRelDir;
+}
+
+template <class derivedT, typename realT>
+int dm<derivedT, realT>::numChannels() const
+{
+    return m_numChannels;
+}
+
+template <class derivedT, typename realT>
+const mx::improc::eigenImage<uint8_t> &dm<derivedT, realT>::instSatMap() const
+{
+    return m_instSatMap;
+}
+
+template <class derivedT, typename realT>
+const mx::improc::eigenImage<uint16_t> &dm<derivedT, realT>::accumSatMap() const
+{
+    return m_accumSatMap;
+}
+
+template <class derivedT, typename realT>
+const mx::improc::eigenImage<float> &dm<derivedT, realT>::satPercMap() const
+{
+    return m_satPercMap;
+}
+
+template <class derivedT, typename realT>
+const std::vector<std::string> &dm<derivedT, realT>::deltaChannels() const
+{
+    return m_deltaChannels;
+}
+
+template <class derivedT, typename realT>
+const std::vector<size_t> &dm<derivedT, realT>::notDeltas() const
+{
+    return m_notDeltas;
+}
+
+template <class derivedT, typename realT>
+const mx::improc::eigenImage<float> &dm<derivedT, realT>::totalFlat() const
+{
+    return m_totalFlat;
+}
 
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
@@ -627,6 +994,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "string",
                 "The path to flat files.  Default is the calibration path." );
+
     config.add( "dm.flatDefault",
                 "",
                 "dm.flatDefault",
@@ -646,6 +1014,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "string",
                 "The path to test files.  Default is the calibration path plus /tests." );
+
     config.add( "dm.testDefault",
                 "",
                 "dm.testDefault",
@@ -658,7 +1027,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
 
     // Overriding the shmimMonitor setup so that these all go in the dm section
     // Otherwise, would call shmimMonitor<dm<derivedT,realT>>::setupConfig();
-    ///\todo we shmimMonitor now has configSection so this isn't necessary.
+    ///\todo shmimMonitor now has configSection so this isn't necessary.
     config.add( "dm.threadPrio",
                 "",
                 "dm.threadPrio",
@@ -668,6 +1037,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "int",
                 "The real-time priority of the dm control thread." );
+
     config.add( "dm.cpuset",
                 "",
                 "dm.cpuset",
@@ -688,6 +1058,8 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "string",
                 "The name of the ImageStreamIO shared memory image to monitor for DM comands. Will be used as "
                 "/tmp/<shmimName>.im.shm." );
+
+    // end of shmimmonitor overrides
 
     config.add( "dm.shmimFlat",
                 "",
@@ -733,16 +1105,27 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "The name of the ImageStreamIO shared memory image to write the saturation percentage map to.  Default "
                 "is shmimName with SP apended (i.e. dm00disp -> dm00dispSP).  This is created." );
 
-    config.add(
-        "dm.satAvgInt",
-        "",
-        "dm.satAvgInt",
-        argType::Required,
-        "dm",
-        "satAvgInt",
-        false,
-        "int",
-        "The interval in milliseconds over which saturation is accumulated before updating.  Default is 100 ms." );
+    config.add( "dm.satAvgInt",
+                "",
+                "dm.satAvgInt",
+                argType::Required,
+                "dm",
+                "satAvgInt",
+                false,
+                "int",
+                "The interval in milliseconds over which saturation "
+                "is accumulated before updating.  Default is 100 ms." );
+
+    config.add( "dm.satThreadPrio",
+                "",
+                "dm.satThreadPrio",
+                argType::Required,
+                "dm",
+                "satThreadPrio",
+                false,
+                "int",
+                "The priority for the saturation thread. "
+                "Usually ok to be 0." );
 
     config.add( "dm.shmimShape",
                 "",
@@ -755,6 +1138,28 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "The name of the ImageStreamIO shared memory image to write the desaturated shape to.  Default is "
                 "shmimName with _shape apended (i.e. dm00disp -> dm00disp_shape).  This is created." );
 
+    config.add(
+        "dm.shmimDelta",
+        "",
+        "dm.shmimDelta",
+        argType::Required,
+        "dm",
+        "shmimDelta",
+        false,
+        "string",
+        "The name of the ImageStreamIO shared memory image to write the desaturated delta-shape to.  Default is "
+        "shmimName with _delta apended (i.e. dm00disp -> dm00disp_delta).  This is created." );
+
+    config.add( "dm.deltaChannels",
+                "",
+                "dm.deltaChannels",
+                argType::Required,
+                "dm",
+                "deltaChannels",
+                false,
+                "vector<string>",
+                "The names of the DM channels which are delta commands to be excluded from the total flat." );
+
     config.add( "dm.width",
                 "",
                 "dm.width",
@@ -764,6 +1169,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "string",
                 "The width of the DM in actuators." );
+
     config.add( "dm.height",
                 "",
                 "dm.height",
@@ -783,6 +1189,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "float",
                 "Threshold on percentage of frames an actuator is saturated over an interval.  Default is 0.98." );
+
     config.add( "dm.intervalSatThreshold",
                 "",
                 "dm.intervalSatThreshold",
@@ -792,6 +1199,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "float",
                 "Threshold on percentage of actuators which exceed percThreshold in an interval.  Default is 0.5." );
+
     config.add( "dm.intervalSatCountThreshold",
                 "",
                 "dm.intervalSatCountThreshold",
@@ -800,7 +1208,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "intervalSatCountThreshold",
                 false,
                 "float",
-                "Threshold one number of consecutive intervals the intervalSatThreshold is exceeded.  Default is 10." );
+                "Threshold on number of consecutive intervals the intervalSatThreshold is exceeded.  Default is 10." );
 
     config.add( "dm.satTriggerDevice",
                 "",
@@ -811,6 +1219,7 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 false,
                 "vector<string>",
                 "Device(s) with a toggle switch to toggle on saturation trigger." );
+
     config.add( "dm.satTriggerProperty",
                 "",
                 "dm.satTriggerProperty",
@@ -860,6 +1269,9 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
 
     config( derived().m_shmimName, "dm.shmimName" );
 
+    derived().m_getExistingFirst = true;
+    // end of shmimmonitor overrides
+
     if( derived().m_shmimName != "" )
     {
         m_shmimFlat = derived().m_shmimName + "00";
@@ -876,16 +1288,27 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
 
         config( m_satAvgInt, "dm.satAvgInt" );
 
+        config( m_satThreadPrio, "dm.satSatThreadPrio" );
+
         m_shmimShape = derived().m_shmimName + "_shape";
         config( m_shmimShape, "dm.shmimShape" );
+
+        m_shmimDelta = derived().m_shmimName + "_delta";
+        config( m_shmimDelta, "dm.shmimDelta" );
+
+        config( m_deltaChannels, "dm.deltaChannels" );
     }
     else
     {
+        // Avoid unused error
         config.isSet( "dm.shmimFlat" );
         config.isSet( "dm.shmimTest" );
         config.isSet( "dm.shmimSat" );
         config.isSet( "dm.shmimSatPerc" );
         config.isSet( "dm.satAvgInt" );
+        config.isSet( "dm.shmimShape" );
+        config.isSet( "dm.shmimDelta" );
+        config.isSet( "dm.deltaChannels" );
     }
 
     config( m_dmWidth, "dm.width" );
@@ -896,8 +1319,6 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
     config( m_intervalSatCountThreshold, "dm.intervalSatCountThreshold" );
     config( m_satTriggerDevice, "dm.satTriggerDevice" );
     config( m_satTriggerProperty, "dm.satTriggerProperty" );
-
-    derived().m_getExistingFirst = true;
 
     return 0;
 }
@@ -977,19 +1398,26 @@ int dm<derivedT, realT>::appStartup()
     derived().createStandardIndiRequestSw( m_indiP_init, "initDM" );
     if( derived().registerIndiPropertyNew( m_indiP_init, st_newCallBack_init ) < 0 )
     {
-#ifndef DM_TEST_NOLOG
+        // clang-format off
+        #ifndef DM_TEST_NOLOG
         derivedT::template log<software_error>( { __FILE__, __LINE__ } );
-#endif
+        #endif
+        // clang-format on
+
         return -1;
     }
 
     // Register the zero INDI property
     derived().createStandardIndiRequestSw( m_indiP_zero, "zeroDM" );
+
     if( derived().registerIndiPropertyNew( m_indiP_zero, st_newCallBack_zero ) < 0 )
     {
-#ifndef DM_TEST_NOLOG
+        // clang-format off
+        #ifndef DM_TEST_NOLOG
         derivedT::template log<software_error>( { __FILE__, __LINE__ } );
-#endif
+        #endif
+        // clang-format on
+
         return -1;
     }
 
@@ -997,10 +1425,7 @@ int dm<derivedT, realT>::appStartup()
     derived().createStandardIndiRequestSw( m_indiP_release, "releaseDM" );
     if( derived().registerIndiPropertyNew( m_indiP_release, st_newCallBack_release ) < 0 )
     {
-#ifndef DM_TEST_NOLOG
-        derivedT::template log<software_error>( { __FILE__, __LINE__ } );
-#endif
-        return -1;
+        return derivedT::template log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
     derived().createStandardIndiRequestSw( m_indiP_zeroAll, "zeroAll" );
@@ -1128,7 +1553,7 @@ int dm<derivedT, realT>::appShutdown()
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::onPowerOff()
 {
-    releaseDM();
+    baseReleaseDM();
 
     return 0;
 }
@@ -1145,8 +1570,14 @@ int dm<derivedT, realT>::whilePowerOff()
 template <class derivedT, typename realT>
 int dm<derivedT, realT>::findDMChannels()
 {
+    std::string milkShmimDir = mx::sys::getEnv( "MILK_SHM_DIR" );
+    if( milkShmimDir == "" )
+    {
+        milkShmimDir = "/milk/shm";
+    }
+
     std::vector<std::string> dmlist;
-    mx::error_t errc = mx::ioutils::getFileNames( dmlist, "/milk/shm/", derived().m_shmimName, ".im", ".shm" );
+    mx::error_t errc = mx::ioutils::getFileNames( dmlist, milkShmimDir, derived().m_shmimName, ".im", ".shm" );
 
     mx_error_check_rv( errc, -1 );
 
@@ -1154,10 +1585,11 @@ int dm<derivedT, realT>::findDMChannels()
     {
         derivedT::template log<software_error>(
             { __FILE__, __LINE__, "no dm channels found for " + derived().m_shmimName } );
+
         return -1;
     }
 
-    m_channels = -1;
+    m_numChannels = -1;
     for( size_t n = 0; n < dmlist.size(); ++n )
     {
         char nstr[16];
@@ -1169,16 +1601,43 @@ int dm<derivedT, realT>::findDMChannels()
         {
             if( dmlist[m].find( tgt ) != std::string::npos )
             {
-                if( (int)n > m_channels )
-                    m_channels = n;
+                if( (int)n > m_numChannels )
+                {
+                    m_numChannels = n;
+                }
             }
         }
     }
 
-    ++m_channels;
+    ++m_numChannels;
 
     derivedT::template log<text_log>(
-        { std::string( "Found " ) + std::to_string( m_channels ) + " channels for " + derived().m_shmimName } );
+        { std::string( "Found " ) + std::to_string( m_numChannels ) + " channels for " + derived().m_shmimName } );
+
+    m_channels.resize( m_numChannels, nullptr );
+
+    for( size_t n = 0; n < m_channels.size(); ++n )
+    {
+        char nstr[16];
+        snprintf( nstr, sizeof( nstr ), "%02d", (int)n );
+        std::string sname = derived().m_shmimName + nstr;
+
+        try
+        {
+            m_channels[n] = new mx::improc::milkImage<realT>( sname ); // this opens the channel stream
+        }
+        catch( const std::exception &e )
+        {
+            derivedT::template log<software_error>(
+                { __FILE__, __LINE__, "exception opening " + sname + ": " + e.what() } );
+        }
+
+        auto res = std::find( m_deltaChannels.begin(), m_deltaChannels.end(), sname );
+        if( res == m_deltaChannels.end() )
+        {
+            m_notDeltas.push_back( n );
+        }
+    }
 
     return 0;
 }
@@ -1212,7 +1671,9 @@ int dm<derivedT, realT>::allocate( const dev::shmimT &sp )
     }
 
     if( err )
+    {
         return -1;
+    }
 
     m_instSatMap.resize( m_dmWidth, m_dmHeight );
     m_instSatMap.setZero();
@@ -1233,6 +1694,7 @@ int dm<derivedT, realT>::allocate( const dev::shmimT &sp )
     try
     {
         m_outputShape.create( m_shmimShape, m_dmWidth, m_dmHeight );
+        m_outputShape().setZero();
     }
     catch( const std::exception &e )
     {
@@ -1240,13 +1702,29 @@ int dm<derivedT, realT>::allocate( const dev::shmimT &sp )
             { __FILE__, __LINE__, std::string( "creating output shape shmim: " ) + e.what() } );
     }
 
-#ifdef XWC_DMTIMINGS
+    try
+    {
+        m_outputDelta.create( m_shmimDelta, m_dmWidth, m_dmHeight );
+        m_outputDelta().setZero();
+    }
+    catch( const std::exception &e )
+    {
+        return derivedT::template log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "creating output delta shmim: " ) + e.what() } );
+    }
+
+    m_totalFlat.resize( m_dmWidth, m_dmHeight );
+    m_totalFlat.setZero();
+
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
     m_piTimes.maxEntries( 2000 );
     m_satSem.maxEntries( 2000 );
     m_actProc.maxEntries( 2000 );
     m_actCom.maxEntries( 2000 );
     m_satUp.maxEntries( 2000 );
-#endif
+    m_deltaUp.maxEntries (2000);
+    #endif // clang-format on
 
     return 0;
 }
@@ -1256,15 +1734,17 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
 {
     static_cast<void>( sp ); // be unused
 
-#ifdef XWC_DMTIMINGS
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
     m_t0 = mx::sys::get_curr_time();
-#endif
+    #endif // clang-format on
 
     int rv = derived().commandDM( curr_src );
 
-#ifdef XWC_DMTIMINGS
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
     m_tf = mx::sys::get_curr_time();
-#endif
+    #endif // clang-format on
 
     if( rv < 0 )
     {
@@ -1272,9 +1752,10 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
         return rv;
     }
 
-#ifdef XWC_DMTIMINGS
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
     m_tsat0 = mx::sys::get_curr_time();
-#endif
+    #endif // clang-format on
 
     // Tell the sat thread to get going
     if( sem_post( &m_satSemaphore ) < 0 )
@@ -1283,11 +1764,11 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
         return -1;
     }
 
-#ifdef XWC_DMTIMINGS
-    m_tsatf = mx::sys::get_curr_time();
-#endif
+    // clang-format off
+    #ifdef XWC_DMTIMINGS // clang-format on
 
-#ifdef XWC_DMTIMINGS
+    m_tsatf = mx::sys::get_curr_time();
+
     // Update the latency circ. buffs
     if( m_piTimes.maxEntries() > 0 )
     {
@@ -1296,13 +1777,17 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
         m_actProc.nextEntry( m_tact1 - m_tact0 );
         m_actCom.nextEntry( m_tact2 - m_tact1 );
         m_satUp.nextEntry( m_tact4 - m_tact3 );
+        m_deltaUp.nextEntry( m_tdeltaf - m_tdelta0 );
     }
-#endif
+
+        // clang-format off
+    #endif // clang-format on
+
     return rv;
 }
 
 template <class derivedT, typename realT>
-int dm<derivedT, realT>::initDM()
+int dm<derivedT, realT>::baseInitDM()
 {
     if( derived().state() != stateCodes::NOTHOMED )
     {
@@ -1325,7 +1810,7 @@ int dm<derivedT, realT>::initDM()
 }
 
 template <class derivedT, typename realT>
-int dm<derivedT, realT>::releaseDM()
+int dm<derivedT, realT>::baseReleaseDM()
 {
     if( derived().state() != stateCodes::POWEROFF )
     {
@@ -1467,9 +1952,12 @@ int dm<derivedT, realT>::checkFlats()
 
         if( derived().registerIndiPropertyNew( m_indiP_flats, st_newCallBack_flats ) < 0 )
         {
-#ifndef DM_TEST_NOLOG
+            // clang-format off
+            #ifndef DM_TEST_NOLOG
             derivedT::template log<software_error>( { __FILE__, __LINE__ } );
-#endif
+            #endif
+            // clang-format on
+
             return -1;
         }
 
@@ -1641,7 +2129,7 @@ int dm<derivedT, realT>::setFlat( bool update )
     m_flatImageStream.md->write = 1;
 
     ///\todo we are assuming that dmXXcomYY is not a cube.  This might be true, but we should add cnt1 handling here
-    ///anyway.  With bounds checks b/c not everyone handles cnt1 properly.
+    /// anyway.  With bounds checks b/c not everyone handles cnt1 properly.
     // Copy
     memcpy( m_flatImageStream.array.raw, m_flatCommand.data(), m_dmWidth * m_dmHeight * sizeof( realT ) );
 
@@ -1712,7 +2200,7 @@ int dm<derivedT, realT>::zeroFlat()
     m_flatImageStream.md->write = 1;
 
     ///\todo we are assuming that dmXXcomYY is not a cube.  This might be true, but we should add cnt1 handling here
-    ///anyway.  With bounds checks b/c not everyone handles cnt1 properly.
+    /// anyway.  With bounds checks b/c not everyone handles cnt1 properly.
     // Zero
     memset( m_flatImageStream.array.raw, 0, m_dmWidth * m_dmHeight * sizeof( realT ) );
 
@@ -1989,7 +2477,7 @@ int dm<derivedT, realT>::setTest()
     m_testImageStream.md->write = 1;
 
     ///\todo we are assuming that dmXXcomYY is not a cube.  This might be true, but we should add cnt1 handling here
-    ///anyway.  With bounds checks b/c not everyone handles cnt1 properly.
+    /// anyway.  With bounds checks b/c not everyone handles cnt1 properly.
     // Copy
     memcpy( m_testImageStream.array.raw, m_testCommand.data(), m_dmWidth * m_dmHeight * sizeof( realT ) );
 
@@ -2046,7 +2534,7 @@ int dm<derivedT, realT>::zeroTest()
     m_testImageStream.md->write = 1;
 
     ///\todo we are assuming that dmXXcomYY is not a cube.  This might be true, but we should add cnt1 handling here
-    ///anyway.  With bounds checks b/c not everyone handles cnt1 properly.
+    /// anyway.  With bounds checks b/c not everyone handles cnt1 properly.
     // Zero
     memset( m_testImageStream.array.raw, 0, m_dmWidth * m_dmHeight * sizeof( realT ) );
 
@@ -2083,7 +2571,7 @@ int dm<derivedT, realT>::zeroAll( bool nosem )
 
     IMAGE imageStream;
 
-    for( int n = 0; n < m_channels; ++n )
+    for( int n = 0; n < m_numChannels; ++n )
     {
         char nstr[16];
         snprintf( nstr, sizeof( nstr ), "%02d", n );
@@ -2125,7 +2613,7 @@ int dm<derivedT, realT>::zeroAll( bool nosem )
         imageStream.md->write = 0;
 
         // Raise the semaphore on last one.
-        if( n == m_channels - 1 && !nosem )
+        if( n == m_numChannels - 1 && !nosem )
         {
             ImageStreamIO_sempost( &imageStream, -1 );
         }
@@ -2155,6 +2643,28 @@ int dm<derivedT, realT>::zeroAll( bool nosem )
         derivedT::template log<software_error>( { __FILE__, __LINE__, errno, rv, "Error from clearSat" } );
         return rv;
     }
+
+    return 0;
+}
+
+template <class derivedT, typename realT>
+int dm<derivedT, realT>::makeDelta()
+{
+    if( m_notDeltas.size() == 0 )
+    {
+        return 0;
+    }
+
+    m_totalFlat = (*m_channels[m_notDeltas[0]])();
+
+    for( size_t n = 1; n < m_notDeltas.size(); ++n )
+    {
+        m_totalFlat += (*m_channels[m_notDeltas[n]])();
+    }
+
+    m_outputDelta.setWrite( true );
+    m_outputDelta = m_outputShape() - m_totalFlat;
+    m_outputDelta.post();
 
     return 0;
 }
@@ -2485,7 +2995,7 @@ int dm<derivedT, realT>::newCallBack_init( const pcf::IndiProperty &ipRecv )
 
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
     {
-        int rv = initDM();
+        int rv = baseInitDM();
         if( rv < 0 )
         {
             return derivedT::template log<software_error, -1>(
@@ -2539,7 +3049,7 @@ int dm<derivedT, realT>::newCallBack_release( const pcf::IndiProperty &ipRecv )
 
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
     {
-        return releaseDM();
+        return baseReleaseDM();
     }
     return 0;
 }
