@@ -3,7 +3,7 @@
   * \author Jared R. Males (jaredmales@gmail.com)
   *
   * \ingroup logger_types_files
-  * 
+  *
   */
 #include <flatlogs/flatlogs.hpp>
 #include "../generated/logTypes.hpp"
@@ -27,6 +27,7 @@ timespec telem_fgtimings::lastRecord = {0,0};
 timespec telem_fxngen::lastRecord = {0,0};
 timespec telem_loopgain::lastRecord = {0,0};
 timespec telem_observer::lastRecord = {0,0};
+timespec telem_offloading::lastRecord = {0,0};
 timespec telem_pi335::lastRecord = {0,0};
 timespec telem_pico::lastRecord = {0,0};
 timespec telem_position::lastRecord = {0,0};
