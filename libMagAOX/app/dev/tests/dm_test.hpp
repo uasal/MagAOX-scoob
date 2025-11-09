@@ -6,9 +6,9 @@
 // LCOV_EXCL_START
 
 #ifndef XWCTEST_NAMESPACE
-#define MAPPNS MagAOX::app::dev
+    #define MAPPNS MagAOX::app::dev
 #else
-#define MAPPNS MagAOX::app::dev::XWCTEST_NAMESPACE
+    #define MAPPNS MagAOX::app::dev::XWCTEST_NAMESPACE
 
 #endif
 
@@ -24,7 +24,9 @@ namespace XWCTEST_NAMESPACE
 /**
  * \ingroup dm_tests
  */
-struct dmTest : public MagAOX::app::MagAOXApp<false>, public MAPPNS::dm<dmTest,float>, public MAPPNS::shmimMonitor<dmTest>
+struct dmTest : public MagAOX::app::MagAOXApp<false>,
+                public MAPPNS::dm<dmTest, float>,
+                public MAPPNS::shmimMonitor<dmTest>
 {
 
     friend class MAPPNS::dm<dmTest, float>;
@@ -34,10 +36,9 @@ struct dmTest : public MagAOX::app::MagAOXApp<false>, public MAPPNS::dm<dmTest,f
     dmTest( const std::string &git_sha1, const bool git_modified )
         : MagAOX::app::MagAOXApp<false>( git_sha1, git_modified )
     {
-        m_configName = "dmtest";
-        m_calibDir = "/tmp/dmtest_calibs";
+        m_configName  = "dmtest";
+        m_calibDir    = "/tmp/dmtest_calibs";
         m_calibRelDir = "dmtest";
-
     }
 
     ~dmTest() noexcept
@@ -84,10 +85,10 @@ struct dmTest : public MagAOX::app::MagAOXApp<false>, public MAPPNS::dm<dmTest,f
         return 0;
     }
 
-    void setSize(int w, int h, int d)
+    void setSize( int w, int h, int d )
     {
-        m_width = w;
-        m_height = h;
+        m_width    = w;
+        m_height   = h;
         m_dataType = d;
     }
 };
