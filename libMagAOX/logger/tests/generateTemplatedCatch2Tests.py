@@ -231,19 +231,24 @@ Parse out field type and name from string
 def getTypeAndName(lineParts : list) -> tuple[str, str]:
 
     typeIdxStart = 1 if (lineParts[0] == "const") else 0
-    type = lineParts[typeIdxStart]
+    fieldType = lineParts[typeIdxStart]
 
     if lineParts[typeIdxStart + 1] == "&":
         nameIdx = (typeIdxStart + 2)
     elif lineParts[typeIdxStart + 1] == "*":
         nameIdx = (typeIdxStart + 2)
-        type += " " + lineParts[typeIdxStart + 1]
+        fieldType += " *"
     else:
         nameIdx = (typeIdxStart + 1)
 
     name = lineParts[nameIdx].rstrip(")").rstrip(",")
 
-    return type, name
+    if name[0] == "*":
+        fieldType += " *"
+
+    name = name.lstrip("&*")
+
+    return fieldType, name
 
 '''
 Checks if log type has a corresponding generated .h file in ./types/generated
@@ -396,7 +401,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
             # trim line to just get field info
             indexStart = (line.find("messageT(") + len("messageT(")) if "messageT(" in line else 0
             indexEnd = line.find("//") if "//" in line else len(line)
-            line = line[indexStart:indexEnd]
+            line = line[indexStart:indexEnd].strip()
 
             lineParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]
 
