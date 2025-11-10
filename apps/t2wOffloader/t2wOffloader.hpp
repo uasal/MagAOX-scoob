@@ -111,6 +111,9 @@ class t2wOffloader : public MagAOXApp<true>, public dev::shmimMonitor<t2wOffload
 
     bool m_offloading{ false };
 
+    /// Mutex for locking shared memory access.
+    std::mutex m_shmimMutex;
+
   public:
     /// Default c'tor.
     t2wOffloader();
@@ -234,6 +237,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "string",
                 "Device name for getting fps of the loop.  This device should have *.fps.current.  Default is camwfs" );
+
     config.add( "integrator.navgSource",
                 "",
                 "integrator.navgSource",
@@ -254,6 +258,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "string",
                 "The path to the response matrix." );
+
     config.add( "offload.channel",
                 "",
                 "offload.channel",
@@ -273,6 +278,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "float",
                 "The starting offload gain.  Default is 0.1." );
+
     config.add( "offload.leak",
                 "",
                 "offload.leak",
@@ -282,6 +288,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "float",
                 "The starting offload leak.  Default is 0.0." );
+
     config.add( "offload.startupOffloading",
                 "",
                 "offload.startupOffloading",
@@ -291,6 +298,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "bool",
                 "Flag controlling whether offloading is on at startup.  Default is false." );
+
     config.add( "offload.actLim",
                 "",
                 "offload.actLim",
@@ -310,6 +318,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "string",
                 "File containing the tweeter modes to use for offloading" );
+
     config.add( "offload.tweeterMask",
                 "",
                 "offload.tweeterMask",
@@ -319,6 +328,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "string",
                 "File containing the tweeter mask." );
+
     config.add( "offload.maxModes",
                 "",
                 "offload.maxModes",
@@ -328,6 +338,7 @@ inline void t2wOffloader::setupConfig()
                 false,
                 "string",
                 "Maximum number of modes for modal offloading." );
+
     config.add( "offload.numModes",
                 "",
                 "offload.numModes",
@@ -553,8 +564,6 @@ inline int t2wOffloader::allocate( const dev::shmimT &dummy )
 
     ///\todo size checks here.
 
-    // state(stateCodes::OPERATING);
-
     return 0;
 }
 
@@ -563,7 +572,9 @@ inline int t2wOffloader::processImage( void *curr_src, const dev::shmimT &dummy 
     static_cast<void>( dummy ); // be unused
 
     if( !m_offloading )
+    {
         return 0;
+    }
 
     if( m_numModes == 0 )
     {
@@ -583,22 +594,39 @@ inline int t2wOffloader::processImage( void *curr_src, const dev::shmimT &dummy 
         }
     }
 
-    while( m_dmStream.md[0].write == 1 )
-        ; // Check if zero() is running
+    std::lock_guard<std::mutex> guard( m_shmimMutex );
+
+    size_t n = 0;
+    while( m_dmStream.md[0].write == 1 && n < 10000 ) // Check if zero() is running
+    {
+        ++n;
+        mx::sys::microSleep( 1 );
+    }
+
+    if( m_dmStream.md[0].write == 1 || n > 10000 - 1 )
+    {
+        log<software_warning>( { __FILE__, __LINE__, "timed out with write==1" } );
+        return 0;
+    }
 
     m_woofer = m_gain * Eigen::Map<Eigen::Array<float, -1, -1>>( m_wooferDelta.data(), m_dmWidth, m_dmHeight ) +
                ( 1.0 - m_leak ) * m_woofer;
 
-    for( int ii = 0; ii < m_woofer.rows(); ++ii )
+    for( int jj = 0; jj < m_woofer.cols(); ++jj )
     {
-        for( int jj = 0; jj < m_woofer.cols(); ++jj )
+        for( int ii = 0; ii < m_woofer.rows(); ++ii )
         {
-            if( fabs( m_woofer( ii, jj ) ) > m_actLim )
+            float val = m_woofer( ii, jj );
+            if( fabs( val ) > m_actLim )
             {
-                if( m_woofer( ii, jj ) > 0 )
+                if( val > 0 )
+                {
                     m_woofer( ii, jj ) = m_actLim;
+                }
                 else
+                {
                     m_woofer( ii, jj ) = -m_actLim;
+                }
             }
         }
     }
@@ -615,12 +643,22 @@ inline int t2wOffloader::processImage( void *curr_src, const dev::shmimT &dummy 
     return 0;
 }
 
-inline int t2wOffloader::zero()
+int t2wOffloader::zero()
 {
+    std::lock_guard<std::mutex> guard( m_shmimMutex );
 
-    // Check if processImage is running
-    while( m_dmStream.md[0].write == 1 )
-        ;
+    size_t n = 0;
+    while( m_dmStream.md[0].write == 1 && n < 10000 ) // Check if processImage() is running
+    {
+        ++n;
+        mx::sys::microSleep( 1 );
+    }
+
+    if( m_dmStream.md[0].write == 1 || n > 10000 - 1 )
+    {
+        log<software_warning>( { __FILE__, __LINE__, "timed out with write==1, processImage() might be stuck" } );
+        return 0;
+    }
 
     m_dmStream.md[0].write = 1;
 
