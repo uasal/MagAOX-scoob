@@ -65,7 +65,7 @@ struct shmimT
  *       //It should check that the buffer has the expected size, and perform any internal allocations
  *       //to prepare for processing.
  *       int derivedT::allocate( const specificT & ///< [in] tag to differentiate shmimMonitor parents.  Normally this
- * is dev::shmimT for a single parent.
+ *                                                           is dev::shmimT for a single parent.
  *                             );
  *
  *       int derivedT::processImage( void * curr_src,   ///< [in] pointer to the start of the current frame
@@ -127,7 +127,7 @@ class shmimMonitor
     bool m_getExistingFirst{ false }; ///< If set to true by derivedT, any existing image will be grabbed and sent to
                                       ///< processImage before waiting on the semaphore.
 
-    stateCodes::stateCodeT m_targetState {stateCodes::OPERATING};
+    stateCodes::stateCodeT m_targetState{ stateCodes::OPERATING };
 
     shmimMonitorState m_smState{ shmimMonitorState::init };
 
@@ -526,8 +526,7 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
     {
         m_smState = shmimMonitorState::init;
 
-        while( ( derived().state() != m_targetState || m_shmimName == "" ) && !derived().shutdown() &&
-               !m_restart )
+        while( ( derived().state() != m_targetState || m_shmimName == "" ) && !derived().shutdown() && !m_restart )
         {
             sleep( 1 );
         }
@@ -674,7 +673,7 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
             m_depth  = 1;
         }
 
-        m_smState = shmimMonitorState::connected; // this means we now have vaild sizes, etc.
+        m_smState = shmimMonitorState::connected; // this means we now have valid sizes, etc.
 
         if( derived().allocate( specificT() ) < 0 )
         {
@@ -686,8 +685,8 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
         size_t   snx, sny, snz;
         uint64_t curr_image; // The current cnt1 index
 
-        if( m_getExistingFirst && !m_restart &&
-            derived().shutdown() == 0 ) // If true, we always get the existing image without waiting on the semaphore.
+        // If true, we always get the existing image without waiting on the semaphore.
+        if( m_getExistingFirst && !m_restart && derived().shutdown() == 0 )
         {
             if( m_imageStream.md[0].size[2] > 0 ) ///\todo change to naxis?
             {
