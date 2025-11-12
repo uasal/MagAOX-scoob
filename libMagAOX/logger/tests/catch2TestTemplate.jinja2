@@ -76,9 +76,7 @@ public:
     {% else %}
     {% set getter = field.name %}
     {% endif %}
-    {% if fbName != "" %}
-    {% set fbName = fbName %}
-    {% elif schemaTableName != "" %}
+    {% if schemaTableName != "" %}
     {% set fbName = schemaTableName %}
     {% else %}
     {% set fbName = UPPER_FIRST_CHAR(name) + "_fb" %}

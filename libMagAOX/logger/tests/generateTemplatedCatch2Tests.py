@@ -224,14 +224,13 @@ def makeTestInfoDict(hppFname : str, baseTypesDict : dict) -> dict:
         return None # don't render me yet!
 
     # if it does not have its own fb method, find name of class its using
-    returnInfo["fbName"] = ""
     if not hasFbMethods:
         for line in headerLines:
             if re.search("^.*Create[a-zA-Z_]*_fb.*$", line) and returnInfo["schemaTableName"] == "":
                 # figure out name of fb methods this type is re-using, e.g. ao_observer -> observer
                 startIndex = line.find("Create") + len("Create")
                 endIndex = line.find("_fb")
-                returnInfo["fbName"] = f"{line[startIndex:endIndex]}_fb"
+                returnInfo["schemaTableName"] = f"{line[startIndex:endIndex]}_fb"
 
     returnInfo["messageTypes"] = getMessageFieldInfo(messageStructIdxs, headerLines, schemaFieldInfo)
     
