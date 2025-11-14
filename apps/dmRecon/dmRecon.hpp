@@ -82,8 +82,9 @@ struct dmCommandShmimT
 class dmRecon : public MagAOXApp<true>,
                 public dev::shmimMonitor<dmRecon, dmModesShmimT>,
                 public dev::shmimMonitor<dmRecon, dmMaskShmimT>,
-                public dev::shmimMonitor<dmRecon, dmCommandShmimT>
-//, public dev::telemeter<dmRecon>
+                public dev::shmimMonitor<dmRecon, dmCommandShmimT>,
+                public dev::frameGrabber<dmRecon>,
+                public dev::telemeter<dmRecon>
 {
     // Give the test harness access.
     friend class dmRecon_test;
@@ -97,9 +98,13 @@ class dmRecon : public MagAOXApp<true>,
     friend class dev::shmimMonitor<dmRecon, dmCommandShmimT>;
     typedef dev::shmimMonitor<dmRecon, dmCommandShmimT> dmCommandSMT;
 
-    // friend class dev::telemeter<dmRecon>;
+    friend class dev::frameGrabber<dmRecon>;
+    typedef dev::frameGrabber<dmRecon> frameGrabberT;
 
-    // typedef dev::telemeter<dmRecon> telemeterT;
+    static constexpr bool c_frameGrabber_flippable = false;
+
+    friend class dev::telemeter<dmRecon>;
+    typedef dev::telemeter<dmRecon> telemeterT;
 
     /// Floating point type in which to do all calculations.
     typedef float realT;
@@ -129,6 +134,10 @@ class dmRecon : public MagAOXApp<true>,
     bool m_dmMaskReady{ false }; ///< Flag indicating that the DM mask is ready for processing
 
     bool m_commandReady{ false }; ///< Flag indicating that all sizes match and arrays are ready for processing
+
+    mx::improc::eigenImage<float> m_command; ///< The DM command, copied out of the incoming shmim
+
+    mx::improc::eigenImage<float> m_modevals; ///< The calculated mode amplitudes
 
   public:
     /// Default c'tor.
@@ -217,8 +226,24 @@ class dmRecon : public MagAOXApp<true>,
                       const dmCommandShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
-    int prepareModes();
+    /** \name Framegrabber Interface */
+    /**
+     * @{
+     */
 
+    int configureAcquisition();
+
+    float fps();
+
+    int startAcquisition();
+
+    int acquireAndCheckValid();
+
+    int loadImageIntoStream( void *dest );
+
+    int reconfig();
+
+    ///@}
   protected:
     /** \name INDI Interface
      *
@@ -235,15 +260,10 @@ class dmRecon : public MagAOXApp<true>,
      *
      * @{
      */
-    /* int checkRecordTimes();
 
-     int recordTelem( const telem_loopgain * );
+    int checkRecordTimes();
 
-     int recordLoopGain( bool force = false );
-
-     int recordTelem( const telem_offloading * );
-
-     int recordOffloading( bool force = false );*/
+    int recordTelem( const telem_fgtimings * );
 
     ///@}
 };
@@ -286,7 +306,9 @@ inline void dmRecon::setupConfig()
     dmCommandSMT::m_shmimName = "dm01disp_delta";
     SHMIMMONITORT_SETUP_CONFIG( dmCommandSMT, config );
 
-    // TELEMETER_SETUP_CONFIG( config );
+    FRAMEGRABBER_SETUP_CONFIG( config );
+
+    TELEMETER_SETUP_CONFIG( config );
 }
 
 inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -299,7 +321,9 @@ inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
     SHMIMMONITORT_LOAD_CONFIG( dmMaskSMT, _config );
     SHMIMMONITORT_LOAD_CONFIG( dmCommandSMT, _config );
 
-    // TELEMETER_LOAD_CONFIG( _config );
+    FRAMEGRABBER_LOAD_CONFIG( _config );
+
+    TELEMETER_LOAD_CONFIG( _config );
 
     return 0;
 }
@@ -326,7 +350,9 @@ inline int dmRecon::appStartup()
     SHMIMMONITORT_APP_STARTUP( dmMaskSMT );
     SHMIMMONITORT_APP_STARTUP( dmCommandSMT );
 
-    // TELEMETER_APP_STARTUP;
+    FRAMEGRABBER_APP_STARTUP;
+
+    TELEMETER_APP_STARTUP;
 
     state( stateCodes::OPERATING );
 
@@ -339,13 +365,17 @@ int dmRecon::appLogic()
     SHMIMMONITORT_APP_LOGIC( dmMaskSMT );
     SHMIMMONITORT_APP_LOGIC( dmCommandSMT );
 
-    // TELEMETER_APP_LOGIC;
+    FRAMEGRABBER_APP_LOGIC;
+
+    TELEMETER_APP_LOGIC;
 
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
     SHMIMMONITORT_UPDATE_INDI( dmModesSMT );
     SHMIMMONITORT_UPDATE_INDI( dmMaskSMT );
     SHMIMMONITORT_UPDATE_INDI( dmCommandSMT );
+
+    FRAMEGRABBER_UPDATE_INDI;
 
     return 0;
 }
@@ -356,7 +386,9 @@ inline int dmRecon::appShutdown()
     SHMIMMONITORT_APP_SHUTDOWN( dmMaskSMT );
     SHMIMMONITORT_APP_SHUTDOWN( dmCommandSMT );
 
-    // TELEMETER_APP_SHUTDOWN;
+    FRAMEGRABBER_APP_SHUTDOWN;
+
+    TELEMETER_APP_SHUTDOWN;
 
     return 0;
 }
@@ -377,7 +409,7 @@ int dmRecon::allocate( const dmModesShmimT & )
 
     // This will let us go on to processImage
 
-    //Do a type check for float
+    // Do a type check for float
     return 0;
 }
 
@@ -404,11 +436,11 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
     m_maskedDMModes.resize( dmModesSMT::m_depth, m_maskIDX.size() );
 
     // Load only the unmasked pixels
-    for( int rr = 0; rr < m_maskedDMModes.size(); ++rr )
+    for( int rr = 0; rr < m_maskedDMModes.rows(); ++rr )
     {
         for( size_t n = 0; n < m_maskIDX.size(); ++n )
         {
-            m_maskedDMModes.row( n ).data()[n] = dmModes.image( n ).data()[n];
+            m_maskedDMModes.row( rr ).data()[n] = dmModes.image( rr ).data()[m_maskIDX[n]];
         }
     }
 
@@ -424,7 +456,7 @@ int dmRecon::allocate( const dmMaskShmimT & )
 
     dmCommandSMT::m_restart = true;
 
-    //Do a type check for float
+    // Do a type check for float
     return 0;
 }
 
@@ -445,24 +477,26 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
         mx::sys::milliSleep( 1000 );
     }
 
-    m_mask = mx::improc::eigenMap<float>(reinterpret_cast<float *>(curr_src), dmMaskSMT::m_width, dmMaskSMT::m_height);
+    m_mask =
+        mx::improc::eigenMap<float>( reinterpret_cast<float *>( curr_src ), dmMaskSMT::m_width, dmMaskSMT::m_height );
 
     m_maskIDX.clear();
 
     size_t n = 0;
 
-    for(int rr = 0; rr < m_mask.rows(); ++rr)
+    for( int rr = 0; rr < m_mask.rows(); ++rr )
     {
-        for(int cc = 0; cc < m_mask.cols(); ++cc)
+        for( int cc = 0; cc < m_mask.cols(); ++cc )
         {
-            if(m_mask(rr,cc) == 1)
+            if( m_mask( rr, cc ) == 1 )
             {
-                m_maskIDX.push_back(n);
+                m_maskIDX.push_back( n );
             }
         }
     }
 
-    std::cerr << "Got mask of size " << m_mask.rows() << " x " << m_mask.cols() << " with " << m_maskIDX.size() << " good pixels.\n";
+    std::cerr << "Got mask of size " << m_mask.rows() << " x " << m_mask.cols() << " with " << m_maskIDX.size()
+              << " good pixels.\n";
 
     // here upload to device
 
@@ -483,7 +517,10 @@ int dmRecon::allocate( const dmCommandShmimT & )
         return 0; // This won't log an error, but setting m_restart will cause it to reconnect again until sizes match
     }
 
-    // do any allocations
+    m_command.resize( m_maskIDX.size(), 1 );
+
+    m_modevals.resize( m_maskedDMModes.rows(), 1 );
+    // do any allocations on GPU
 
     m_commandReady = true;
 
@@ -500,7 +537,13 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
     // upload command (masked pixels)
 
+    for( size_t n = 0; n < m_maskIDX.size(); ++n )
+    {
+        m_command( n, 0 ) = reinterpret_cast<float *>( curr_src )[m_maskIDX[n]];
+    }
+
     // carry out mult
+    m_modevals = m_maskedDMModes * m_command;
 
     // download result vector
 
@@ -509,54 +552,35 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
     return 0;
 }
 
-int dmRecon::prepareModes()
+int dmRecon::configureAcquisition()
 {
-    // here do any processing and normalization, then upload to GPU
+    return 0;
+}
 
-    /*
-    mx::improc::eigenCube<float> tmodes;
+float dmRecon::fps()
+{
+    return m_fps;
+}
 
-    mx::fits::fitsFile<float> ff;
+int dmRecon::startAcquisition()
+{
+    return 0;
+}
 
-    ff.read( tmodes, m_dmModeFile );
+int dmRecon::acquireAndCheckValid()
+{
+    return 0;
+}
 
-    ff.read( m_dmMask, m_dmMaskFile );
+int dmRecon::loadImageIntoStream( void *dest )
+{
+    static_cast<void>(dest);
 
-    ff.read( m_twRespM, m_twRespMPath );
+    return 0;
+}
 
-    for( int p = 0; p < tmodes.planes(); ++p )
-    {
-        tmodes.image( p ) *= m_dmMask;
-        float norm = ( tmodes.image( p ) ).square().sum();
-        tmodes.image( p ) /= sqrt( norm );
-    }
-
-    m_tModesOrtho.resize( tmodes.rows(), tmodes.cols(), m_maxModes );
-
-    for( int p = 0; p < m_tModesOrtho.planes(); ++p )
-    {
-        m_tModesOrtho.image( p ) = tmodes.image( p );
-    }
-
-    ff.write( "/tmp/tModesOrtho.fits", m_tModesOrtho );
-
-    m_wModes.resize( 11, 11, m_tModesOrtho.planes() );
-    mx::improc::eigenImage<realT> win, wout;
-
-    win.resize( 11, 11 );
-    wout.resize( 11, 11 );
-
-    // Calculate the woofer modes corresponding to the dm modes
-    for( int p = 0; p < m_tModesOrtho.planes(); ++p )
-    {
-        win = m_tModesOrtho.image( p );
-        Eigen::Map<Eigen::Matrix<float, -1, -1>>( wout.data(), wout.rows() * wout.cols(), 1 ) =
-            m_twRespM.matrix() * Eigen::Map<Eigen::Matrix<float, -1, -1>>( win.data(), win.rows() * win.cols(), 1 );
-        m_wModes.image( p ) = wout;
-    }
-
-    ff.write( "/tmp/wModes.fits", m_wModes );
-*/
+int dmRecon::reconfig()
+{
     return 0;
 }
 
@@ -582,60 +606,15 @@ INDI_SETCALLBACK_DEFN( dmRecon, m_indiP_fpsSource )( const pcf::IndiProperty &ip
     return 0;
 }
 
-/*
 int dmRecon::checkRecordTimes()
 {
-    return telemeterT::checkRecordTimes( telem_loopgain(), telem_offloading() );
+    return telemeterT::checkRecordTimes( telem_fgtimings() );
 }
 
-int dmRecon::recordTelem( const telem_loopgain * )
+int dmRecon::recordTelem( const telem_fgtimings * )
 {
-    return recordLoopGain( true );
+    return recordFGTimings( true );
 }
-
-int dmRecon::recordLoopGain( bool force )
-{
-    static uint8_t state{ 0 };
-    static float   gain{ -1000 };
-    static float   leak{ 0 };
-    static float   limit{ 0 };
-
-    if( state != m_offloading || gain != m_gain || leak != m_leak || limit != m_actLim || force )
-    {
-        state = m_offloading;
-        gain  = m_gain;
-        leak  = m_leak;
-        limit = m_actLim;
-
-        telem<telem_loopgain>( { state, m_gain, 1 - leak, limit } );
-    }
-
-    return 0;
-}
-
-int dmRecon::recordTelem( const telem_offloading * )
-{
-    return recordOffloading( true );
-}
-
-int dmRecon::recordOffloading( bool force )
-{
-    static uint32_t num_modes{ 0 };
-    static uint32_t num_average{ 0 };
-    float           fps{ 0 };
-
-    if( num_modes != m_numModes || num_average != m_navg || fps != m_effFPS || force )
-    {
-        num_modes   = m_numModes;
-        num_average = m_navg;
-        fps         = m_effFPS;
-
-        telem<telem_offloading>( { num_modes, num_average, fps } );
-    }
-
-    return 0;
-}
-*/
 
 } // namespace app
 } // namespace MagAOX
