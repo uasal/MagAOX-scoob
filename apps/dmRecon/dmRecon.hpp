@@ -17,6 +17,10 @@
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
 
+#include <mx/math/cuda/cudaPtr.hpp>
+#include <mx/math/cuda/cublasHandle.hpp>
+#include <mx/math/cuda/templateCublas.hpp>
+
 namespace MagAOX
 {
 namespace app
@@ -119,11 +123,23 @@ class dmRecon : public MagAOXApp<true>,
     std::string m_fpsSource{ "camwfs" }; /**< Device name for getting fps of the loop.
                                               This device must have *.fps.current.  Default is camwfs*/
 
+    uint16_t m_gpuIndex{ 0 }; /**< Index of the GPU to use for calculations */
+
+    bool m_useGPU{ false }; /**< Flag controlling whether the GPU is used for calculations */
+
     ///@}
 
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
     mx::improc::eigenImage<float> m_maskedDMModes;
+
+    // clang-format off
+    #ifdef MXLIB_CUDA
+
+    mx::cuda::cudaPtr<float> m_maskedDMModes_GPU;
+
+    #endif
+    // clang-format on
 
     bool m_dmModesReady{ false }; ///< Flag indicating that the DM modes are ready for processing
 
@@ -135,9 +151,27 @@ class dmRecon : public MagAOXApp<true>,
 
     bool m_commandReady{ false }; ///< Flag indicating that all sizes match and arrays are ready for processing
 
+    bool m_fgWaiting{ false }; ///< Flag indicating that the FG thread is waiting for the command thread
+
     mx::improc::eigenImage<float> m_command; ///< The DM command, copied out of the incoming shmim
 
     mx::improc::eigenImage<float> m_modevals; ///< The calculated mode amplitudes
+
+    // clang-format off
+    #ifdef MXLIB_CUDA
+
+    mx::cuda::cudaPtr<float> m_command_GPU;
+
+    mx::cuda::cudaPtr<float> m_modevals_GPU;
+
+    #endif
+    // clang-format on
+
+    sem_t m_smSemaphore{ 0 }; ///< Semaphore used to synchronize the fg thread and the dm command thread.
+
+    bool m_updated{ false }; ///< Flag indicating that the mode vals have been updated
+
+    mx::cuda::cublasHandle m_cublas; ///< Handle for the cuBLAS library
 
   public:
     /// Default c'tor.
@@ -177,6 +211,12 @@ class dmRecon : public MagAOXApp<true>,
      *
      */
     virtual int appShutdown();
+
+    /// Set the GPU index
+    /** Uses m_gpuIndex.  On errors it sets m_useGPU to false.
+     *
+     */
+    int setGPU();
 
     /// Allocate method for the dm modes shmimMonitor
     /**
@@ -293,7 +333,28 @@ inline void dmRecon::setupConfig()
                 "fpsSource",
                 false,
                 "string",
-                "Device name for getting fps of the loop.  This device should have *.fps.current.  Default is camwfs" );
+                "Device name for getting fps of the loop.  This device should have *.fps.current.  "
+                "Default is camwfs" );
+
+    config.add( "recon.gpuIndex",
+                "",
+                "recon.gpuIndex",
+                argType::Required,
+                "recon",
+                "gpuIndex",
+                false,
+                "int",
+                "Index of the GPU to use for calculations.  Default is 0." );
+
+    config.add( "recon.useGPU",
+                "",
+                "recon.useGPU",
+                argType::Required,
+                "recon",
+                "useGPU",
+                false,
+                "bool",
+                "Flag controlling whether the GPU is used for calculations. Default is false." );
 
     std::string loopName = "aol" + m_loopNumber;
 
@@ -316,6 +377,8 @@ inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
 
     _config( m_loopNumber, "recon.loopNumber" );
     _config( m_fpsSource, "recon.fpsSource" );
+    _config( m_gpuIndex, "recon.gpuIndex" );
+    _config( m_useGPU, "recon.useGPU" );
 
     SHMIMMONITORT_LOAD_CONFIG( dmModesSMT, _config );
     SHMIMMONITORT_LOAD_CONFIG( dmMaskSMT, _config );
@@ -343,6 +406,12 @@ inline int dmRecon::appStartup()
     if( registerIndiPropertyReadOnly( m_indiP_fps ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
+        return -1;
+    }
+
+    if( sem_init( &m_smSemaphore, 0, 0 ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Initializing S.M. semaphore" } );
         return -1;
     }
 
@@ -391,6 +460,162 @@ inline int dmRecon::appShutdown()
     TELEMETER_APP_SHUTDOWN;
 
     return 0;
+}
+
+int dmRecon::setGPU()
+{
+#ifdef MXLIB_CUDA
+
+    if( !m_useGPU )
+    {
+        return 0;
+    }
+
+    int deviceCount;
+    int devicecntMax = 100;
+
+    cudaError_t ce = cudaGetDeviceCount( &deviceCount );
+
+    if( ce != cudaSuccess )
+    {
+
+        log<software_error>( { __FILE__,
+                               __LINE__,
+                               std::format( "cudaGetDeviceCount returned error: "
+                                            "[{}] {}\nNOT USING GPU",
+                                            cudaGetErrorName( ce ),
+                                            cudaGetErrorString( ce ) ) } );
+
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+
+    std::string msg = std::format( "CUDA: found {} devices\n", deviceCount );
+
+    if( deviceCount > devicecntMax )
+    {
+        deviceCount = 0;
+        msg += "      greater than devicecntMax\n";
+    }
+    if( deviceCount < 0 )
+    {
+        msg += "      less than zero\n";
+    }
+
+    if( deviceCount == 0 )
+    {
+        msg += "      no devices found!\nNOT USING GPU";
+        log<software_error>( { __FILE__, __LINE__, msg } );
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+
+    for( int k = 0; k < deviceCount; k++ )
+    {
+        cudaDeviceProp deviceProp;
+        ce = cudaGetDeviceProperties( &deviceProp, k );
+
+        if( ce != cudaSuccess )
+        {
+            msg += std::format( "cudaGetDeviceProperties returned error: "
+                                "[{}] {}\nNOT USING GPU",
+                                cudaGetErrorName( ce ),
+                                cudaGetErrorString( ce ) );
+            log<software_error>( { __FILE__, __LINE__, msg } );
+            m_useGPU = false;
+            state( state(), true );
+            return -1;
+        }
+
+        int clockRate;
+        ce = cudaDeviceGetAttribute( &clockRate, cudaDevAttrClockRate, k );
+
+        if( ce != cudaSuccess )
+        {
+            msg += std::format( "cudaGetDeviceAttribute returned error: "
+                                "[{}] {}\nNOT USING GPU",
+                                cudaGetErrorName( ce ),
+                                cudaGetErrorString( ce ) );
+            log<software_error>( { __FILE__, __LINE__, msg } );
+            m_useGPU = false;
+            state( state(), true );
+            return -1;
+        }
+
+        msg += std::format( "      Device {} / {} [ {} ] has compute capability {}.{}.\n",
+                            k + 1,
+                            deviceCount,
+                            deviceProp.name,
+                            deviceProp.major,
+                            deviceProp.minor );
+
+        msg += std::format( "          Total amount of global memory: {} MBytes\n",
+                            (float)deviceProp.totalGlobalMem / 1048576.0f );
+
+        msg += std::format( "          Multiprocessors: {}\n", deviceProp.multiProcessorCount );
+        msg += std::format( "          Clock rate: {} MHz ({} GHz)\n", clockRate * 1e-3f, clockRate * 1e-6f );
+    }
+
+    if( m_gpuIndex >= deviceCount )
+    {
+        msg += std::format( "gpuIndex = {} is not valid for {} devices\nNOT USING GPU", m_gpuIndex, deviceCount );
+        log<software_error>( { __FILE__, __LINE__, msg } );
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+
+    ce = cudaSetDevice( m_gpuIndex );
+
+    if( ce != cudaSuccess )
+    {
+        msg += std::format( "cudaSetDevice returned error: "
+                            "[{}] {}\nNOT USING GPU",
+                            cudaGetErrorName( ce ),
+                            cudaGetErrorString( ce ) );
+        log<software_error>( { __FILE__, __LINE__, msg } );
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+
+    msg += std::format( "Set GPU Index to device {} ( {} / {})\n", m_gpuIndex, m_gpuIndex + 1, deviceCount );
+
+    cublasStatus_t cbs = m_cublas.create();
+
+    if( cbs != CUBLAS_STATUS_SUCCESS )
+    {
+        msg += std::format( "cublasHandle create returned error: "
+                            "[{}] {}\nNOT USING GPU",
+                            cublasGetStatusName( cbs ),
+                            cublasGetStatusString( cbs ) );
+        log<software_error>( { __FILE__, __LINE__, msg } );
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+
+    msg += "      cuBLAS initialized";
+
+    log<text_log>( msg );
+
+    return 0;
+
+#else // MXLIB_CUDA
+
+    if( m_useGPU )
+    {
+        log<software_error>( { __FILE__, __LINE__, "mxlib was compiled without CUDA support. NOT USING GPU" } );
+
+        m_useGPU = false;
+        state( state(), true );
+        return -1;
+    }
+    return 0;
+
+#endif // MXLIB_CUDA
 }
 
 int dmRecon::allocate( const dmModesShmimT & )
@@ -444,8 +669,6 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
         }
     }
 
-    // here do upload to device
-
     m_dmModesReady = true;
     return 0;
 }
@@ -498,8 +721,6 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
     std::cerr << "Got mask of size " << m_mask.rows() << " x " << m_mask.cols() << " with " << m_maskIDX.size()
               << " good pixels.\n";
 
-    // here upload to device
-
     m_dmMaskReady = true;
     return 0;
 }
@@ -512,7 +733,19 @@ int dmRecon::allocate( const dmCommandShmimT & )
         dmCommandSMT::m_height != dmMaskSMT::m_height )
     {
         m_commandReady = false;
+
+        dmCommandSMT::m_restart   = true;
+        frameGrabberT::m_reconfig = true;
+
         mx::sys::milliSleep( 1000 );
+
+        return 0; // This won't log an error, but setting m_restart will cause it to reconnect again until sizes match
+    }
+
+    if( !m_fgWaiting )
+    {
+        mx::sys::milliSleep( 1000 );
+
         dmCommandSMT::m_restart = true;
         return 0; // This won't log an error, but setting m_restart will cause it to reconnect again until sizes match
     }
@@ -520,8 +753,53 @@ int dmRecon::allocate( const dmCommandShmimT & )
     m_command.resize( m_maskIDX.size(), 1 );
 
     m_modevals.resize( m_maskedDMModes.rows(), 1 );
-    // do any allocations on GPU
 
+#ifdef MXLIB_CUDA
+    if( m_useGPU )
+    {
+        // Do all initializations and uploads here so it's in the right thread on the right device
+        if( setGPU() < 0 )
+        {
+            log<software_error>( { __FILE__, __LINE__, "setting GPU device failed." } );
+            m_useGPU = false;
+            state( state(), true );
+            return -1;
+        }
+
+        mx::error_t ec =
+            m_maskedDMModes_GPU.upload( m_maskedDMModes.data(), m_maskedDMModes.rows(), m_maskedDMModes.cols() );
+        if( ec != mx::error_t::noerror )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error uploading modes to GPU: [{}] {}",
+                                                           mx::errorName( ec ),
+                                                           mx::errorMessage( ec ) ) } );
+        }
+
+        ec = m_command_GPU.resize( m_command.rows() * m_command.cols() );
+        if( ec != mx::error_t::noerror )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error allocating command on GPU: [{}] {}",
+                                                           mx::errorName( ec ),
+                                                           mx::errorMessage( ec ) ) } );
+        }
+
+        ec = m_modevals_GPU.resize( m_modevals.rows() * m_modevals.cols() );
+        if( ec != mx::error_t::noerror )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error allocating modevals on GPU: [{}] {}",
+                                                           mx::errorName( ec ),
+                                                           mx::errorMessage( ec ) ) } );
+        }
+    }
+#endif // MXLIB_CUDA
+
+    m_updated      = false;
     m_commandReady = true;
 
     return 0;
@@ -535,25 +813,104 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         return 0;
     }
 
-    // upload command (masked pixels)
-
+    // extract masked pixels
     for( size_t n = 0; n < m_maskIDX.size(); ++n )
     {
         m_command( n, 0 ) = reinterpret_cast<float *>( curr_src )[m_maskIDX[n]];
     }
 
-    // carry out mult
+    // clang-format off
+    #ifdef MXLIB_CUDA // clang-format on
+    if( !m_useGPU )
+    {
+        // CPU:
+        m_modevals = m_maskedDMModes * m_command;
+    }
+    else
+    {
+        // GPU:
+        mx::error_t ec = m_command_GPU.upload( m_command.data() );
+        if( ec != mx::error_t::noerror )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error uploading command to GPU: [{}] {}",
+                                                           mx::errorName( ec ),
+                                                           mx::errorMessage( ec ) ) } );
+        }
+
+        float alpha = 1;
+        float beta  = 0;
+
+        cublasStatus_t cbs = mx::cuda::cublasTgemv( m_cublas,
+                                                    CUBLAS_OP_N,
+                                                    m_maskedDMModes_GPU.rows(),
+                                                    m_maskedDMModes_GPU.cols(),
+                                                    &alpha,
+                                                    m_maskedDMModes_GPU.data(),
+                                                    m_maskedDMModes_GPU.rows(),
+                                                    m_command_GPU.data(),
+                                                    1,
+                                                    &beta,
+                                                    m_modevals_GPU.data(),
+                                                    1 );
+
+        if( cbs != CUBLAS_STATUS_SUCCESS )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error downloading modevals from GPU: [{}] {}",
+                                                           cublasGetStatusName( cbs ),
+                                                           cublasGetStatusString( cbs ) ) } );
+        }
+
+        ec = m_modevals_GPU.download( m_modevals.data() );
+        if( ec != mx::error_t::noerror )
+        {
+            return log<software_error, -1>( { __FILE__,
+                                              __LINE__,
+                                              std::format( "error downloading modevals from GPU: [{}] {}",
+                                                           mx::errorName( ec ),
+                                                           mx::errorMessage( ec ) ) } );
+        }
+    }
+
+    // clang-format off
+    #else // MXLIB_CUDA
+
+    // CPU:
     m_modevals = m_maskedDMModes * m_command;
 
-    // download result vector
+    #endif // MXLIB_CUDA
+    // clang-format on
+
+    m_updated = true;
 
     // trigger framegrabber
+    if( sem_post( &m_smSemaphore ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Error posting to semaphore" } );
+        return -1;
+    }
 
     return 0;
 }
 
 int dmRecon::configureAcquisition()
 {
+    if( !m_commandReady )
+    {
+        m_fgWaiting = true;
+        mx::sys::milliSleep( 100 );
+        return -1;
+    }
+
+    m_fgWaiting = false;
+
+    frameGrabberT::m_width    = m_modevals.rows();
+    frameGrabberT::m_height   = m_modevals.cols();
+    frameGrabberT::m_dataType = _DATATYPE_FLOAT;
+
     return 0;
 }
 
@@ -569,12 +926,46 @@ int dmRecon::startAcquisition()
 
 int dmRecon::acquireAndCheckValid()
 {
+    timespec ts;
+
+    errno = 0;
+    if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
+    {
+        log<software_critical>( { __FILE__, __LINE__, errno, 0, "clock_gettime" } );
+        return -1;
+    }
+
+    ts.tv_sec += 1;
+
+    if( !m_commandReady )
+    {
+        return 1;
+    }
+
+    if( sem_timedwait( &m_smSemaphore, &ts ) == 0 )
+    {
+        if( m_updated && m_commandReady )
+        {
+            clock_gettime( CLOCK_REALTIME, &m_currImageTimestamp );
+            return 0;
+        }
+        else
+        {
+            return 1;
+        }
+    }
+    else
+    {
+        return 1;
+    }
+
     return 0;
 }
 
 int dmRecon::loadImageIntoStream( void *dest )
 {
-    static_cast<void>(dest);
+    memcpy( dest, m_modevals.data(), m_modevals.rows() * m_modevals.cols() * sizeof( float ) );
+    m_updated = false;
 
     return 0;
 }
