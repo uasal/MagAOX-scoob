@@ -13,8 +13,6 @@
 #include <mx/improc/milkImage.hpp>
 #include <mx/ioutils/fits/fitsFile.hpp>
 
-#include <boost/filesystem/operations.hpp>
-
 #include "shmimMonitor.hpp"
 
 namespace MagAOX
@@ -1858,20 +1856,20 @@ int dm<derivedT, realT>::checkFlats()
     // Here we keep only the m_nFlatFiles most recent files
     if( tfs.size() >= m_nFlatFiles )
     {
-        std::vector<std::time_t> wtimes( tfs.size() );
+        std::vector<std::filesystem::file_time_type> wtimes( tfs.size() );
 
         for( size_t n = 0; n < wtimes.size(); ++n )
         {
-            wtimes[n] = boost::filesystem::last_write_time( tfs[n] );
+            wtimes[n] = std::filesystem::last_write_time( tfs[n] );
         }
 
         std::sort( wtimes.begin(), wtimes.end() );
 
-        std::time_t tn = wtimes[wtimes.size() - m_nFlatFiles];
+        std::filesystem::file_time_type tn = wtimes[wtimes.size() - m_nFlatFiles];
 
         for( size_t n = 0; n < tfs.size(); ++n )
         {
-            std::time_t lmt = boost::filesystem::last_write_time( tfs[n] );
+            std::filesystem::file_time_type lmt = std::filesystem::last_write_time( tfs[n] );
             if( lmt < tn )
             {
                 tfs.erase( tfs.begin() + n );
