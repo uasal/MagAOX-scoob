@@ -43,7 +43,7 @@ class XDeformableMirror(DeformableMirror):
         self.dmwrite = ImageStream('dm0{:d}disp0{:d}'.format(self.dmindex, channel))
         
         # The DM modes
-        self.grid = make_pupil_grid(self.num_across, 1)
+        self.grid = make_pupil_grid(self.num_across, self.size)
         modes = mode_basis_generator(self.grid)
         super().__init__(modes)
 
