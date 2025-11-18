@@ -356,15 +356,10 @@ inline void dmRecon::setupConfig()
                 "bool",
                 "Flag controlling whether the GPU is used for calculations. Default is false." );
 
-    std::string loopName = "aol" + m_loopNumber;
-
-    dmModesSMT::m_shmimName = loopName + "_CMmodesDM";
     SHMIMMONITORT_SETUP_CONFIG( dmModesSMT, config );
 
-    dmMaskSMT::m_shmimName = loopName + "_dmmask";
     SHMIMMONITORT_SETUP_CONFIG( dmMaskSMT, config );
 
-    dmCommandSMT::m_shmimName = "dm01disp_delta";
     SHMIMMONITORT_SETUP_CONFIG( dmCommandSMT, config );
 
     FRAMEGRABBER_SETUP_CONFIG( config );
@@ -380,10 +375,18 @@ inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_gpuIndex, "recon.gpuIndex" );
     _config( m_useGPU, "recon.useGPU" );
 
+    std::string loopName = "aol" + m_loopNumber;
+
+    dmModesSMT::m_shmimName = loopName + "_CMmodesDM";
     SHMIMMONITORT_LOAD_CONFIG( dmModesSMT, _config );
+
+    dmMaskSMT::m_shmimName = loopName + "_dmmask";
     SHMIMMONITORT_LOAD_CONFIG( dmMaskSMT, _config );
+
+    dmCommandSMT::m_shmimName = "dm01disp_delta";
     SHMIMMONITORT_LOAD_CONFIG( dmCommandSMT, _config );
 
+    frameGrabberT::m_shmimName = loopName + "_modevalDMf";
     FRAMEGRABBER_LOAD_CONFIG( _config );
 
     TELEMETER_LOAD_CONFIG( _config );
@@ -415,7 +418,9 @@ inline int dmRecon::appStartup()
         return -1;
     }
 
+    dmModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_APP_STARTUP( dmModesSMT );
+    dmMaskSMT::m_getExistingFirst = true;
     SHMIMMONITORT_APP_STARTUP( dmMaskSMT );
     SHMIMMONITORT_APP_STARTUP( dmCommandSMT );
 
@@ -649,14 +654,33 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
         return 0;
     }
 
+    mx::improc::eigenCube<float> dmModes(dmModesSMT::m_width, dmModesSMT::m_height, dmModesSMT::m_depth);
+
+    for(size_t n =0; n < dmModesSMT::m_width * dmModesSMT::m_height* dmModesSMT::m_depth; ++n)
+    {
+        dmModes.data()[n] = reinterpret_cast<float *>( curr_src )[n];
+    }
+        
+
     // Wait for m_commandReady to become false
     while( m_commandReady == true && !m_shutdown && dmModesSMT::m_restart == false )
     {
         mx::sys::milliSleep( 1000 );
     }
 
-    mx::improc::eigenCube<float> dmModes(
+    /*mx::improc::eigenCube<float> dmModes(
         reinterpret_cast<float *>( curr_src ), dmModesSMT::m_width, dmModesSMT::m_height, dmModesSMT::m_depth );
+    */
+
+    /*int w = dmModesSMT::m_width;
+    int h = dmModesSMT::m_height;
+    float * dmModes = reinterpret_cast<float *>( curr_src );*/
+
+
+    std::cerr << "DM modes: " << dmModesSMT::m_width << ' ' << dmModesSMT::m_height << ' ' << dmModesSMT::m_depth << '\n';
+    //std::cerr << dmModes.asVectors().square().sum() << '\n';
+    
+    std::cerr << "Mask pixels: " << m_maskIDX.size() << '\n';
 
     m_maskedDMModes.resize( dmModesSMT::m_depth, m_maskIDX.size() );
 
@@ -665,10 +689,11 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
     {
         for( size_t n = 0; n < m_maskIDX.size(); ++n )
         {
-            m_maskedDMModes.row( rr ).data()[n] = dmModes.image( rr ).data()[m_maskIDX[n]];
+            m_maskedDMModes(rr,n) = 0;
         }
     }
 
+    std::cerr << "DM modes masked sum: " << m_maskedDMModes.square().sum() << '\n';
     m_dmModesReady = true;
     return 0;
 }
@@ -691,6 +716,7 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
         dmModesSMT::m_restart   = true;
         dmMaskSMT::m_restart    = true;
         dmCommandSMT::m_restart = true;
+
         return 0;
     }
 
@@ -707,6 +733,7 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
 
     size_t n = 0;
 
+    int nmax = 0;
     for( int rr = 0; rr < m_mask.rows(); ++rr )
     {
         for( int cc = 0; cc < m_mask.cols(); ++cc )
@@ -714,9 +741,14 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
             if( m_mask( rr, cc ) == 1 )
             {
                 m_maskIDX.push_back( n );
+                nmax = n;
             }
+
+            ++n;
         }
     }
+
+    std::cerr << n <<  ' ' << nmax << '\n';
 
     std::cerr << "Got mask of size " << m_mask.rows() << " x " << m_mask.cols() << " with " << m_maskIDX.size()
               << " good pixels.\n";
@@ -813,6 +845,9 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         return 0;
     }
 
+    //Set atime to now
+    clock_gettime( CLOCK_REALTIME, &m_currImageTimestamp );
+
     // extract masked pixels
     for( size_t n = 0; n < m_maskIDX.size(); ++n )
     {
@@ -823,6 +858,7 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
     #ifdef MXLIB_CUDA // clang-format on
     if( !m_useGPU )
     {
+        //std::cerr << __LINE__ << '\n';
         // CPU:
         m_modevals = m_maskedDMModes * m_command;
     }
@@ -886,12 +922,16 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
     m_updated = true;
 
+    //std::cerr << __LINE__ << '\n';
+
     // trigger framegrabber
     if( sem_post( &m_smSemaphore ) < 0 )
     {
         log<software_critical>( { __FILE__, __LINE__, errno, 0, "Error posting to semaphore" } );
         return -1;
     }
+
+    //std::cerr << __LINE__ << '\n';
 
     return 0;
 }
@@ -921,6 +961,7 @@ float dmRecon::fps()
 
 int dmRecon::startAcquisition()
 {
+    
     return 0;
 }
 
@@ -942,20 +983,25 @@ int dmRecon::acquireAndCheckValid()
         return 1;
     }
 
+    //std::cerr << __LINE__ << '\n';
+    //mx::sys::microSleep(1000);
     if( sem_timedwait( &m_smSemaphore, &ts ) == 0 )
     {
+        //std::cerr << __LINE__ << '\n';
+
         if( m_updated && m_commandReady )
         {
-            clock_gettime( CLOCK_REALTIME, &m_currImageTimestamp );
             return 0;
         }
         else
         {
+            //std::cerr << __LINE__ << '\n';
             return 1;
         }
     }
     else
     {
+        //std::cerr << __LINE__ << '\n';
         return 1;
     }
 

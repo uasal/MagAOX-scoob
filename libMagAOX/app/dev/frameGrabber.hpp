@@ -394,7 +394,10 @@ int frameGrabber<derivedT>::loadConfig( mx::app::appConfigurator &config )
     config( m_fgThreadPrio, "framegrabber.threadPrio" );
     config( m_fgCpuset, "framegrabber.cpuset" );
     if( m_shmimName == "" )
+    {
         m_shmimName = derived().configName();
+    }
+    
     config( m_shmimName, "framegrabber.shmimName" );
 
     config( m_circBuffLength, "framegrabber.circBuffLength" );

@@ -765,7 +765,7 @@ class dm
 
     double m_t0{ 0 }, m_tf{ 0 }, m_tsat0{ 0 }, m_tsatf{ 0 };
     double m_tact0{ 0 }, m_tact1{ 0 }, m_tact2{ 0 }, m_tact3{ 0 }, m_tact4{ 0 };
-    double m_tdelta0 {0}, m_tdeltaf{0};
+    double m_tdelta0 {0}, m_tdeltaf {0};
 
     mx::sigproc::circularBufferIndex<double, cbIndexT> m_piTimes;
 
@@ -777,7 +777,8 @@ class dm
 
     mx::sigproc::circularBufferIndex<double, cbIndexT> m_satUp;
 
-    mx::sigproc::circularBufferIndex<double, cbIndexT> m_deltaUp; ///< timing c-buff for the delta command
+    mx::sigproc::circularBufferIndex<double, cbIndexT> m_deltaUp;
+
 
     std::vector<double> m_piTimesD;
     std::vector<double> m_satSemD;
@@ -1501,6 +1502,7 @@ int dm<derivedT, realT>::appLogic()
         m_actProcD.resize( m_actProc.maxEntries() );
         m_actComD.resize( m_actCom.maxEntries() );
         m_satUpD.resize( m_satUp.maxEntries() );
+        m_deltaUpD.resize( m_deltaUp.maxEntries() );
 
         for( size_t n = 0; n < m_piTimesD.size(); ++n )
         {
@@ -1509,6 +1511,7 @@ int dm<derivedT, realT>::appLogic()
             m_actProcD[n] = m_actProc.at( refEntry, n );
             m_actComD[n]  = m_actCom.at( refEntry, n );
             m_satUpD[n]   = m_satUp.at( refEntry, n );
+            m_deltaUpD[n]   = m_deltaUp.at( refEntry, n );
         }
 
         std::cerr << "Act. Process:   " << mx::math::vectorMean( m_actProcD ) << " +/- "
@@ -1517,6 +1520,8 @@ int dm<derivedT, realT>::appLogic()
                   << sqrt( mx::math::vectorVariance( m_actComD ) ) << "\n";
         std::cerr << "Sat. Update:    " << mx::math::vectorMean( m_satUpD ) << " +/- "
                   << sqrt( mx::math::vectorVariance( m_satUpD ) ) << "\n";
+        std::cerr << "Delta Update:   " << mx::math::vectorMean( m_deltaUpD ) << " +/- "
+                  << sqrt( mx::math::vectorVariance( m_deltaUpD ) ) << "\n";
         std::cerr << "Tot. CommandDM: " << mx::math::vectorMean( m_piTimesD ) << " +/- "
                   << sqrt( mx::math::vectorVariance( m_piTimesD ) ) << "\n";
         std::cerr << "Sat. Semaphore: " << mx::math::vectorMean( m_satSemD ) << " +/- "
@@ -1721,7 +1726,7 @@ int dm<derivedT, realT>::allocate( const dev::shmimT &sp )
     m_actProc.maxEntries( 2000 );
     m_actCom.maxEntries( 2000 );
     m_satUp.maxEntries( 2000 );
-    m_deltaUp.maxEntries (2000);
+    m_deltaUp.maxEntries( 2000 );
     #endif // clang-format on
 
     return 0;
@@ -1739,16 +1744,34 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
 
     int rv = derived().commandDM( curr_src );
 
-    // clang-format off
-    #ifdef XWC_DMTIMINGS
-    m_tf = mx::sys::get_curr_time();
-    #endif // clang-format on
-
     if( rv < 0 )
     {
         derivedT::template log<software_critical>( { __FILE__, __LINE__, errno, rv, "Error from commandDM" } );
         return rv;
     }
+
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
+    m_tdelta0 = mx::sys::get_curr_time();
+    #endif // clang-format on
+
+    if( m_deltaChannels.size() > 0 )
+    {
+        rv = makeDelta();
+
+        if( rv < 0 )
+        {
+            derivedT::template log<software_critical>( { __FILE__, __LINE__, errno, rv, "Error from makeDelta" } );
+            return rv;
+        }
+    }
+
+    // clang-format off
+    #ifdef XWC_DMTIMINGS
+    m_tdeltaf = mx::sys::get_curr_time();
+    
+    m_tf = m_tdeltaf;
+    #endif // clang-format on
 
     // clang-format off
     #ifdef XWC_DMTIMINGS
@@ -1775,7 +1798,7 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
         m_actProc.nextEntry( m_tact1 - m_tact0 );
         m_actCom.nextEntry( m_tact2 - m_tact1 );
         m_satUp.nextEntry( m_tact4 - m_tact3 );
-        m_deltaUp.nextEntry( m_tdeltaf - m_tdelta0 );
+        m_deltaUp.nextEntry( m_tdeltaf - m_tdelta0);
     }
 
         // clang-format off
@@ -2653,16 +2676,15 @@ int dm<derivedT, realT>::makeDelta()
         return 0;
     }
 
-    m_totalFlat = (*m_channels[m_notDeltas[0]])();
+    m_totalFlat = ( *m_channels[m_notDeltas[0]] )();
 
     for( size_t n = 1; n < m_notDeltas.size(); ++n )
     {
-        m_totalFlat += (*m_channels[m_notDeltas[n]])();
+        m_totalFlat += ( *m_channels[m_notDeltas[n]] )();
     }
 
     m_outputDelta.setWrite( true );
-    m_outputDelta = m_outputShape() - m_totalFlat;
-    m_outputDelta.post();
+    m_outputDelta = m_outputShape() - m_totalFlat; //this posts and everything
 
     return 0;
 }
