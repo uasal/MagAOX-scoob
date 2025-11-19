@@ -63,6 +63,9 @@ protected:
   int         m_velPercent {40};
   double      m_jogStepDeg {1.0};
 
+  // post-home offset (degrees, relative move from home)
+  double      m_homeOffsetDeg {0.0};
+
   // optional presets
   std::vector<std::string> m_presetNames;
   std::vector<double>      m_presetValuesDeg;
@@ -73,6 +76,14 @@ protected:
   double m_posDeg {0.0};
   bool   m_homed {false};
   int    m_moving {0}; // -1 unknown, 0 idle, 1 moving, 2 homing
+
+  // homing offset state machine
+  enum class HomePhase { Idle, WaitingHomeStable, SentOffset, WaitingOffsetStable };
+  HomePhase m_homePhase {HomePhase::Idle};
+  double    m_lastPosForStable {0.0};
+  std::chrono::steady_clock::time_point m_lastMotionTime {};
+  static constexpr int kStableMsRequired = 500; // quiet time to consider motion finished
+  static constexpr double kStablePosEps  = 1e-3;
 
   // INDI properties owned here
   pcf::IndiProperty m_ipAbsDeg;   // number current/target
@@ -118,6 +129,9 @@ inline void rotationStageCtrl::setupConfig()
   config.add("stage.baud", "9600", "stage.baud", argType::Required, "stage", "baud", false, "int", "Baud rate");
   config.add("stage.startupDelayMs", "200", "stage.startupDelayMs", argType::Optional, "stage", "startupDelayMs", false, "int", "Delay after power on");
 
+  // home offset (relative from home, in degrees)
+  config.add("stage.homeOffset", "0.0", "stage.homeOffset", argType::Optional, "stage", "homeOffset", false, "double", "Relative offset (deg) to move after homing");
+
   config.add("motion.velPercent", "40",  "motion.velPercent", argType::Optional, "motion", "velPercent", false, "int", "Velocity percent 0..255");
   config.add("motion.jogStepDeg", "1.0", "motion.jogStepDeg", argType::Optional, "motion", "jogStepDeg", false, "double", "Jog step in degrees");
 
@@ -134,6 +148,8 @@ inline void rotationStageCtrl::loadConfig()
   config(m_port, "stage.port");
   config(m_baud, "stage.baud");
   config(m_startupDelayMs, "stage.startupDelayMs");
+
+  config(m_homeOffsetDeg, "stage.homeOffset");
 
   config(m_velPercent, "motion.velPercent");
   config(m_jogStepDeg, "motion.jogStepDeg");
@@ -169,6 +185,10 @@ inline int rotationStageCtrl::appStartup()
     if(m_ipAbsDeg.find("current"))  m_ipAbsDeg.at("current").setValue(m_posDeg);
   } catch(...) {}
 
+  // initialize stability timer
+  m_lastPosForStable = m_posDeg;
+  m_lastMotionTime = std::chrono::steady_clock::now();
+
   return 0;
 }
 
@@ -188,6 +208,8 @@ inline int rotationStageCtrl::appLogic()
       state(stateCodes::CONNECTED);
       log<text_log>("rotationStageCtrl connected on " + m_port);
       (void)setVelocity_(m_velPercent); // best-effort apply configured velocity
+      m_lastPosForStable = m_posDeg;
+      m_lastMotionTime = std::chrono::steady_clock::now();
     } else {
       state(stateCodes::NOTCONNECTED);
       return 0;
@@ -205,6 +227,41 @@ inline int rotationStageCtrl::appLogic()
   // publish absolute current
   try { if(m_ipAbsDeg.find("current")) m_ipAbsDeg.at("current").setValue(m_posDeg); } catch(...) {}
 
+  // homing offset state machine
+  if(m_homePhase != HomePhase::Idle) {
+    const auto now = std::chrono::steady_clock::now();
+    const auto quiet_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastMotionTime).count();
+
+    switch(m_homePhase) {
+      case HomePhase::WaitingHomeStable:
+        // when homing motion seems complete, issue relative offset
+        if(quiet_ms >= kStableMsRequired) {
+          if(std::abs(m_homeOffsetDeg) > 0.0) {
+            if(moveRel_(m_homeOffsetDeg) == 0) {
+              m_homePhase = HomePhase::SentOffset;
+              // next, wait for offset motion to settle
+              m_homePhase = HomePhase::WaitingOffsetStable;
+            } else {
+              // command failed; retry next loop
+            }
+          } else {
+            m_homePhase = HomePhase::Idle;
+          }
+        }
+        break;
+
+      case HomePhase::WaitingOffsetStable:
+        if(quiet_ms >= kStableMsRequired) {
+          m_homePhase = HomePhase::Idle;
+        }
+        break;
+
+      case HomePhase::SentOffset: // folded into WaitingOffsetStable above
+      case HomePhase::Idle:
+        break;
+    }
+  }
+
   // std motion/telem
   if(dev::stdMotionStage<rotationStageCtrl>::updateINDI() < 0) log<software_error>({__FILE__,__LINE__});
   if(dev::telemeter<rotationStageCtrl>::appLogic() < 0)       log<software_error>({__FILE__,__LINE__});
@@ -216,16 +273,27 @@ inline int rotationStageCtrl::appLogic()
 
 inline int rotationStageCtrl::startHoming()
 {
-  return home_();
+  // send device home; when done, we’ll optionally apply stage.homeOffset
+  int rc = home_();
+  if(rc == 0) {
+    m_homePhase = (std::abs(m_homeOffsetDeg) > 0.0) ? HomePhase::WaitingHomeStable : HomePhase::Idle;
+    m_lastPosForStable = m_posDeg;
+    m_lastMotionTime = std::chrono::steady_clock::now();
+  }
+  return rc;
 }
 
 inline int rotationStageCtrl::stop()
 {
+  // cancel any pending offset workflow; user explicitly stopped
+  m_homePhase = HomePhase::Idle;
   return stop_();
 }
 
 inline int rotationStageCtrl::moveTo(const double &deg)
 {
+  // any commanded absolute move cancels the post-home offset sequence
+  m_homePhase = HomePhase::Idle;
   return moveAbs_(deg);
 }
 
@@ -367,6 +435,7 @@ inline int rotationStageCtrl::writeCmd_(const std::string &frame)
 inline int rotationStageCtrl::queryStatus_()
 {
   if(m_fd < 0) return -1;
+
   // request position
   if(writeCmd_(CMD_QUERYPOS) < 0) return -1;
 
@@ -380,10 +449,30 @@ inline int rotationStageCtrl::queryStatus_()
   if(r <= 0) return 0;
 
   // expect "P=<deg>"
-  double val = 0.0;
+  double oldPos = m_posDeg;
+  double val = oldPos;
   if(std::sscanf(buf, "P=%lf", &val) == 1) {
     m_posDeg = val;
   }
+
+  // motion/stability heuristic
+  if(std::fabs(m_posDeg - oldPos) > kStablePosEps) {
+    m_lastMotionTime = std::chrono::steady_clock::now();
+    m_moving = 1;
+  } else {
+    // if no change for long enough, consider idle
+    const auto now = std::chrono::steady_clock::now();
+    if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastMotionTime).count() >= kStableMsRequired) {
+      if(m_homePhase == HomePhase::WaitingHomeStable) {
+        // handled in appLogic state machine
+      } else if(m_homePhase == HomePhase::WaitingOffsetStable) {
+        // handled in appLogic state machine
+      } else {
+        m_moving = 0;
+      }
+    }
+  }
+
   return 0;
 }
 
@@ -394,6 +483,8 @@ inline int rotationStageCtrl::moveAbs_(double deg)
   char line[64];
   std::snprintf(line, sizeof(line), "%s%.6f\r\n", CMD_MOVE_ABS, deg);
   m_moving = 1;
+  // issuing a direct move cancels any pending offset workflow
+  m_homePhase = HomePhase::Idle;
   return writeCmd_(line);
 }
 
@@ -415,6 +506,13 @@ inline int rotationStageCtrl::setVelocity_(int pct)
 inline int rotationStageCtrl::home_()
 {
   m_moving = 2;
+  // begin waiting-for-home-complete phase if we'll need to apply an offset
+  if(std::abs(m_homeOffsetDeg) > 0.0) {
+    m_homePhase = HomePhase::WaitingHomeStable;
+    m_lastMotionTime = std::chrono::steady_clock::now();
+  } else {
+    m_homePhase = HomePhase::Idle;
+  }
   return writeCmd_(CMD_HOME);
 }
 
