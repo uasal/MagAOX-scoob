@@ -49,7 +49,7 @@ public:
   int recordTelem(const telem_stage *);
   int recordStage(bool force = false);
 
-  // INDI NEW callbacks (use your macros)
+  // INDI NEW callbacks (use macros, NEW = property carries current/target)
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipAbsDeg);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelDeg);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipVelPct);
@@ -62,7 +62,6 @@ protected:
   unsigned    m_startupDelayMs {200};
   int         m_velPercent {40};
   double      m_jogStepDeg {1.0};
-
   // post-home offset (degrees, relative move from home)
   double      m_homeOffsetDeg {0.0};
 
@@ -78,7 +77,7 @@ protected:
   int    m_moving {0}; // -1 unknown, 0 idle, 1 moving, 2 homing
 
   // homing offset state machine
-  enum class HomePhase { Idle, WaitingHomeStable, SentOffset, WaitingOffsetStable };
+  enum class HomePhase { Idle, WaitingHomeStable, WaitingOffsetStable };
   HomePhase m_homePhase {HomePhase::Idle};
   double    m_lastPosForStable {0.0};
   std::chrono::steady_clock::time_point m_lastMotionTime {};
@@ -169,21 +168,23 @@ inline int rotationStageCtrl::appStartup()
     return -1;
   }
 
-  if(dev::stdMotionStage<rotationStageCtrl>::appStartup() < 0) return log<software_critical,-1>({__FILE__,__LINE__});
-  if(dev::telemeter<rotationStageCtrl>::appStartup()   < 0)   return log<software_error,-1>({__FILE__,__LINE__});
-
-  // NEW number props with current/target elements
+  // Create/register OUR INDI properties first so any downstream registration
+  // never sees an empty "elements" vector.
   CREATE_REG_INDI_NEW_NUMBERD(m_ipAbsDeg,  "absDeg",    -1.0e9, 1.0e9, 0.001, "", "Absolute (deg)", "rotation");
   CREATE_REG_INDI_NEW_NUMBERD(m_ipRelDeg,  "relDeg",    -1.0e9, 1.0e9, 0.001, "", "Relative (deg)", "rotation");
   CREATE_REG_INDI_NEW_NUMBERI(m_ipVelPct,  "velocity",  0,      255,   1,     "", "Velocity (%)",   "rotation");
   CREATE_REG_INDI_NEW_NUMBERD(m_ipJogStep, "jogStepDeg",0.0,    360.0, 0.001, "", "Jog step (deg)", "rotation");
 
-  // seed currents
+  // Seed "current" values
   try {
     if(m_ipVelPct.find("current"))  m_ipVelPct.at("current").setValue(m_velPercent);
     if(m_ipJogStep.find("current")) m_ipJogStep.at("current").setValue(m_jogStepDeg);
     if(m_ipAbsDeg.find("current"))  m_ipAbsDeg.at("current").setValue(m_posDeg);
   } catch(...) {}
+
+  // Now start the base CRTPs
+  if(dev::stdMotionStage<rotationStageCtrl>::appStartup() < 0) return log<software_critical,-1>({__FILE__,__LINE__});
+  if(dev::telemeter<rotationStageCtrl>::appStartup()   < 0)   return log<software_error,-1>({__FILE__,__LINE__});
 
   // initialize stability timer
   m_lastPosForStable = m_posDeg;
@@ -234,15 +235,12 @@ inline int rotationStageCtrl::appLogic()
 
     switch(m_homePhase) {
       case HomePhase::WaitingHomeStable:
-        // when homing motion seems complete, issue relative offset
         if(quiet_ms >= kStableMsRequired) {
           if(std::abs(m_homeOffsetDeg) > 0.0) {
             if(moveRel_(m_homeOffsetDeg) == 0) {
-              m_homePhase = HomePhase::SentOffset;
-              // next, wait for offset motion to settle
               m_homePhase = HomePhase::WaitingOffsetStable;
-            } else {
-              // command failed; retry next loop
+              // reset timer to wait on offset motion
+              m_lastMotionTime = std::chrono::steady_clock::now();
             }
           } else {
             m_homePhase = HomePhase::Idle;
@@ -256,7 +254,6 @@ inline int rotationStageCtrl::appLogic()
         }
         break;
 
-      case HomePhase::SentOffset: // folded into WaitingOffsetStable above
       case HomePhase::Idle:
         break;
     }
@@ -460,13 +457,10 @@ inline int rotationStageCtrl::queryStatus_()
     m_lastMotionTime = std::chrono::steady_clock::now();
     m_moving = 1;
   } else {
-    // if no change for long enough, consider idle
     const auto now = std::chrono::steady_clock::now();
     if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastMotionTime).count() >= kStableMsRequired) {
-      if(m_homePhase == HomePhase::WaitingHomeStable) {
-        // handled in appLogic state machine
-      } else if(m_homePhase == HomePhase::WaitingOffsetStable) {
-        // handled in appLogic state machine
+      if(m_homePhase == HomePhase::WaitingHomeStable || m_homePhase == HomePhase::WaitingOffsetStable) {
+        // leave motion state changes to appLogic state machine timing
       } else {
         m_moving = 0;
       }
