@@ -56,7 +56,8 @@ apps_rtc = \
 	dmPokeXCorr \
 	psfAcq \
 	strehlEstimator \
-	modalFilter
+	modalFilter \
+	dmRecon
 
 # 	picamCtrl
 # 	pvcamCtrl

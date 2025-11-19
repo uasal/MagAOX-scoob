@@ -62,6 +62,7 @@ apps/dmMode/dmMode
 apps/dmModulator/dmModulator
 apps/dmPokeCenter/dmPokeCenter
 apps/dmPokeXCorr/dmPokeXCorr
+apps/dmRecon/dmRecon
 apps/dmSpeckle/dmSpeckle
 
 #f
