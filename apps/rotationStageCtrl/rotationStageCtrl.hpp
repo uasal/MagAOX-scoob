@@ -13,6 +13,8 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <cctype>
+#include <sstream>
+#include <iomanip>
 
 #include "../../libMagAOX/libMagAOX.hpp"
 #include "../../magaox_git_version.h"
@@ -20,15 +22,15 @@
 namespace MagAOX {
 namespace app {
 
-/* Elliptec protocol (as in your working CLI)
- *  TX (no CRLF): <ADDR><cmd>[args]
- *  RX: CRLF-terminated
+/* Elliptec protocol (as in your elliptec_cli)
+ *  TX: <ADDR><cmd>[args]         (no CRLF)
+ *  RX: a single CRLF-terminated line
  *  cmds: in, gs, gp, hoX, st, us, om, svHH, maXXXXXXXX, mrXXXXXXXX
  */
 
 class rotationStageCtrl
   : public MagAOXApp<>
-  , public dev::stdMotionStage<rotationStageCtrl>
+  , public dev::stdMotionStage<rotationStageCtrl>   // compile surface only; we do NOT call its appStartup/updateINDI
   , public dev::telemeter<rotationStageCtrl>
 {
   friend class dev::stdMotionStage<rotationStageCtrl>;
@@ -45,26 +47,28 @@ public:
   int  appLogic() override;
   int  appShutdown() override { closePort_(); return 0; }
 
-  // stdMotionStage surface
-  int   stop();                 // immediate stop
-  int   startHoming();          // home (waits until GS!=Busy, applies offset)
-  float presetNumber();         // nearest preset index (1-based) or -1
-  int   moveTo(float pos);      // absolute move in preset space (1..N)
+  // stdMotionStage required surface (backed by Elliptec)
+  int   stop();
+  int   startHoming();
+  float presetNumber();
+  int   moveTo(float pos);
+  int   moveTo(const double &deg) { return moveAbsDeg_(deg); }
 
-  // degree convenience for other call sites
-  int moveTo(const double &deg) { return moveAbsDeg_(deg); }
-
-  // telemeter wrappers expected by dev::telemeter
+  // telemeter wrappers
   int checkRecordTimes();
   int recordTelem(const telem_stage *);
   int recordStage(bool force = false);
 
-  // INDI NEW callbacks (ours)
+  // INDI NEW callbacks
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipAbsDeg);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelDeg);
+  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelDeg);     // number current/target; updates step only
+  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelMove);    // request switch: executes relative move using relDeg
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipVelPct);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipOptimize);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipSave);
+  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipHome);
+  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipStop);
+  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipStageGoto);  // per-position toggles
 
 protected:
   // ---------- Config ----------
@@ -73,23 +77,23 @@ protected:
   unsigned    m_startupDelayMs {200};
 
   // Elliptec serial
-  char        m_addr {'0'};           // ASCII hex nibble
+  char        m_addr {'0'};              // ASCII hex nibble
   int         m_readTimeoutMs {3000};
   int         m_postWriteSleepMs {0};
 
   // Behavior / UI
-  int         m_velPercent {40};      // 0..100
-  double      m_homeOffsetDeg {0.0};  // relative deg after home
-  bool        m_allowMultiturn {false}; // if false: wrap abs to [0,720)
+  int         m_velPercent {40};         // 0..100
+  double      m_homeOffsetDeg {0.0};     // relative deg after home
+  bool        m_allowMultiturn {false};  // false => wrap abs to [0,720)
 
   // Conversion
-  uint32_t    m_pulsesPerRev {0};     // pulses per 360 deg (auto/override)
+  uint32_t    m_pulsesPerRev {0};        // pulses per 360 deg (auto/override)
 
-  // Optional command aliases
+  // Command aliases
   std::string m_cmdOptimize {"om"};
   std::string m_cmdSave     {"us"};
 
-  // User presets (degrees)
+  // Presets from config, degrees
   std::vector<std::string> m_userPresetNames;
   std::vector<double>      m_userPresetDeg;
 
@@ -101,19 +105,25 @@ protected:
   int32_t  m_posPulses {0};
   bool     m_homed {false};
 
-  uint8_t  m_gs {0x00};               // 0x00 OK, 0x09 Busy
-  int8_t   m_moving {-1};             // -2 off, -1 not homed, 0 idle, 1 moving, 2 homing
+  uint8_t  m_gs {0x00};                  // 0x00 OK, 0x09 Busy
+  int8_t   m_moving {-1};                // -2 off, -1 not homed, 0 idle, 1 moving, 2 homing
+  double   m_relStepDeg {1.0};           // relDeg step size (INDI current/target)
 
   enum class Pending { None, MoveAbs, MoveRel, Home, OffsetRel, Optimize, Stop, Velocity, Save };
   Pending  m_pending {Pending::None};
 
-  // INDI owned here
-  pcf::IndiProperty m_ipAbsDeg;    // number current/target
-  pcf::IndiProperty m_ipRelDeg;    // number target-only (we ignore "current")
-  pcf::IndiProperty m_ipVelPct;    // number current/target
-  pcf::IndiProperty m_ipStatus;    // text "current" only
-  pcf::IndiProperty m_ipOptimize;  // request switch
-  pcf::IndiProperty m_ipSave;      // request switch
+  // ---------- INDI ----------
+  pcf::IndiProperty m_ipAbsDeg;        // number current/target
+  pcf::IndiProperty m_ipRelDeg;        // number current/target (step size)
+  pcf::IndiProperty m_ipRelMove;       // request switch
+  pcf::IndiProperty m_ipVelPct;        // number current/target
+  pcf::IndiProperty m_ipStatus;        // text "current" only
+  pcf::IndiProperty m_ipOptimize;      // request switch
+  pcf::IndiProperty m_ipSave;          // request switch
+  pcf::IndiProperty m_ipHome;          // request switch
+  pcf::IndiProperty m_ipStop;          // request switch
+  pcf::IndiProperty m_ipStageNamePos;  // text mapping "pos0:10, pos1:50, pos2:90"
+  pcf::IndiProperty m_ipStageGoto;     // switch with an element per stage name
 
   // ---------- Serial ----------
   static speed_t to_termios_baud_(int baud);
@@ -123,7 +133,7 @@ protected:
   int  writeAll_(const std::string &s);
   int  readFrame_(std::string &out, int timeout_ms);
 
-  // ---------- Protocol helpers ----------
+  // ---------- Protocol ----------
   inline std::string frame_(const std::string& cmd) {
     std::string f; f.reserve(1+cmd.size());
     f.push_back(m_addr); f += cmd; return f;
@@ -136,16 +146,17 @@ protected:
   int  q_position_();   // "gp"
 
   // Commands
-  int  cmd_home_(uint8_t dir=0);                // "hoX"
-  int  cmd_stop_();                             // "st"
-  int  cmd_optimize_wait_();                    // "om" + wait until OK
-  int  cmd_save_();                             // "us"
-  int  cmd_setvel_(int pct);                    // "svHH"
-  int  cmd_moveAbs_pulses_(int32_t pulses);     // "maXXXXXXXX"
-  int  cmd_moveRel_pulses_(int32_t pulses);     // "mrXXXXXXXX"
+  int  cmd_home_(uint8_t dir=0);                 // "hoX"
+  int  cmd_stop_();                              // "st"
+  int  cmd_optimize_wait_();                     // "om" wait until OK
+  int  cmd_save_();                              // "us"
+  int  cmd_setvel_(int pct);                     // "svHH"
+  int  cmd_moveAbs_pulses_(int32_t pulses);      // "maXXXXXXXX"
+  int  cmd_moveRel_pulses_(int32_t pulses);      // "mrXXXXXXXX"
 
   // Degree-facing
   int      moveAbsDeg_(double deg);
+  int      moveRelDegCmdFromRelMove_();          // uses m_relStepDeg
   int      moveRelDeg_(double ddeg);
   int32_t  degToPulses_(double deg) const;
   double   pulsesToDeg_(int32_t pulses) const;
@@ -153,6 +164,9 @@ protected:
   // Poll and reflect device state
   int  pollDevice_();     // gp + gs + resolve m_pending/m_moving
   void updateStatus_();   // push status text, absDeg.current
+
+  // Stage name/position display
+  std::string buildStageNamePosText_() const;
 };
 
 /* ========================= impl ========================= */
@@ -160,8 +174,8 @@ protected:
 inline rotationStageCtrl::rotationStageCtrl()
 : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-  // stdMotionStage preset UI (1..N index). We'll map presets -> degrees.
-  m_presetNotation  = "stage";
+  // We do NOT use stdMotionStage's UI. Avoid creating its preset UI by never calling its appStartup/updateINDI.
+  m_presetNotation  = "unused";
   m_powerMgtEnabled = true;
 }
 
@@ -186,7 +200,7 @@ inline void rotationStageCtrl::setupConfig()
   // Motion UI
   config.add("motion.velPercent", "40",  "motion.velPercent", argType::Optional, "motion", "velPercent", false, "int", "Velocity percent 0..100");
 
-  // Optional command aliases
+  // Command aliases
   config.add("device.optimizeCmd", "om", "device.optimizeCmd", argType::Optional, "device", "optimizeCmd", false, "string", "Optimize command");
   config.add("device.saveCmd",     "us", "device.saveCmd",     argType::Optional, "device", "saveCmd",     false, "string", "Save command");
 
@@ -194,8 +208,7 @@ inline void rotationStageCtrl::setupConfig()
   config.add("stages.names", "",     "stages.names", argType::Optional, "stages", "names", false, "vector<string>", "Preset names");
   config.add("stages.positions", "", "stages.positions", argType::Optional, "stages", "positions", false, "vector<double>", "Preset positions (deg)");
 
-  // Bases
-  dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);
+  dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);  // keeps telemeter compatibility
   dev::telemeter<rotationStageCtrl>::setupConfig(config);
 }
 
@@ -221,16 +234,13 @@ inline void rotationStageCtrl::loadConfig()
   if(m_velPercent < 0) m_velPercent = 0;
   if(m_velPercent > 100) m_velPercent = 100;
 
+  config(m_cmdOptimize, "device.optimizeCmd");
+  config(m_cmdSave,     "device.saveCmd");
+
+  m_userPresetNames.clear();
+  m_userPresetDeg.clear();
   config(m_userPresetNames, "stages.names");
   config(m_userPresetDeg,   "stages.positions");
-
-  // Adapt to stdMotionStage (numeric preset index 1..N)
-  m_presetNames.clear(); m_presetPositions.clear();
-  if(!m_userPresetNames.empty() && m_userPresetNames.size()==m_userPresetDeg.size()) {
-    m_presetNames = m_userPresetNames;
-    m_presetPositions.resize(m_userPresetDeg.size());
-    for(size_t i=0;i<m_userPresetDeg.size();++i) m_presetPositions[i] = static_cast<float>(i+1);
-  }
 
   dev::stdMotionStage<rotationStageCtrl>::loadConfig(config);
   dev::telemeter<rotationStageCtrl>::loadConfig(config);
@@ -243,41 +253,66 @@ inline int rotationStageCtrl::appStartup()
   if(state() == stateCodes::UNINITIALIZED)
     return log<text_log,-1>("UNINITIALIZED in appStartup", logPrio::LOG_CRITICAL);
 
-  // absDeg: current/target (user writes target)
+  // absDeg (0..720 wrap if allowMultiturn=false)
   CREATE_REG_INDI_NEW_NUMBERD(m_ipAbsDeg,  "absDeg",     0.0,  720.0, 0.001, "", "Absolute (deg)", "rotation");
+  indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, INDI_IDLE);
 
-  // relDeg: target-only (manual registration to avoid macro mismatch)
-  m_ipRelDeg = pcf::IndiProperty(pcf::IndiProperty::Number);
-  m_ipRelDeg.setName("relDeg");
-  m_ipRelDeg.addIfNoExist(pcf::IndiElement("target", 0.0));
-  if(registerIndiPropertyNew(m_ipRelDeg,
-                             std::string("relDeg"),
-                             pcf::IndiProperty::Number,
-                             pcf::IndiProperty::ReadWrite,
-                             INDI_IDLE,
-                             rotationStageCtrl::st_newCallBack_m_ipRelDeg) < 0)
-  {
-    return log<software_error,-1>({__FILE__,__LINE__,"register relDeg failed"});
-  }
+  // relDeg (number: current/target) — step size holder only; no motion here
+  CREATE_REG_INDI_NEW_NUMBERD(m_ipRelDeg,  "relDeg",    -720.0, 720.0, 0.001, "", "Relative step (deg)", "rotation");
+  indi::updateIfChanged(m_ipRelDeg, "current", m_relStepDeg, m_indiDriver, INDI_IDLE);
+  indi::updateIfChanged(m_ipRelDeg, "target",  m_relStepDeg, m_indiDriver, INDI_IDLE);
 
+  // relMove: request switch
+  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipRelMove, "relMove");
+
+  // velocity
   CREATE_REG_INDI_NEW_NUMBERI(m_ipVelPct,  "velocity",   0,    100,   1,     "", "Velocity (%)",   "rotation");
+  indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
+  indi::updateIfChanged(m_ipVelPct, "target",  m_velPercent, m_indiDriver, INDI_IDLE);
 
-  // STATUS text (current only)
+  // STATUS text
   m_ipStatus = pcf::IndiProperty(pcf::IndiProperty::Text);
   m_ipStatus.setName("status");
+  m_ipStatus.setLabel("Status");
+  m_ipStatus.setGroup("rotation");
   m_ipStatus.addIfNoExist(pcf::IndiElement("current", "INITIALIZED"));
   REG_INDI_NEWPROP_NOCB(m_ipStatus, "status", pcf::IndiProperty::Text);
 
-  // Toggles
+  // Stage-name→position mapping (text)
+  m_ipStageNamePos = pcf::IndiProperty(pcf::IndiProperty::Text);
+  m_ipStageNamePos.setName("stageNamePos");
+  m_ipStageNamePos.setLabel("Stage Name→Pos (deg)");
+  m_ipStageNamePos.setGroup("rotation");
+  m_ipStageNamePos.addIfNoExist(pcf::IndiElement("current", buildStageNamePosText_()));
+  REG_INDI_NEWPROP_NOCB(m_ipStageNamePos, "stageNamePos", pcf::IndiProperty::Text);
+
+  // Per-position toggles (one switch vector with one element per preset name)
+  m_ipStageGoto = pcf::IndiProperty(pcf::IndiProperty::Switch);
+  m_ipStageGoto.setName("stageGoto");
+  m_ipStageGoto.setLabel("Move To Stage");
+  m_ipStageGoto.setGroup("rotation");
+  if(!m_userPresetNames.empty()) {
+    for(const auto& nm : m_userPresetNames)
+      m_ipStageGoto.addIfNoExist(pcf::IndiElement(nm, pcf::IndiElement::Off));
+  }
+  if(registerIndiPropertyNew(m_ipStageGoto,
+                             std::string("stageGoto"),
+                             pcf::IndiProperty::Switch,
+                             pcf::IndiProperty::ReadWrite,
+                             INDI_IDLE,
+                             pcf::IndiProperty::AnyOfMany,
+                             rotationStageCtrl::st_newCallBack_m_ipStageGoto) < 0)
+  {
+    return log<software_error,-1>({__FILE__,__LINE__,"register stageGoto failed"});
+  }
+
+  // Local toggles
+  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipHome,     "home");
+  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipStop,     "stop");
   CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipOptimize, "optimize");
   CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipSave,     "save");
 
-  indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
-  indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg,     m_indiDriver, INDI_IDLE);
-
-  // Bases (adds home/stop + preset widgets)
-  if(dev::stdMotionStage<rotationStageCtrl>::appStartup() < 0) return log<software_critical,-1>({__FILE__,__LINE__});
-  if(dev::telemeter<rotationStageCtrl>::appStartup() < 0)      return log<software_error,-1>({__FILE__,__LINE__});
+  if(dev::telemeter<rotationStageCtrl>::appStartup() < 0) return log<software_error,-1>({__FILE__,__LINE__});
 
   updateStatus_();
   return 0;
@@ -304,10 +339,13 @@ inline int rotationStageCtrl::appLogic()
       (void)cmd_setvel_(m_velPercent);
       (void)q_status_();
 
-      if(!m_userPresetDeg.empty()) this->m_preset = presetNumber(); else this->m_preset = 0.0f;
-
       m_moving = (m_homed ? 0 : -1);
       updateStatus_();
+
+      if(m_indiDriver) {
+        m_ipStageNamePos.setTimeStamp(pcf::TimeStamp());
+        m_indiDriver->sendSetProperty(m_ipStageNamePos);
+      }
     } else {
       state(stateCodes::NOTCONNECTED);
       m_moving = -2;
@@ -325,13 +363,11 @@ inline int rotationStageCtrl::appLogic()
     return 0;
   }
 
-  // Push abs position
+  // Push abs position & velocity UI
   indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, (m_gs==0x09?INDI_BUSY:INDI_IDLE));
+  indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
 
-  // Base widgets and telemetry
-  (void)dev::stdMotionStage<rotationStageCtrl>::updateINDI();
   (void)dev::telemeter<rotationStageCtrl>::appLogic();
-
   return 0;
 }
 
@@ -343,8 +379,7 @@ inline int rotationStageCtrl::stop()
   if(rc == 0) {
     m_pending = Pending::None;
     m_moving = 0;
-    // reflect stop button off
-    indi::updateSwitchIfChanged(this->m_indiP_stop, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+    indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
     updateStatus_();
   }
   return rc;
@@ -352,7 +387,6 @@ inline int rotationStageCtrl::stop()
 
 inline int rotationStageCtrl::startHoming()
 {
-  // Home toggle behavior: stdMotionStage sets On; issue, wait until GS!=Busy, apply offset, set Off.
   int rc = cmd_home_(0);
   if(rc < 0) return rc;
 
@@ -376,9 +410,6 @@ inline int rotationStageCtrl::startHoming()
       (void)q_position_();
     }
   }
-
-  indi::updateSwitchIfChanged(this->m_indiP_home, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
-
   updateStatus_();
   return 0;
 }
@@ -401,9 +432,8 @@ inline int rotationStageCtrl::moveTo(float presetIndex)
   if(idx < 0) idx = 0;
   if(idx >= (int)m_userPresetDeg.size()) idx = (int)m_userPresetDeg.size()-1;
 
-  this->m_preset_target = static_cast<float>(idx + 1);
   m_moving = 1;
-  return moveAbsDeg_(m_userPresetDeg[idx]);
+  return moveAbsDeg_(m_userPresetDeg[(size_t)idx]);
 }
 
 /* ---------- telemeter wrappers ---------- */
@@ -423,39 +453,53 @@ inline int rotationStageCtrl::recordStage(bool force)
   return dev::stdMotionStage<rotationStageCtrl>::recordStage(force);
 }
 
-/* ---------- INDI NEW callbacks (ours) ---------- */
+/* ---------- INDI callbacks ---------- */
 
+// Absolute move
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipAbsDeg, ipRecv);
   double tgt = 0.0;
   if(indiTargetUpdate(m_ipAbsDeg, tgt, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
   indi::updateIfChanged(m_ipAbsDeg, "target", tgt, m_indiDriver, INDI_BUSY);
-
-  if(!m_userPresetDeg.empty()) {
-    size_t best=0; double err=1e300;
-    for(size_t i=0;i<m_userPresetDeg.size();++i){
-      double e=std::abs(m_userPresetDeg[i]-tgt);
-      if(e<err){err=e; best=i;}
-    }
-    this->m_preset_target = static_cast<float>(best+1);
-  } else {
-    this->m_preset_target = 0.0f;
-  }
-
   if(moveAbsDeg_(tgt) < 0) return log<software_error,-1>({__FILE__,__LINE__,"moveAbsDeg failed"});
   return 0;
 }
 
+// relDeg: number with current/target — updates m_relStepDeg only; no motion here
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ipRecv)
 {
-  // relDeg target-only
-  if(ipRecv.getName() != m_ipRelDeg.getName()) return -1;
-  if(!ipRecv.find("target")) return 0;
-  double d = ipRecv.at("target").getValue<double>();
-  indi::updateIfChanged(m_ipRelDeg, "target", d, m_indiDriver, INDI_BUSY);
-  this->m_preset_target = this->m_preset;
-  if(moveRelDeg_(d) < 0) return log<software_error,-1>({__FILE__,__LINE__,"moveRelDeg failed"});
+  INDI_VALIDATE_CALLBACK_PROPS(m_ipRelDeg, ipRecv);
+  double step = m_relStepDeg;
+  if(indiTargetUpdate(m_ipRelDeg, step, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
+  if(step < -720.0) step = -720.0;
+  if(step >  720.0) step =  720.0;
+  m_relStepDeg = step;
+  indi::updateIfChanged(m_ipRelDeg, "current", m_relStepDeg, m_indiDriver, INDI_IDLE);
+  indi::updateIfChanged(m_ipRelDeg, "target",  m_relStepDeg, m_indiDriver, INDI_IDLE);
+  return 0;
+}
+
+// relMove: issue relative move using m_relStepDeg; wait for OK; auto-off
+INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelMove)(const pcf::IndiProperty &ipRecv)
+{
+  INDI_VALIDATE_CALLBACK_PROPS(m_ipRelMove, ipRecv);
+  if(!ipRecv.find("request")) return 0;
+
+  if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
+    indi::updateSwitchIfChanged(m_ipRelMove, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
+
+    (void)moveRelDegCmdFromRelMove_();
+
+    for(;;) {
+      if(q_status_() < 0) break;
+      if(m_gs != 0x09) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    (void)q_position_();
+
+    indi::updateSwitchIfChanged(m_ipRelMove, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+  }
   return 0;
 }
 
@@ -464,8 +508,8 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipVelPct)(const pcf::IndiProperty &ip
   INDI_VALIDATE_CALLBACK_PROPS(m_ipVelPct, ipRecv);
   int pct = 0;
   if(indiTargetUpdate(m_ipVelPct, pct, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
-  if(pct < 0) { pct = 0; }
-  if(pct > 100) { pct = 100; }
+  if(pct < 0) pct = 0;
+  if(pct > 100) pct = 100;
   if(cmd_setvel_(pct) < 0) return log<software_error,-1>({__FILE__,__LINE__,"setvel failed"});
   m_velPercent = pct;
   indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
@@ -479,9 +523,8 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipOptimize)(const pcf::IndiProperty &
   if(!ipRecv.find("request")) return 0;
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
     indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
-    if(cmd_optimize_wait_() < 0) {
-      indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
-    }
+    (void)cmd_optimize_wait_();
+    indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
 }
@@ -495,6 +538,62 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipSave)(const pcf::IndiProperty &ipRe
     (void)cmd_save_();
     indi::updateSwitchIfChanged(m_ipSave, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
+  return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipHome)(const pcf::IndiProperty &ipRecv)
+{
+  INDI_VALIDATE_CALLBACK_PROPS(m_ipHome, ipRecv);
+  if(!ipRecv.find("request")) return 0;
+  if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
+    indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
+    (void)startHoming();
+    indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+  }
+  return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStop)(const pcf::IndiProperty &ipRecv)
+{
+  INDI_VALIDATE_CALLBACK_PROPS(m_ipStop, ipRecv);
+  if(!ipRecv.find("request")) return 0;
+  if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
+    indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
+    (void)stop();
+    indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+  }
+  return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty &ipRecv)
+{
+  INDI_VALIDATE_CALLBACK_PROPS(m_ipStageGoto, ipRecv);
+  if(m_userPresetNames.empty() || m_userPresetDeg.empty()) return 0;
+
+  int chosen = -1;
+  for(size_t i=0;i<m_userPresetNames.size();++i) {
+    const auto &nm = m_userPresetNames[i];
+    if(!ipRecv.find(nm)) continue;
+    if(ipRecv.at(nm).getSwitchState() == pcf::IndiElement::On) { chosen = (int)i; break; }
+  }
+  if(chosen < 0) return 0;
+
+  // Set chosen On (BUSY); others Off
+  for(size_t i=0;i<m_userPresetNames.size();++i) {
+    const auto &nm = m_userPresetNames[i];
+    indi::updateSwitchIfChanged(m_ipStageGoto, nm, (i==(size_t)chosen)?pcf::IndiElement::On:pcf::IndiElement::Off, m_indiDriver, INDI_BUSY);
+  }
+
+  (void)moveAbsDeg_(m_userPresetDeg[(size_t)chosen]);
+  for(;;) {
+    if(q_status_() < 0) break;
+    if(m_gs != 0x09) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  (void)q_position_();
+
+  // Auto-off the chosen toggle
+  indi::updateSwitchIfChanged(m_ipStageGoto, m_userPresetNames[(size_t)chosen], pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   return 0;
 }
 
@@ -648,8 +747,6 @@ inline int rotationStageCtrl::q_position_()
     }
     m_posPulses = pulses;
     m_posDeg = pulsesToDeg_(m_posPulses);
-
-    if(!m_userPresetDeg.empty()) this->m_preset = presetNumber(); else this->m_preset = 0.0f;
   }
   return 0;
 }
@@ -689,7 +786,6 @@ inline int rotationStageCtrl::cmd_optimize_wait_()
     if(m_gs != 0x09) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-  indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   m_pending = Pending::None;
   return 0;
 }
@@ -705,8 +801,8 @@ inline int rotationStageCtrl::cmd_save_()
 
 inline int rotationStageCtrl::cmd_setvel_(int pct)
 {
-  if(pct < 0) { pct = 0; }
-  if(pct > 100) { pct = 100; }
+  if(pct < 0) pct = 0;
+  if(pct > 100) pct = 100;
   char buf[3]; std::snprintf(buf, sizeof(buf), "%02X", pct);
   std::string r;
   m_pending = Pending::Velocity;
@@ -755,16 +851,6 @@ inline int rotationStageCtrl::moveAbsDeg_(double deg)
     while(deg < 0.0)   deg += 720.0;
     while(deg >= 720.) deg -= 720.0;
   }
-  if(!m_userPresetDeg.empty()) {
-    size_t best=0; double err=1e300;
-    for(size_t i=0;i<m_userPresetDeg.size();++i){
-      double e=std::abs(m_userPresetDeg[i]-deg);
-      if(e<err){err=e; best=i;}
-    }
-    this->m_preset_target = static_cast<float>(best+1);
-  } else {
-    this->m_preset_target = 0.0f;
-  }
   int32_t p = degToPulses_(deg);
   return cmd_moveAbs_pulses_(p);
 }
@@ -773,6 +859,11 @@ inline int rotationStageCtrl::moveRelDeg_(double ddeg)
 {
   int32_t p = degToPulses_(ddeg);
   return cmd_moveRel_pulses_(p);
+}
+
+inline int rotationStageCtrl::moveRelDegCmdFromRelMove_()
+{
+  return moveRelDeg_(m_relStepDeg);
 }
 
 /* ---------- Poll/resolve ---------- */
@@ -801,7 +892,7 @@ inline int rotationStageCtrl::pollDevice_()
     switch(m_pending) {
       case Pending::Home:
         m_homed = true;
-        indi::updateSwitchIfChanged(this->m_indiP_home, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+        indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
         m_pending = Pending::None; m_moving = 0; break;
 
       case Pending::OffsetRel:
@@ -847,6 +938,33 @@ inline void rotationStageCtrl::updateStatus_()
     m_ipStatus.setTimeStamp(pcf::TimeStamp());
     m_indiDriver->sendSetProperty(m_ipStatus);
   }
+}
+
+/* ---------- Stage name/position text ---------- */
+
+inline std::string rotationStageCtrl::buildStageNamePosText_() const
+{
+  if(m_userPresetNames.empty() || m_userPresetDeg.empty()) return "(none)";
+  const size_t n = std::min(m_userPresetNames.size(), m_userPresetDeg.size());
+  auto fmt = [](double v)->std::string {
+    std::ostringstream os;
+    double iv;
+    if(std::modf(v, &iv) == 0.0) { os << (long long)std::llround(v); }
+    else { os << std::fixed << std::setprecision(6) << v; }
+    std::string s = os.str();
+    if(s.find('.') != std::string::npos) {
+      while(!s.empty() && s.back()=='0') s.pop_back();
+      if(!s.empty() && s.back()=='.') s.pop_back();
+    }
+    return s;
+  };
+
+  std::ostringstream out;
+  for(size_t i=0;i<n;++i){
+    if(i) out << ", ";
+    out << m_userPresetNames[i] << ":" << fmt(m_userPresetDeg[i]);
+  }
+  return out.str();
 }
 
 } // namespace app
