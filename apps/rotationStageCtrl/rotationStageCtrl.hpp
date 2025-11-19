@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <cctype>
 
 #include "../../libMagAOX/libMagAOX.hpp"
 #include "../../magaox_git_version.h"
@@ -19,20 +20,10 @@
 namespace MagAOX {
 namespace app {
 
-/* Elliptec protocol (matches working CLI)
+/* Elliptec protocol (as in your working CLI)
  *  TX (no CRLF): <ADDR><cmd>[args]
- *  RX (terminated): ...\r\n
- *  Commands:
- *   "in"                 -> info (pulses-per-unit may be inferred)
- *   "gs"                 -> status (0x00 OK, 0x09 Busy)
- *   "gp"                 -> position (reply "PO"+8 HEX pulses)
- *   "ma" + 8 HEX        -> move absolute (pulses)
- *   "mr" + 8 HEX        -> move relative (pulses)
- *   "ho" + 1 HEX        -> home (dir nibble; 0 default)
- *   "st"                -> stop
- *   "us"                -> save
- *   "om"                -> optimize
- *   "sv" + 2 HEX        -> set velocity percent (00..64 == 0..100%)
+ *  RX: CRLF-terminated
+ *  cmds: in, gs, gp, hoX, st, us, om, svHH, maXXXXXXXX, mrXXXXXXXX
  */
 
 class rotationStageCtrl
@@ -56,14 +47,14 @@ public:
 
   // stdMotionStage surface
   int   stop();                 // immediate stop
-  int   startHoming();          // home
+  int   startHoming();          // home (waits until GS!=Busy, applies offset)
   float presetNumber();         // nearest preset index (1-based) or -1
   int   moveTo(float pos);      // absolute move in preset space (1..N)
 
-  // degree convenience
+  // degree convenience for other call sites
   int moveTo(const double &deg) { return moveAbsDeg_(deg); }
 
-  // telemeter surface (wrappers expected by dev::telemeter)
+  // telemeter wrappers expected by dev::telemeter
   int checkRecordTimes();
   int recordTelem(const telem_stage *);
   int recordStage(bool force = false);
@@ -72,7 +63,6 @@ public:
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipAbsDeg);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelDeg);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipVelPct);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipJogStep);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipOptimize);
   INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipSave);
 
@@ -83,18 +73,17 @@ protected:
   unsigned    m_startupDelayMs {200};
 
   // Elliptec serial
-  char        m_addr {'0'};           // single hex nibble '0'..'F'
+  char        m_addr {'0'};           // ASCII hex nibble
   int         m_readTimeoutMs {3000};
   int         m_postWriteSleepMs {0};
 
   // Behavior / UI
   int         m_velPercent {40};      // 0..100
-  double      m_jogStepDeg {1.0};
   double      m_homeOffsetDeg {0.0};  // relative deg after home
-  bool        m_allowMultiturn {false};
+  bool        m_allowMultiturn {false}; // if false: wrap abs to [0,720)
 
   // Conversion
-  uint32_t    m_pulsesPerRev {0};     // pulses per 360 deg (auto from "in" or override)
+  uint32_t    m_pulsesPerRev {0};     // pulses per 360 deg (auto/override)
 
   // Optional command aliases
   std::string m_cmdOptimize {"om"};
@@ -120,9 +109,8 @@ protected:
 
   // INDI owned here
   pcf::IndiProperty m_ipAbsDeg;    // number current/target
-  pcf::IndiProperty m_ipRelDeg;    // number current/target
+  pcf::IndiProperty m_ipRelDeg;    // number target-only (we ignore "current")
   pcf::IndiProperty m_ipVelPct;    // number current/target
-  pcf::IndiProperty m_ipJogStep;   // number current/target
   pcf::IndiProperty m_ipStatus;    // text "current" only
   pcf::IndiProperty m_ipOptimize;  // request switch
   pcf::IndiProperty m_ipSave;      // request switch
@@ -162,7 +150,7 @@ protected:
   int32_t  degToPulses_(double deg) const;
   double   pulsesToDeg_(int32_t pulses) const;
 
-  // Poll and reflect device state into INDI/telem
+  // Poll and reflect device state
   int  pollDevice_();     // gp + gs + resolve m_pending/m_moving
   void updateStatus_();   // push status text, absDeg.current
 };
@@ -172,7 +160,7 @@ protected:
 inline rotationStageCtrl::rotationStageCtrl()
 : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-  // stdMotionStage preset machinery (1..N). We'll map presets -> degrees.
+  // stdMotionStage preset UI (1..N index). We'll map presets -> degrees.
   m_presetNotation  = "stage";
   m_powerMgtEnabled = true;
 }
@@ -190,14 +178,13 @@ inline void rotationStageCtrl::setupConfig()
 
   // Behavior
   config.add("stage.homeOffset", "0.0", "stage.homeOffset", argType::Optional, "stage", "homeOffset", false, "double", "Relative offset (deg) to move after homing");
-  config.add("stage.allowMultiturn", "false", "stage.allowMultiturn", argType::Optional, "stage", "allowMultiturn", false, "bool", "If false, wrap abs moves to [0,360)");
+  config.add("stage.allowMultiturn", "false", "stage.allowMultiturn", argType::Optional, "stage", "allowMultiturn", false, "bool", "If false, wrap abs to [0,720)");
 
   // Conversion
   config.add("stage.pulsesPerRev", "0", "stage.pulsesPerRev", argType::Optional, "stage", "pulsesPerRev", false, "uint", "Override pulses per 360deg (0=auto)");
 
   // Motion UI
   config.add("motion.velPercent", "40",  "motion.velPercent", argType::Optional, "motion", "velPercent", false, "int", "Velocity percent 0..100");
-  config.add("motion.jogStepDeg", "1.0", "motion.jogStepDeg", argType::Optional, "motion", "jogStepDeg", false, "double", "Jog step in degrees");
 
   // Optional command aliases
   config.add("device.optimizeCmd", "om", "device.optimizeCmd", argType::Optional, "device", "optimizeCmd", false, "string", "Optimize command");
@@ -234,12 +221,6 @@ inline void rotationStageCtrl::loadConfig()
   if(m_velPercent < 0) m_velPercent = 0;
   if(m_velPercent > 100) m_velPercent = 100;
 
-  config(m_jogStepDeg, "motion.jogStepDeg");
-
-  std::string optCmd, saveCmd;
-  if(config(optCmd, "device.optimizeCmd")==0 && !optCmd.empty()) m_cmdOptimize = optCmd;
-  if(config(saveCmd, "device.saveCmd")==0 && !saveCmd.empty())   m_cmdSave     = saveCmd;
-
   config(m_userPresetNames, "stages.names");
   config(m_userPresetDeg,   "stages.positions");
 
@@ -262,13 +243,24 @@ inline int rotationStageCtrl::appStartup()
   if(state() == stateCodes::UNINITIALIZED)
     return log<text_log,-1>("UNINITIALIZED in appStartup", logPrio::LOG_CRITICAL);
 
-  // Our INDI first (avoid empty-elements warnings downstream)
-  CREATE_REG_INDI_NEW_NUMBERD(m_ipAbsDeg,  "absDeg",    -1.0e9, 1.0e9, 0.001, "", "Absolute (deg)", "rotation");
-  CREATE_REG_INDI_NEW_NUMBERD(m_ipRelDeg,  "relDeg",    -1.0e9, 1.0e9, 0.001, "", "Relative (deg)", "rotation");
-  CREATE_REG_INDI_NEW_NUMBERI(m_ipVelPct,  "velocity",  0,      100,   1,     "", "Velocity (%)",   "rotation");
-  CREATE_REG_INDI_NEW_NUMBERD(m_ipJogStep, "jogStepDeg",0.0,    360.0, 0.001, "", "Jog step (deg)", "rotation");
-  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipOptimize,       "optimize");
-  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipSave,           "save");
+  // absDeg: current/target (user writes target)
+  CREATE_REG_INDI_NEW_NUMBERD(m_ipAbsDeg,  "absDeg",     0.0,  720.0, 0.001, "", "Absolute (deg)", "rotation");
+
+  // relDeg: target-only (manual registration to avoid macro mismatch)
+  m_ipRelDeg = pcf::IndiProperty(pcf::IndiProperty::Number);
+  m_ipRelDeg.setName("relDeg");
+  m_ipRelDeg.addIfNoExist(pcf::IndiElement("target", 0.0));
+  if(registerIndiPropertyNew(m_ipRelDeg,
+                             std::string("relDeg"),
+                             pcf::IndiProperty::Number,
+                             pcf::IndiProperty::ReadWrite,
+                             INDI_IDLE,
+                             rotationStageCtrl::st_newCallBack_m_ipRelDeg) < 0)
+  {
+    return log<software_error,-1>({__FILE__,__LINE__,"register relDeg failed"});
+  }
+
+  CREATE_REG_INDI_NEW_NUMBERI(m_ipVelPct,  "velocity",   0,    100,   1,     "", "Velocity (%)",   "rotation");
 
   // STATUS text (current only)
   m_ipStatus = pcf::IndiProperty(pcf::IndiProperty::Text);
@@ -276,9 +268,12 @@ inline int rotationStageCtrl::appStartup()
   m_ipStatus.addIfNoExist(pcf::IndiElement("current", "INITIALIZED"));
   REG_INDI_NEWPROP_NOCB(m_ipStatus, "status", pcf::IndiProperty::Text);
 
-  indi::updateIfChanged(m_ipVelPct,  "current", m_velPercent, m_indiDriver, INDI_IDLE);
-  indi::updateIfChanged(m_ipJogStep, "current", m_jogStepDeg, m_indiDriver, INDI_IDLE);
-  indi::updateIfChanged(m_ipAbsDeg,  "current", m_posDeg,     m_indiDriver, INDI_IDLE);
+  // Toggles
+  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipOptimize, "optimize");
+  CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipSave,     "save");
+
+  indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
+  indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg,     m_indiDriver, INDI_IDLE);
 
   // Bases (adds home/stop + preset widgets)
   if(dev::stdMotionStage<rotationStageCtrl>::appStartup() < 0) return log<software_critical,-1>({__FILE__,__LINE__});
@@ -309,7 +304,6 @@ inline int rotationStageCtrl::appLogic()
       (void)cmd_setvel_(m_velPercent);
       (void)q_status_();
 
-      // seed stdMotionStage current preset index
       if(!m_userPresetDeg.empty()) this->m_preset = presetNumber(); else this->m_preset = 0.0f;
 
       m_moving = (m_homed ? 0 : -1);
@@ -358,9 +352,35 @@ inline int rotationStageCtrl::stop()
 
 inline int rotationStageCtrl::startHoming()
 {
+  // Home toggle behavior: stdMotionStage sets On; issue, wait until GS!=Busy, apply offset, set Off.
   int rc = cmd_home_(0);
-  if(rc == 0) updateStatus_();
-  return rc;
+  if(rc < 0) return rc;
+
+  for(;;) {
+    if(q_status_() < 0) break;
+    if(m_gs != 0x09) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  (void)q_position_();
+  m_homed = true;
+  m_moving = 0;
+
+  if(std::abs(m_homeOffsetDeg) > 0.0) {
+    if(moveRelDeg_(m_homeOffsetDeg) == 0) {
+      for(;;) {
+        if(q_status_() < 0) break;
+        if(m_gs != 0x09) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+      (void)q_position_();
+    }
+  }
+
+  indi::updateSwitchIfChanged(this->m_indiP_home, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
+
+  updateStatus_();
+  return 0;
 }
 
 inline float rotationStageCtrl::presetNumber()
@@ -412,10 +432,12 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ip
   if(indiTargetUpdate(m_ipAbsDeg, tgt, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
   indi::updateIfChanged(m_ipAbsDeg, "target", tgt, m_indiDriver, INDI_BUSY);
 
-  // reflect intended preset target as nearest (if presets exist)
   if(!m_userPresetDeg.empty()) {
     size_t best=0; double err=1e300;
-    for(size_t i=0;i<m_userPresetDeg.size();++i){ double e=std::abs(m_userPresetDeg[i]-tgt); if(e<err){err=e; best=i;} }
+    for(size_t i=0;i<m_userPresetDeg.size();++i){
+      double e=std::abs(m_userPresetDeg[i]-tgt);
+      if(e<err){err=e; best=i;}
+    }
     this->m_preset_target = static_cast<float>(best+1);
   } else {
     this->m_preset_target = 0.0f;
@@ -427,11 +449,12 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ip
 
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ipRecv)
 {
-  INDI_VALIDATE_CALLBACK_PROPS(m_ipRelDeg, ipRecv);
-  double d = 0.0;
-  if(indiTargetUpdate(m_ipRelDeg, d, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
+  // relDeg target-only
+  if(ipRecv.getName() != m_ipRelDeg.getName()) return -1;
+  if(!ipRecv.find("target")) return 0;
+  double d = ipRecv.at("target").getValue<double>();
   indi::updateIfChanged(m_ipRelDeg, "target", d, m_indiDriver, INDI_BUSY);
-  this->m_preset_target = this->m_preset; // keep at nearest while jogging
+  this->m_preset_target = this->m_preset;
   if(moveRelDeg_(d) < 0) return log<software_error,-1>({__FILE__,__LINE__,"moveRelDeg failed"});
   return 0;
 }
@@ -447,19 +470,6 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipVelPct)(const pcf::IndiProperty &ip
   m_velPercent = pct;
   indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
   indi::updateIfChanged(m_ipVelPct, "target",  m_velPercent, m_indiDriver, INDI_IDLE);
-  return 0;
-}
-
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipJogStep)(const pcf::IndiProperty &ipRecv)
-{
-  INDI_VALIDATE_CALLBACK_PROPS(m_ipJogStep, ipRecv);
-  double step = 0.0;
-  if(indiTargetUpdate(m_ipJogStep, step, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
-  if(step < 0.0) { step = 0.0; }
-  if(step > 360.0) { step = 360.0; }
-  m_jogStepDeg = step;
-  indi::updateIfChanged(m_ipJogStep, "current", m_jogStepDeg, m_indiDriver, INDI_IDLE);
-  indi::updateIfChanged(m_ipJogStep, "target",  m_jogStepDeg, m_indiDriver, INDI_IDLE);
   return 0;
 }
 
@@ -546,7 +556,10 @@ inline int rotationStageCtrl::writeAll_(const std::string &s)
   while(off < s.size()) {
     ssize_t w = ::write(m_fd, s.data()+off, s.size()-off);
     if(w < 0) {
-      if(errno == EAGAIN || errno == EWOULDBLOCK) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); continue; }
+      if(errno == EAGAIN || errno == EWOULDBLOCK) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
       return -1;
     }
     off += (size_t)w;
@@ -595,7 +608,9 @@ inline int rotationStageCtrl::q_info_()
 
   if(m_pulsesPerRev == 0 && r.size() >= 8) {
     bool hex=true;
-    for(size_t i=r.size()-8;i<r.size();++i) if(!std::isxdigit((unsigned char)r[i])) { hex=false; break; }
+    for(size_t i=r.size()-8;i<r.size();++i) {
+      if(!std::isxdigit((unsigned char)r[i])) { hex=false; break; }
+    }
     if(hex) {
       uint32_t v=0;
       for(size_t i=r.size()-8;i<r.size();++i){
@@ -633,7 +648,7 @@ inline int rotationStageCtrl::q_position_()
     }
     m_posPulses = pulses;
     m_posDeg = pulsesToDeg_(m_posPulses);
-    // reflect current preset index for base UI
+
     if(!m_userPresetDeg.empty()) this->m_preset = presetNumber(); else this->m_preset = 0.0f;
   }
   return 0;
@@ -656,7 +671,6 @@ inline int rotationStageCtrl::cmd_stop_()
   std::string r;
   m_pending = Pending::Stop;
   if(txrx_("st", &r, m_readTimeoutMs) < 0) return -1;
-  // wait until not busy
   for(int tries=0; tries<60; ++tries) {
     if(q_status_() == 0 && m_gs != 0x09) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -738,13 +752,15 @@ inline double rotationStageCtrl::pulsesToDeg_(int32_t pulses) const
 inline int rotationStageCtrl::moveAbsDeg_(double deg)
 {
   if(!m_allowMultiturn) {
-    while(deg < 0.0)   deg += 360.0;
-    while(deg >= 360.) deg -= 360.0;
+    while(deg < 0.0)   deg += 720.0;
+    while(deg >= 720.) deg -= 720.0;
   }
-  // reflect intended preset target as nearest (if presets exist)
   if(!m_userPresetDeg.empty()) {
     size_t best=0; double err=1e300;
-    for(size_t i=0;i<m_userPresetDeg.size();++i){ double e=std::abs(m_userPresetDeg[i]-deg); if(e<err){err=e; best=i;} }
+    for(size_t i=0;i<m_userPresetDeg.size();++i){
+      double e=std::abs(m_userPresetDeg[i]-deg);
+      if(e<err){err=e; best=i;}
+    }
     this->m_preset_target = static_cast<float>(best+1);
   } else {
     this->m_preset_target = 0.0f;
@@ -766,7 +782,6 @@ inline int rotationStageCtrl::pollDevice_()
   if(q_position_() < 0) return -1;
   if(q_status_()   < 0) return -1;
 
-  // Resolve based on GS
   if(m_gs == 0x09) { // BUSY
     switch(m_pending) {
       case Pending::Home:       m_moving = 2; break;
@@ -786,12 +801,7 @@ inline int rotationStageCtrl::pollDevice_()
     switch(m_pending) {
       case Pending::Home:
         m_homed = true;
-        // ensure HOME toggle off
         indi::updateSwitchIfChanged(this->m_indiP_home, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
-        // apply configured offset if any
-        if(std::abs(m_homeOffsetDeg) > 0.0) {
-          if(moveRelDeg_(m_homeOffsetDeg) == 0) { m_pending = Pending::OffsetRel; m_moving = 1; break; }
-        }
         m_pending = Pending::None; m_moving = 0; break;
 
       case Pending::OffsetRel:
