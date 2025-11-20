@@ -93,7 +93,7 @@ protected:
   std::string m_cmdOptimize {"om"};
   std::string m_cmdSave     {"us"};
 
-  // Presets from config, degrees
+  // Presets (mirrored from stdMotionStage::m_presetNames/Positions)
   std::vector<std::string> m_userPresetNames;
   std::vector<double>      m_userPresetDeg;
 
@@ -123,7 +123,7 @@ protected:
   pcf::IndiProperty m_ipHome;          // request switch
   pcf::IndiProperty m_ipStop;          // request switch
   pcf::IndiProperty m_ipStageNamePos;  // text mapping "pos0:10, pos1:50, pos2:90"
-  pcf::IndiProperty m_ipStageGoto;     // switch with an element per stage name
+  pcf::IndiProperty m_ipStageGoto;     // switch with an element per preset name
 
   // ---------- Serial ----------
   static speed_t to_termios_baud_(int baud);
@@ -174,8 +174,9 @@ protected:
 inline rotationStageCtrl::rotationStageCtrl()
 : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
+  // Use stdMotionStage's config keys: [presets] names/positions
+  m_presetNotation  = "preset";
   // We do NOT use stdMotionStage's UI. Avoid creating its preset UI by never calling its appStartup/updateINDI.
-  m_presetNotation  = "unused";
   m_powerMgtEnabled = true;
 }
 
@@ -204,10 +205,7 @@ inline void rotationStageCtrl::setupConfig()
   config.add("device.optimizeCmd", "om", "device.optimizeCmd", argType::Optional, "device", "optimizeCmd", false, "string", "Optimize command");
   config.add("device.saveCmd",     "us", "device.saveCmd",     argType::Optional, "device", "saveCmd",     false, "string", "Save command");
 
-  // Presets (degrees)
-  config.add("stages.names", "",     "stages.names", argType::Optional, "stages", "names", false, "vector<string>", "Preset names");
-  config.add("stages.positions", "", "stages.positions", argType::Optional, "stages", "positions", false, "vector<double>", "Preset positions (deg)");
-
+  // Let stdMotionStage declare [presets] names/positions
   dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);  // keeps telemeter compatibility
   dev::telemeter<rotationStageCtrl>::setupConfig(config);
 }
@@ -237,12 +235,15 @@ inline void rotationStageCtrl::loadConfig()
   config(m_cmdOptimize, "device.optimizeCmd");
   config(m_cmdSave,     "device.saveCmd");
 
-  m_userPresetNames.clear();
-  m_userPresetDeg.clear();
-  config(m_userPresetNames, "stages.names");
-  config(m_userPresetDeg,   "stages.positions");
-
+  // Load stdMotionStage preset config: [presets] names/positions
   dev::stdMotionStage<rotationStageCtrl>::loadConfig(config);
+
+  // Mirror stdMotionStage’s presets into our local vectors for INDI/UI and absolute moves
+  m_userPresetNames = m_presetNames;
+  m_userPresetDeg.clear();
+  m_userPresetDeg.reserve(m_presetPositions.size());
+  for(float v : m_presetPositions) m_userPresetDeg.push_back(static_cast<double>(v));
+
   dev::telemeter<rotationStageCtrl>::loadConfig(config);
 }
 
@@ -286,24 +287,12 @@ inline int rotationStageCtrl::appStartup()
   m_ipStageNamePos.addIfNoExist(pcf::IndiElement("current", buildStageNamePosText_()));
   REG_INDI_NEWPROP_NOCB(m_ipStageNamePos, "stageNamePos", pcf::IndiProperty::Text);
 
-  // Per-position toggles (one switch vector with one element per preset name)
-  m_ipStageGoto = pcf::IndiProperty(pcf::IndiProperty::Switch);
-  m_ipStageGoto.setName("stageGoto");
-  m_ipStageGoto.setLabel("Move To Stage");
-  m_ipStageGoto.setGroup("rotation");
+  // Per-position toggles (one element per preset name) — use helper so rule/name are correct
   if(!m_userPresetNames.empty()) {
-    for(const auto& nm : m_userPresetNames)
-      m_ipStageGoto.addIfNoExist(pcf::IndiElement(nm, pcf::IndiElement::Off));
-  }
-  if(registerIndiPropertyNew(m_ipStageGoto,
-                             std::string("stageGoto"),
-                             pcf::IndiProperty::Switch,
-                             pcf::IndiProperty::ReadWrite,
-                             INDI_IDLE,
-                             pcf::IndiProperty::AnyOfMany,
-                             rotationStageCtrl::st_newCallBack_m_ipStageGoto) < 0)
-  {
-    return log<software_error,-1>({__FILE__,__LINE__,"register stageGoto failed"});
+    if(createStandardIndiSelectionSw(m_ipStageGoto, "stageGoto", m_userPresetNames) < 0)
+      return log<software_critical,-1>({__FILE__, __LINE__});
+    if(registerIndiPropertyNew(m_ipStageGoto, rotationStageCtrl::st_newCallBack_m_ipStageGoto) < 0)
+      return log<software_error,-1>({__FILE__,__LINE__,"register stageGoto failed"});
   }
 
   // Local toggles
