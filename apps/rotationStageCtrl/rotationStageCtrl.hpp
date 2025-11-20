@@ -22,7 +22,7 @@
 namespace MagAOX {
 namespace app {
 
-/* Elliptec protocol (as in your elliptec_cli)
+/* Elliptec protocol
  *  TX: <ADDR><cmd>[args]         (no CRLF)
  *  RX: a single CRLF-terminated line
  *  cmds: in, gs, gp, hoX, st, us, om, svHH, maXXXXXXXX, mrXXXXXXXX
@@ -79,6 +79,7 @@ protected:
   // Elliptec serial
   char        m_addr {'0'};              // ASCII hex nibble
   int         m_readTimeoutMs {3000};
+  int         m_busyReadTimeoutMs {6000}; // longer timeout while a command is pending/BUSY
   int         m_postWriteSleepMs {0};
 
   // Behavior / UI
@@ -112,6 +113,14 @@ protected:
   enum class Pending { None, MoveAbs, MoveRel, Home, OffsetRel, Optimize, Stop, Velocity, Save };
   Pending  m_pending {Pending::None};
 
+  // status detail
+  std::string m_statusHint;              // extra text: "Moving Abs", "Moving Relative", "Moving to Preset: X"
+  bool        m_homeOffsetQueued {false};
+
+  // comm robustness
+  int         m_commMaxMisses {3};       // tolerated consecutive soft misses in poll
+  int         m_commMisses {0};
+
   // ---------- INDI ----------
   pcf::IndiProperty m_ipAbsDeg;        // number current/target
   pcf::IndiProperty m_ipRelDeg;        // number current/target (step size)
@@ -122,7 +131,7 @@ protected:
   pcf::IndiProperty m_ipSave;          // request switch
   pcf::IndiProperty m_ipHome;          // request switch
   pcf::IndiProperty m_ipStop;          // request switch
-  pcf::IndiProperty m_ipStageNamePos;  // text mapping "pos0:10, pos1:50, pos2:90"
+  pcf::IndiProperty m_ipStageNamePos;  // text mapping "name:deg, ..."
   pcf::IndiProperty m_ipStageGoto;     // switch with an element per preset name
 
   // ---------- Serial ----------
@@ -141,14 +150,14 @@ protected:
   int  txrx_(const std::string& cmd, std::string *reply, int timeout_ms);
 
   // Queries
-  int  q_info_();       // "in"
-  int  q_status_();     // "gs"
-  int  q_position_();   // "gp"
+  int  q_info_();       // "in"     returns 0 ok, +1 timeout, -1 hard error
+  int  q_status_();     // "gs"     returns 0 ok, +1 timeout, -1 hard error
+  int  q_position_();   // "gp"     returns 0 ok, +1 timeout, -1 hard error
 
   // Commands
   int  cmd_home_(uint8_t dir=0);                 // "hoX"
   int  cmd_stop_();                              // "st"
-  int  cmd_optimize_wait_();                     // "om" wait until OK
+  int  cmd_optimize_wait_();                     // "om" (fire-and-poll)
   int  cmd_save_();                              // "us"
   int  cmd_setvel_(int pct);                     // "svHH"
   int  cmd_moveAbs_pulses_(int32_t pulses);      // "maXXXXXXXX"
@@ -162,7 +171,7 @@ protected:
   double   pulsesToDeg_(int32_t pulses) const;
 
   // Poll and reflect device state
-  int  pollDevice_();     // gp + gs + resolve m_pending/m_moving
+  int  pollDevice_();     // gp + gs + resolve m_pending/m_moving (debounce soft timeouts)
   void updateStatus_();   // push status text, absDeg.current
 
   // Stage name/position display
@@ -174,9 +183,7 @@ protected:
 inline rotationStageCtrl::rotationStageCtrl()
 : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-  // Use stdMotionStage's config keys: [presets] names/positions
-  m_presetNotation  = "preset";
-  // We do NOT use stdMotionStage's UI. Avoid creating its preset UI by never calling its appStartup/updateINDI.
+  m_presetNotation  = "preset";   // keep stdMotionStage surface for telemeter
   m_powerMgtEnabled = true;
 }
 
@@ -189,6 +196,7 @@ inline void rotationStageCtrl::setupConfig()
   config.add("stage.baud", "9600", "stage.baud", argType::Required, "stage", "baud", false, "int", "Baud rate");
   config.add("stage.address", "0", "stage.address", argType::Optional, "stage", "address", false, "string", "Elliptec address nibble (0-F)");
   config.add("serial.readTimeoutMs", "3000", "serial.readTimeoutMs", argType::Optional, "serial", "readTimeoutMs", false, "int", "Read timeout (ms)");
+  config.add("serial.busyReadTimeoutMs", "6000", "serial.busyReadTimeoutMs", argType::Optional, "serial", "busyReadTimeoutMs", false, "int", "Read timeout (ms) while device is BUSY/pending");
   config.add("serial.postWriteSleepMs", "0", "serial.postWriteSleepMs", argType::Optional, "serial", "postWriteSleepMs", false, "int", "Sleep after write (ms)");
 
   // Behavior
@@ -205,8 +213,11 @@ inline void rotationStageCtrl::setupConfig()
   config.add("device.optimizeCmd", "om", "device.optimizeCmd", argType::Optional, "device", "optimizeCmd", false, "string", "Optimize command");
   config.add("device.saveCmd",     "us", "device.saveCmd",     argType::Optional, "device", "saveCmd",     false, "string", "Save command");
 
-  // Let stdMotionStage declare [presets] names/positions
-  dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);  // keeps telemeter compatibility
+  // Comms robustness
+  config.add("comm.maxPollMisses", "3", "comm.maxPollMisses", argType::Optional, "comm", "maxPollMisses", false, "int", "Consecutive poll timeouts tolerated before reconnect");
+
+  // stdMotionStage declares [presets] names/positions
+  dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);
   dev::telemeter<rotationStageCtrl>::setupConfig(config);
 }
 
@@ -222,7 +233,10 @@ inline void rotationStageCtrl::loadConfig()
   }
 
   config(m_readTimeoutMs, "serial.readTimeoutMs");
+  config(m_busyReadTimeoutMs, "serial.busyReadTimeoutMs");
+  if(m_busyReadTimeoutMs < m_readTimeoutMs) m_busyReadTimeoutMs = m_readTimeoutMs;
   config(m_postWriteSleepMs, "serial.postWriteSleepMs");
+
   config(m_homeOffsetDeg, "stage.homeOffset");
   config(m_allowMultiturn, "stage.allowMultiturn");
 
@@ -235,10 +249,14 @@ inline void rotationStageCtrl::loadConfig()
   config(m_cmdOptimize, "device.optimizeCmd");
   config(m_cmdSave,     "device.saveCmd");
 
-  // Load stdMotionStage preset config: [presets] names/positions
+  // comm robustness
+  config(m_commMaxMisses, "comm.maxPollMisses");
+  if(m_commMaxMisses < 1) m_commMaxMisses = 1;
+
+  // stdMotionStage preset config: [presets] names/positions
   dev::stdMotionStage<rotationStageCtrl>::loadConfig(config);
 
-  // Mirror stdMotionStage’s presets into our local vectors for INDI/UI and absolute moves
+  // Mirror presets into local vectors
   m_userPresetNames = m_presetNames;
   m_userPresetDeg.clear();
   m_userPresetDeg.reserve(m_presetPositions.size());
@@ -254,11 +272,11 @@ inline int rotationStageCtrl::appStartup()
   if(state() == stateCodes::UNINITIALIZED)
     return log<text_log,-1>("UNINITIALIZED in appStartup", logPrio::LOG_CRITICAL);
 
-  // absDeg (0..720 wrap if allowMultiturn=false)
+  // absDeg
   CREATE_REG_INDI_NEW_NUMBERD(m_ipAbsDeg,  "absDeg",     0.0,  720.0, 0.001, "", "Absolute (deg)", "rotation");
   indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, INDI_IDLE);
 
-  // relDeg (number: current/target) — step size holder only; no motion here
+  // relDeg (step holder)
   CREATE_REG_INDI_NEW_NUMBERD(m_ipRelDeg,  "relDeg",    -720.0, 720.0, 0.001, "", "Relative step (deg)", "rotation");
   indi::updateIfChanged(m_ipRelDeg, "current", m_relStepDeg, m_indiDriver, INDI_IDLE);
   indi::updateIfChanged(m_ipRelDeg, "target",  m_relStepDeg, m_indiDriver, INDI_IDLE);
@@ -287,7 +305,7 @@ inline int rotationStageCtrl::appStartup()
   m_ipStageNamePos.addIfNoExist(pcf::IndiElement("current", buildStageNamePosText_()));
   REG_INDI_NEWPROP_NOCB(m_ipStageNamePos, "stageNamePos", pcf::IndiProperty::Text);
 
-  // Per-position toggles (one element per preset name) — use helper so rule/name are correct
+  // Per-position toggles — keep existing helper/registration
   if(!m_userPresetNames.empty()) {
     if(createStandardIndiSelectionSw(m_ipStageGoto, "stageGoto", m_userPresetNames) < 0)
       return log<software_critical,-1>({__FILE__, __LINE__});
@@ -343,14 +361,17 @@ inline int rotationStageCtrl::appLogic()
     }
   }
 
-  if(pollDevice_() < 0) {
+  int prc = pollDevice_();
+  if(prc < 0) {
     closePort_();
     m_connected = false;
     state(stateCodes::NOTCONNECTED);
     m_moving = -2;
+    m_commMisses = 0;
     updateStatus_();
     return 0;
   }
+  // prc == 0 (fresh ok) or prc == +1 (soft miss tolerated) -> continue
 
   // Push abs position & velocity UI
   indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, (m_gs==0x09?INDI_BUSY:INDI_IDLE));
@@ -368,6 +389,7 @@ inline int rotationStageCtrl::stop()
   if(rc == 0) {
     m_pending = Pending::None;
     m_moving = 0;
+    m_statusHint.clear();
     indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
     updateStatus_();
   }
@@ -376,30 +398,17 @@ inline int rotationStageCtrl::stop()
 
 inline int rotationStageCtrl::startHoming()
 {
+  // Non-blocking: issue command, mark pending; main loop will poll
   int rc = cmd_home_(0);
   if(rc < 0) return rc;
 
-  for(;;) {
-    if(q_status_() < 0) break;
-    if(m_gs != 0x09) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-
-  (void)q_position_();
-  m_homed = true;
-  m_moving = 0;
-
-  if(std::abs(m_homeOffsetDeg) > 0.0) {
-    if(moveRelDeg_(m_homeOffsetDeg) == 0) {
-      for(;;) {
-        if(q_status_() < 0) break;
-        if(m_gs != 0x09) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
-      (void)q_position_();
-    }
-  }
+  m_pending = Pending::Home;
+  m_moving  = 2;
+  m_statusHint = "HOMING";
   updateStatus_();
+
+  // opportunistic position read
+  (void)q_position_();
   return 0;
 }
 
@@ -422,6 +431,8 @@ inline int rotationStageCtrl::moveTo(float presetIndex)
   if(idx >= (int)m_userPresetDeg.size()) idx = (int)m_userPresetDeg.size()-1;
 
   m_moving = 1;
+  m_statusHint = "MOVING TO PRESET";
+  updateStatus_();
   return moveAbsDeg_(m_userPresetDeg[(size_t)idx]);
 }
 
@@ -442,7 +453,7 @@ inline int rotationStageCtrl::recordStage(bool force)
   return dev::stdMotionStage<rotationStageCtrl>::recordStage(force);
 }
 
-/* ---------- INDI callbacks ---------- */
+/* ---------- INDI callbacks (non-blocking; main loop polls) ---------- */
 
 // Absolute move
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ipRecv)
@@ -450,12 +461,20 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ip
   INDI_VALIDATE_CALLBACK_PROPS(m_ipAbsDeg, ipRecv);
   double tgt = 0.0;
   if(indiTargetUpdate(m_ipAbsDeg, tgt, ipRecv, true) < 0) return log<software_error,-1>({__FILE__,__LINE__});
+
   indi::updateIfChanged(m_ipAbsDeg, "target", tgt, m_indiDriver, INDI_BUSY);
+
   if(moveAbsDeg_(tgt) < 0) return log<software_error,-1>({__FILE__,__LINE__,"moveAbsDeg failed"});
+  m_pending = Pending::MoveAbs;
+  m_moving  = 1;
+  m_statusHint = "MOVING ABS";
+  updateStatus_();
+
+  (void)q_position_();
   return 0;
 }
 
-// relDeg: number with current/target — updates m_relStepDeg only; no motion here
+// relDeg: updates m_relStepDeg only
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipRelDeg, ipRecv);
@@ -469,24 +488,23 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ip
   return 0;
 }
 
-// relMove: issue relative move using m_relStepDeg; wait for OK; auto-off
+// relMove: fire-and-poll; auto-off immediately
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelMove)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipRelMove, ipRecv);
   if(!ipRecv.find("request")) return 0;
 
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
-    indi::updateSwitchIfChanged(m_ipRelMove, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
+    if(moveRelDegCmdFromRelMove_() < 0) return log<software_error,-1>({__FILE__,__LINE__,"moveRelDeg failed"});
 
-    (void)moveRelDegCmdFromRelMove_();
+    m_pending = Pending::MoveRel;
+    m_moving  = 1;
+    m_statusHint = "MOVING RELATIVE";
+    updateStatus_();
 
-    for(;;) {
-      if(q_status_() < 0) break;
-      if(m_gs != 0x09) break;
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
     (void)q_position_();
 
+    // auto-off now
     indi::updateSwitchIfChanged(m_ipRelMove, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
@@ -506,13 +524,17 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipVelPct)(const pcf::IndiProperty &ip
   return 0;
 }
 
+// optimize/save
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipOptimize)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipOptimize, ipRecv);
   if(!ipRecv.find("request")) return 0;
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
-    indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
     (void)cmd_optimize_wait_();
+    m_pending = Pending::Optimize;
+    m_moving  = 1;
+    m_statusHint = "OPTIMIZING";
+    updateStatus_();
     indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
@@ -523,20 +545,23 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipSave)(const pcf::IndiProperty &ipRe
   INDI_VALIDATE_CALLBACK_PROPS(m_ipSave, ipRecv);
   if(!ipRecv.find("request")) return 0;
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
-    indi::updateSwitchIfChanged(m_ipSave, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
     (void)cmd_save_();
+    m_pending = Pending::Save;
+    m_moving  = 1;
+    m_statusHint = "SAVING";
+    updateStatus_();
     indi::updateSwitchIfChanged(m_ipSave, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
 }
 
+// home
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipHome)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipHome, ipRecv);
   if(!ipRecv.find("request")) return 0;
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
-    indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
-    (void)startHoming();
+    (void)startHoming(); // sets pending/moving/status
     indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
@@ -547,13 +572,13 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStop)(const pcf::IndiProperty &ipRe
   INDI_VALIDATE_CALLBACK_PROPS(m_ipStop, ipRecv);
   if(!ipRecv.find("request")) return 0;
   if(ipRecv.at("request").getSwitchState() == pcf::IndiElement::On) {
-    indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::On, m_indiDriver, INDI_BUSY);
     (void)stop();
     indi::updateSwitchIfChanged(m_ipStop, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
 }
 
+// stageGoto: non-blocking; auto-off immediately
 INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipStageGoto, ipRecv);
@@ -567,21 +592,21 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty 
   }
   if(chosen < 0) return 0;
 
-  // Set chosen On (BUSY); others Off
+  // momentary BUSY reflect, then clear
   for(size_t i=0;i<m_userPresetNames.size();++i) {
     const auto &nm = m_userPresetNames[i];
     indi::updateSwitchIfChanged(m_ipStageGoto, nm, (i==(size_t)chosen)?pcf::IndiElement::On:pcf::IndiElement::Off, m_indiDriver, INDI_BUSY);
   }
 
   (void)moveAbsDeg_(m_userPresetDeg[(size_t)chosen]);
-  for(;;) {
-    if(q_status_() < 0) break;
-    if(m_gs != 0x09) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
+  m_pending = Pending::MoveAbs;
+  m_moving  = 1;
+  m_statusHint = std::string("MOVING TO PRESET: ") + m_userPresetNames[(size_t)chosen];
+  updateStatus_();
+
   (void)q_position_();
 
-  // Auto-off the chosen toggle
+  // auto-off now
   indi::updateSwitchIfChanged(m_ipStageGoto, m_userPresetNames[(size_t)chosen], pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   return 0;
 }
@@ -664,7 +689,7 @@ inline int rotationStageCtrl::readFrame_(std::string &out, int timeout_ms)
   char ch;
   while(true) {
     if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-start).count() > timeout_ms)
-      return 1; // timeout
+      return 1; // soft timeout
     struct pollfd pfd{m_fd, POLLIN, 0};
     int pr = ::poll(&pfd, 1, 25);
     if(pr <= 0) continue;
@@ -683,7 +708,10 @@ inline int rotationStageCtrl::txrx_(const std::string& cmd, std::string *reply, 
   std::string f = frame_(cmd);
   if(writeAll_(f) < 0) return -1;
   if(!reply) return 0;
-  return readFrame_(*reply, timeout_ms);
+  const int tmo = (m_pending != Pending::None || m_gs == 0x09) ? m_busyReadTimeoutMs : timeout_ms;
+  int rc = readFrame_(*reply, tmo);
+  // rc: 0 ok, 1 timeout (soft), -1 hard error
+  return rc;
 }
 
 /* ---------- Protocol queries ---------- */
@@ -691,7 +719,9 @@ inline int rotationStageCtrl::txrx_(const std::string& cmd, std::string *reply, 
 inline int rotationStageCtrl::q_info_()
 {
   std::string r;
-  if(txrx_("in", &r, m_readTimeoutMs) != 0) return -1;
+  int rc = txrx_("in", &r, m_readTimeoutMs);
+  if(rc < 0) return -1;
+  if(rc > 0) return +1;
   if(r.size() >= 2 && r[r.size()-2]=='\r') r.resize(r.size()-2);
 
   if(m_pulsesPerRev == 0 && r.size() >= 8) {
@@ -714,7 +744,10 @@ inline int rotationStageCtrl::q_info_()
 inline int rotationStageCtrl::q_status_()
 {
   std::string r;
-  if(txrx_("gs", &r, m_readTimeoutMs) != 0) return -1;
+  const int tmo = (m_gs == 0x09 || m_pending != Pending::None) ? m_busyReadTimeoutMs : m_readTimeoutMs;
+  int rc = txrx_("gs", &r, tmo);
+  if(rc < 0) return -1;
+  if(rc > 0) return +1;
   if(r.size() >= 6 && (r[1]=='G'||r[1]=='g') && (r[2]=='S'||r[2]=='s')
      && std::isxdigit((unsigned char)r[3]) && std::isxdigit((unsigned char)r[4])) {
     auto nyb = [](char c)->uint8_t{ c=(char)std::toupper((unsigned char)c); return (c<='9')? (c-'0') : (10+(c-'A')); };
@@ -726,7 +759,10 @@ inline int rotationStageCtrl::q_status_()
 inline int rotationStageCtrl::q_position_()
 {
   std::string r;
-  if(txrx_("gp", &r, m_readTimeoutMs) != 0) return -1;
+  const int tmo = (m_gs == 0x09 || m_pending != Pending::None) ? m_busyReadTimeoutMs : m_readTimeoutMs;
+  int rc = txrx_("gp", &r, tmo);
+  if(rc < 0) return -1;
+  if(rc > 0) return +1;
   if(r.size() >= 11 && (r[1]=='P'||r[1]=='p') && (r[2]=='O'||r[2]=='o')) {
     int32_t pulses = 0;
     for(int i=0;i<8;i++){
@@ -748,6 +784,7 @@ inline int rotationStageCtrl::cmd_home_(uint8_t dir)
   std::string r;
   m_pending = Pending::Home;
   m_moving  = 2;
+  m_statusHint = "HOMING";
   if(txrx_(std::string("ho") + nib, &r, m_readTimeoutMs) < 0) return -1;
   return 0;
 }
@@ -757,11 +794,6 @@ inline int rotationStageCtrl::cmd_stop_()
   std::string r;
   m_pending = Pending::Stop;
   if(txrx_("st", &r, m_readTimeoutMs) < 0) return -1;
-  for(int tries=0; tries<60; ++tries) {
-    if(q_status_() == 0 && m_gs != 0x09) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  m_pending = Pending::None;
   return 0;
 }
 
@@ -769,13 +801,9 @@ inline int rotationStageCtrl::cmd_optimize_wait_()
 {
   std::string r;
   m_pending = Pending::Optimize;
+  m_moving  = 1;
+  m_statusHint = "OPTIMIZING";
   if(txrx_(m_cmdOptimize, &r, m_readTimeoutMs) < 0) return -1;
-  for(;;) {
-    if(q_status_() < 0) break;
-    if(m_gs != 0x09) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  m_pending = Pending::None;
   return 0;
 }
 
@@ -783,8 +811,9 @@ inline int rotationStageCtrl::cmd_save_()
 {
   std::string r;
   m_pending = Pending::Save;
+  m_moving  = 1;
+  m_statusHint = "SAVING";
   int rc = txrx_(m_cmdSave, &r, m_readTimeoutMs);
-  m_pending = Pending::None;
   return rc;
 }
 
@@ -796,7 +825,6 @@ inline int rotationStageCtrl::cmd_setvel_(int pct)
   std::string r;
   m_pending = Pending::Velocity;
   int rc = txrx_(std::string("sv") + buf, &r, m_readTimeoutMs);
-  m_pending = Pending::None;
   return rc;
 }
 
@@ -806,6 +834,7 @@ inline int rotationStageCtrl::cmd_moveAbs_pulses_(int32_t pulses)
   std::string r;
   m_pending = Pending::MoveAbs;
   m_moving  = 1;
+  m_statusHint = "MOVING ABS";
   if(txrx_(std::string("ma") + hex, &r, m_readTimeoutMs) < 0) return -1;
   return 0;
 }
@@ -816,6 +845,7 @@ inline int rotationStageCtrl::cmd_moveRel_pulses_(int32_t pulses)
   std::string r;
   m_pending = Pending::MoveRel;
   m_moving  = 1;
+  m_statusHint = "MOVING RELATIVE";
   if(txrx_(std::string("mr") + hex, &r, m_readTimeoutMs) < 0) return -1;
   return 0;
 }
@@ -859,8 +889,25 @@ inline int rotationStageCtrl::moveRelDegCmdFromRelMove_()
 
 inline int rotationStageCtrl::pollDevice_()
 {
-  if(q_position_() < 0) return -1;
-  if(q_status_()   < 0) return -1;
+  int rcP = q_position_();
+  int rcS = q_status_();
+
+  // Hard errors => reconnect
+  if(rcP < 0 || rcS < 0) return -1;
+
+  // Soft timeouts => debounce; only reconnect if too many in a row
+  if(rcP > 0 || rcS > 0) {
+    if(++m_commMisses <= m_commMaxMisses) {
+      updateStatus_();
+      return +1; // tolerated soft miss
+    } else {
+      m_commMisses = 0;
+      return -1; // exceeded budget -> force reconnect
+    }
+  }
+
+  // Success path
+  m_commMisses = 0;
 
   if(m_gs == 0x09) { // BUSY
     switch(m_pending) {
@@ -881,8 +928,17 @@ inline int rotationStageCtrl::pollDevice_()
     switch(m_pending) {
       case Pending::Home:
         m_homed = true;
-        indi::updateSwitchIfChanged(m_ipHome, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
-        m_pending = Pending::None; m_moving = 0; break;
+        m_pending = Pending::None;
+        m_moving = 0;
+        m_statusHint.clear();
+        if(std::abs(m_homeOffsetDeg) > 0.0) {
+          if(moveRelDeg_(m_homeOffsetDeg) == 0) {
+            m_pending = Pending::OffsetRel;
+            m_moving  = 1;
+            m_statusHint = "OFFSET AFTER HOME";
+          }
+        }
+        break;
 
       case Pending::OffsetRel:
       case Pending::MoveAbs:
@@ -890,11 +946,11 @@ inline int rotationStageCtrl::pollDevice_()
       case Pending::Velocity:
       case Pending::Save:
       case Pending::Stop:
-        m_pending = Pending::None; m_moving = 0; break;
-
       case Pending::Optimize:
-        indi::updateSwitchIfChanged(m_ipOptimize, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
-        m_pending = Pending::None; m_moving = 0; break;
+        m_pending = Pending::None;
+        m_moving = 0;
+        m_statusHint.clear();
+        break;
 
       case Pending::None:
         m_moving = (m_homed ? 0 : -1); break;
@@ -911,9 +967,10 @@ inline void rotationStageCtrl::updateStatus_()
 
   std::string s;
   if(!m_connected) s = "NOT_CONNECTED";
-  else if(m_gs == 0x09) s = (m_pending == Pending::Home ? "HOMING" : "BUSY");
-  else if(!m_homed)     s = "NOT_HOMED";
-  else                  s = "OK";
+  else if(m_moving == 2) s = "HOMING";
+  else if(m_moving == 1) s = (!m_statusHint.empty() ? m_statusHint : "BUSY");
+  else if(!m_homed)      s = "NOT_HOMED";
+  else                   s = "OK";
 
   bool changed=false;
   if(!m_ipStatus.find("current")) {
@@ -923,10 +980,13 @@ inline void rotationStageCtrl::updateStatus_()
     if(cur != s) { m_ipStatus.at("current").setValue(s); changed=true; }
   }
   if(changed) {
-    m_ipStatus.setState(INDI_IDLE);
+    m_ipStatus.setState((m_moving>0)?INDI_BUSY:INDI_IDLE);
     m_ipStatus.setTimeStamp(pcf::TimeStamp());
     m_indiDriver->sendSetProperty(m_ipStatus);
   }
+
+  // keep absDeg flowing with appropriate state
+  indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, (m_moving>0?INDI_BUSY:INDI_IDLE));
 }
 
 /* ---------- Stage name/position text ---------- */
