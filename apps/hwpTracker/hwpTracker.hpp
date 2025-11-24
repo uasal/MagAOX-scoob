@@ -245,25 +245,24 @@ int hwpTracker::appShutdown()
 }
 
 
-std::string getHwpStatus()
+std::string hwpTracker::getHwpStatus()
 {
    float tol = 0.5; // degrees
-   if (fabs(m_hwpSetPos - 0) < tol) std::string status = "Qplus";
-    else if (fabs(m_hwpSetPos - 45) < tol) std::string status = "Qminus";
-    else if (fabs(m_hwpSetPos - 22.5) < tol) std::string status = "Uplus";
-    else if (fabs(m_hwpSetPos - 67.5) < tol) std::string status = "Uminus";
+   if (fabs(m_hwpSetPos - 0) < tol) return "Qplus";
+   else if (fabs(m_hwpSetPos - 45) < tol) return "Qminus";
+   else if (fabs(m_hwpSetPos - 22.5) < tol) return "Uplus";
+   else if (fabs(m_hwpSetPos - 67.5) < tol) return "Uminus";
+   else return "Unknown";
    
-
-   return status;
 }
 
-void getHwpTrackingOffset()
+void hwpTracker::getHwpTrackingOffset()
 {
    // While on Nasmyth East, the sign is negative
-   m_hwpTrackingOffset = -0.5 * m_parang + m_altitude
+   m_hwpTrackingOffset = -0.5 * m_parang + m_altitude;
 }
 
-void updateHwpPos()
+void hwpTracker::updateHwpPos()
 {
    m_hwpActualPos = m_hwpSetPos + m_hwpTrackingOffset;
 
@@ -271,15 +270,15 @@ void updateHwpPos()
 
    std::cerr << "HWP set to:" << m_hwpActualPos << "\n";
    std::cerr << "Sending HWP stage to: " << m_hwpStagePos << "\n";
-   log<text_log>(sprintf("HWP set to: %.01f", m_hwpActualPos));
+   log<text_log>("HWP set to: " + std::to_string(m_hwpActualPos));
 
    m_indiP_hwpActualPos["value"] = m_hwpActualPos;
    sendNewProperty(m_indiP_hwpActualPos);
 
-   m_indiP_hwpStatus["value"] = getHwpStatus(m_hwpSetPos);
+   m_indiP_hwpStatus["value"] = getHwpStatus();
    sendNewProperty(m_indiP_hwpStatus);
 
-   m_indiP_hwpStagePos["target"] = k;
+   m_indiP_hwpStagePos["target"] = m_hwpStagePos;
    sendNewProperty(m_indiP_hwpStagePos); 
 
 }
