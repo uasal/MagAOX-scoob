@@ -82,6 +82,7 @@ gui/rtimv/plugins/acquisition/makefile.acquisition
 #h
 apps/hoPredCtrl/hoPredCtrl
 apps/hsfwCtrl/hsfwCtrl
+apps/hwpTracker/hwpTracker
 
 #i
 INDI/INDI/evalINDI

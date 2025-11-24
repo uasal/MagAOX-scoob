@@ -36,11 +36,15 @@ namespace app
 /**
   * \ingroup hwpTracker
   */
-class hwpTracker : public MagAOXApp<true>
+class hwpTracker : public MagAOXApp<true>, public dev::telemeter<hwpTracker>
 {
 
    //Give the test harness access.
    friend class hwpTracker_test;
+
+   friend class dev::telemeter<hwpTracker>;
+
+   typedef dev::telemeter<hwpTracker> telemeterT;
 
 protected:
 
@@ -145,11 +149,22 @@ public:
    INDI_SETCALLBACK_DECL(hwpTracker, m_indiP_teldata);
 
    ///@}
+
+   /** \name Telemeter Interface
+     *
+     * @{
+     */
+   int checkRecordTimes();
+
+   int recordTelem( const telem_poltrack * );
+
+   int recordPolTrack(bool force = false);
+
+   ///@}
 };
 
 hwpTracker::hwpTracker() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
-
    return;
 }
 
@@ -164,6 +179,8 @@ void hwpTracker::setupConfig()
    config.add("tcs.devName", "", "tcs.devName", argType::Required, "tcs", "devName", false, "string", "The device name of the TCS Interface providing 'teldata.zd' and `teldata.pa`.  Default is 'tcsi'");
 
    config.add("tracking.updateInterval", "", "tracking.updateInterval", argType::Required, "tracking", "updateInterval", false, "float", "The interval at which to update positions, in seconds.  Default is 1 sec.");
+
+   TELEMETER_SETUP_CONFIG( config );
 }
 
 int hwpTracker::loadConfigImpl( mx::app::appConfigurator & _config )
@@ -173,6 +190,8 @@ int hwpTracker::loadConfigImpl( mx::app::appConfigurator & _config )
    _config(m_devName, "hwp.devName");
    _config(m_tcsDevName, "tcs.devName");
    _config(m_updateInterval, "tracking.updateInterval");
+
+   TELEMETER_LOAD_CONFIG(_config);
 
    return 0;
 }
@@ -211,6 +230,8 @@ int hwpTracker::appStartup()
    m_indiP_hwpStagePos.setName("position");
    m_indiP_hwpStagePos.add(pcf::IndiElement("target"));
 
+   TELEMETER_APP_STARTUP;
+
    state(stateCodes::READY);
 
    return 0;
@@ -233,13 +254,20 @@ int hwpTracker::appLogic()
       lastupdate = mx::sys::get_curr_time();
 
    }
-   else if(!m_tracking) lastupdate = 0;
+   else
+   {
+      if(!m_tracking) lastupdate = 0;
+   }
+
+   TELEMETER_APP_LOGIC;
 
    return 0;
 }
 
 int hwpTracker::appShutdown()
 {
+    TELEMETER_APP_SHUTDOWN;
+
    return 0;
 }
 
@@ -278,6 +306,8 @@ void hwpTracker::updateHwpPos()
    m_indiP_hwpStagePos["target"] = m_hwpStagePos;
    sendNewProperty(m_indiP_hwpStagePos);
 
+   recordPolTrack();
+
 }
 
 
@@ -293,8 +323,6 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ip
    }
 
    if(!ipRecv.find("target")) return 0;
-
-   // log<text_log>("stopped HWP rotation tracking");
 
    m_hwpSetPos = ipRecv["target"].get<float>();
 
@@ -318,7 +346,10 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
       return -1;
    }
 
-   if(!ipRecv.find("toggle")) return 0;
+   if(!ipRecv.find("toggle"))
+   {
+      return 0;
+   }
 
    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
    {
@@ -375,6 +406,32 @@ INDI_SETCALLBACK_DEFN(hwpTracker, m_indiP_teldata)(const pcf::IndiProperty &ipRe
    return 0;
 }
 
+int hwpTracker::checkRecordTimes()
+{
+    return telemeterT::checkRecordTimes(telem_poltrack());
+}
+
+int hwpTracker::recordTelem( const telem_poltrack * )
+{
+    return recordPolTrack(true);
+}
+
+int hwpTracker::recordPolTrack(bool force)
+{
+    static float hwpSetPos = 0;
+
+    static float hwpActualPos = 0;
+
+    if( m_hwpSetPos != hwpSetPos || m_hwpActualPos != hwpActualPos || force)
+    {
+        telem<telem_poltrack>({m_hwpSetPos, m_hwpActualPos});
+
+        hwpSetPos = m_hwpSetPos;
+        hwpActualPos = m_hwpActualPos;
+    }
+
+    return 0;
+}
 
 } //namespace app
 } //namespace MagAOX
