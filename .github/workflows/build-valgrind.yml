@@ -1,0 +1,88 @@
+name: Valgrind
+on:
+  push:
+      branches:
+        - 'valgrind' # only run on a branch called valgrind, turning off until we get back to it
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/joseph-long/magao-x-setup-develop:main
+      options: --user root
+    steps:
+      - name: Install Packages
+        run: dnf install -y valgrind make libusb-devel libusbx-devel
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Configure Git Safe Directory
+        run: git config --global --add safe.directory "$(pwd)"
+      - name: Run Valgrind
+        id: valgrind
+        run: |
+          set +e
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+          pkg-config --modversion openblas
+          make valgrind
+          cd tests/valgrind
+          chmod +x valgrind.sh
+          bash -l valgrind.sh
+          rc=$?
+          echo "exitcode=$rc" >> "$GITHUB_OUTPUT"
+      # Run regardless of previous step result
+      - name: Upload Valgrind Logs as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valgrind-logs
+          path: tests/valgrind/logs
+      - name: Summarize Valgrind errors and fail if any
+        if: always()
+        run: |
+          set -euo pipefail
+          LOG_DIR="tests/valgrind/logs"
+          any_problem=0
+
+          echo ">>> Checking valgrind logs in $LOG_DIR ..."
+
+          for f in "$LOG_DIR"/*.log; do
+            [ -e "$f" ] || continue
+
+            # Extract all ERROR SUMMARY lines with non-zero errors (using template line "ERROR SUMMARY: 22 errors ...")
+            err_lines=$(grep -E "ERROR SUMMARY: [1-9][0-9]* errors" "$f" || true)
+
+            # Sum all "definitely lost:" byte counts (aggregate multiple process blocks)
+            def_bytes=$(LC_ALL=C grep "definitely lost:" "$f" \
+              | tr -d ',' \
+              | awk '{ sum += $4 } END { print (sum ? sum : 0) }')
+
+            if [ -n "$err_lines" ] || [ "${def_bytes:-0}" -gt 0 ]; then
+              any_problem=1
+              echo
+              echo "---- $(basename "$f") ----" >&2
+
+              # print all matching ERROR SUMMARY lines
+              if [ -n "$err_lines" ]; then
+                echo "  Valgrind ERROR SUMMARY lines:" >&2
+                echo "$err_lines" | sed 's/^/    /' >&2
+              fi
+
+              # print all LEAK SUMMARY blocks
+              if [ "${def_bytes:-0}" -gt 0 ]; then
+                echo "  Total definitely lost bytes (summed across processes in this log): ${def_bytes}" >&2
+                echo "  Leak summary excerpts:" >&2
+                awk '
+                  /LEAK SUMMARY/ { inblock=1; cnt=6 }
+                  inblock { print "    "$0; if (--cnt<=0) { inblock=0 } }
+                ' "$f" >&2 || true
+              fi
+            fi
+          done
+
+          echo
+          echo
+          if [ "$any_problem" -eq 1 ]; then
+            echo ">>> FAIL: Valgrind reported errors or definite leaks. See per-test logs in $LOG_DIR" >&2
+            exit 1
+          fi
+
+          echo ">>> OK: No valgrind ERROR SUMMARY errors and no 'definitely lost' bytes detected."

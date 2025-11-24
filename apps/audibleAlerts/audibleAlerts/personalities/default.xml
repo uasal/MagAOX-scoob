@@ -60,31 +60,9 @@
     <walk-up email="mars@strw.leidenuniv.nl">
       <file name="matthijs.wav" />
     </walk-up>
-    <!-- <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
-      <transition value="On">
-        <file name="allstar.wav" />
-      </transition>
-    </react-to>
-    <react-to indi-id="observers.observers.lapearce-at-umich-dot-edu">
-      <transition value="On">
-        <file name="skibidi.wav" />
-      </transition>
-    </react-to>
-    <react-to indi-id="observers.observers.jrmales-at-arizona-dot-edu">
-      <transition value="On">
-        <file name="aenema.wav" />
-      </transition>
-    </react-to>
-    <react-to indi-id="observers.observers.jlong-at-flatironinstitute-dot-org">
-      <transition value="On">
-        <file name="seven_nation.wav" />
-      </transition>
-    </react-to>
-    <react-to indi-id="observers.observers.jliberman-at-arizona-dot-edu">
-      <transition value="On">
-        <file name="lipgloss.wav" />
-      </transition>
-    </react-to> -->
+    <walk-up email="mileslucas@arizona.edu">
+      <file name="miles.wav" />
+    </walk-up>
   </walk-ups>
   <soundboard>
     <button name="NotJared">
@@ -119,6 +97,9 @@
     </button>
     <button name="VizzyAO">
       <file name="blue.wav" />
+    </button>
+    <button name="Donny">
+      <file name="donny.mp3" />
     </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
@@ -317,6 +298,14 @@
       <speak>we don't even need gee pee yous for this</speak>
       <speak>someone doesn't have enough photons</speak>
       <speak>can anyone spare a photon or two?</speak>
+    </transition>
+  </react-to>
+  <react-to indi-id="camsci1.synchro.toggle">
+    <transition value="On">
+      <speak>Synchronized</speak>
+    </transition>
+    <transition value="Off">
+      <speak>Free running</speak>
     </transition>
   </react-to>
 

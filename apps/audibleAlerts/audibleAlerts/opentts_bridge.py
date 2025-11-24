@@ -54,4 +54,4 @@ def ssml_to_wav(ssml_text, default_voice, api_url, cache_dir):
     return destination_path
 
 def play_wav(wav_path):
-    subprocess.check_call(f"XDG_RUNTIME_DIR=/run/user/$(id -u xsup) pacat --rate=22050 --channels=1 {wav_path}", shell=True)
+    subprocess.check_call(f"XDG_RUNTIME_DIR=/run/user/$(id -u xsup) paplay {wav_path}", shell=True)

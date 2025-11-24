@@ -20,7 +20,7 @@ SCENARIO( "xxxx", "[template]" )
 
       WHEN("xxxx")
       {
-         rv = [some test];
+         rv = 0;
 
          REQUIRE(rv == 0);
       }
