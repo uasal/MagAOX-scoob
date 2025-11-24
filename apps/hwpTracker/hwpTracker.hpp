@@ -63,7 +63,7 @@ protected:
 
    int m_sign {-1}; ///< The sign to apply to the calculated HWP angle.
 
-   std::string m_devName {"stagehwprot"}; ///< The device name of the HWP stage.  Default is 'stagehwprot'
+   std::string m_devName {"stagepolrot"}; ///< The device name of the HWP stage.  Default is 'stagehwprot'
 
    std::string m_tcsDevName {"tcsi"}; ///< The device name of the TCS Interface providing 'teldata.altitude'.  Default is 'tcsi'
 
@@ -159,7 +159,7 @@ void hwpTracker::setupConfig()
 
    config.add("hwp.sign", "", "hwp.sign", argType::Required, "hwp", "sign", false, "int", "The HWP rotation sign. Default is -1.");
 
-   config.add("hwp.devName", "", "hwp.devName", argType::Required, "hwp", "devName", false, "string", "The device name of the HWPstage.  Default is 'stagehwprot'");
+   config.add("hwp.devName", "", "hwp.devName", argType::Required, "hwp", "devName", false, "string", "The device name of the HWPstage.  Default is 'stagepolrot'");
 
    config.add("tcs.devName", "", "tcs.devName", argType::Required, "tcs", "devName", false, "string", "The device name of the TCS Interface providing 'teldata.zd' and `teldata.pa`.  Default is 'tcsi'");
 
@@ -190,19 +190,19 @@ int hwpTracker::appStartup()
 
    REG_INDI_SETPROP(m_indiP_teldata, m_tcsDevName, "teldata");
 
-   createStandardIndiNumber<float>(m_indiP_hwpSetPos, "hwpSetPos", -360.0, 360.0, 1e-3, "%.03f", "HWP Set Position", "HWP Status");
+   createStandardIndiNumber<float>(m_indiP_hwpSetPos, "hwp_position", -360.0, 360.0, 1e-3, "%.03f", "HWP Set Position", "HWP Status");
    registerIndiPropertyNew(m_indiP_hwpSetPos, INDI_NEWCALLBACK(m_indiP_hwpSetPos));
 
-   
-   REG_INDI_NEWPROP_NOCB(m_indiP_hwpTrackingOffset, "trackingOffset", pcf::IndiProperty::Number);
+
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpTrackingOffset, "hwp_tracking_offset", pcf::IndiProperty::Number);
    m_indiP_hwpTrackingOffset.add(pcf::IndiElement("value"));
    m_indiP_hwpTrackingOffset["value"].set(0);
 
-   REG_INDI_NEWPROP_NOCB(m_indiP_hwpStatus, "hwpStatus", pcf::IndiProperty::Text);
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpStatus, "hwp_position_name", pcf::IndiProperty::Text);
    m_indiP_hwpStatus.add(pcf::IndiElement("value"));
    m_indiP_hwpStatus["value"].set("");
 
-   REG_INDI_NEWPROP_NOCB(m_indiP_hwpActualPos, "trackingOffset", pcf::IndiProperty::Number);
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpActualPos, "hwp_position_actual", pcf::IndiProperty::Number);
    m_indiP_hwpActualPos.add(pcf::IndiElement("value"));
    m_indiP_hwpActualPos["value"].set(0);
 
@@ -226,8 +226,7 @@ int hwpTracker::appLogic()
 
       getHwpTrackingOffset();
 
-      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
-      sendNewProperty(m_indiP_hwpTrackingOffset);
+      updatesIfChanged<float>( m_indiP_hwpTrackingOffset, { "value" }, { m_hwpTrackingOffset } );
 
       updateHwpPos();
 
@@ -253,7 +252,7 @@ std::string hwpTracker::getHwpStatus()
    else if (fabs(m_hwpSetPos - 22.5) < tol) return "Uplus";
    else if (fabs(m_hwpSetPos - 67.5) < tol) return "Uminus";
    else return "Unknown";
-   
+
 }
 
 void hwpTracker::getHwpTrackingOffset()
@@ -268,24 +267,25 @@ void hwpTracker::updateHwpPos()
 
    m_hwpStagePos = m_zero + m_sign * m_hwpActualPos;
 
-   std::cerr << "HWP set to:" << m_hwpActualPos << "\n";
+   std::cerr << "HWP set to: " << m_hwpActualPos << "\n";
    std::cerr << "Sending HWP stage to: " << m_hwpStagePos << "\n";
    log<text_log>("HWP set to: " + std::to_string(m_hwpActualPos));
 
-   m_indiP_hwpActualPos["value"] = m_hwpActualPos;
-   sendNewProperty(m_indiP_hwpActualPos);
+   updatesIfChanged<float>( m_indiP_hwpActualPos, { "value" }, { m_hwpActualPos } );
 
-   m_indiP_hwpStatus["value"] = getHwpStatus();
-   sendNewProperty(m_indiP_hwpStatus);
+   updatesIfChanged<std::string>( m_indiP_hwpStatus, { "value" }, { getHwpStatus() } );
 
    m_indiP_hwpStagePos["target"] = m_hwpStagePos;
-   sendNewProperty(m_indiP_hwpStagePos); 
+   sendNewProperty(m_indiP_hwpStagePos);
 
 }
 
 
 INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ipRecv)
 {
+
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_hwpSetPos, ipRecv );
+
    if(ipRecv.getName() != m_indiP_hwpSetPos.getName())
    {
       log<software_error>({__FILE__,__LINE__, "wrong INDI property received."});
@@ -297,6 +297,9 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ip
    // log<text_log>("stopped HWP rotation tracking");
 
    m_hwpSetPos = ipRecv["target"].get<float>();
+
+   updatesIfChanged<float>(m_indiP_hwpSetPos, { "current", "target" }, { m_hwpSetPos, m_hwpSetPos});
+
    updateHwpPos();
 
    return 0;
@@ -306,6 +309,9 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ip
 
 INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipRecv)
 {
+
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_tracking, ipRecv );
+
    if(ipRecv.getName() != m_indiP_tracking.getName())
    {
       log<software_error>({__FILE__,__LINE__, "wrong INDI property received."});
@@ -321,8 +327,8 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
       m_tracking = true;
 
       getHwpTrackingOffset();
-      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
-      sendNewProperty(m_indiP_hwpTrackingOffset);
+
+      updatesIfChanged<float>( m_indiP_hwpTrackingOffset, { "value" }, { m_hwpTrackingOffset } );
 
       updateHwpPos();
 
@@ -335,8 +341,7 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
       m_tracking = false;
       m_hwpTrackingOffset = 0;
 
-      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
-      sendNewProperty(m_indiP_hwpTrackingOffset);
+      updatesIfChanged<float>( m_indiP_hwpTrackingOffset, { "value" }, { m_hwpTrackingOffset } );
 
       updateHwpPos();
 
@@ -349,6 +354,9 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
 
 INDI_SETCALLBACK_DEFN(hwpTracker, m_indiP_teldata)(const pcf::IndiProperty &ipRecv)
 {
+
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_teldata, ipRecv );
+
    if(ipRecv.getName() != m_indiP_teldata.getName())
    {
       log<software_error>({__FILE__,__LINE__,"wrong INDI property received"});
