@@ -17,8 +17,8 @@ apps_common = \
 	streamWriter \
 	dmMode \
 	shmimIntegrator \
-	closedLoopIndi \
-	dbIngest
+	closedLoopIndi
+	#dbIngest
 
 #Apps common to RTC and ICC on MagAO-X
 apps_rtcicc = \
@@ -84,6 +84,9 @@ apps_aoc = \
 	observerCtrl \
 	stateRuleEngine
 
+
+apps_acc = \
+	mcp3008Ctrl
 
 apps_tic = \
 	acronameUsbHub \
@@ -165,6 +168,10 @@ else ifeq ($(MAGAOX_ROLE),RTC)
   apps_to_build += $(apps_common)
   apps_to_build += $(apps_rtcicc)
   apps_to_build += $(apps_rtc)
+else ifeq ($(findstring ACC,$(MAGAOX_ROLE)),ACC)
+  apps_to_build += $(apps_basic)
+  apps_to_build += $(apps_common)
+  apps_to_build += $(apps_acc)
 else ifeq ($(MAGAOX_ROLE),TIC)
   apps_to_build += $(apps_basic)
   apps_to_build += $(apps_common)
@@ -201,6 +208,8 @@ ifeq ($(MAGAOX_ROLE),RTC)
   guis_to_build =
 else ifeq ($(MAGAOX_ROLE),ICC)
   guis_to_build =
+else ifeq ($(findstring ACC,$(MAGAOX_ROLE)),ACC)
+  guis_to_build =
 else ifeq ($(MAGAOX_ROLE),TIC)
   guis_to_build =
 else ifeq ($(MAGAOX_ROLE),container)
@@ -220,6 +229,8 @@ all_rtimv_plugins = \
 ifeq ($(MAGAOX_ROLE),RTC)
   rtimv_plugins_to_build =
 else ifeq ($(MAGAOX_ROLE),ICC)
+  rtimv_plugins_to_build =
+else ifeq ($(findstring ACC,$(MAGAOX_ROLE)),ACC)
   rtimv_plugins_to_build =
 else ifeq ($(MAGAOX_ROLE),TIC)
   rtimv_plugins_to_build =
