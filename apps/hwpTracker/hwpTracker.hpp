@@ -135,6 +135,8 @@ protected:
 
    pcf::IndiProperty m_indiP_hwpActualPos;
 
+   pcf::IndiProperty m_indiP_hwpStagePos;
+
 public:
    INDI_NEWCALLBACK_DECL(hwpTracker, m_indiP_tracking);
 
@@ -183,12 +185,8 @@ void hwpTracker::loadConfig()
 int hwpTracker::appStartup()
 {
 
-
    createStandardIndiToggleSw( m_indiP_tracking, "tracking");
    registerIndiPropertyNew( m_indiP_tracking, INDI_NEWCALLBACK(m_indiP_tracking));
-
-
-   // TODO JARED HELP
 
    REG_INDI_SETPROP(m_indiP_teldata, m_tcsDevName, "teldata");
 
@@ -207,6 +205,11 @@ int hwpTracker::appStartup()
    REG_INDI_NEWPROP_NOCB(m_indiP_hwpActualPos, "trackingOffset", pcf::IndiProperty::Number);
    m_indiP_hwpActualPos.add(pcf::IndiElement("value"));
    m_indiP_hwpActualPos["value"].set(0);
+
+   m_indiP_hwpStagePos = pcf::IndiProperty(pcf::IndiProperty::Number);
+   m_indiP_hwpStagePos.setDevice(m_devName);
+   m_indiP_hwpStagePos.setName("position");
+   m_indiP_hwpStagePos.add(pcf::IndiElement("target"));
 
    state(stateCodes::READY);
 
@@ -256,13 +259,15 @@ std::string getHwpStatus()
 
 void getHwpTrackingOffset()
 {
+   // While on Nasmyth East, the sign is negative
+   m_hwpTrackingOffset = -0.5 * m_parang + m_altitude
 }
 
 void updateHwpPos()
 {
    m_hwpActualPos = m_hwpSetPos + m_hwpTrackingOffset;
 
-   m_hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
+   m_hwpStagePos = m_zero + m_sign * m_hwpActualPos;
 
    std::cerr << "HWP set to:" << m_hwpActualPos << "\n";
    std::cerr << "Sending HWP stage to: " << m_hwpStagePos << "\n";
@@ -273,6 +278,9 @@ void updateHwpPos()
 
    m_indiP_hwpStatus["value"] = getHwpStatus(m_hwpSetPos);
    sendNewProperty(m_indiP_hwpStatus);
+
+   m_indiP_hwpStagePos["target"] = k;
+   sendNewProperty(m_indiP_hwpStagePos); 
 
 }
 
