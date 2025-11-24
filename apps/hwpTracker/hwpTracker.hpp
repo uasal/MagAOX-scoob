@@ -47,14 +47,20 @@ protected:
    /** \name Configurable Parameters
      *@{
      */
-   float m_altitude {90}; ///< Current altitude
+   float m_altitude {0}; ///< Current altitude
 
    float m_parang {0}; ///< Current parallactic angle
 
-   float m_hwpTrackingOffset {90}; ///< HWP tracking offset
+   float m_hwpTrackingOffset {0}; ///< HWP tracking offset
+
+   float m_hwpSetPos {0};
+
+   float m_hwpActualPos {0};
+
+   float m_hwpStagePos {0};
 
    float m_zero {360}; ///< The zero point of the HWP stage.
-   
+
    int m_sign {-1}; ///< The sign to apply to the calculated HWP angle.
 
    std::string m_devName {"stagehwprot"}; ///< The device name of the HWP stage.  Default is 'stagehwprot'
@@ -104,6 +110,12 @@ public:
      */
    virtual int appShutdown();
 
+   virtual std::string getHwpStatus();
+
+   virtual void getHwpTrackingOffset();
+
+   virtual void updateHwpPos();
+
 
    /** @name INDI
      *
@@ -116,12 +128,12 @@ protected:
    pcf::IndiProperty m_indiP_teldata;
 
    pcf::IndiProperty m_indiP_hwpSetPos;
-   
-   pcf::IndiProperty m_indiP_hwpTrackingOffset;
-   
-   pcf::IndiProperty m_indiP_hwpActualPos;
 
    pcf::IndiProperty m_indiP_hwpStatus;
+
+   pcf::IndiProperty m_indiP_hwpTrackingOffset;
+
+   pcf::IndiProperty m_indiP_hwpActualPos;
 
 public:
    INDI_NEWCALLBACK_DECL(hwpTracker, m_indiP_tracking);
@@ -147,7 +159,7 @@ void hwpTracker::setupConfig()
 
    config.add("hwp.devName", "", "hwp.devName", argType::Required, "hwp", "devName", false, "string", "The device name of the HWPstage.  Default is 'stagehwprot'");
 
-   config.add("tcs.devName", "", "tcs.devName", argType::Required, "tcs", "devName", false, "string", "The device name of the TCS Interface providing 'teldata.altitude'.  Default is 'tcsi'");
+   config.add("tcs.devName", "", "tcs.devName", argType::Required, "tcs", "devName", false, "string", "The device name of the TCS Interface providing 'teldata.zd' and `teldata.pa`.  Default is 'tcsi'");
 
    config.add("tracking.updateInterval", "", "tracking.updateInterval", argType::Required, "tracking", "updateInterval", false, "float", "The interval at which to update positions, in seconds.  Default is 1 sec.");
 }
@@ -176,16 +188,25 @@ int hwpTracker::appStartup()
    registerIndiPropertyNew( m_indiP_tracking, INDI_NEWCALLBACK(m_indiP_tracking));
 
 
+   // TODO JARED HELP
+
    REG_INDI_SETPROP(m_indiP_teldata, m_tcsDevName, "teldata");
 
-   m_indiP_hwpSetPos = pcf::IndiProperty(pcf::IndiProperty::Number);
-   m_indiP_hwpSetPos.setDevice(m_devName);
-   m_indiP_hwpSetPos.setName("position");
-   m_indiP_hwpSetPos.add(pcf::IndiElement("target"));
+   createStandardIndiNumber<float>(m_indiP_hwpSetPos, "hwpSetPos", -360.0, 360.0, 1e-3, "%.03f", "HWP Set Position", "HWP Status");
+   registerIndiPropertyNew(m_indiP_hwpSetPos, INDI_NEWCALLBACK(m_indiP_hwpSetPos));
 
-   m_indiP_hwpTrackingOffset = pcf::IndiProperty(pcf::IndiProperty::Number);
-   m_indiP_hwpStatus = pcf::IndiProperty(pcf::IndiProperty::Number);
-   m_indiP_hwpActualPos = pcf::IndiProperty(pcf::IndiProperty::Number);
+   
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpTrackingOffset, "trackingOffset", pcf::IndiProperty::Number);
+   m_indiP_hwpTrackingOffset.add(pcf::IndiElement("value"));
+   m_indiP_hwpTrackingOffset["value"].set(0);
+
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpStatus, "hwpStatus", pcf::IndiProperty::Text);
+   m_indiP_hwpStatus.add(pcf::IndiElement("value"));
+   m_indiP_hwpStatus["value"].set("");
+
+   REG_INDI_NEWPROP_NOCB(m_indiP_hwpActualPos, "trackingOffset", pcf::IndiProperty::Number);
+   m_indiP_hwpActualPos.add(pcf::IndiElement("value"));
+   m_indiP_hwpActualPos["value"].set(0);
 
    state(stateCodes::READY);
 
@@ -199,33 +220,18 @@ int hwpTracker::appLogic()
 
    if(m_tracking && mx::sys::get_curr_time() - lastupdate > m_updateInterval)
    {
-      // while on Nasmyth East, the sign convention for this offset angle is -1
-      m_hwpTrackingOffset = -0.5 * m_parang + m_altitude;
 
-      float hwpSetPos = m_indiP_hwpSetPos["target"];
+      getHwpTrackingOffset();
 
-      float hwpActualAngle = hwpSetPos + m_hwpTrackingOffset;
-
-      float hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
-      
-      std::cerr << "Sending HWP to: " << hwpStagePos << "\n";
-      
-      m_indiP_hwpTrackingOffset["current"] = m_hwpTrackingOffset
+      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
       sendNewProperty(m_indiP_hwpTrackingOffset);
 
-      m_indiP_hwpActualPos["current"] = hwpActualAngle;
-      sendNewProperty(m_indiP_hwpActualPos);
+      updateHwpPos();
 
-      m_indiP_hwpStatus["current"] = getHwpStatus(hwpSetPos);;
-      sendNewProperty(m_indiP_hwpStatus);
-      
       lastupdate = mx::sys::get_curr_time();
-
 
    }
    else if(!m_tracking) lastupdate = 0;
-
-   
 
    return 0;
 }
@@ -233,6 +239,41 @@ int hwpTracker::appLogic()
 int hwpTracker::appShutdown()
 {
    return 0;
+}
+
+
+std::string getHwpStatus()
+{
+   float tol = 0.5; // degrees
+   if (fabs(m_hwpSetPos - 0) < tol) std::string status = "Qplus";
+    else if (fabs(m_hwpSetPos - 45) < tol) std::string status = "Qminus";
+    else if (fabs(m_hwpSetPos - 22.5) < tol) std::string status = "Uplus";
+    else if (fabs(m_hwpSetPos - 67.5) < tol) std::string status = "Uminus";
+   
+
+   return status;
+}
+
+void getHwpTrackingOffset()
+{
+}
+
+void updateHwpPos()
+{
+   m_hwpActualPos = m_hwpSetPos + m_hwpTrackingOffset;
+
+   m_hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
+
+   std::cerr << "HWP set to:" << m_hwpActualPos << "\n";
+   std::cerr << "Sending HWP stage to: " << m_hwpStagePos << "\n";
+   log<text_log>(sprintf("HWP set to: %.01f", m_hwpActualPos));
+
+   m_indiP_hwpActualPos["value"] = m_hwpActualPos;
+   sendNewProperty(m_indiP_hwpActualPos);
+
+   m_indiP_hwpStatus["value"] = getHwpStatus(m_hwpSetPos);
+   sendNewProperty(m_indiP_hwpStatus);
+
 }
 
 
@@ -248,20 +289,21 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ip
 
    // log<text_log>("stopped HWP rotation tracking");
 
-   float hwpSetPos = ipRecv["target"];
+   m_hwpSetPos = ipRecv["target"].get<float>();
 
-   float hwpActualAngle = hwpSetPos + m_hwpTrackingOffset;
+   updateHwpPos();
 
-   float hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
-   
-   std::cerr << "Sending HWP to: " << hwpStagePos << "\n";
+   m_hwpActualPos = hwpSetPos + m_hwpTrackingOffset;
 
-   m_indiP_hwpSetPos["current"] = hwpSetPos
+   m_hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
 
-   m_indiP_hwpActualPos["current"] = hwpActualAngle;
+
+   m_indiP_hwpSetPos["current"] = m_hwpSetPos;
+
+   m_indiP_hwpActualPos["value"] = m_hwpActualPos;
    sendNewProperty(m_indiP_hwpActualPos);
 
-   m_indiP_hwpStatus["current"] = getHwpStatus(hwpSetPos);;
+   m_indiP_hwpStatus["value"] = getHwpStatus();;
    sendNewProperty(m_indiP_hwpStatus);
 
    return 0;
@@ -285,6 +327,12 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
 
       m_tracking = true;
 
+      getHwpTrackingOffset();
+      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
+      sendNewProperty(m_indiP_hwpTrackingOffset);
+
+      updateHwpPos();
+
       log<text_log>("started HWP rotation tracking");
    }
    else
@@ -292,8 +340,12 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_tracking)(const pcf::IndiProperty &ipR
       updateSwitchIfChanged(m_indiP_tracking, "toggle", pcf::IndiElement::Off, INDI_IDLE);
 
       m_tracking = false;
-
       m_hwpTrackingOffset = 0;
+
+      m_indiP_hwpTrackingOffset["value"] = m_hwpTrackingOffset;
+      sendNewProperty(m_indiP_hwpTrackingOffset);
+
+      updateHwpPos();
 
       log<text_log>("stopped HWP rotation tracking");
    }
@@ -311,32 +363,17 @@ INDI_SETCALLBACK_DEFN(hwpTracker, m_indiP_teldata)(const pcf::IndiProperty &ipRe
       return -1;
    }
 
-   if(!ipRecv.find("altitude")) return 0;
-   
-   if(!ipRecv.find("parang")) return 0;
+   if(!ipRecv.find("zd")) return 0;
 
-   m_altitude = ipRecv["altitude"].get<float>();
+   if(!ipRecv.find("pa")) return 0;
 
-   m_parang = ipRecv["parang"].get<float>();
+   m_altitude = 90 - ipRecv["zd"].get<float>();
+
+   m_parang = ipRecv["pa"].get<float>();
 
    return 0;
 }
 
-std::string getHwpStatus(float hwp_position)
-{
-   float tol = 0.5; // degrees
-   if (fabs(hwp_position - 0) < tol) {
-      std::string status = "Qplus";
-   } else if (fabs(hwp_position - 45) < tol) {
-      std::string status = "Qminus";
-   } else if (fabs(hwp_position - 22.5) < tol) {
-      std::string status = "Uplus";
-   } else if (fabs(hwp_position - 67.5) < tol) {
-      std::string status = "Uminus";
-   }
-
-   return status;
-}
 
 } //namespace app
 } //namespace MagAOX
