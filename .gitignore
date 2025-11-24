@@ -3,6 +3,7 @@
 *.o
 *.a
 *.so
+*.log
 doc/output
 local/
 !local/common.example.mk
