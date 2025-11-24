@@ -290,21 +290,7 @@ INDI_NEWCALLBACK_DEFN(hwpTracker, m_indiP_hwpSetPos)(const pcf::IndiProperty &ip
    // log<text_log>("stopped HWP rotation tracking");
 
    m_hwpSetPos = ipRecv["target"].get<float>();
-
    updateHwpPos();
-
-   m_hwpActualPos = hwpSetPos + m_hwpTrackingOffset;
-
-   m_hwpStagePos = m_zero + m_sign * m_hwpTrackingOffset;
-
-
-   m_indiP_hwpSetPos["current"] = m_hwpSetPos;
-
-   m_indiP_hwpActualPos["value"] = m_hwpActualPos;
-   sendNewProperty(m_indiP_hwpActualPos);
-
-   m_indiP_hwpStatus["value"] = getHwpStatus();;
-   sendNewProperty(m_indiP_hwpStatus);
 
    return 0;
 }
