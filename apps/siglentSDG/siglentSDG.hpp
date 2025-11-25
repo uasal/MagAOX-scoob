@@ -57,7 +57,7 @@ protected:
    double m_C2setVoltage {5.0}; ///< the set position voltage of Ch. 2.
 
    bool m_C1outpOn {false}; /**< Flag controlling if C1 output is on after normalization. */
-   bool m_C2outpOn {false}; /**< Flag controlling if C1 output is on after normalization.
+   bool m_C2outpOn {false}; /**< Flag controlling if C2 output is on after normalization.
                                  This will only have an effect if m_C1wvtp is "pulse" */
 
    ///@}
@@ -467,6 +467,9 @@ void siglentSDG::setupConfig()
    
    config.add("fxngen.C1ampDefault", "", "fxngen.C1ampDefault", argType::Required, "fxngen", "C1ampDefault", false, "float", "C1 Default P2V Amplitude of waveform . Default = 0.0");
    config.add("fxngen.C2ampDefault", "", "fxngen.C2ampDefault", argType::Required, "fxngen", "C2ampDefault", false, "float", "C2 Default P2V Amplitude of waveform . Default = 0.0");
+
+   config.add("fxngen.C1ofstDefault", "", "fxngen.C1ofstDefault", argType::Required, "fxngen", "C1ofstDefault", false, "float", "C1 Default Offset Amplitude of waveform . Default = 0.0");
+   config.add("fxngen.C2ofstDefault", "", "fxngen.C2ofstDefault", argType::Required, "fxngen", "C2ofstDefault", false, "float", "C2 Default Offset Amplitude of waveform . Default = 0.0");
    
    config.add("fxngen.C1ampMax", "", "fxngen.C1ampMax", argType::Required, "fxngen", "C1ampMax", false, "float", "C1 Maximum amplitude");
    config.add("fxngen.C2ampMax", "", "fxngen.C2ampMax", argType::Required, "fxngen", "C2ampMax", false, "float", "C2 Maximum amplitude");
@@ -489,6 +492,9 @@ void siglentSDG::loadConfig()
 
    config(m_C1vppDefault, "fxngen.C1ampDefault");
    config(m_C2vppDefault, "fxngen.C2ampDefault");
+
+   config(m_C1ofst, "fxngen.C1ofstDefault");
+   config(m_C2ofst, "fxngen.C2ofstDefault");
 
    config(m_C1ampMax, "fxngen.C1ampMax");
    config(m_C2ampMax, "fxngen.C2ampMax");
@@ -1672,14 +1678,12 @@ int siglentSDG::normalizeSetup()
       changeWdth(2, 0);
    }
 
-   changeOfst(1, 0.0);
-   changeOfst(2, 0.0);
+   changeOfst(1, m_C1ofst);
+   changeOfst(2, m_C2ofst);
 
    changeWvtp(1, "DC");
    changeWvtp(2, "DC");
 
-   changeOfst(1, 0.0);
-   changeOfst(2, 0.0);
 
    if(m_C1outpOn && m_waveform == "PULSE")
    {
@@ -1689,8 +1693,14 @@ int siglentSDG::normalizeSetup()
    {
       changeOutp(1, "OFF");
    }
-
-   changeOutp(2, "OFF");
+   if(m_C2outpOn && m_waveform == "PULSE")
+   {
+      changeOutp(2, "ON");
+   }
+   else 
+   {
+      changeOutp(2, "OFF");
+   }
 
    changeWvtp(1, m_waveform);
    changeWvtp(2, m_waveform);
@@ -1910,6 +1920,13 @@ int siglentSDG::changeAmp( int channel,
 
    double confAmpMax = m_C1ampMax;
    if(channel == 2) confAmpMax = m_C2ampMax;
+
+   if (0.5 * newAmp + offst > confAmpMax)
+   {
+      newAmp = 2 * (confAmpMax - offst);
+      log<text_log>("Ch. " + std::to_string(channel) + " AMP max-limited by config value to " + std::to_string(newAmp), logPrio::LOG_WARNING);
+
+   }
    
    // Do not limit freq if a PULSE wave
    if(m_waveform != "PULSE")
@@ -1938,7 +1955,6 @@ int siglentSDG::changeAmp( int channel,
          if( m_maxFreq[i] >= freq ) break;
          ++i;
       }
-      ampMax = fmin(m_ampMax[i], confAmpMax);
       
       std::cerr << "Max Amp @ " << freq << " = " << ampMax << "\n";
       
@@ -1948,7 +1964,7 @@ int siglentSDG::changeAmp( int channel,
          newAmp = ampMax;
          log<text_log>("Ch. " + std::to_string(channel) + " AMP max-limited to " + std::to_string(newAmp), logPrio::LOG_WARNING);
       }
-
+      
       if(newAmp < 0)
       {
          newAmp = 0;
@@ -2028,11 +2044,15 @@ int siglentSDG::changeOfst( int channel,
 
    double amp = m_C1vpp; 
    if(channel == 2) amp = m_C2vpp;
+
+   double ampMax = m_C1ampMax;
+   if(channel == 2) ampMax = m_C2ampMax;
+
    
-   if(newOfst + 0.5*amp > 10) 
+   if(newOfst + 0.5*amp > ampMax) 
    {
-      newOfst = 10 - 0.5*amp;
-      log<text_log>("Ch. " + std::to_string(channel) + " OFST limited at 10 V by AMP to " + std::to_string(newOfst), logPrio::LOG_WARNING);
+      newOfst = ampMax - 0.5*amp;
+      log<text_log>("Ch. " + std::to_string(channel) + " OFST limited at " + std::to_string(ampMax) + " V by AMP to " + std::to_string(newOfst), logPrio::LOG_WARNING);
    }
    
    if(newOfst - 0.5*amp < 0)
