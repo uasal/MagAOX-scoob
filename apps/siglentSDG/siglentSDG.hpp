@@ -56,7 +56,8 @@ protected:
    double m_C1setVoltage {5.0}; ///< the set position voltage of Ch. 1.
    double m_C2setVoltage {5.0}; ///< the set position voltage of Ch. 2.
 
-   bool m_C1outpOn {false}; /**< Flag controlling if C1 output is on after normalization.
+   bool m_C1outpOn {false}; /**< Flag controlling if C1 output is on after normalization. */
+   bool m_C2outpOn {false}; /**< Flag controlling if C1 output is on after normalization.
                                  This will only have an effect if m_C1wvtp is "pulse" */
 
    ///@}
@@ -74,7 +75,7 @@ protected:
    double m_C1phse {0}; ///< The phase of channel 1 (SINE only)
    double m_C1wdth {0}; ///< The width of channel 1 (PULSE only)
    std::string m_C1wvtp; ///< The wave type of channel 1
-   double m_C1ampMax {5.0}; ///< The maximum voltage output for channel 1
+   double m_C1ampMax {10.0}; ///< The maximum voltage output for channel 1
 
    uint8_t m_C2outp {0}; ///<  The output status channel 2
    double m_C2frequency {0}; ///< The output frequency of channel 2
@@ -84,7 +85,7 @@ protected:
    double m_C2phse {0}; ///< The phase of channel 2 (SINE only)
    double m_C2wdth {0}; ///< The width of channel 2 (PULSE only)
    std::string m_C2wvtp; ///< The wave type of channel 2
-   double m_C2ampMax {5.0}; ///< The maximum voltage output for channel 2
+   double m_C2ampMax {10.0}; ///< The maximum voltage output for channel 2
 
    double m_C1frequency_tgt {-1};
    double m_C1vpp_tgt {-1};
@@ -459,8 +460,10 @@ void siglentSDG::setupConfig()
    config.add("timeouts.write", "", "timeouts.write", argType::Required, "timeouts", "write", false, "int", "The timeout for writing to the device [msec]. Default = 1000");
    config.add("timeouts.read", "", "timeouts.read", argType::Required, "timeouts", "read", false, "int", "The timeout for reading the device [msec]. Default = 2000");
    
-   config.add("fxngen.C1outpOn", "", "fxngen.C1outpOn", argType::Required, "fxngen", "C1outpOn", false, "bool", "Whether (true) or not (false) C1 output is enabled at startup. Only effective wavefrom is pulse. Default is false.");
    config.add("fxngen.waveform", "w", "fxngen.waveform", argType::Required, "fxngen", "waveform", false, "string", "The waveform to populate function.");
+   
+   config.add("fxngen.C1outpOn", "", "fxngen.C1outpOn", argType::Required, "fxngen", "C1outpOn", false, "bool", "Whether (true) or not (false) C1 output is enabled at startup. Only effective wavefrom is pulse. Default is false.");
+   config.add("fxngen.C2outpOn", "", "fxngen.C2outpOn", argType::Required, "fxngen", "C2outpOn", false, "bool", "Whether (true) or not (false) C2 output is enabled at startup. Only effective wavefrom is pulse. Default is false.");
    
    config.add("fxngen.C1ampDefault", "", "fxngen.C1ampDefault", argType::Required, "fxngen", "C1ampDefault", false, "float", "C1 Default P2V Amplitude of waveform . Default = 0.0");
    config.add("fxngen.C2ampDefault", "", "fxngen.C2ampDefault", argType::Required, "fxngen", "C2ampDefault", false, "float", "C2 Default P2V Amplitude of waveform . Default = 0.0");
@@ -480,8 +483,9 @@ void siglentSDG::loadConfig()
    config(m_writeTimeOut, "timeouts.write");
    config(m_readTimeOut, "timeouts.read");
    
-   config(m_C1outpOn, "fxngen.C1outpOn");
    config(m_waveform, "fxngen.waveform"); // todo: check if this is a valid waveform?
+   config(m_C1outpOn, "fxngen.C1outpOn");
+   config(m_C2outpOn, "fxngen.C2outpOn");
 
    config(m_C1vppDefault, "fxngen.C1ampDefault");
    config(m_C2vppDefault, "fxngen.C2ampDefault");
