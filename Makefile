@@ -281,19 +281,28 @@ scripts_to_install = \
 	list_xfiles_by_semester \
 	loop_instrument_backup_sync
 
-all: indi_all libs_all flatlogs apps_all guis_all utils_all
+.PHONY: all
+all: indi_all libs_all flatlogs apps_all pythonapps_all guis_all utils_all
 
-install: indi_install libs_install flatlogs_all apps_install guis_install utils_install scripts_install rtscripts_install python_install
+.PHONY: basic
+basic: indi_all libs_all flatlogs
+
+.PHONY: install
+install: indi_install libs_install flatlogs_all apps_install pythonapps_install utils_install scripts_install rtscripts_install python_install
 
 #We clean just libMagAOX, and the apps, guis, and utils for normal devel work.
-clean: lib_clean apps_clean guis_clean utils_clean tests_clean
+.PHONY: clean
+clean: libs_clean apps_clean pythonapps_clean guis_clean utils_clean tests_clean
 
 #Clean everything.
-all_clean: indi_clean libs_clean flatlogs_clean lib_clean apps_clean guis_clean utils_clean doc_clean tests_clean
+.PHONY: all_clean
+all_clean: indi_clean libs_clean flatlogs_clean libs_clean apps_clean guis_clean utils_clean doc_clean tests_clean
 
-flatlogs_all:
+
+flatlogs/bin/flatlogcodes: flatlogs/src/flatlogcodes.cpp
 	cd flatlogs/src/ && ${MAKE} install
 
+.PHONY: flatlogs_clean
 flatlogs_clean:
 	cd flatlogs/src/ && ${MAKE} clean
 	rm -rf flatlogs/bin
@@ -307,32 +316,39 @@ indi_install:
 indi_clean:
 	cd INDI && ${MAKE} clean
 
-libs_all:
+libs_all: flatlogs_all libMagAOX/app/*.hpp \
+		libMagAOX/app/dev/*.hpp libMagAOX/common/*.hpp \
+		libMagAOX/file/*.hpp \
+		libMagAOX/ImageStreamIO/*.hpp \
+		libMagAOX/logger/*.hpp \
+		libMagAOX/logger/types/*.hpp \
+		libMagAOX/sys/*.hpp \
+		libMagAOX/tty/*.hpp \
+		libMagAOX/modbus/*.hpp
+	cd libMagAOX/ && ${MAKE} all
 	for lib in ${libs_to_build}; do \
 		(cd libs/$$lib && ${MAKE} )|| exit 1; \
 	done
 
-libs_install:
+libs_install: libs_all
 	for lib in ${libs_to_build}; do \
-		(cd libs/$$lib && ${MAKE}  install) || exit 1; \
+		(cd libs/$$lib && ${MAKE} install) || exit 1; \
 	done
 	sudo -H bash -c "echo $(LIB_PATH) > /etc/ld.so.conf.d/magaox.conf"
 	sudo -H ldconfig
 
 libs_clean:
+	cd libMagAOX && ${MAKE} clean
 	for lib in ${libs_to_build}; do \
 		(cd libs/$$lib && ${MAKE}  clean) || exit 1; \
 	done
 
-lib_clean:
-	cd libMagAOX && ${MAKE} clean
-
-apps_all: libs_all flatlogs_all
+apps_all: libs_all
 	for app in ${apps_to_build}; do \
 		(cd apps/$$app && ${MAKE} )|| exit 1; \
 	done
 
-apps_install: libs_install flatlogs_all
+apps_install: libs_install
 	for app in ${apps_to_build}; do \
 		(cd apps/$$app && ${MAKE}  install) || exit 1; \
 	done
@@ -342,7 +358,7 @@ apps_clean:
 		(cd apps/$$app && ${MAKE}  clean) || exit 1; \
 	done
 
-guis_all: libs_all rtimv_plugins_all
+guis_all: libs_all rtimv_plugins_all libMagAOX/libMagAOX.hpp.gch libMagAOX/libMagAOX.a
 	for gui in ${guis_to_build}; do \
 		(cd gui/apps/$$gui && ${MAKE} )|| exit 1; \
 	done
@@ -392,7 +408,7 @@ rtscripts_install:
 		fi \
 	; done
 
-utils_all: flatlogs_all indi_all
+utils_all: flatlogs_all indi_all libMagAOX/libMagAOX.hpp.gch libMagAOX/libMagAOX.a
 		for app in ${utils_to_build}; do \
 			(cd utils/$$app && ${MAKE}) || exit 1; \
 		done
