@@ -5,12 +5,6 @@
  * \ingroup logger_types_files
  *
  */
-  * \brief The MagAO-X logger telemetery library
-  * \author Jared R. Males (jaredmales@gmail.com)
-  *
-  * \ingroup logger_types_files
-  *
-  */
 #include <flatlogs/flatlogs.hpp>
 #include "../generated/logTypes.hpp"
 
@@ -58,6 +52,3 @@ timespec telem_zaber::lastRecord = {0,0};
 } //namespace logger
 } //namespace MagAOX
 
-
-} // namespace logger
-} // namespace MagAOX
