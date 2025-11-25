@@ -36,7 +36,7 @@ class siglentSDG : public MagAOXApp<>, public dev::telemeter<siglentSDG>
    //constexpr static double cs_MaxFreq = 3622.0;//101;//3622.0;
 
 private:
-   std::vector<double> m_maxAmp = {1.2801,   1.2801,  1.0201};//0.71,  0.83, 0.88, 1.05, 1.15, 3.45}; //1.5,     1.2,     1.1     };
+   std::vector<double> m_ampMax = {1.2801,   1.2801,  1.0201};//0.71,  0.83, 0.88, 1.05, 1.15, 3.45}; //1.5,     1.2,     1.1     };
    std::vector<double> m_maxFreq = {0.0,   2000,      3000};//100.0,   150,  200,  250,  300, 1000}; //2999.99, 3499.99, 3500.01};
    //todo: do we need to add max and min pulse variables?
 protected:
@@ -74,6 +74,7 @@ protected:
    double m_C1phse {0}; ///< The phase of channel 1 (SINE only)
    double m_C1wdth {0}; ///< The width of channel 1 (PULSE only)
    std::string m_C1wvtp; ///< The wave type of channel 1
+   double m_C1ampMax {5.0}; ///< The maximum voltage output for channel 1
 
    uint8_t m_C2outp {0}; ///<  The output status channel 2
    double m_C2frequency {0}; ///< The output frequency of channel 2
@@ -83,6 +84,7 @@ protected:
    double m_C2phse {0}; ///< The phase of channel 2 (SINE only)
    double m_C2wdth {0}; ///< The width of channel 2 (PULSE only)
    std::string m_C2wvtp; ///< The wave type of channel 2
+   double m_C2ampMax {5.0}; ///< The maximum voltage output for channel 2
 
    double m_C1frequency_tgt {-1};
    double m_C1vpp_tgt {-1};
@@ -462,6 +464,9 @@ void siglentSDG::setupConfig()
    
    config.add("fxngen.C1ampDefault", "", "fxngen.C1ampDefault", argType::Required, "fxngen", "C1ampDefault", false, "float", "C1 Default P2V Amplitude of waveform . Default = 0.0");
    config.add("fxngen.C2ampDefault", "", "fxngen.C2ampDefault", argType::Required, "fxngen", "C2ampDefault", false, "float", "C2 Default P2V Amplitude of waveform . Default = 0.0");
+   
+   config.add("fxngen.C1ampMax", "", "fxngen.C1ampMax", argType::Required, "fxngen", "C1ampMax", false, "float", "C1 Maximum amplitude");
+   config.add("fxngen.C2ampMax", "", "fxngen.C2ampMax", argType::Required, "fxngen", "C2ampMax", false, "float", "C2 Maximum amplitude");
 
    dev::telemeter<siglentSDG>::setupConfig(config);
 }
@@ -480,6 +485,9 @@ void siglentSDG::loadConfig()
 
    config(m_C1vppDefault, "fxngen.C1ampDefault");
    config(m_C2vppDefault, "fxngen.C2ampDefault");
+
+   config(m_C1ampMax, "fxngen.C1ampMax");
+   config(m_C2ampMax, "fxngen.C2ampMax");
    /// config(m_clock, "fxngen.clock");
 
    dev::telemeter<siglentSDG>::loadConfig(config);
@@ -1790,15 +1798,15 @@ int siglentSDG::changeFreq( int channel,
       if(channel == 2) amp = m_C2vpp_tgt;
       
       size_t i =0;
-      while( i < m_maxAmp.size())
+      while( i < m_ampMax.size())
       {
          if(m_maxFreq[i] >= newFreq) break;
          ++i;
       }
       
-      std::cerr << "Max Amp @ " << amp << " = " << m_maxAmp[i] << " (freq)\n"; 
+      std::cerr << "Max Amp @ " << amp << " = " << m_ampMax[i] << " (freq)\n"; 
       
-      if( amp > m_maxAmp[i] )
+      if( amp > m_ampMax[i] )
       {
          log<text_log>("Ch. " + std::to_string(channel) + " FREQ not set due to amplitude exceeding limit for " + std::to_string(newFreq), logPrio::LOG_WARNING);
          return 0;
@@ -1895,6 +1903,9 @@ int siglentSDG::changeAmp( int channel,
 
    double offst = m_C1ofst;
    if(channel == 2) offst = m_C2ofst;
+
+   double confAmpMax = m_C1ampMax;
+   if(channel == 2) confAmpMax = m_C2ampMax;
    
    // Do not limit freq if a PULSE wave
    if(m_waveform != "PULSE")
@@ -1916,21 +1927,21 @@ int siglentSDG::changeAmp( int channel,
       double freq = m_C1frequency_tgt;
       if(channel == 2) freq = m_C2frequency_tgt;
       
-      double maxAmp;
+      double ampMax;
       size_t i=0;
-      while(i < m_maxAmp.size())
+      while(i < m_ampMax.size())
       {
          if( m_maxFreq[i] >= freq ) break;
          ++i;
       }
-      maxAmp = m_maxAmp[i];
+      ampMax = fmin(m_ampMax[i], confAmpMax);
       
-      std::cerr << "Max Amp @ " << freq << " = " << maxAmp << "\n";
+      std::cerr << "Max Amp @ " << freq << " = " << ampMax << "\n";
       
       //Ensure we don't exced safe ranges for device
-      if(newAmp > maxAmp)
+      if(newAmp > ampMax)
       {
-         newAmp = maxAmp;
+         newAmp = ampMax;
          log<text_log>("Ch. " + std::to_string(channel) + " AMP max-limited to " + std::to_string(newAmp), logPrio::LOG_WARNING);
       }
 
