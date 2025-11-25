@@ -18,7 +18,6 @@ apps_common = \
 	dmMode \
 	shmimIntegrator \
 	closedLoopIndi
-	#dbIngest
 
 #Apps common to RTC and ICC on MagAO-X
 apps_rtcicc = \
@@ -38,7 +37,8 @@ apps_rtcicc = \
 	zaberCtrl \
 	zaberLowLevel \
 	picoMotorCtrl \
-	psfFit
+	psfFit \
+	dbIngest
 
 apps_rtc = \
 	alpaoCtrl \
@@ -82,8 +82,8 @@ apps_aoc = \
 	kTracker \
 	koolanceCtrl \
 	observerCtrl \
-	stateRuleEngine
-
+	stateRuleEngine \
+	dbIngest
 
 apps_acc = \
 	mcp3008Ctrl
@@ -98,6 +98,10 @@ apps_tic = \
 #     cameraSim
 apps_sim = \
 	trippLitePDU
+
+apps_sandbox = \
+	timeSeriesSimulator \
+	magAOXMaths
 
 all_buildable_apps = \
 	adcTracker \
@@ -179,6 +183,11 @@ else ifeq ($(MAGAOX_ROLE),TIC)
 else ifeq ($(MAGAOX_ROLE),SS)
   apps_to_build += $(apps_basic)
   apps_to_build += $(apps_sim)
+else ifeq ($(MAGAOX_ROLE),sandbox)
+  apps_to_build += $(apps_basic)
+  apps_to_build += $(apps_sandbox)
+else
+  apps_to_build += $(apps_basic)
 endif
 
 # If building for coverage, build everything that you can.
