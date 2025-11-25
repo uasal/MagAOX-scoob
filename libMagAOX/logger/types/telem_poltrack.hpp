@@ -35,10 +35,14 @@ struct telem_poltrack : public flatbuffer_log
     {
         /// Construct from components
         messageT( const float &set_angle,   /**<[in] the HWP set angle */
-                  const float &actual_angle /**<[in] the actual HWP angle */
+                  const float &actual_angle, /**<[in] the actual HWP angle */
+                  const std::string &pos_name, /**<[in] the name of the HWP position */
+                  const bool &tracking
         )
         {
-            auto fp = CreateTelem_poltrack_fb( builder, set_angle, actual_angle );
+            auto _pos_name = builder.CreateString(pos_name);
+         
+            auto fp = CreateTelem_poltrack_fb( builder, set_angle, actual_angle, _pos_name, tracking);
             builder.Finish( fp );
         }
     };
@@ -69,6 +73,22 @@ struct telem_poltrack : public flatbuffer_log
         msg += "act: ";
         msg += std::to_string( fbs->actual_angle() ) + " ";
 
+        msg += "name: ";
+        if ( fbs->pos_name() )
+        {
+            msg += std::string(fbs->pos_name()->c_str()) + " ";
+        }
+
+        msg += "tracking: ";
+        if (fbs->tracking()) 
+        {
+            msg += "SYNCHRO_ADI ";
+        } 
+        else 
+        {
+            msg += "NONE ";
+        }
+
         return msg;
     }
 
@@ -82,6 +102,23 @@ struct telem_poltrack : public flatbuffer_log
     {
         auto fbs = GetTelem_poltrack_fb( msgBuffer );
         return fbs->actual_angle();
+    }
+
+    static std::string pos_name( void *msgBuffer )
+    {
+        auto fbs = GetTelem_poltrack_fb(msgBuffer);
+        if(fbs->pos_name())
+        {
+            return std::string(fbs->pos_name()->c_str());
+        }
+        else return std::string();
+    }
+
+    static bool tracking( void *msgBuffer )
+    {
+        auto fbs = GetTelem_poltrack_fb( msgBuffer );
+        return fbs->tracking();
+
     }
 
     /// Get the logMetaDetail for a member by name
@@ -98,12 +135,26 @@ struct telem_poltrack : public flatbuffer_log
                                     logMeta::metaTypes::Continuous,
                                     reinterpret_cast<void *>( &set_angle ) } );
         }
-        if( member == "actual_angle" )
+        else if( member == "actual_angle" )
         {
             return logMetaDetail( { "ACTUAL ANGLE",
                                     logMeta::valTypes::Float,
                                     logMeta::metaTypes::Continuous,
                                     reinterpret_cast<void *>( &actual_angle ) } );
+        }
+        else if( member == "pos_name" )
+        {
+            return logMetaDetail( { "POS NAME",
+                                    logMeta::valTypes::String,
+                                    logMeta::metaTypes::State,
+                                    reinterpret_cast<void *>( &pos_name ) } );
+        }
+        else if( member == "tracking" )
+        {
+            return logMetaDetail( { "TRACKING",
+                                    logMeta::valTypes::Bool,
+                                    logMeta::metaTypes::State,
+                                    reinterpret_cast<void *>( &tracking ) } );
         }
         else
         {

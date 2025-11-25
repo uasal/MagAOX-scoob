@@ -57,6 +57,8 @@ class hwpTracker : public MagAOXApp<true>, public dev::telemeter<hwpTracker>
 
     float m_hwpSetPos{ 0 };
 
+    std::string m_hwpPosName{ "" };
+
     float m_hwpActualPos{ 0 };
 
     float m_hwpStagePos{ 0 };
@@ -129,7 +131,7 @@ class hwpTracker : public MagAOXApp<true>, public dev::telemeter<hwpTracker>
 
     pcf::IndiProperty m_indiP_hwpSetPos;
 
-    pcf::IndiProperty m_indiP_hwpStatus;
+    pcf::IndiProperty m_indiP_hwpPosName;
 
     pcf::IndiProperty m_indiP_hwpTrackingOffset;
 
@@ -253,9 +255,9 @@ int hwpTracker::appStartup()
     m_indiP_hwpTrackingOffset.add( pcf::IndiElement( "value" ) );
     m_indiP_hwpTrackingOffset["value"].set( 0 );
 
-    REG_INDI_NEWPROP_NOCB( m_indiP_hwpStatus, "hwp_position_name", pcf::IndiProperty::Text );
-    m_indiP_hwpStatus.add( pcf::IndiElement( "value" ) );
-    m_indiP_hwpStatus["value"].set( "" );
+    REG_INDI_NEWPROP_NOCB( m_indiP_hwpPosName, "hwp_position_name", pcf::IndiProperty::Text );
+    m_indiP_hwpPosName.add( pcf::IndiElement( "value" ) );
+    m_indiP_hwpPosName["value"].set( "" );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_hwpActualPos, "hwp_position_actual", pcf::IndiProperty::Number );
     m_indiP_hwpActualPos.add( pcf::IndiElement( "value" ) );
@@ -340,7 +342,9 @@ void hwpTracker::updateHwpPos()
 
     updatesIfChanged<float>( m_indiP_hwpActualPos, { "value" }, { m_hwpActualPos } );
 
-    updatesIfChanged<std::string>( m_indiP_hwpStatus, { "value" }, { getHwpStatus() } );
+    m_hwpPosName = getHwpStatus();
+
+    updatesIfChanged<std::string>( m_indiP_hwpPosName, { "value" }, { m_hwpPosName } );
 
     m_indiP_hwpStagePos["target"] = m_hwpStagePos;
     sendNewProperty( m_indiP_hwpStagePos );
@@ -460,12 +464,18 @@ int hwpTracker::recordPolTrack( bool force )
 
     static float hwpActualPos = 0;
 
-    if( m_hwpSetPos != hwpSetPos || m_hwpActualPos != hwpActualPos || force )
+    static std::string hwpPosName = "";
+
+    static bool tracking = false;
+
+    if( m_hwpSetPos != hwpSetPos || m_hwpActualPos != hwpActualPos || hwpPosName != m_hwpPosName || tracking != m_tracking || force )
     {
-        telem<telem_poltrack>( { m_hwpSetPos, m_hwpActualPos } );
+        telem<telem_poltrack>( { m_hwpSetPos, m_hwpActualPos, m_hwpPosName, m_tracking} );
 
         hwpSetPos    = m_hwpSetPos;
         hwpActualPos = m_hwpActualPos;
+        hwpPosName   = m_hwpPosName;
+        tracking     = m_tracking;
     }
 
     return 0;

@@ -7,6 +7,8 @@ table Telem_poltrack_fb
    /// position
    set_angle:float;
    actual_angle:float;
+   pos_name:string;
+   tracking:bool;
 }
 
 root_type Telem_poltrack_fb;
