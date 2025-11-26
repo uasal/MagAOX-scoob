@@ -140,8 +140,9 @@ app/MagAOXApp.o: app/MagAOXApp.hpp app/indiDriver.hpp app/indiMacros.hpp app/ind
 app/stateCodes.o: app/stateCodes.hpp
 
 libMagAOX.hpp.gch: libMagAOX.hpp $(INCLUDEDEPS) logger/generated/logTypes.hpp $(OBJS)
-
-logger/generated/logTypes.hpp: logger/logCodes.dat logger/types/schemas/*.fbs
+../../flatlogs/bin/flatlogcodes:
+	cd ../../flatlogs && make install
+logger/generated/logTypes.hpp: logger/logCodes.dat logger/types/schemas/*.fbs ../flatlogs/bin/flatlogcodes
 	cd logger; ../../flatlogs/bin/flatlogcodes
 	cd logger/types/generated; for bfb in *.bfbs; do xxd -i $$bfb > $$(basename $$bfb).h; done
 	cat logger/types/generated/*.bfbs.h > logger/generated/binarySchemata.inc
