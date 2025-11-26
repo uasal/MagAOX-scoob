@@ -289,7 +289,7 @@ all: indi_all libs_all flatlogs/bin/flatlogcodes apps_all guis_all utils_all
 basic: indi_all libs_all flatlogs/bin/flatlogcodes
 
 .PHONY: install
-install: indi_install libs_install apps_install pythonapps_install utils_install scripts_install rtscripts_install python_install
+install: indi_install libs_install pythonlibs_install apps_install pythonapps_install utils_install scripts_install rtscripts_install
 
 #We clean just libMagAOX, and the apps, guis, and utils for normal devel work.
 .PHONY: clean
@@ -347,12 +347,16 @@ libs_install: libs_all
 	sudo -H bash -c "echo $(LIB_PATH) > /etc/ld.so.conf.d/magaox.conf"
 	sudo -H ldconfig
 
+
 .PHONY: libs_clean
 libs_clean:
 	cd libMagAOX && ${MAKE} clean
 	for lib in ${libs_to_build}; do \
 		(cd libs/$$lib && ${MAKE}  clean) || exit 1; \
 	done
+
+.PHONY: pythonlibs_install
+pythonlibs_install: installed_python_interface_timestamp.txt
 
 # Installing the Python interface makes a file so we're not "phony"
 # and it should only re-run if the Python source is changed. Note no
