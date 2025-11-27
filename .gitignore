@@ -217,6 +217,8 @@ vm/
 # Python caches, etc
 *.egg-info
 __pycache__
+installed_python_interface_timestamp.txt
+
 libMagAOX/doc/diag/Makefile
 libMagAOX/doc/diag/xwcapp_fsm.drawio
 libMagAOX/doc/diag/xwcapp.drawio
