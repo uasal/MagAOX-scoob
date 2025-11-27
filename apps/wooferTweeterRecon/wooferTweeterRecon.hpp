@@ -110,8 +110,6 @@ struct wfsModesShmimT
  */
 class wooferTweeterRecon : public MagAOXApp<true>,
                            public dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT>,
-                           public dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT>,
-                           public dev::shmimMonitor<wooferTweeterRecon, tweeterMaskShmimT>,
                            public dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT>,
                            public dev::shmimMonitor<wooferTweeterRecon, wfsModesShmimT>
 //, public dev::telemeter<wooferTweeterRecon>
@@ -121,12 +119,6 @@ class wooferTweeterRecon : public MagAOXApp<true>,
 
     friend class dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT>;
     typedef dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT> wooferCommandSMT;
-
-    friend class dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT>;
-    typedef dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT> tweeterModesSMT;
-
-    friend class dev::shmimMonitor<wooferTweeterRecon, tweeterMaskShmimT>;
-    typedef dev::shmimMonitor<wooferTweeterRecon, tweeterMaskShmimT> tweeterMaskSMT;
 
     friend class dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT>;
     typedef dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT> tweeterCommandSMT;
@@ -145,11 +137,6 @@ class wooferTweeterRecon : public MagAOXApp<true>,
     /** \name Configurable Parameters
      *@{
      */
-
-    std::string m_w2tReconPath;   ///< Full path to the woofer-to-tweeter reconstructor
-    std::string m_wooferMaskPath; ///< Full path to the woofer actuator mask
-
-    std::string m_outputPrefix; ///< Prefix of output shmims, will have _woofer and _wfs appended to it.
 
     std::string m_fpsSource{ "camwfs" };
 
@@ -213,38 +200,6 @@ class wooferTweeterRecon : public MagAOXApp<true>,
      */
     int processImage( void *curr_src,             ///< [in] pointer to start of current frame.
                       const wooferCommandShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-    );
-
-    /// Allocate method for the tweeter modes shmimMonitor
-    /**
-     * \returns 0 on success
-     * \returns -1 on an error
-     */
-    int allocate( const tweeterModesShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
-
-    /// Process images for the tweeter modes shmimMonitor
-    /**
-     * \returns 0 on sucess
-     * \returns -1 on an error
-     */
-    int processImage( void *curr_src,            ///< [in] pointer to start of current frame.
-                      const tweeterModesShmimT & ///< [in] tag to differentiate shmimMonitor parents.
-    );
-
-    /// Allocate method for the tweeter mask shmimMonitor
-    /**
-     * \returns 0 on success
-     * \returns -1 on an error
-     */
-    int allocate( const tweeterMaskShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
-
-    /// Process images for the tweeter mask shmimMonitor
-    /**
-     * \returns 0 on sucess
-     * \returns -1 on an error
-     */
-    int processImage( void *curr_src,           ///< [in] pointer to start of current frame.
-                      const tweeterMaskShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
     /// Allocate method for the tweeter command shmimMonitor
@@ -320,12 +275,6 @@ inline void wooferTweeterRecon::setupConfig()
     tweeterCommandSMT::m_shmimName = "dm00disp_delta";
     SHMIMMONITORT_SETUP_CONFIG( wooferCommandSMT, config );
 
-    tweeterModesSMT::m_shmimName = "aol1_CMmodesDM";
-    SHMIMMONITORT_SETUP_CONFIG( tweeterModesSMT, config );
-
-    tweeterMaskSMT::m_shmimName = "aol1_dmmask";
-    SHMIMMONITORT_SETUP_CONFIG( tweeterMaskSMT, config );
-
     tweeterCommandSMT::m_shmimName = "dm01disp_delta";
     SHMIMMONITORT_SETUP_CONFIG( tweeterCommandSMT, config );
 
@@ -343,34 +292,12 @@ inline void wooferTweeterRecon::setupConfig()
                 false,
                 "string",
                 "Device name for getting fps of the loop.  This device should have *.fps.current.  Default is camwfs" );
-
-    config.add( "offload.tweeterModes",
-                "",
-                "offload.tweeterModes",
-                argType::Required,
-                "offload",
-                "tweeterModes",
-                false,
-                "string",
-                "File containing the tweeter modes to use for offloading" );
-
-    config.add( "offload.tweeterMask",
-                "",
-                "offload.tweeterMask",
-                argType::Required,
-                "offload",
-                "tweeterMask",
-                false,
-                "string",
-                "File containing the tweeter mask." );
 }
 
 inline int wooferTweeterRecon::loadConfigImpl( mx::app::appConfigurator &_config )
 {
 
     SHMIMMONITORT_LOAD_CONFIG( wooferCommandSMT, _config );
-    SHMIMMONITORT_LOAD_CONFIG( tweeterModesSMT, _config );
-    SHMIMMONITORT_LOAD_CONFIG( tweeterMaskSMT, _config );
     SHMIMMONITORT_LOAD_CONFIG( tweeterCommandSMT, _config );
     SHMIMMONITORT_LOAD_CONFIG( wfsModesSMT, _config );
 
@@ -400,8 +327,6 @@ inline int wooferTweeterRecon::appStartup()
     }
 
     SHMIMMONITORT_APP_STARTUP( wooferCommandSMT );
-    SHMIMMONITORT_APP_STARTUP( tweeterModesSMT );
-    SHMIMMONITORT_APP_STARTUP( tweeterMaskSMT );
     SHMIMMONITORT_APP_STARTUP( tweeterCommandSMT );
     SHMIMMONITORT_APP_STARTUP( wfsModesSMT );
 
@@ -415,8 +340,6 @@ inline int wooferTweeterRecon::appStartup()
 int wooferTweeterRecon::appLogic()
 {
     SHMIMMONITORT_APP_LOGIC( wooferCommandSMT );
-    SHMIMMONITORT_APP_LOGIC( tweeterModesSMT );
-    SHMIMMONITORT_APP_LOGIC( tweeterMaskSMT );
     SHMIMMONITORT_APP_LOGIC( tweeterCommandSMT );
     SHMIMMONITORT_APP_LOGIC( wfsModesSMT );
 
@@ -425,8 +348,6 @@ int wooferTweeterRecon::appLogic()
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
     SHMIMMONITORT_UPDATE_INDI( wooferCommandSMT );
-    SHMIMMONITORT_UPDATE_INDI( tweeterModesSMT );
-    SHMIMMONITORT_UPDATE_INDI( tweeterMaskSMT );
     SHMIMMONITORT_UPDATE_INDI( tweeterCommandSMT );
     SHMIMMONITORT_UPDATE_INDI( wfsModesSMT );
 
@@ -436,8 +357,6 @@ int wooferTweeterRecon::appLogic()
 inline int wooferTweeterRecon::appShutdown()
 {
     SHMIMMONITORT_APP_SHUTDOWN( wooferCommandSMT );
-    SHMIMMONITORT_APP_SHUTDOWN( tweeterModesSMT );
-    SHMIMMONITORT_APP_SHUTDOWN( tweeterMaskSMT );
     SHMIMMONITORT_APP_SHUTDOWN( tweeterCommandSMT );
     SHMIMMONITORT_APP_SHUTDOWN( wfsModesSMT );
 
@@ -448,6 +367,14 @@ inline int wooferTweeterRecon::appShutdown()
 
 int wooferTweeterRecon::allocate( const wooferCommandShmimT & )
 {
+    m_wooferCommandReady = false;
+
+    if(wooferCommandSMT::m_width != tweeterCommandSMT::m_width || !m_tweeterCommandReady)
+    {
+        mx::sys::milliSleep( 1000 );
+        wooferCommandSMT::m_restart = true;
+        return 0; // This won't log an error, but setting m_restart will cause it to loop again until sizes match
+    }
 
     return 0;
 }
@@ -457,30 +384,10 @@ int wooferTweeterRecon::processImage( void *curr_src, const wooferCommandShmimT 
     return 0;
 }
 
-int wooferTweeterRecon::allocate( const tweeterModesShmimT & )
-{
-
-    return 0;
-}
-
-int wooferTweeterRecon::processImage( void *curr_src, const tweeterModesShmimT & )
-{
-    return 0;
-}
-
-int wooferTweeterRecon::allocate( const tweeterMaskShmimT & )
-{
-
-    return 0;
-}
-
-int wooferTweeterRecon::processImage( void *curr_src, const tweeterMaskShmimT & )
-{
-    return 0;
-}
-
 int wooferTweeterRecon::allocate( const tweeterCommandShmimT & )
 {
+    m_tweeterCommandReady = false;
+
 
     return 0;
 }
@@ -492,6 +399,7 @@ int wooferTweeterRecon::processImage( void *curr_src, const tweeterCommandShmimT
 
 int wooferTweeterRecon::allocate( const wfsModesShmimT & )
 {
+    m_wfsModesReady = false;
 
     return 0;
 }
@@ -501,54 +409,7 @@ int wooferTweeterRecon::processImage( void *curr_src, const wfsModesShmimT & )
     return 0;
 }
 
-int wooferTweeterRecon::prepareModes()
-{
-    /*
-    mx::improc::eigenCube<float> tmodes;
 
-    mx::fits::fitsFile<float> ff;
-
-    ff.read( tmodes, m_tweeterModeFile );
-
-    ff.read( m_tweeterMask, m_tweeterMaskFile );
-
-    ff.read( m_twRespM, m_twRespMPath );
-
-    for( int p = 0; p < tmodes.planes(); ++p )
-    {
-        tmodes.image( p ) *= m_tweeterMask;
-        float norm = ( tmodes.image( p ) ).square().sum();
-        tmodes.image( p ) /= sqrt( norm );
-    }
-
-    m_tModesOrtho.resize( tmodes.rows(), tmodes.cols(), m_maxModes );
-
-    for( int p = 0; p < m_tModesOrtho.planes(); ++p )
-    {
-        m_tModesOrtho.image( p ) = tmodes.image( p );
-    }
-
-    ff.write( "/tmp/tModesOrtho.fits", m_tModesOrtho );
-
-    m_wModes.resize( 11, 11, m_tModesOrtho.planes() );
-    mx::improc::eigenImage<realT> win, wout;
-
-    win.resize( 11, 11 );
-    wout.resize( 11, 11 );
-
-    // Calculate the woofer modes corresponding to the tweeter modes
-    for( int p = 0; p < m_tModesOrtho.planes(); ++p )
-    {
-        win = m_tModesOrtho.image( p );
-        Eigen::Map<Eigen::Matrix<float, -1, -1>>( wout.data(), wout.rows() * wout.cols(), 1 ) =
-            m_twRespM.matrix() * Eigen::Map<Eigen::Matrix<float, -1, -1>>( win.data(), win.rows() * win.cols(), 1 );
-        m_wModes.image( p ) = wout;
-    }
-
-    ff.write( "/tmp/wModes.fits", m_wModes );
-*/
-    return 0;
-}
 
 INDI_SETCALLBACK_DEFN( wooferTweeterRecon, m_indiP_fpsSource )( const pcf::IndiProperty &ipRecv )
 {

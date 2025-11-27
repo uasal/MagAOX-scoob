@@ -100,6 +100,8 @@ class dm
     std::string m_flatPath;  ///< The path to this DM's flat files (usually the same as calibPath)
     std::string m_testPath;  ///< The path to this DM's test files (default is calibPath/tests;
 
+    std::string m_actMaskPath; ///< The file name of the actuator mask for this DM
+
     std::string m_flatDefault; ///< The file name of the this DM's default flat command. Path and extension will be
                                ///< ignored and can be omitted.
     std::string m_testDefault; ///< The file name of the this DM's default test command. Path and extension will be
@@ -116,6 +118,7 @@ class dm
 
     std::string m_shmimShape; ///< The name of the shmim stream to write the desaturated true shape to.
     std::string m_shmimDelta; ///< The name of the shmim stream to write the desaturated delta command to.
+    std::string m_shmimDiff; ///< The name of the shmim stream to write the difference to.
 
     uint32_t m_dmWidth{ 0 };  ///< The width of the images in the stream
     uint32_t m_dmHeight{ 0 }; ///< The height of the images in the stream
@@ -153,6 +156,8 @@ class dm
     IMAGE m_flatImageStream;  ///< The ImageStreamIO shared memory buffer for the flat.
     bool  m_flatSet{ false }; ///< Flag indicating whether the flat command has been set.
 
+    mx::improc::milkImage<realT> m_actMask;
+
     std::map<std::string, std::string> m_testCommands; ///< Map of test file name to full path
     std::string                        m_testCurrent;
 
@@ -182,11 +187,14 @@ class dm
 
     std::vector<std::string> m_deltaChannels; ///< The names of channels which are treated as delta commands
 
+    std::vector<size_t> m_deltas; ///< Indices of the channels which are delta commands
     std::vector<size_t> m_notDeltas; ///< Indices of the channels which are not delta commands
 
     mx::improc::eigenImage<realT> m_totalFlat; ///< the total of all non-delta channels
+    mx::improc::eigenImage<realT> m_totalDelta; ///< the total of all delta channels
 
     mx::improc::milkImage<realT> m_outputDelta; ///< The true output delta command after saturation.
+    mx::improc::milkImage<realT> m_outputDiff; ///< The difference between command and true delta command after saturation.
 
     /** \name Saturation Thread Data
      * This thread processes the saturation maps
@@ -1024,6 +1032,16 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "string",
                 "The default test file (path and extension are not required)." );
 
+    config.add( "dm.actMaskPath",
+                "",
+                "dm.actMaskPath",
+                argType::Required,
+                "dm",
+                "actMaskPath",
+                false,
+                "string",
+                "The path to the actuator mask for this DM, relative to the calib path." );
+
     // Overriding the shmimMonitor setup so that these all go in the dm section
     // Otherwise, would call shmimMonitor<dm<derivedT,realT>>::setupConfig();
     ///\todo shmimMonitor now has configSection so this isn't necessary.
@@ -1137,17 +1155,17 @@ int dm<derivedT, realT>::setupConfig( mx::app::appConfigurator &config )
                 "The name of the ImageStreamIO shared memory image to write the desaturated shape to.  Default is "
                 "shmimName with _shape apended (i.e. dm00disp -> dm00disp_shape).  This is created." );
 
-    config.add(
-        "dm.shmimDelta",
-        "",
-        "dm.shmimDelta",
-        argType::Required,
-        "dm",
-        "shmimDelta",
-        false,
-        "string",
-        "The name of the ImageStreamIO shared memory image to write the desaturated delta-shape to.  Default is "
-        "shmimName with _delta apended (i.e. dm00disp -> dm00disp_delta).  This is created." );
+    config.add( "dm.shmimDelta",
+                "",
+                "dm.shmimDelta",
+                argType::Required,
+                "dm",
+                "shmimDelta",
+                false,
+                "string",
+                "The name of the ImageStreamIO shared memory image to write the "
+                "desaturated delta-shape to.  Default is "
+                "shmimName with _delta apended (i.e. dm00disp -> dm00disp_delta).  This is created." );
 
     config.add( "dm.deltaChannels",
                 "",
@@ -1261,6 +1279,8 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
         m_testCurrent = "default";
     }
 
+    config( m_actMaskPath, "dm.actMaskPath" );
+
     // Overriding the shmimMonitor setup so that these all go in the dm section
     // Otherwise, would call shmimMonitor<dm<derivedT,realT>>::loadConfig(config);
     config( derived().m_smThreadPrio, "dm.threadPrio" );
@@ -1295,6 +1315,9 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
         m_shmimDelta = derived().m_shmimName + "_delta";
         config( m_shmimDelta, "dm.shmimDelta" );
 
+        m_shmimDiff = derived().m_shmimName + "_diff";
+        config( m_shmimDiff, "dm.shmimDiff" );
+
         config( m_deltaChannels, "dm.deltaChannels" );
     }
     else
@@ -1318,6 +1341,48 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
     config( m_intervalSatCountThreshold, "dm.intervalSatCountThreshold" );
     config( m_satTriggerDevice, "dm.satTriggerDevice" );
     config( m_satTriggerProperty, "dm.satTriggerProperty" );
+
+    m_actMask.create(derived().m_shmimName + "_actmask", m_dmWidth, m_dmHeight);
+
+    if( m_actMaskPath != "" )
+    {
+        mx::improc::eigenImage<realT> actMask;
+
+        mx::fits::fitsFile<realT> ff;
+
+        mx::error_t errc = ff.read( actMask, m_calibPath + '/' + m_actMaskPath );
+        
+        if( errc != mx::error_t::noerror )
+        {
+            derivedT::template log<text_log>( std::format( "error reading actuator mask file {}: "
+                                                           "{} ({})",
+                                                           m_calibPath + '/' + m_actMaskPath,
+                                                           mx::errorMessage( errc ),
+                                                           mx::errorName( errc ) ),
+                                              logPrio::LOG_ERROR );
+            return -1;
+        }
+
+        if( actMask.rows() != m_dmWidth || actMask.cols() != m_dmHeight )
+        {
+            derivedT::template log<text_log>( std::format( "actuaor mask {}x{} is not same size as flag {}x{}",
+                                                           actMask.rows(),
+                                                           actMask.cols(),
+                                                           m_dmWidth,
+                                                           m_dmHeight ),
+                                              logPrio::LOG_ERROR );
+
+            return -1;
+        }
+
+        m_actMask = actMask;
+        
+    }
+    else
+    {
+        m_actMask().setConstant(1.0);
+    }
+
 
     return 0;
 }
@@ -1511,7 +1576,7 @@ int dm<derivedT, realT>::appLogic()
             m_actProcD[n] = m_actProc.at( refEntry, n );
             m_actComD[n]  = m_actCom.at( refEntry, n );
             m_satUpD[n]   = m_satUp.at( refEntry, n );
-            m_deltaUpD[n]   = m_deltaUp.at( refEntry, n );
+            m_deltaUpD[n] = m_deltaUp.at( refEntry, n );
         }
 
         std::cerr << "Act. Process:   " << mx::math::vectorMean( m_actProcD ) << " +/- "
@@ -1640,6 +1705,10 @@ int dm<derivedT, realT>::findDMChannels()
         {
             m_notDeltas.push_back( n );
         }
+        else 
+        {
+            m_deltas.push_back(n);
+        }
     }
 
     return 0;
@@ -1716,8 +1785,22 @@ int dm<derivedT, realT>::allocate( const dev::shmimT &sp )
             { __FILE__, __LINE__, std::string( "creating output delta shmim: " ) + e.what() } );
     }
 
+    try
+    {
+        m_outputDiff.create( m_shmimDiff, m_dmWidth, m_dmHeight );
+        m_outputDiff().setZero();
+    }
+    catch( const std::exception &e )
+    {
+        return derivedT::template log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "creating output diff shmim: " ) + e.what() } );
+    }
+
     m_totalFlat.resize( m_dmWidth, m_dmHeight );
     m_totalFlat.setZero();
+
+    m_totalDelta.resize( m_dmWidth, m_dmHeight );
+    m_totalDelta.setZero();
 
     // clang-format off
     #ifdef XWC_DMTIMINGS
@@ -1798,7 +1881,7 @@ int dm<derivedT, realT>::processImage( void *curr_src, const dev::shmimT &sp )
         m_actProc.nextEntry( m_tact1 - m_tact0 );
         m_actCom.nextEntry( m_tact2 - m_tact1 );
         m_satUp.nextEntry( m_tact4 - m_tact3 );
-        m_deltaUp.nextEntry( m_tdeltaf - m_tdelta0);
+        m_deltaUp.nextEntry( m_tdeltaf - m_tdelta0 );
     }
 
         // clang-format off
@@ -2017,9 +2100,12 @@ int dm<derivedT, realT>::loadFlat( const std::string &intarget )
     }
 
     m_flatLoaded = false;
+
     // load into memory.
     mx::fits::fitsFile<realT> ff;
-    mx::error_t               errc = ff.read( m_flatCommand, targetPath );
+
+    mx::error_t errc = ff.read( m_flatCommand, targetPath );
+
     if( errc != mx::error_t::noerror )
     {
         derivedT::template log<text_log>( std::format( "error reading flat file {}: "
@@ -2030,6 +2116,20 @@ int dm<derivedT, realT>::loadFlat( const std::string &intarget )
                                           logPrio::LOG_ERROR );
         return -1;
     }
+
+    if( m_actMask.rows() != m_flatCommand.rows() || m_actMask.cols() != m_flatCommand.cols() )
+    {
+        derivedT::template log<text_log>( std::format( "actuaor mask {}x{} is not same size as flag {}x{}",
+                                                       m_actMask.rows(),
+                                                       m_actMask.cols(),
+                                                       m_flatCommand.rows(),
+                                                       m_flatCommand.cols() ),
+                                          logPrio::LOG_ERROR );
+
+        return -1;
+    }
+
+    m_flatCommand *= m_actMask();
 
     derivedT::template log<text_log>( "loaded flat file " + targetPath );
     m_flatLoaded = true;
@@ -2683,9 +2783,17 @@ int dm<derivedT, realT>::makeDelta()
         m_totalFlat += ( *m_channels[m_notDeltas[n]] )();
     }
 
-    m_outputDelta.setWrite( true );
-    m_outputDelta = m_outputShape() - m_totalFlat; //this posts and everything
+    m_outputDelta = m_outputShape() - m_totalFlat; // this posts and everything
 
+    m_totalDelta = ( *m_channels[m_deltas[0]] )();
+
+    for( size_t n = 1; n < m_deltas.size(); ++n )
+    {
+        m_totalDelta += ( *m_channels[m_deltas[n]] )();
+    }
+
+    m_outputDiff = m_totalDelta - m_outputDelta();
+    
     return 0;
 }
 
