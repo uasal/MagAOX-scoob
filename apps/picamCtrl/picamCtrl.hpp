@@ -198,7 +198,8 @@ protected:
    piflt m_FrameRateCalculation;
    piflt m_ReadOutTimeCalculation;
 
-   std::string m_fxngenName { "fxngensync" };
+   std::string m_fxngenName { "fxngensync" }; ///< Default fxngen device name
+   std::string m_fxngenCh { "C2" }; ///< Default fxngen channel
 
 
 
@@ -354,8 +355,7 @@ protected:
 protected:
 
    pcf::IndiProperty m_indiP_readouttime;
-   pcf::IndiProperty m_indiP_fxngensync_freq;
-   pcf::IndiProperty m_indiP_fxngensync_width;
+   pcf::IndiProperty m_indiP_fxngensync;
 
 public:
    INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_adcquality);
@@ -395,15 +395,10 @@ picamCtrl::picamCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    m_maxEMGain = 1000;
 
-   m_indiP_fxngensync_freq = pcf::IndiProperty( pcf::IndiProperty::Number );
-   m_indiP_fxngensync_freq.setDevice( m_fxngenName );
-   m_indiP_fxngensync_freq.setName( "C2freq" );
-   m_indiP_fxngensync_freq.add( pcf::IndiElement( "target" ) );
-   
-   m_indiP_fxngensync_width = pcf::IndiProperty( pcf::IndiProperty::Number );
-   m_indiP_fxngensync_width.setDevice( m_fxngenName );
-   m_indiP_fxngensync_width.setName( "C2wdth" );
-   m_indiP_fxngensync_width.add( pcf::IndiElement( "value" ) );
+   m_indiP_fxngensync = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_fxngensync.setDevice( m_fxngenName );
+   m_indiP_fxngensync.setName( m_fxngenCh + "freq" );
+   m_indiP_fxngensync.add( pcf::IndiElement( "target" ) );
 
    return;
 }
@@ -436,7 +431,8 @@ void picamCtrl::setupConfig()
 {
    config.add("camera.serialNumber", "", "camera.serialNumber", argType::Required, "camera", "serialNumber", false, "int", "The identifying serial number of the camera.");
 
-   config.add("syncro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen used for synchronizing the camera.");
+   config.add("syncro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen device name used for synchronizing the camera.");
+   config.add("syncro.channel", "", "synchro.channel", argType::Required, "synchro", "channel", false, "string", "The fxngen channel used for synchronizing the camera.");
 
    dev::stdCamera<picamCtrl>::setupConfig(config);
    dev::frameGrabber<picamCtrl>::setupConfig(config);
@@ -450,6 +446,7 @@ void picamCtrl::loadConfig()
 
    config(m_serialNumber, "camera.serialNumber");
    config(m_fxngenName, "synchro.deviceName");
+   config(m_fxngenCh, "synchro.channel");
 
    dev::stdCamera<picamCtrl>::loadConfig(config);
    dev::frameGrabber<picamCtrl>::loadConfig(config);
@@ -1263,16 +1260,10 @@ int picamCtrl::setEMGain()
 
 void picamCtrl::updateFxnGenSync()
 {
-   double shift_time = m_vshiftSpeed * 1e-6 * (m_width + 2); // seconds
-   double freq = 1 / (m_expTime + shift_time);
-   std::cerr << "Synchro shift time " << std::to_string(shift_time) << " s" << std::endl;
-   std::cerr << "Synchro frequency " << std::to_string(freq) << " Hz" << std::endl;
-   // note: must set frequency FIRST then width due to automatically 
-   // determined pulse width in siglentSDG app
-   m_indiP_fxngensync_freq["target"] = freq;
-   sendNewProperty(m_indiP_fxngensync_freq);
-   m_indiP_fxngensync_width["value"] = m_expTime;
-   sendNewProperty(m_indiP_fxngensync_width);
+
+   std::cerr << "Setting fxngen frequency to " << std::to_string(m_fps) << " Hz" << std::endl;
+   m_indiP_fxngensync["target"] = freq;
+   sendNewProperty(m_indiP_fxngensync);
 }
 
 inline
@@ -1315,9 +1306,10 @@ int picamCtrl::setExpTime()
    }
    m_fps = m_FrameRateCalculation;
 
+   if (m_synchro) updateFxnGenSync();
+
    recordCamera(true);
 
-   if (m_synchro) updateFxnGenSync();
 
    return 0;
 }
@@ -1918,7 +1910,7 @@ int picamCtrl::configureAcquisition()
 
       std::cerr << "Turning synchro on" << std::endl;
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerDetermination, PicamTriggerDetermination_RisingEdge);
-      setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_ExposeDuringTriggerPulse);
+      setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_ReadoutPerTrigger);
       m_synchro = true;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::On, INDI_IDLE);
    } 
