@@ -25,7 +25,7 @@ def retrieve_one(name):
             'Referer': 'https://weather-dev.lco.cl/stations/magellan',
         }
     )
-    seeing_points = req.json()
+    seeing_points = req.json()['results']
     latest_seeing_point = seeing_points.sort(key=lambda x: x['ts'], reverse=True)[0]
     
     req = requests.get(
@@ -42,10 +42,10 @@ def retrieve_one(name):
             'Referer': 'https://weather-dev.lco.cl/stations/magellan',
         }
     )
-    pointing_points = req.json()
+    pointing_points = req.json()['results']
     latest_pointing_point = pointing_points.sort(key=lambda x: x['ts'], reverse=True)[0]
     return latest_seeing_point, latest_pointing_point
-    
+
 def main(debug):
     for name in ['dimm', 'clay', 'baade']:
         outfile_name = {'dimm': 'dimm', 'clay': 'mag2', 'baade': 'mag2'}[name]
