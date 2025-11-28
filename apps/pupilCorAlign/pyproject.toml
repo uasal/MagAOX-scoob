@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pupilCorAlign"
+description = "Automatic pupil alignment for coronagraph"
+version = "2025.11.28"
+
+authors = [
+  {name = "Sebastiaan Haffert", email = "haffert@strw.leidenuniv.nl"},
+]
+
+[project.scripts]
+pupilCorAlign = "pupilCorAlign:pupilCorAlign.console_app"
