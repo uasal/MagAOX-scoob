@@ -60,6 +60,9 @@
     <walk-up email="mars@strw.leidenuniv.nl">
       <file name="matthijs.wav" />
     </walk-up>
+    <walk-up email="mileslucas@arizona.edu">
+      <file name="miles.wav" />
+    </walk-up>
     <!-- <react-to indi-id="observers.observers.lclose-at-as-dot-arizona-dot-edu">
       <transition value="On">
         <file name="allstar.wav" />
