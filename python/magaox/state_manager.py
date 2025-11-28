@@ -37,15 +37,15 @@ class XStateMachine:
                 current_state = key
         
         if current_state not in new_message: 
-
             for key in self._state_names:
                 existing_property[key] = constants.SwitchState.OFF 
+
                 if key in new_message: 
                     existing_property[key] = new_message[key] 
 
                     for ti, test_state in enumerate(self._state_names):
                         if key == test_state:
-                            self._state = self._state_enum(ti).name
+                            self._state = self._state_enum(ti)
                             if ti == 0:
                                 self._device.properties['fsm']['state'] = StateCodes.READY.name
                             else:
@@ -58,4 +58,4 @@ class XStateMachine:
     def loop(self):
         for si, state in enumerate(self._state_enum):
             if self._state == state:
-                self._state_callbacks(si)()
+                self._state_callbacks[si]()
