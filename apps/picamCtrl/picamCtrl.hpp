@@ -198,7 +198,7 @@ protected:
    piflt m_FrameRateCalculation;
    piflt m_ReadOutTimeCalculation;
 
-
+   std::string m_fxngenName { "fxngensync" };
 
 
 
@@ -323,6 +323,7 @@ protected:
    int capExpTime(piflt& exptime);
    int setFPS();
    int setSynchro();
+   void updateFxnGenSync();
 
    /// Check the next ROI
    /** Checks if the target values are valid and adjusts them to the closest valid values if needed.
@@ -353,7 +354,8 @@ protected:
 protected:
 
    pcf::IndiProperty m_indiP_readouttime;
-   pcf::IndiProperty m_indiP_fxngensync;
+   pcf::IndiProperty m_indiP_fxngensync_freq;
+   pcf::IndiProperty m_indiP_fxngensync_width;
 
 public:
    INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_adcquality);
@@ -369,21 +371,6 @@ public:
 
    ///@}
 };
-
-// float picamCtrl::getTrigFreq()
-// {
-//    // trig width is exposure time
-//    // trig shift time is num_rows * vertical shift time
-//    float shift_time = m_vshiftSpeed * 1e-6 * (m_width + 2); // seconds
-//    return 1 / (m_expTime + shift_time);
-// }
-
-// void picamCtrl::setExtTrig()
-// {
-//    if (m_extTrig) return;
-//    m_extTrig = true;
-
-// }
 
 inline
 picamCtrl::picamCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
@@ -408,8 +395,15 @@ picamCtrl::picamCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    m_maxEMGain = 1000;
 
-   // pcf::IndiProperty m_indiP_fxngensync = ;
-
+   m_indiP_fxngensync_freq = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_fxngensync_freq.setDevice( m_fxngenName );
+   m_indiP_fxngensync_freq.setName( "C2freq" );
+   m_indiP_fxngensync_freq.add( pcf::IndiElement( "target" ) );
+   
+   m_indiP_fxngensync_width = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_fxngensync_width.setDevice( m_fxngenName );
+   m_indiP_fxngensync_width.setName( "C2wdth" );
+   m_indiP_fxngensync_width.add( pcf::IndiElement( "value" ) );
 
    return;
 }
@@ -442,6 +436,8 @@ void picamCtrl::setupConfig()
 {
    config.add("camera.serialNumber", "", "camera.serialNumber", argType::Required, "camera", "serialNumber", false, "int", "The identifying serial number of the camera.");
 
+   config.add("syncro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen used for synchronizing the camera.");
+
    dev::stdCamera<picamCtrl>::setupConfig(config);
    dev::frameGrabber<picamCtrl>::setupConfig(config);
    dev::dssShutter<picamCtrl>::setupConfig(config);
@@ -453,6 +449,7 @@ void picamCtrl::loadConfig()
 {
 
    config(m_serialNumber, "camera.serialNumber");
+   config(m_fxngenName, "synchro.deviceName");
 
    dev::stdCamera<picamCtrl>::loadConfig(config);
    dev::frameGrabber<picamCtrl>::loadConfig(config);
@@ -1263,6 +1260,21 @@ int picamCtrl::setEMGain()
    return 0;
 }
 
+
+void picamCtrl::updateFxnGenSync()
+{
+   double shift_time = m_vshiftSpeed * 1e-6 * (m_width + 2); // seconds
+   double freq = 1 / (m_expTime + shift_time);
+   std::cerr << "Synchro shift time " << std::to_string(shift_time) << " s" << std::endl;
+   std::cerr << "Synchro frequency " << std::to_string(freq) << " Hz" << std::endl;
+   // note: must set frequency FIRST then width due to automatically 
+   // determined pulse width in siglentSDG app
+   m_indiP_fxngensync_freq["target"] = freq;
+   sendNewProperty(m_indiP_fxngensync_freq);
+   m_indiP_fxngensync_width["value"] = m_expTime;
+   sendNewProperty(m_indiP_fxngensync_width);
+}
+
 inline
 int picamCtrl::setExpTime()
 {
@@ -1304,6 +1316,8 @@ int picamCtrl::setExpTime()
    m_fps = m_FrameRateCalculation;
 
    recordCamera(true);
+
+   if (m_synchro) updateFxnGenSync();
 
    return 0;
 }
@@ -1900,8 +1914,7 @@ int picamCtrl::configureAcquisition()
    // Hardware trigger
    if (m_synchroSet)
    {
-      
-
+      updateFxnGenSync();
 
       std::cerr << "Turning synchro on" << std::endl;
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerDetermination, PicamTriggerDetermination_RisingEdge);
