@@ -1262,7 +1262,7 @@ void picamCtrl::updateFxnGenSync()
 {
 
    std::cerr << "Setting fxngen frequency to " << std::to_string(m_fps) << " Hz" << std::endl;
-   m_indiP_fxngensync["target"] = freq;
+   m_indiP_fxngensync["target"] = m_fps;
    sendNewProperty(m_indiP_fxngensync);
 }
 
