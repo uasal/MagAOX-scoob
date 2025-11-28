@@ -11,7 +11,7 @@ install:
 	$(PYTHON) -c 'import xconf' || (echo "Need xconf installed to $(PYTHON)" && exit 1)
 	sudo -H $(PYTHON) -m pip install .
 	sudo -H ln -sfv $(PYTHON_SCRIPTS_PREFIX)/$(TARGET) /opt/MagAOX/bin/$(TARGET)
-	sudo chmod -R o+rX \$\($(PYTHON) -c "import $(TARGET), os.path;print(os.path.dirname($(TARGET).__file__))"\)
+	sudo chmod -R o+rX $(shell $(PYTHON) -c "import $(TARGET), os.path;print(os.path.dirname($(TARGET).__file__))")
 	@echo "*** Install succeeded, app located in /opt/MagAOX/bin/$(TARGET) ***"
 
 .PHONY: all install
