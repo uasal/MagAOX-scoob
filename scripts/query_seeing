@@ -20,6 +20,9 @@ def retrieve_one(name):
             'source': name,
             'start_ts': start_ts,
             'end_ts': end_ts,
+        },
+        headers={
+            'Referer': 'https://weather-dev.lco.cl/stations/magellan',
         }
     )
     seeing_points = req.json()
@@ -34,6 +37,9 @@ def retrieve_one(name):
             'source': name,
             'start_ts': start_ts,
             'end_ts': end_ts,
+        },
+        headers={
+            'Referer': 'https://weather-dev.lco.cl/stations/magellan',
         }
     )
     pointing_points = req.json()
