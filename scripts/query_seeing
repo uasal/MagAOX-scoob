@@ -10,7 +10,7 @@ import ssl
 scopes = ['dimm', 'clay', 'baade']
 
 def retrieve_one(name):
-    now = datetime.datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     start_ts = (now - timedelta(minutes=1)).isoformat()
     end_ts = now.isoformat()
 
