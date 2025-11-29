@@ -8,6 +8,7 @@
 #define tcsInterface_hpp
 
 #include <cmath>
+#include <iostream>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
@@ -36,7 +37,7 @@ namespace app
 {
 
 /// The MagAO-X Clay Telescope TCS Interface
-/** 
+/**
   * \ingroup tcsInterface
   */
 class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::telemeter<tcsInterface>
@@ -46,10 +47,10 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
    friend class tcsInterface_test;
 
    friend class dev::telemeter<tcsInterface>;
-   
+
 protected:
 
-   /** \name lab mode 
+   /** \name lab mode
      * @{
      */
 
@@ -64,16 +65,16 @@ protected:
    /** \name TCS Networking
      *@{
      */
-   
+
    std::string m_deviceAddr {"localhost"}; ///< The IP address or resolvable name of the TCS.
    int m_devicePort {5811}; ///< The IP port for TCS communications. Should be the command port.  Default is 5811
    int m_seeingInterval {2};
-   
-   
+
+
    ///Mutex for locking TCS communications.
    std::mutex m_tcsMutex;
 
-   tty::netSerial m_sock; 
+   tty::netSerial m_sock;
 
    ///@}
 
@@ -90,9 +91,9 @@ protected:
    double m_telHA {0};
    double m_telAM {0};
    double m_telRotOff {0};
-   
+
    pcf::IndiProperty m_indiP_telpos;
-   
+
    /// \name Telescope Data
    /**@{
     */
@@ -106,7 +107,7 @@ protected:
    double m_telPA {0};        ///< parallactic angle
    double m_telDomeAz {0};    ///< dome azimuth
    int m_telDomeStat {0};     ///< dome status
-   
+
    pcf::IndiProperty m_indiP_teldata;
    ///@}
 
@@ -119,7 +120,7 @@ protected:
    double m_catRo {0};   ///< Catalog rotator offset
    std::string m_catRm;  ///< Catalog rotator mode
    std::string m_catObj; ///< Catalog object name
-   
+
    pcf::IndiProperty m_indiP_catalog; ///< INDI Property for the catalog text information
    pcf::IndiProperty m_indiP_catdata; ///< INDI Property for the catalog data
    ///@}
@@ -135,10 +136,10 @@ protected:
    double m_telEncH {0};
    double m_telSecV {0};
    double m_telEncV {0};
-   
+
    pcf::IndiProperty m_indiP_vaneend; ///< INDI Property for the vane end positions
 
-   
+
    //Environment
    double m_wxtemp {0};     ///< Outside temperature, Celsius
    double m_wxpres {0};     ///< Outside pressue, millibars
@@ -163,9 +164,9 @@ protected:
 
    double m_mag2_fwhm_corr {0}; ///< MAG2 elevation corrected FWHM
    int m_mag2_time {0};         ///< Seconds since midnight of MAG2 measurement.
-   
+
    pcf::IndiProperty m_indiP_seeing; ///< INDI Property for seeing
-   
+
 public:
    /// Default c'tor.
    tcsInterface();
@@ -190,14 +191,14 @@ public:
    virtual int appStartup();
 
    /// Implementation of the FSM for tcsInterface.
-   /** 
+   /**
      * \returns 0 on no critical error
      * \returns -1 on an error requiring shutdown
      */
    virtual int appLogic();
 
    /// Shutdown the app.
-   /** 
+   /**
      *
      */
    virtual int appShutdown();
@@ -206,21 +207,21 @@ public:
                         const std::string &statreq
                       );
 
-   int sendMagTelCommand( const std::string &command, 
+   int sendMagTelCommand( const std::string &command,
                           int timeout
                         );
 
-   int parse_xms( double &x, 
-                  double &m, 
+   int parse_xms( double &x,
+                  double &m,
                   double &s,
                   const std::string & xmsstr
                 );
-   
+
    std::vector<std::string> parse_teldata( std::string &tdat );
-   
-   
+
+
    //The "dump" commands:
-   
+
    int getTelTime();
    int getTelPos();
    int getTelData();
@@ -228,69 +229,69 @@ public:
    int getVaneData();
    int getEnvData();
    int getSeeing();
-   
+
    int updateINDI();
-   
+
    /** \name Telemeter Interface
      * @{
-     */ 
+     */
    int checkRecordTimes();
-   
+
    int recordTelem( const telem_telpos * );
-   
+
    int recordTelem( const telem_teldata * );
-   
+
    int recordTelem( const telem_telvane * );
-   
+
    int recordTelem( const telem_telenv * );
-   
+
    int recordTelem( const telem_telcat *);
-   
+
    int recordTelem( const telem_telsee *);
-   
+
    int recordTelPos(bool force = false);
-   
+
    int recordTelData(bool force = false);
-   
+
    int recordTelVane(bool force = false);
-   
+
    int recordTelEnv(bool force = false);
-   
+
    int recordTelCat(bool force = false);
-   
+
    int recordTelSee(bool force = false);
-   
+
    ///@}
-   
+
    int m_loopState {0};
    pcf::IndiProperty m_indiP_loopState; ///< Property used to report the loop state
-   
+
    INDI_SETCALLBACK_DECL(tcsInterface, m_indiP_loopState);
-   
+
    /** \name Pyramid Nudging and Acquisition
      * Handling of nudges on pyramid tip.
      * @{
      */
-   
+
    //The Pyramid to AEG control matrix
    float m_pyrNudge_C_00 {1};
    float m_pyrNudge_C_01 {0};
    float m_pyrNudge_C_10 {0};
    float m_pyrNudge_C_11 {1};
    float m_pyrNudge_F_sign {1};
-   
+
    float m_pyrNudge_ang {45.0};
    float m_pyrNudge_ang0 {0.0};
    float m_pyrNudge_parity {-1};
-   
+
    int sendPyrNudge( float x,
                      float y,
                      float z
                    );
-   
+
    pcf::IndiProperty m_indiP_pyrNudge; ///< Property used to request a pyramid nudge
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_pyrNudge);
-   
+
    int m_acqZdSign {-1};
    float m_acqAz0 {18.5};
    float m_acqAzOff {0};
@@ -299,118 +300,118 @@ public:
    float m_acqFocus{1400};
 
    int acquireFromGuider();
-   
+
    pcf::IndiProperty m_indiP_acqFromGuider; ///< Property used to request a pyramid nudge
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_acqFromGuider);
-   
+
    ///@}
-   
+
    /** \name Woofer Offloading
      * Handling of offloads from the average woofer shape to the telescope
      * @{
      */
-   
+
    bool m_offloadThreadInit {true}; ///< Initialization flag for the offload thread.
-   
+
    pid_t m_offloadThreadID {0}; ///< Offload thread pid.
-   
+
    pcf::IndiProperty m_offloadThreadProp; ///< Offload thread INDI property.
-   
+
    std::thread m_offloadThread; ///< The offloading thread.
 
    /// Offload thread starter function
    static void offloadThreadStart( tcsInterface * t /**< [in] pointer to this */);
-   
+
    /// Offload thread function
    /** Runs until m_shutdown is true.
      */
    void offloadThreadExec();
-   
+
    int doTToffload( float TT_0,
                     float TT_1
                   );
-   
+
    int sendTToffload( float TT_0,
                     float TT_1
                   );
-   
+
    int doFoffload( float F_0 );
-   
+
    int sendFoffload( float F_0 );
-   
-   
+
+
    pcf::IndiProperty m_indiP_offloadCoeffs; ///< Property used to report the latest woofer modal coefficients for offloading
-   
+
    INDI_SETCALLBACK_DECL(tcsInterface, m_indiP_offloadCoeffs);
-   
+
    std::vector<std::vector<float>> m_offloadRequests;
    size_t m_firstRequest {0};
    size_t m_lastRequest {std::numeric_limits<size_t>::max()};
    size_t m_nRequests {0};
    size_t m_last_nRequests {0};
-   
+
    //The TT control matrix -- LAb
    float m_lab_offlTT_C_00 {0.17};
    float m_lab_offlTT_C_01 {1.03};
    float m_lab_offlTT_C_10 {-1.03};
    float m_lab_offlTT_C_11 {0.48};
-   
+
    //The TT control matrix -- Telescope
    float m_offlTT_C_00 {-0.5};
    float m_offlTT_C_01 {0};
    float m_offlTT_C_10 {0};
    float m_offlTT_C_11 {-0.25};
-   
+
    bool m_offlTT_enabled {false};
    bool m_offlTT_dump {false};
    float m_offlTT_avgInt {1.0};
    float m_offlTT_gain {0.1};
    float m_offlTT_thresh {0.1};
-   
+
    pcf::IndiProperty m_indiP_offlTTenable;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlTTenable);
-   
+
    pcf::IndiProperty m_indiP_offlTTdump;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlTTdump);
-   
+
    pcf::IndiProperty m_indiP_offlTTavgInt;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlTTavgInt);
-   
+
    pcf::IndiProperty m_indiP_offlTTgain;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlTTgain);
-   
+
    pcf::IndiProperty m_indiP_offlTTthresh;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlTTthresh);
-   
+
    //The Focus control constant
    float m_offlCFocus_00 {1};
-   
+
    bool m_offlF_enabled {false};
    bool m_offlF_dump {false};
    float m_offlF_avgInt {1.0};
    float m_offlF_gain {0.1};
    float m_offlF_thresh {0.1};
-   
+
    pcf::IndiProperty m_indiP_offlFenable;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlFenable);
-   
+
    pcf::IndiProperty m_indiP_offlFdump;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlFdump);
-   
+
    pcf::IndiProperty m_indiP_offlFavgInt;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlFavgInt);
-   
+
    pcf::IndiProperty m_indiP_offlFgain;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlFgain);
-   
+
    pcf::IndiProperty m_indiP_offlFthresh;
    INDI_NEWCALLBACK_DECL(tcsInterface, m_indiP_offlFthresh);
-   
+
    float m_offlCComa_00 {1};
    float m_offlCComa_01 {0};
    float m_offlCComa_10 {1};
    float m_offlCComa_11 {0};
-   
+
    ///@}
 };
 
@@ -424,18 +425,18 @@ inline
 void tcsInterface::setupConfig()
 {
    config.add("labMode", "", "labMode", argType::Required, "", "labMode", false, "bool", "Flag to enable lab mode.  Default is true.");
-   
+
    config.add("pyrNudger.C_00", "", "pyrNudger.C_00", argType::Required, "pyrNudger", "C_00", false, "float", "Pyramid to AEG control matrix [0,0] of a 2x2 matrix");
    config.add("pyrNudger.C_01", "", "pyrNudger.C_01", argType::Required, "pyrNudger", "C_01", false, "float", "Pyramid to AEG control matrix [0,1] of a 2x2 matrix ");
    config.add("pyrNudger.C_10", "", "pyrNudger.C_10", argType::Required, "pyrNudger", "C_10", false, "float", "Pyramid to AEG control matrix [1,0] of a 2x2 matrix ");
    config.add("pyrNudger.C_11", "", "pyrNudger.C_11", argType::Required, "pyrNudger", "C_11", false, "float", "Pyramid to AEG control matrix [1,1] of a 2x2 matrix ");
-   
+
    config.add("pyrNudger.ang", "", "pyrNudger.ang", argType::Required, "pyrNudger", "ang", false, "float", "");
    config.add("pyrNudger.ang0", "", "pyrNudger.ang0", argType::Required, "pyrNudger0", "ang0", false, "float", "");
    config.add("pyrNudger.parity", "", "pyrNudger.parity", argType::Required, "pyrNudger", "parity", false, "float", "");
- 
+
    config.add("pyrNudger.F_sign", "", "pyrNudger.F_sign", argType::Required, "pyrNudger", "F_sign", false, "int", "Pyramid to AEG control matrix [1,1] of a 2x2 matrix ");
-   
+
    config.add("acqFromGuider.zdSign", "", "acqFromGuider.zdSign", argType::Required, "acqFromGuider", "zdSign", false, "int", "Sign of the Zd to rotation angle, +1 or -1, -1 default");
    config.add("acqFromGuider.az0", "", "acqFromGuider.az0", argType::Required, "acqFromGuider", "az0", false, "float", "az component of acquisition vector a 0 zd.");
    config.add("acqFromGuider.azoff", "", "acqFromGuider.azoff", argType::Required, "acqFromGuider", "azoff", false, "float", "static offset to az component of acquisition vector");
@@ -446,32 +447,32 @@ void tcsInterface::setupConfig()
    config.add("offload.TT_avgInt", "", "offload.TT_avgInt", argType::Required, "offload", "TT_avgInt", false, "float", "Woofer to Telescope T/T offload averaging interval [sec] ");
    config.add("offload.TT_gain", "", "offload.TT_gain", argType::Required, "offload", "TT_gain", false, "float", "Woofer to Telescope T/T offload gain");
    config.add("offload.TT_thresh", "", "offload.TT_thresh", argType::Required, "offload", "TT_thresh", false, "float", "Woofer to Telescope T/T offload threshold");
-   
+
    config.add("offload.lab_TT_C_00", "", "offload.lab_TT_C_00", argType::Required, "offload", "lab_TT_C_00", false, "float", "Woofer to TTM T/T offload control matrix [0,0] of a 2x2 matrix");
    config.add("offload.lab_TT_C_01", "", "offload.lab_TT_C_01", argType::Required, "offload", "lab_TT_C_01", false, "float", "Woofer to TTM T/T offload control matrix [0,1] of a 2x2 matrix ");
    config.add("offload.lab_TT_C_10", "", "offload.lab_TT_C_10", argType::Required, "offload", "lab_TT_C_10", false, "float", "Woofer to TTM T/T offload control matrix [1,0] of a 2x2 matrix ");
    config.add("offload.lab_TT_C_11", "", "offload.lab_TT_C_11", argType::Required, "offload", "lab_TT_C_11", false, "float", "Woofer to TTM T/T offload control matrix [1,1] of a 2x2 matrix ");
-   
+
    config.add("offload.TT_C_00", "", "offload.TT_C_00", argType::Required, "offload", "TT_C_00", false, "float", "Woofer to Telescope T/T offload control matrix [0,0] of a 2x2 matrix");
    config.add("offload.TT_C_01", "", "offload.TT_C_01", argType::Required, "offload", "TT_C_01", false, "float", "Woofer to Telescope T/T offload control matrix [0,1] of a 2x2 matrix ");
    config.add("offload.TT_C_10", "", "offload.TT_C_10", argType::Required, "offload", "TT_C_10", false, "float", "Woofer to Telescope T/T offload control matrix [1,0] of a 2x2 matrix ");
    config.add("offload.TT_C_11", "", "offload.TT_C_11", argType::Required, "offload", "TT_C_11", false, "float", "Woofer to Telescope T/T offload control matrix [1,1] of a 2x2 matrix ");
-   
-   
+
+
    config.add("offload.F_avgInt", "", "offload.F_avgInt", argType::Required, "offload", "F_avgInt", false, "float", "Woofer to Telescope Focus offload averaging interval [sec] ");
    config.add("offload.F_gain", "", "offload.F_gain", argType::Required, "offload", "F_gain", false, "float", "Woofer to Telescope Focus offload gain");
    config.add("offload.F_thresh", "", "offload.F_thresh", argType::Required, "offload", "F_thresh", false, "float", "Woofer to Telescope Focus offload threshold");
-   
+
    config.add("offload.CFocus00", "", "offload.CFocus00", argType::Required, "offload", "CFocus00", false, "float", "Woofer to Telescope Focus offload control scale factor.");
-   
+
    config.add("offload.CComa00", "", "offload.CComa00", argType::Required, "offload", "CComa00", false, "float", "Woofer to Telescope Coma offload control matrix [0,0] of a 2x2 matrix");
    config.add("offload.CComa01", "", "offload.CComa01", argType::Required, "offload", "CComa01", false, "float", "Woofer to Telescope Coma offload control matrix [0,1] of a 2x2 matrix ");
    config.add("offload.CComa10", "", "offload.CComa10", argType::Required, "offload", "CComa10", false, "float", "Woofer to Telescope Coma offload control matrix [1,0] of a 2x2 matrix ");
    config.add("offload.CComa11", "", "offload.CComa11", argType::Required, "offload", "CComa11", false, "float", "Woofer to Telescope Coma offload control matrix [1,1] of a 2x2 matrix ");
-   
+
    config.add("device.address", "", "device.address", argType::Required, "device", "address", false, "string", "The IP address or resolvable name of the TCS.");
    config.add("device.port", "", "device.port", argType::Required, "device", "port", false, "int", "The IP port for TCS communications. Should be the command port.  Default is 5811.");
-  
+
    dev::ioDevice::setupConfig(config);
    dev::telemeter<tcsInterface>::setupConfig(config);
 }
@@ -479,18 +480,18 @@ void tcsInterface::setupConfig()
 inline
 int tcsInterface::loadConfigImpl( mx::app::appConfigurator & _config )
 {
-   
+
    _config(m_labMode, "labMode");
-   
+
    _config(m_pyrNudge_C_00, "pyrNudger.C_00");
    _config(m_pyrNudge_C_01, "pyrNudger.C_01");
    _config(m_pyrNudge_C_10, "pyrNudger.C_10");
    _config(m_pyrNudge_C_11, "pyrNudger.C_11");
-   
+
    _config(m_pyrNudge_ang, "pyrNudger.ang");
    _config(m_pyrNudge_ang0, "pyrNudger.ang0");
    _config(m_pyrNudge_parity, "pyrNudger.parity");
-   
+
    _config(m_acqZdSign, "acqFromGuider.zdSign");
    _config(m_acqAz0, "acqFromGuider.az0");
    _config(m_acqAzOff, "acqFromGuider.azoff");
@@ -501,35 +502,35 @@ int tcsInterface::loadConfigImpl( mx::app::appConfigurator & _config )
    _config(m_offlTT_avgInt, "offload.TT_avgInt");
    _config(m_offlTT_gain, "offload.TT_gain");
    _config(m_offlTT_thresh, "offload.TT_thresh");
-   
+
    _config(m_lab_offlTT_C_00, "offload.lab_TT_C_00");
    _config(m_lab_offlTT_C_01, "offload.lab_TT_C_01");
    _config(m_lab_offlTT_C_10, "offload.lab_TT_C_10");
    _config(m_lab_offlTT_C_11, "offload.lab_TT_C_11");
-   
+
    _config(m_offlTT_C_00, "offload.TT_C_00");
    _config(m_offlTT_C_01, "offload.TT_C_01");
    _config(m_offlTT_C_10, "offload.TT_C_10");
    _config(m_offlTT_C_11, "offload.TT_C_11");
-   
+
    _config(m_offlF_avgInt, "offload.F_avgInt");
    _config(m_offlF_gain, "offload.F_gain");
    _config(m_offlF_thresh, "offload.F_thresh");
-   
+
    _config(m_offlCFocus_00, "offload.CFocus00");
-   
+
    _config(m_offlCComa_00, "offload.CComa00");
    _config(m_offlCComa_01, "offload.CComa01");
    _config(m_offlCComa_10, "offload.CComa10");
    _config(m_offlCComa_11, "offload.CComa11");
-  
-   _config(m_deviceAddr, "device.address"); 
+
+   _config(m_deviceAddr, "device.address");
    _config(m_devicePort, "device.port");
 
    dev::ioDevice::loadConfig(_config);
-   
+
    dev::telemeter<tcsInterface>::loadConfig(_config);
-   
+
    return 0;
 }
 
@@ -550,7 +551,7 @@ int tcsInterface::appStartup()
    }
    else
    {
-      m_indiP_labMode["toggle"].setSwitchState(pcf::IndiElement::Off); 
+      m_indiP_labMode["toggle"].setSwitchState(pcf::IndiElement::Off);
       log<text_log>("lab mode OFF", logPrio::LOG_NOTICE);
    }
 
@@ -578,10 +579,10 @@ int tcsInterface::appStartup()
    m_indiP_telpos["am"] = m_telAM;
    indi::addNumberElement<double>( m_indiP_telpos, "rotoff", 0, 360, 0, "%0.6f");
    m_indiP_telpos["rotoff"] = m_telRotOff;
-   
+
    registerIndiPropertyReadOnly(m_indiP_telpos);
-   
-   
+
+
    createROIndiNumber( m_indiP_teldata, "teldata", "Telscope Data", "TCS");
    indi::addNumberElement<int>( m_indiP_teldata, "roi", 0, 10, 1, "%d");
    m_indiP_teldata["roi"] = m_telROI;
@@ -603,16 +604,16 @@ int tcsInterface::appStartup()
    m_indiP_teldata["dome_az"] = m_telDomeAz;
    indi::addNumberElement<int>( m_indiP_teldata, "dome_stat", 0, 1, 1, "%d");
    m_indiP_teldata["dome_stat"] = m_telDomeStat;
-   
+
    registerIndiPropertyReadOnly(m_indiP_teldata);
-      
-   
+
+
    createROIndiText( m_indiP_catalog, "catalog", "object", "Catalog Entry", "TCS", "Object Name");
    m_indiP_catalog.add(pcf::IndiElement("rotmode"));
    m_indiP_catalog["rotmode"].setLabel("Rotator Mode");
- 
+
    registerIndiPropertyReadOnly(m_indiP_catalog);
- 
+
    createROIndiNumber( m_indiP_catdata, "catdata", "Catalog Entry Data", "TCS");
    indi::addNumberElement<double>( m_indiP_catdata, "ra", 0, 360, 0, "%0.6f");
    m_indiP_catdata["ra"] = m_catRA;
@@ -622,11 +623,11 @@ int tcsInterface::appStartup()
    m_indiP_catdata["epoch"] = m_catEp;
    indi::addNumberElement<double>( m_indiP_catdata, "rotoff", 0, 360, 0, "%0.6f");
    m_indiP_catdata["rotoff"] = m_catRo;
-   
+
    registerIndiPropertyReadOnly(m_indiP_catdata);
-   
-   
-   
+
+
+
    createROIndiNumber( m_indiP_vaneend, "vaneend", "Vane End Data", "TCS");
    indi::addNumberElement<double>( m_indiP_vaneend, "secz", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.6f");
    m_indiP_vaneend["secz"] = m_telSecZ;
@@ -648,10 +649,10 @@ int tcsInterface::appStartup()
    m_indiP_vaneend["secv"] = m_telSecV;
    indi::addNumberElement<double>( m_indiP_vaneend, "encv", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.6f");
    m_indiP_vaneend["encv"] = m_telEncV;
-   
+
    registerIndiPropertyReadOnly(m_indiP_vaneend);
-   
-   
+
+
    createROIndiNumber( m_indiP_env, "environment", "Environment Data", "TCS");
    indi::addNumberElement<double>( m_indiP_env, "temp-out", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_env["temp-out"] = m_wxtemp;
@@ -673,9 +674,9 @@ int tcsInterface::appStartup()
    m_indiP_env["temp-amb"] = m_tambient;
    indi::addNumberElement<double>( m_indiP_env, "dewpoint", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_env["dewpoint"] = m_wxdewpoint;
-   
+
    registerIndiPropertyReadOnly(m_indiP_env);
-   
+
    createROIndiNumber( m_indiP_seeing, "seeing", "Seeing Data", "TCS");
    indi::addNumberElement<unsigned>( m_indiP_seeing, "dimm_time", std::numeric_limits<unsigned>::lowest(), std::numeric_limits<unsigned>::max(), 0, "%d");
    m_indiP_seeing["dimm_time"] = m_dimm_time;
@@ -689,48 +690,48 @@ int tcsInterface::appStartup()
    m_indiP_seeing["mag2_time"] = m_mag2_time;
    indi::addNumberElement<double>( m_indiP_seeing, "mag2_fwhm_corr", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_seeing["mag2_fwhm_corr"] = m_mag2_fwhm_corr;
-   
+
    registerIndiPropertyReadOnly(m_indiP_seeing);
-   
+
    signal(SIGPIPE, SIG_IGN);
-   
-   
+
+
    if(dev::ioDevice::appStartup() < 0)
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    if(dev::telemeter<tcsInterface>::appStartup() < 0)
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    REG_INDI_NEWPROP(m_indiP_pyrNudge, "pyrNudge", pcf::IndiProperty::Number);
    m_indiP_pyrNudge.add(pcf::IndiElement("y"));
    m_indiP_pyrNudge.add(pcf::IndiElement("x"));
    m_indiP_pyrNudge.add(pcf::IndiElement("z"));
-   
+
    createStandardIndiRequestSw( m_indiP_acqFromGuider, "acqFromGuider");
    if( registerIndiPropertyNew( m_indiP_acqFromGuider, st_newCallBack_m_indiP_acqFromGuider) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiRequestSw( m_indiP_offlTTdump, "offlTT_dump");
    if( registerIndiPropertyNew( m_indiP_offlTTdump, st_newCallBack_m_indiP_offlTTdump) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-      
+
    createStandardIndiToggleSw( m_indiP_offlTTenable, "offlTT_enable");
    if( registerIndiPropertyNew( m_indiP_offlTTenable, st_newCallBack_m_indiP_offlTTenable) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlTTavgInt, "offlTT_avgInt", 0, 3600, 1, "%d");
    m_indiP_offlTTavgInt["current"].set(m_offlTT_avgInt);
    m_indiP_offlTTavgInt["target"].set(m_offlTT_avgInt);
@@ -739,7 +740,7 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlTTgain, "offlTT_gain", 0.0, 1.0, 0.0, "%0.2f");
    m_indiP_offlTTgain["current"].set(m_offlTT_gain);
    m_indiP_offlTTgain["target"].set(m_offlTT_gain);
@@ -748,7 +749,7 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlTTthresh, "offlTT_thresh", 0.0, 1.0, 0.0, "%0.2f");
    m_indiP_offlTTthresh["current"].set(m_offlTT_thresh);
    m_indiP_offlTTthresh["target"].set(m_offlTT_thresh);
@@ -757,21 +758,21 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiRequestSw( m_indiP_offlFdump, "offlF_dump");
    if( registerIndiPropertyNew( m_indiP_offlFdump, st_newCallBack_m_indiP_offlFdump) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-      
+
    createStandardIndiToggleSw( m_indiP_offlFenable, "offlF_enable");
    if( registerIndiPropertyNew( m_indiP_offlFenable, st_newCallBack_m_indiP_offlFenable) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlFavgInt, "offlF_avgInt", 0, 3600, 1, "%d");
    m_indiP_offlFavgInt["current"].set(m_offlF_avgInt);
    m_indiP_offlFavgInt["target"].set(m_offlF_avgInt);
@@ -780,7 +781,7 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlFgain, "offlF_gain", 0.0, 1.0, 0.0, "%0.2f");
    m_indiP_offlFgain["current"].set(m_offlF_gain);
    m_indiP_offlFgain["target"].set(m_offlF_gain);
@@ -789,7 +790,7 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    createStandardIndiNumber( m_indiP_offlFthresh, "offlF_thresh", 0.0, 1.0, 0.0, "%0.2f");
    m_indiP_offlFthresh["current"].set(m_offlF_thresh);
    m_indiP_offlFthresh["target"].set(m_offlF_thresh);
@@ -798,27 +799,27 @@ int tcsInterface::appStartup()
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    //Get the loop state for managing offloading
    REG_INDI_SETPROP(m_indiP_loopState, "holoop", "loop_state");
-   
-   
+
+
    m_offloadRequests.resize(5);
    for(size_t n=0; n < m_offloadRequests.size();++n) m_offloadRequests[n].resize(10,0);
-   
-   
+
+
    if(threadStart( m_offloadThread, m_offloadThreadInit, m_offloadThreadID, m_offloadThreadProp, 0, "", "offload", this, offloadThreadStart) < 0)
    {
       log<software_error>({__FILE__, __LINE__});
       return -1;
    }
-   
-   
+
+
    //Register to receive the coeff updates from Kyle
    REG_INDI_SETPROP(m_indiP_offloadCoeffs, "w2tcsOffloader", "zCoeffs");
-   
+
    state(stateCodes::NOTCONNECTED);
-   
+
    return 0;
 }
 
@@ -835,18 +836,18 @@ int tcsInterface::appLogic()
          log<text_log>("In state ERROR, connection lost, will retry.", logPrio::LOG_ERROR);
          return 0;
       }
-      
+
       log<text_log>("In state ERROR, but connected.  Trying to continue.", logPrio::LOG_WARNING);
 
       state(stateCodes::CONNECTED);
    }
-   
+
    if( state() == stateCodes::NOTCONNECTED )
    {
       static int lastrv = 0; //Used to handle a change in error within the same state.  Make general?
       static int lasterrno = 0;
-       
-      
+
+
       int rv = m_sock.serialInit(m_deviceAddr.c_str(), m_devicePort);
 
       if(rv == 0)
@@ -881,11 +882,11 @@ int tcsInterface::appLogic()
          return 0;
       }
    }
-   
+
    if(state() == stateCodes::CONNECTED)
    {
       std::string response;
-      
+
       //If any of these are unsuccesful we go around without recording data.
       if(getTelTime() < 0)
       {
@@ -896,50 +897,50 @@ int tcsInterface::appLogic()
       {
          return 0; //app state will be set based on what the error was
       }
-      
+
       if(getTelData() < 0)
       {
          return 0;
       }
-      
+
       if(getCatData() < 0)
       {
          return 0;
       }
-      
+
       if(getVaneData() < 0)
       {
          return 0;
       }
-      
+
       if(getEnvData() < 0)
       {
          return 0;
       }
-      
+
 
       if(getSeeing() < 0)
       {
          return 0;
       }
-      
+
       telemeter<tcsInterface>::appLogic();
-      
+
       if(updateINDI() < 0)
       {
          log<text_log>("Error from updateINDI", logPrio::LOG_ERROR);
          return 0;
       }
    }
-   
-   
-   
+
+
+
    return 0;
 }
 
 inline
 int tcsInterface::appShutdown()
-{   
+{
    //Wait for offload thread to exit on m_shutdown.
    if(m_offloadThread.joinable())
    {
@@ -951,7 +952,7 @@ int tcsInterface::appShutdown()
       {
       }
    }
-   
+
    return 0;
 }
 
@@ -970,20 +971,20 @@ int tcsInterface::getMagTelStatus( std::string & response,
    #endif
 
    std::lock_guard<std::mutex> guard(m_tcsMutex);
-   
+
    statreq_nl = statreq;
    statreq_nl += '\n';
    stat = m_sock.serialOut(statreq_nl.c_str(), statreq_nl.length());
-   
+
    if(stat != NETSERIAL_E_NOERROR)
    {
       log<text_log>("Error sending status request: " + statreq, logPrio::LOG_ERROR);
       response = "";
       return 0;
    }
-   
+
    stat = m_sock.serialInString(answer, 512, m_readTimeout, '\n');
-   
+
    if(stat <= 0)
    {
       log<text_log>("No response received to status request: " + statreq, logPrio::LOG_ERROR);
@@ -999,25 +1000,25 @@ int tcsInterface::getMagTelStatus( std::string & response,
    #endif
 
    response = answer;
-   
+
    return 0;
 }//int tcsInterface::getMagTelStatus
 
 inline
-int tcsInterface::sendMagTelCommand( const std::string &command, 
+int tcsInterface::sendMagTelCommand( const std::string &command,
                                      int timeout
                                    )
 {
    int stat;
    char answer[512];
    std::string command_nl;
-   
+
    #ifdef LOG_TCS_STATUS
    log<text_log>("Sending command: " + command);
    #endif
-   
+
    std::lock_guard<std::mutex> guard(m_tcsMutex);
-   
+
    command_nl = command;
    command_nl += '\n';
    stat = m_sock.serialOut(command_nl.c_str(), command_nl.length());
@@ -1027,24 +1028,24 @@ int tcsInterface::sendMagTelCommand( const std::string &command,
       log<text_log>("Error sending command: " + command, logPrio::LOG_ERROR);
       return -1000;
    }
-   
+
    stat = m_sock.serialInString(answer, sizeof(answer), timeout, '\n');
-   
+
    if(stat <= 0)
    {
       log<text_log>("No response received to command: " + command, logPrio::LOG_ERROR);
       return -1000;
    }
-   
+
    char * nl = strchr(answer, '\n');
    if(nl) answer[nl-answer] = '\0';
-   
+
    #ifdef LOG_TCS_STATUS
    log<text_log>(std::string("Received response: ") + answer);
    #endif
-   
+
    return atoi(answer);
-   
+
 }//int tcsInterface::sendMagTelCommand
 
 inline
@@ -1056,10 +1057,10 @@ std::vector<std::string> tcsInterface::parse_teldata( std::string &tdat )
 
    int pos1, pos2;
 
-  
+
    //skip all leading spaces
    pos1 = tdat.find_first_not_of(" " , 0);
-    
+
    if(pos1 == -1) pos1 = 0;
 
    pos2 = tdat.find_first_of(" ", pos1);
@@ -1099,8 +1100,8 @@ std::vector<std::string> tcsInterface::parse_teldata( std::string &tdat )
 }
 
 inline
-int tcsInterface::parse_xms( double &x, 
-                             double &m, 
+int tcsInterface::parse_xms( double &x,
+                             double &m,
                              double &s,
                              const std::string & xmsstr
                            )
@@ -1111,18 +1112,18 @@ int tcsInterface::parse_xms( double &x,
 
    st = 0;
    en = xmsstr.find(':', st);
-   
+
    //Check not found
    if(en == std::string::npos)
    {
-      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s"});
+      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s (missing ':')"});
       return -1;
    }
 
    //Check 0 length or invalid
    if(en - st < 2 || en < st)
    {
-      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s"});
+      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s (0 length or invalid)"});
       return -1;
    }
 
@@ -1152,20 +1153,20 @@ int tcsInterface::parse_xms( double &x,
    if(xmsstr[0] == '-') sgn = -1;
 
    st = en + 1;
-   
+
    en = xmsstr.find(':', st);
-   
+
    //Check not found
    if(en == std::string::npos)
    {
-      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s"});
+      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s (missing ':')"});
       return -1;
    }
 
    //Check 0 length or invalid
    if(en - st < 2 || en < st)
    {
-      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s"});
+      log<software_error>({__FILE__, __LINE__, "error parsing x:m:s (0 length or invalid)"});
       return -1;
    }
 
@@ -1208,7 +1209,7 @@ int tcsInterface::parse_xms( double &x,
       log<software_error>({__FILE__, __LINE__, e.what()});
       return -1;
    }
-   
+
    try
    {
       s = sgn*std::stod(sstr);
@@ -1229,7 +1230,7 @@ int tcsInterface::getTelTime()
 
    std::vector<std::string> pdat;
    std::string posstr;
-   
+
    if(getMagTelStatus( posstr, "datetime") < 0)
    {
       state(stateCodes::NOTCONNECTED);
@@ -1271,7 +1272,7 @@ int tcsInterface::getTelPos()
 
    std::vector<std::string> pdat;
    std::string posstr;
-   
+
    if(getMagTelStatus( posstr, "telpos") < 0)
    {
       state(stateCodes::NOTCONNECTED);
@@ -1308,7 +1309,7 @@ int tcsInterface::getTelPos()
       log<text_log>("Error parsing telescope Dec", logPrio::LOG_WARNING);
       return -1;
    }
-   
+
    m_telDec = h + m/60. + s/3600.;
 
    //m_telEl = strtod(pdat[1].c_str(),0);// * 3600.;
@@ -1333,7 +1334,7 @@ int tcsInterface::getTelPos()
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    return 0;
 }//int tcsInterface::getTelPos()
 
@@ -1401,7 +1402,7 @@ int tcsInterface::getTelData()
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    return 0;
 }//int tcsInterface::getTelData()
 
@@ -1412,7 +1413,7 @@ int tcsInterface::getCatData()
 
    std::vector<std::string> cdat;
    std::string cstr;
-   
+
    if( getMagTelStatus(cstr, "catdata") < 0)
    {
       state(stateCodes::NOTCONNECTED);
@@ -1451,7 +1452,7 @@ int tcsInterface::getCatData()
             std::cerr << n << " " << cdat[n] << "\n";
          }
          m_catRA = 0;
-   
+
          m_catDec = 0;
 
          m_catEp = 0;
@@ -1461,7 +1462,7 @@ int tcsInterface::getCatData()
          m_catRm = "";
 
          m_catObj = "none";
-      
+
          return 1;
       }
    }
@@ -1473,13 +1474,13 @@ int tcsInterface::getCatData()
    }
 
    m_catRA = (h + m/60. + s/3600.)*15.;
-   
+
    if(parse_xms(h,m,s,  cdat[1] ) != 0)
    {
       log<text_log>("Error parsing catalog Dec", logPrio::LOG_WARNING);
       return -1;
    }
-   
+
    m_catDec = h + m/60. + s/3600.;
 
    m_catEp = strtod(cdat[2].c_str(),0);
@@ -1489,7 +1490,7 @@ int tcsInterface::getCatData()
    m_catRm = cdat[4];
 
    m_catObj = cdat[5];
-   
+
    return 0;
 }//int tcsInterface::getCatData()
 
@@ -1533,12 +1534,12 @@ int tcsInterface::getVaneData()
    m_telEncH = strtod(vedat[7].c_str(),0);
    m_telSecV = strtod(vedat[8].c_str(),0);
    m_telEncV = strtod(vedat[9].c_str(),0);
-   
+
    if( recordTelVane() < 0)
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    return 0;
 }//int tcsInterface::getVaneData()
 
@@ -1554,7 +1555,7 @@ int tcsInterface::getEnvData()
       log<text_log>("Error getting telescope environment data (telenv)",logPrio::LOG_ERROR);
       return -1;
    }
-   
+
    edat = parse_teldata(estr);
 
    if(edat[0] == "-1")
@@ -1563,12 +1564,12 @@ int tcsInterface::getEnvData()
       log<text_log>("Error getting telescope environment data (telenv): TCS returned -1",logPrio::LOG_WARNING);
       return -1;
    }
-   
+
    if(edat.size() != 10)
    {
       state(stateCodes::NOTCONNECTED);
       log<text_log>("Error getting telescope environment data (telenv): TCS response wrong size, returned " + std::to_string(edat.size()) +  "values",logPrio::LOG_WARNING);
-      return -1;      
+      return -1;
    }
 
    m_wxtemp = strtod(edat[0].c_str(), 0);
@@ -1581,12 +1582,12 @@ int tcsInterface::getEnvData()
    m_tseccell = strtod(edat[7].c_str(), 0);
    m_tambient = strtod(edat[8].c_str(), 0);
    m_wxdewpoint = strtod(edat[9].c_str(),0);
-   
+
    if( recordTelEnv() < 0)
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
-   
+
    return 0;
 } //int tcsInterface::getEnvData()
 
@@ -1595,35 +1596,36 @@ int tcsInterface::getSeeing()
 {
    static int last_query = 0;
 
-   
-
    if(time(0) - last_query > m_seeingInterval)
    {
       time_t sec_midnight;
       time_t dt;
-   
+
       int rv = system("query_seeing > /dev/null");
       if(rv < 0)
       {
          log<software_error>({__FILE__, __LINE__, "Error from seeing query"});
          return -1;
       }
-      
-      
+
+
       last_query = time(0);
       sec_midnight = last_query % 86400;
 
       std::ifstream fin;
       std::string label, datestr, timestr, scopestr, fwhmcorrstr;
       double h, m,s;
-      fin.open("/tmp/query_seeing.txt");
-   
+      // note: query seeing picks a temp file with the username included
+      // to reduce file clobbering conflicts
+      fin.open("/tmp/xsup_query_seeing.txt");
+
       if(fin.fail())
       {
          log<software_error>({__FILE__, __LINE__, "Error reading dimm seeing"});
          return -1;
       }
 
+      fin >> label;
       fin >> label;
       fin >> label;
       fin >> label;
@@ -1634,9 +1636,8 @@ int tcsInterface::getSeeing()
       if (scopestr != "dimm") {
          log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
       }
-
       fin >> m_dimm_fwhm_corr;
-      
+
       parse_xms(h, m, s, timestr);
 
       m_dimm_time = (int) (h*3600 + m*60 + s + 0.5);
@@ -1648,6 +1649,8 @@ int tcsInterface::getSeeing()
       {
          m_dimm_fwhm_corr = -1;
       }
+
+      // Next scope: mag1/baade
       fin >> datestr;
       fin >> timestr;
       fin >> scopestr;
@@ -1656,7 +1659,7 @@ int tcsInterface::getSeeing()
       }
 
       fin >> m_mag1_fwhm_corr;
-      
+
       parse_xms(h, m, s, timestr);
 
       m_mag1_time = (int) (h*3600 + m*60 + s + 0.5);
@@ -1669,6 +1672,7 @@ int tcsInterface::getSeeing()
          m_mag1_fwhm_corr = -1;
       }
 
+      // Last scope: mag2/clay
       fin >> datestr;
       fin >> timestr;
       fin >> scopestr;
@@ -1678,7 +1682,7 @@ int tcsInterface::getSeeing()
 
       fin >> m_mag2_fwhm_corr;
       fin.close();
-      
+
       parse_xms(h, m, s, timestr);
 
       m_mag2_time = (int) (h*3600 + m*60 + s + 0.5);
@@ -1695,9 +1699,9 @@ int tcsInterface::getSeeing()
       {
          return log<software_error,-1>({__FILE__,__LINE__});
       }
-      
+
    }
-   
+
    return 0;
 }
 
@@ -1737,7 +1741,7 @@ int tcsInterface::updateINDI()
 
    try
    {
-      indi::updateIfChanged(m_indiP_telpos, std::vector<std::string>({"epoch",     "ra",    "dec",     "el",     "ha",   "am",   "rotoff"}), 
+      indi::updateIfChanged(m_indiP_telpos, std::vector<std::string>({"epoch",     "ra",    "dec",     "el",     "ha",   "am",   "rotoff"}),
                                              std::vector<double>({      m_telEpoch, m_telRA, m_telDec, m_telEl, m_telHA, m_telAM,  m_telRotOff}), m_indiDriver, INDI_OK);
       /*m_indiP_telpos["epoch"] = m_telEpoch;
       m_indiP_telpos["ra"] = m_telRA;
@@ -1752,7 +1756,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    /*try
    {
       m_indiP_telpos.setState(INDI_OK);
@@ -1762,7 +1766,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_telpos);
@@ -1772,7 +1776,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }*/
-   
+
    try
    {
       m_indiP_teldata["roi"] = m_telROI;
@@ -1791,7 +1795,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiP_teldata.setState(INDI_OK);
@@ -1801,7 +1805,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_teldata);
@@ -1811,7 +1815,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       indi::updateIfChanged(m_indiP_catalog, std::vector<std::string>({"object", "rotmode"}), std::vector<std::string>({m_catObj, m_catRm}), m_indiDriver, INDI_OK);
@@ -1823,8 +1827,8 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
-   
+
+
 /*   try
    {
       m_indiP_catalog.setState(INDI_OK);
@@ -1834,7 +1838,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_catalog);
@@ -1844,10 +1848,10 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }*/
-   
+
    try
    {
-      indi::updateIfChanged(m_indiP_catdata, std::vector<std::string>({"ra",   "dec",    "epoch", "rotoff"}), 
+      indi::updateIfChanged(m_indiP_catdata, std::vector<std::string>({"ra",   "dec",    "epoch", "rotoff"}),
                                              std::vector<double>({     m_catRA, m_catDec, m_catEp, m_catRo}), m_indiDriver, INDI_OK);
       /*m_indiP_catdata["ra"] = m_catRA;
       m_indiP_catdata["dec"] = m_catDec;
@@ -1859,7 +1863,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
 /*   try
    {
       m_indiP_catdata.setState(INDI_OK);
@@ -1869,7 +1873,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_catdata);
@@ -1879,7 +1883,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }*/
-   
+
    //---- Vane End ----//
    try
    {
@@ -1899,7 +1903,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiP_vaneend.setState(INDI_OK);
@@ -1909,7 +1913,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_vaneend);
@@ -1919,8 +1923,8 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
-   
+
+
    //---- Environment ----//
    try
    {
@@ -1940,7 +1944,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiP_env.setState(INDI_OK);
@@ -1950,7 +1954,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_env);
@@ -1960,18 +1964,17 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
-   
+
+
    //---- Seeing ----//
    try
    {
       m_indiP_seeing["dimm_time"] = m_dimm_time;
-      m_indiP_seeing["dimm_el"] = m_dimm_el;
       m_indiP_seeing["dimm_fwhm_corr"] = m_dimm_fwhm_corr;
-      
+
       m_indiP_seeing["mag1_time"] = m_mag1_time;
       m_indiP_seeing["mag1_fwhm_corr"] = m_mag1_fwhm_corr;
-      
+
       m_indiP_seeing["mag2_time"] = m_mag2_time;
       m_indiP_seeing["mag2_fwhm_corr"] = m_mag2_fwhm_corr;
    }
@@ -1980,7 +1983,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiP_seeing.setState(INDI_OK);
@@ -1990,7 +1993,7 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       m_indiDriver->sendSetProperty (m_indiP_seeing);
@@ -2000,10 +2003,10 @@ int tcsInterface::updateINDI()
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    //--- Offloading ---//
-   
-   
+
+
    try
    {
       if(m_offlTT_dump)
@@ -2014,7 +2017,7 @@ int tcsInterface::updateINDI()
       {
          updateSwitchIfChanged(m_indiP_offlTTdump, "request", pcf::IndiElement::Off, INDI_IDLE);
       }
-      
+
       if(m_offlTT_enabled)
       {
          updateSwitchIfChanged(m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK);
@@ -2023,18 +2026,18 @@ int tcsInterface::updateINDI()
       {
          updateSwitchIfChanged(m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
       }
-      
+
       updateIfChanged(m_indiP_offlTTavgInt, "current", m_offlTT_avgInt);
       updateIfChanged(m_indiP_offlTTgain, "current", m_offlTT_gain);
       updateIfChanged(m_indiP_offlTTthresh, "current", m_offlTT_thresh);
-      
+
    }
    catch(...)
    {
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    try
    {
       if(m_offlF_dump)
@@ -2045,7 +2048,7 @@ int tcsInterface::updateINDI()
       {
          updateSwitchIfChanged(m_indiP_offlFdump, "request", pcf::IndiElement::Off, INDI_IDLE);
       }
-      
+
       if(m_offlF_enabled)
       {
          updateSwitchIfChanged(m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK);
@@ -2054,18 +2057,18 @@ int tcsInterface::updateINDI()
       {
          updateSwitchIfChanged(m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
       }
-      
+
       updateIfChanged(m_indiP_offlFavgInt, "current", m_offlF_avgInt);
       updateIfChanged(m_indiP_offlFgain, "current", m_offlF_gain);
       updateIfChanged(m_indiP_offlFthresh, "current", m_offlF_thresh);
-      
+
    }
    catch(...)
    {
       log<software_error>({__FILE__,__LINE__,"INDI library exception"});
       return -1;
    }
-   
+
    return 0;
 }
 
@@ -2088,7 +2091,7 @@ int tcsInterface::recordTelem( const telem_teldata * )
    recordTelData(true);
    return 0;
 }
- 
+
 inline
 int tcsInterface::recordTelem( const telem_telvane * )
 {
@@ -2127,9 +2130,9 @@ int tcsInterface::recordTelPos(bool force)
    static double lastHA = 0;
    static double lastAM = 0;
    static double lastRotOff = 0;
-   
+
    if( force || lastEpoch != m_telEpoch ||
-                lastRA != m_telRA || 
+                lastRA != m_telRA ||
                 lastDec != m_telDec ||
                 lastEl != m_telEl ||
                 lastHA != m_telHA ||
@@ -2137,7 +2140,7 @@ int tcsInterface::recordTelPos(bool force)
                 lastRotOff != m_telRotOff )
    {
       telem<telem_telpos>({m_telEpoch, m_telRA, m_telDec, m_telEl, m_telHA, m_telAM, m_telRotOff});
-      
+
       lastEpoch = m_telEpoch;
       lastRA = m_telRA;
       lastDec = m_telDec;
@@ -2146,7 +2149,7 @@ int tcsInterface::recordTelPos(bool force)
       lastAM = m_telAM;
       lastRotOff = m_telRotOff;
    }
-   
+
    return 0;
 }
 
@@ -2163,9 +2166,9 @@ int tcsInterface::recordTelData(bool force)
    static double lastPA = 0;
    static double lastDomeAz = 0;
    static int lastDomeStat = -999;
-   
-   if( force || lastROI != m_telROI || 
-                lastTracking != m_telTracking || 
+
+   if( force || lastROI != m_telROI ||
+                lastTracking != m_telTracking ||
                 lastGuiding != m_telGuiding ||
                 lastSlewing != m_telSlewing ||
                 lastGuiderMoving != m_telGuiderMoving ||
@@ -2176,7 +2179,7 @@ int tcsInterface::recordTelData(bool force)
                 lastDomeStat != m_telDomeStat )
    {
       telem<telem_teldata>({m_telROI,m_telTracking,m_telGuiding,m_telSlewing,m_telGuiderMoving,m_telAz, m_telZd, m_telPA,m_telDomeAz,m_telDomeStat});
-      
+
       lastROI = m_telROI;
       lastTracking = m_telTracking;
       lastGuiding = m_telGuiding;
@@ -2188,7 +2191,7 @@ int tcsInterface::recordTelData(bool force)
       lastDomeAz = m_telDomeAz;
       lastDomeStat = m_telDomeStat;
    }
-   
+
    return 0;
 }
 
@@ -2205,7 +2208,7 @@ int tcsInterface::recordTelVane(bool force)
    static double lastEncH = -999;
    static double lastSecV = -999;
    static double lastEncV = -999;
-   
+
    if( force || lastSecZ != m_telSecZ ||
                 lastEncZ != m_telEncZ ||
                 lastSecX != m_telSecX ||
@@ -2218,7 +2221,7 @@ int tcsInterface::recordTelVane(bool force)
                 lastEncV != m_telEncV )
    {
       telem<telem_telvane>({m_telSecZ, m_telEncZ, m_telSecX, m_telEncX, m_telSecY, m_telEncY, m_telSecH, m_telEncH, m_telSecV, m_telEncV});
-      
+
       lastSecZ = m_telSecZ;
       lastEncZ = m_telEncZ;
       lastSecX = m_telSecX;
@@ -2230,25 +2233,25 @@ int tcsInterface::recordTelVane(bool force)
       lastSecV = m_telSecV;
       lastEncV = m_telEncV;
    }
-   
+
    return 0;
 }
 
 inline
 int tcsInterface::recordTelEnv(bool force)
 {
-   static double lastWxtemp = -999;  
-   static double lastWxpres = -999;   
+   static double lastWxtemp = -999;
+   static double lastWxpres = -999;
    static double lastWxhumid = -999;
-   static double lastWxwind = -999;   
-   static double lastWxwdir = -999;   
-   static double lastTtruss = -999;   
-   static double lastTcell = -999;    
-   static double lastTseccell = -999; 
-   static double lastTambient = -999; 
-   static double lastWxdewpoint = -999; 
-   
-   
+   static double lastWxwind = -999;
+   static double lastWxwdir = -999;
+   static double lastTtruss = -999;
+   static double lastTcell = -999;
+   static double lastTseccell = -999;
+   static double lastTambient = -999;
+   static double lastWxdewpoint = -999;
+
+
    if( force ||  lastWxtemp != m_wxtemp ||
                  lastWxpres != m_wxpres ||
                  lastWxhumid != m_wxhumid ||
@@ -2261,7 +2264,7 @@ int tcsInterface::recordTelEnv(bool force)
                  lastWxdewpoint != m_wxdewpoint )
    {
       telem<telem_telenv>({m_wxtemp, m_wxpres, m_wxhumid, m_wxwind, m_wxwdir, m_ttruss, m_tcell, m_tseccell, m_tambient, m_wxdewpoint});
-      
+
       lastWxtemp = m_wxtemp;
       lastWxpres = m_wxpres;
       lastWxhumid = m_wxhumid;
@@ -2274,7 +2277,7 @@ int tcsInterface::recordTelEnv(bool force)
       lastWxdewpoint = m_wxdewpoint;
 
    }
-   
+
    return 0;
 }
 
@@ -2287,7 +2290,7 @@ int tcsInterface::recordTelCat(bool force)
    static double last_catDec = 0;
    static double last_catEp = 0;
    static double last_catRo = 0;
-   
+
    if(force || m_catObj != last_catObj ||
                m_catRm != last_catRm ||
                m_catRA != last_catRA ||
@@ -2296,7 +2299,7 @@ int tcsInterface::recordTelCat(bool force)
                m_catRo != last_catRo )
    {
       telem<telem_telcat>({m_catObj, m_catRm, m_catRA, m_catDec, m_catEp, m_catRo});
-      
+
       last_catObj = m_catObj;
       last_catRm = m_catRm;
       last_catRA = m_catRA;
@@ -2304,7 +2307,7 @@ int tcsInterface::recordTelCat(bool force)
       last_catEp = m_catEp;
       last_catRo = m_catRo;
    }
-   
+
    return 0;
 }
 
@@ -2313,13 +2316,13 @@ int tcsInterface::recordTelSee(bool force)
 {
    static int last_dimm_time = 0;
    static double last_dimm_fwhm_corr = 0;
-   
+
    static int last_mag1_time = 0;
    static double last_mag1_fwhm_corr = 0;
-   
+
    static int last_mag2_time = 0;
    static double last_mag2_fwhm_corr = 0;
-   
+
    if(force || m_dimm_time != last_dimm_time ||
                m_dimm_fwhm_corr != last_dimm_fwhm_corr ||
                m_mag1_time != last_mag1_time ||
@@ -2332,14 +2335,14 @@ int tcsInterface::recordTelSee(bool force)
 
       last_dimm_time = m_dimm_time;
       last_dimm_fwhm_corr = m_dimm_fwhm_corr;
-      
+
       last_mag1_time = m_mag1_time;
       last_mag1_fwhm_corr = m_mag1_fwhm_corr;
-      
+
       last_mag2_time = m_mag2_time;
       last_mag2_fwhm_corr = m_mag2_fwhm_corr;
    }
-   
+
    return 0;
 }
 
@@ -2352,13 +2355,13 @@ int tcsInterface::sendPyrNudge( float x,
    {
       float dx = m_pyrNudge_C_00 * x + m_pyrNudge_C_01 * y;
       float dy = m_pyrNudge_C_10 * x + m_pyrNudge_C_11 * y;
-   
+
       //float cs = cos((m_pyrNudge_ang + m_pyrNudge_ang0 + m_telZd)*3.14159*180);
       //float ss = sin((m_pyrNudge_ang + m_pyrNudge_ang0 + m_telZd)*3.14159*180);
-   
+
       //float dx = x * cs - y * ss;
       //float dy = m_pyrNudge_parity*(x * ss + y * cs);
-   
+
       char ttstr[64];
       snprintf(ttstr, sizeof(ttstr) , "aeg %f %f", dx, dy);
 
@@ -2370,7 +2373,7 @@ int tcsInterface::sendPyrNudge( float x,
          return -1;
       }
    }
-   
+
    if(z != 0)
    {
       char ttstr[64];
@@ -2383,7 +2386,7 @@ int tcsInterface::sendPyrNudge( float x,
          return -1;
       }
    }
-   
+
    return 0;
 }
 
@@ -2395,7 +2398,7 @@ int tcsInterface::acquireFromGuider()
    //The rotation matrix
    float az = m_acqAz0*cos(q) - m_acqEl0*sin(q) + m_acqAzOff;
    float el = m_acqAz0*sin(q) + m_acqEl0*cos(q) + m_acqElOff;
-   
+
    char ttstr[64];
    snprintf(ttstr, sizeof(ttstr) , "aeg %f %f", az, el);
 
@@ -2406,7 +2409,7 @@ int tcsInterface::acquireFromGuider()
       log<software_error>({__FILE__,__LINE__, std::string("error sending command: ") + ttstr});
       return -1;
    }
-      
+
    float z = m_acqFocus;
    snprintf(ttstr, sizeof(ttstr) , "zimr %f", z*m_pyrNudge_F_sign);
 
@@ -2431,20 +2434,20 @@ void tcsInterface::offloadThreadExec( )
    m_offloadThreadID = syscall(SYS_gettid);
 
    static int last_loopState = -1;
-   
+
    while( (m_offloadThreadInit == true || state() != stateCodes::CONNECTED) && shutdown() == 0)
    {
       sleep(1);
    }
-   
-   
+
+
    float avg_TT_0;
    float avg_TT_1;
    int sincelast_TT = 0;
-   
+
    float avg_F_0;
    int sincelast_F = 0;
-   
+
    while(shutdown() == 0)
    {
       //Check if loop open
@@ -2457,13 +2460,13 @@ void tcsInterface::offloadThreadExec( )
             m_lastRequest = std::numeric_limits<size_t>::max();
             m_nRequests = 0;
             m_last_nRequests = 0;
-            
-         }         
+
+         }
          sleep(1);
          last_loopState = m_loopState;
          continue;
       }
-      
+
       //Check if loop paused
       if(m_loopState == 1)
       {
@@ -2471,88 +2474,88 @@ void tcsInterface::offloadThreadExec( )
          last_loopState = m_loopState;
          continue;
       }
- 
+
       //Ok loop closed
-      
+
       if(m_firstRequest == m_lastRequest) continue; //this really should mutexed instead
-      
+
       //If we got a new offload request, process it
       if(m_last_nRequests != m_nRequests)
       {
          //std::cerr << m_firstRequest << " " << m_lastRequest << " " << m_nRequests << std::endl;
-         
+
          ///\todo offloading: These sections ought to be separate functions for clarity
-         /* --- TT --- */ 
+         /* --- TT --- */
          avg_TT_0 = 0;
          avg_TT_1 = 0;
-         
+
          int navg = 0;
- 
+
          size_t i = m_lastRequest;
-         
+
          for(size_t n=0; n < m_offlTT_avgInt; ++n)
          {
             avg_TT_0 += m_offloadRequests[0][i];
             avg_TT_1 += m_offloadRequests[1][i];
             ++navg;
-            
+
             if(i== m_firstRequest) break;
-            
+
             if(i == 0) i = m_offloadRequests[0].size()-1;
             else --i;
          }
-         
+
          avg_TT_0 /= navg;
          avg_TT_1 /= navg;
-   
+
          ++sincelast_TT;
          if(sincelast_TT > m_offlTT_avgInt)
          {
             doTToffload(avg_TT_0, avg_TT_1);
             sincelast_TT = 0;
          }
-         
-         
+
+
          /* --- Focus --- */
          avg_F_0 = 0;
-         
+
          navg = 0;
- 
+
          i = m_lastRequest;
-         
+
          for(size_t n=0; n < m_offlF_avgInt; ++n)
          {
             avg_F_0 += m_offloadRequests[2][i];
             ++navg;
-            
+
             if(i== m_firstRequest) break;
-            
+
             if(i == 0) i = m_offloadRequests[0].size()-1;
             else --i;
          }
-         
+
          avg_F_0 /= navg;
-   
+
          ++sincelast_F;
          if(sincelast_F > m_offlF_avgInt)
          {
             doFoffload(avg_F_0);
             sincelast_F = 0;
          }
-         
-         
-         
-         
-         
+
+
+
+
+
          m_last_nRequests = m_nRequests;
       }
       last_loopState = m_loopState;
 
       sleep(1);
-      
+
 
    }
-   
+
    return;
 }
 
@@ -2566,15 +2569,15 @@ int tcsInterface::doTToffload( float tt_0,
       sendTToffload(tt_0, tt_1);
       m_offlTT_dump = false;
    }
-   else 
+   else
    {
       tt_0 *= m_offlTT_gain;
       tt_1 *= m_offlTT_gain;
-      
+
       if(fabs(tt_0) < m_offlTT_thresh) tt_0 = 0;
       if(fabs(tt_1) < m_offlTT_thresh) tt_1 = 0;
 
-            
+
       if(tt_0 ==0 && tt_1 == 0)
       {
          //Do nothing
@@ -2591,7 +2594,7 @@ int tcsInterface::doTToffload( float tt_0,
    }
 
    return 0;
-   
+
 }
 
 int tcsInterface::sendTToffload( float tt_0,
@@ -2606,23 +2609,23 @@ int tcsInterface::sendTToffload( float tt_0,
       ip.setName("offset12");
       ip.add(pcf::IndiElement("dC1"));
       ip.add(pcf::IndiElement("dC2"));
-   
-      sendNewProperty (ip); 
-   
+
+      sendNewProperty (ip);
+
       ip["dC1"] = tt_0;
       ip["dC2"] = tt_1;
-   
+
       sendNewProperty(ip);
       return 0;
    }
 
    char ttstr[64];
-   
-   
+
+
    snprintf(ttstr, sizeof(ttstr) , "aeg %f %f", tt_0, tt_1);
 
    log<text_log>(std::string("[OFFL] sending: ") + ttstr);
-   
+
    return sendMagTelCommand(ttstr, m_readTimeout);
 }
 
@@ -2634,15 +2637,15 @@ int tcsInterface::doFoffload( float F_0 )
       sendFoffload(F_0);
       m_offlF_dump = false;
    }
-   else 
+   else
    {
       F_0 *= m_offlF_gain;
-            
+
       if(fabs(F_0) < m_offlF_thresh) F_0 = 0;
-            
+
       if(F_0 == 0)
       {
-         
+
       }
       else if(m_offlF_enabled)
       {
@@ -2651,23 +2654,23 @@ int tcsInterface::doFoffload( float F_0 )
       }
       else if(!m_labMode)
       {
-         
+
          log<text_log>("Focus offload above threshold but Focus offloading disabled", logPrio::LOG_WARNING);
       }
    }
    return 0;
-   
+
 }
 
 int tcsInterface::sendFoffload( float F_0 )
 {
    char fstr[64];
-   
+
    //Use zimr to update the IMA values
    snprintf(fstr, sizeof(fstr), "zimr %f", F_0);
-   
+
    log<text_log>(std::string("[OFFL] sending: ") + fstr);
-   
+
    return sendMagTelCommand(fstr, m_readTimeout);
 }
 
@@ -2679,7 +2682,7 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_labMode)(const pcf::IndiProperty &ip
    {
       return log<software_error,-1>({__FILE__,__LINE__, "no toggle element"});
    }
-   
+
    bool labMode;
 
    if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
@@ -2715,33 +2718,33 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_labMode)(const pcf::IndiProperty &ip
 INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_pyrNudge)(const pcf::IndiProperty &ipRecv)
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_pyrNudge, ipRecv);
-   
+
    float x = 0;
    float y = 0;
    float z = 0;
-   
+
    if(ipRecv.find("y"))
    {
       x = ipRecv["y"].get<float>();
    }
-   
+
    if(ipRecv.find("x"))
    {
       y = ipRecv["x"].get<float>();
    }
-   
+
    if(ipRecv.find("z"))
    {
       z = ipRecv["z"].get<float>();
    }
-   
+
    return sendPyrNudge(x, y, z);
 }
 
 INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_acqFromGuider)(const pcf::IndiProperty &ipRecv)
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_acqFromGuider, ipRecv);
-   
+
    if(!ipRecv.find("request"))
    {
       return 0;
@@ -2751,7 +2754,7 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_acqFromGuider)(const pcf::IndiProper
    {
       return acquireFromGuider();
    }
-   
+
    return 0;
 }
 
@@ -2778,15 +2781,15 @@ INDI_SETCALLBACK_DEFN(tcsInterface, m_indiP_offloadCoeffs)(const pcf::IndiProper
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offloadCoeffs, ipRecv);
 
    if(m_loopState != 2) return 0;
-   
+
    size_t nextReq = m_lastRequest + 1;
-   
+
    if(nextReq >= m_offloadRequests[0].size()) nextReq = 0;
-     
+
    //Tip-Tilt
    float tt0 = ipRecv["00"].get<float>();
    float tt1 = ipRecv["01"].get<float>();
-   
+
    if(m_labMode)
    {
       m_offloadRequests[0][nextReq] = m_lab_offlTT_C_00 * tt0 + m_lab_offlTT_C_01 * tt1;
@@ -2797,19 +2800,19 @@ INDI_SETCALLBACK_DEFN(tcsInterface, m_indiP_offloadCoeffs)(const pcf::IndiProper
       m_offloadRequests[0][nextReq] = m_offlTT_C_00 * tt0 + m_offlTT_C_01 * tt1;
       m_offloadRequests[1][nextReq] = m_offlTT_C_10 * tt0 + m_offlTT_C_11 * tt1;
    }
-   
+
    //Focus
    float f0 = ipRecv["02"].get<float>();
-   
+
    m_offloadRequests[2][nextReq] = m_offlCFocus_00 * f0;
-   
-   
+
+
    //Coma
    float c0 = ipRecv["03"].get<float>();
    float c1 = ipRecv["04"].get<float>();
-   
+
    m_offloadRequests[3][nextReq] = m_offlCComa_00 * c0 + m_offlCComa_01 * c1;
-   m_offloadRequests[4][nextReq] = m_offlCComa_10 * c0 + m_offlCComa_11 * c1; 
+   m_offloadRequests[4][nextReq] = m_offlCComa_10 * c0 + m_offlCComa_11 * c1;
 
    //Now update circ buffer
    m_lastRequest = nextReq;
@@ -2828,40 +2831,40 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTenable)(const pcf::IndiPropert
       log<software_error>({__FILE__,__LINE__, "wrong INDI property received."});
       return -1;
    }
-   
+
    if(!ipRecv.find("toggle")) return 0;
-   
+
    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On && m_offlTT_enabled == false)
    {
       updateSwitchIfChanged(m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK);
-    
+
       m_offlTT_enabled = true;
    }
    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlTT_enabled == true)
    {
       updateSwitchIfChanged(m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
-    
+
       m_offlTT_enabled = false;
    }
-   
-   return 0;  
+
+   return 0;
 
 }
 
 INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTdump)(const pcf::IndiProperty &ipRecv)
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTdump, ipRecv);
-   
+
    if(!ipRecv.find("request")) return 0;
-   
+
    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
    {
       updateSwitchIfChanged(m_indiP_offlTTdump, "request", pcf::IndiElement::On, INDI_OK);
-    
+
       m_offlTT_dump = true;
    }
-   
-   return 0;  
+
+   return 0;
 
 }
 
@@ -2870,15 +2873,15 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTavgInt)(const pcf::IndiPropert
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTavgInt, ipRecv);
 
    int target;
-   
+
    if( indiTargetUpdate( m_indiP_offlTTavgInt, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlTT_avgInt = target;
-      
+
    return 0;
 }
 
@@ -2887,15 +2890,15 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTgain)(const pcf::IndiProperty 
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTgain, ipRecv);
 
    float target;
-   
+
    if( indiTargetUpdate( m_indiP_offlTTgain, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlTT_gain = target;
-      
+
    return 0;
 }
 
@@ -2904,15 +2907,15 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTthresh)(const pcf::IndiPropert
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlTTthresh, ipRecv);
 
    float target;
-   
+
    if( indiTargetUpdate( m_indiP_offlTTthresh, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlTT_thresh = target;
-      
+
    return 0;
 }
 
@@ -2920,40 +2923,40 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlTTthresh)(const pcf::IndiPropert
 INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFenable)(const pcf::IndiProperty &ipRecv)
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFenable, ipRecv);
-   
+
    if(!ipRecv.find("toggle")) return 0;
-   
+
    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On && m_offlF_enabled == false)
    {
       updateSwitchIfChanged(m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK);
-    
+
       m_offlF_enabled = true;
    }
    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlF_enabled == true)
    {
       updateSwitchIfChanged(m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
-    
+
       m_offlF_enabled = false;
    }
-   
-   return 0;  
+
+   return 0;
 
 }
 
 INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFdump)(const pcf::IndiProperty &ipRecv)
 {
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFdump, ipRecv);
-   
+
    if(!ipRecv.find("request")) return 0;
-   
+
    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
    {
       updateSwitchIfChanged(m_indiP_offlFdump, "request", pcf::IndiElement::On, INDI_OK);
-    
+
       m_offlF_dump = true;
    }
-   
-   return 0;  
+
+   return 0;
 
 }
 
@@ -2962,15 +2965,15 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFavgInt)(const pcf::IndiProperty
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFavgInt, ipRecv);
 
    int target;
-   
+
    if( indiTargetUpdate( m_indiP_offlFavgInt, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlF_avgInt = target;
-      
+
    return 0;
 }
 
@@ -2979,15 +2982,15 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFgain)(const pcf::IndiProperty &
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFgain, ipRecv);
 
    float target;
-   
+
    if( indiTargetUpdate( m_indiP_offlFgain, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlF_gain = target;
-      
+
    return 0;
 }
 
@@ -2996,17 +2999,17 @@ INDI_NEWCALLBACK_DEFN(tcsInterface, m_indiP_offlFthresh)(const pcf::IndiProperty
    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_offlFthresh, ipRecv);
 
    float target;
-   
+
    std::cerr << "Got offl thresh\n";
-   
+
    if( indiTargetUpdate( m_indiP_offlFthresh, target, ipRecv, true) < 0)
    {
       log<software_error>({__FILE__,__LINE__});
       return -1;
    }
-   
+
    m_offlF_thresh = target;
-      
+
    return 0;
 }
 
