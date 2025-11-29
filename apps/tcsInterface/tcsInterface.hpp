@@ -155,17 +155,12 @@ protected:
 
    //Seeing
    double m_dimm_el {0};        ///< DIMM elevation at time of seeing measurement
-   double m_dimm_fwhm {0};      ///< DIMM raw FWHM
    double m_dimm_fwhm_corr {0}; ///< DIMM elevation corrected FWHM
    int m_dimm_time {0};         ///< Seconds since midnight of DIMM measurement.
-   
-   double m_mag1_el {0};        ///< MAG1 elevation at time of seeing measurement
-   double m_mag1_fwhm {0};      ///< MAG1 raw FWHM
+
    double m_mag1_fwhm_corr {0}; ///< MAG1 elevation corrected FWHM
    int m_mag1_time {0};         ///< Seconds since midnight of MAG1 measurement.
-   
-   double m_mag2_el {0};        ///< MAG2 elevation at time of seeing measurement
-   double m_mag2_fwhm {0};      ///< MAG2 raw FWHM
+
    double m_mag2_fwhm_corr {0}; ///< MAG2 elevation corrected FWHM
    int m_mag2_time {0};         ///< Seconds since midnight of MAG2 measurement.
    
@@ -684,26 +679,14 @@ int tcsInterface::appStartup()
    createROIndiNumber( m_indiP_seeing, "seeing", "Seeing Data", "TCS");
    indi::addNumberElement<unsigned>( m_indiP_seeing, "dimm_time", std::numeric_limits<unsigned>::lowest(), std::numeric_limits<unsigned>::max(), 0, "%d");
    m_indiP_seeing["dimm_time"] = m_dimm_time;
-   indi::addNumberElement<double>( m_indiP_seeing, "dimm_el", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["dimm_el"] = m_dimm_el;
-   indi::addNumberElement<double>( m_indiP_seeing, "dimm_fwhm", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["dimm_fwhm"] = m_dimm_fwhm;
    indi::addNumberElement<double>( m_indiP_seeing, "dimm_fwhm_corr", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_seeing["dimm_fwhm_corr"] = m_dimm_fwhm_corr;
    indi::addNumberElement<unsigned>( m_indiP_seeing, "mag1_time", std::numeric_limits<unsigned>::lowest(), std::numeric_limits<unsigned>::max(), 0, "%d");
    m_indiP_seeing["mag1_time"] = m_mag1_time;
-   indi::addNumberElement<double>( m_indiP_seeing, "mag1_el", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["mag1_el"] = m_mag1_el;
-   indi::addNumberElement<double>( m_indiP_seeing, "mag1_fwhm", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["mag1_fwhm"] = m_mag1_fwhm;
    indi::addNumberElement<double>( m_indiP_seeing, "mag1_fwhm_corr", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_seeing["mag1_fwhm_corr"] = m_mag1_fwhm_corr;
    indi::addNumberElement<unsigned>( m_indiP_seeing, "mag2_time", std::numeric_limits<unsigned>::lowest(), std::numeric_limits<unsigned>::max(), 0, "%d");
    m_indiP_seeing["mag2_time"] = m_mag2_time;
-   indi::addNumberElement<double>( m_indiP_seeing, "mag2_el", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["mag2_el"] = m_mag2_el;
-   indi::addNumberElement<double>( m_indiP_seeing, "mag2_fwhm", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
-   m_indiP_seeing["mag2_fwhm"] = m_mag2_fwhm;
    indi::addNumberElement<double>( m_indiP_seeing, "mag2_fwhm_corr", std::numeric_limits<double>::lowest(), std::numeric_limits<double>::max(), 0, "%0.2f");
    m_indiP_seeing["mag2_fwhm_corr"] = m_mag2_fwhm_corr;
    
@@ -1652,7 +1635,7 @@ int tcsInterface::getSeeing()
          log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
       }
 
-      fin >> m_dimm_fwhm;
+      fin >> m_dimm_fwhm_corr;
       
       parse_xms(h, m, s, timestr);
 
@@ -1661,9 +1644,8 @@ int tcsInterface::getSeeing()
       dt = sec_midnight - m_dimm_time;
       if(dt < 0) dt = 86400-dt;
 
-      if(dt > 300 || m_dimm_fwhm <= 0)
+      if(dt > 300 || m_dimm_fwhm_corr <= 0)
       {
-         m_dimm_fwhm = -1;
          m_dimm_fwhm_corr = -1;
       }
       fin >> datestr;
@@ -1985,17 +1967,12 @@ int tcsInterface::updateINDI()
    {
       m_indiP_seeing["dimm_time"] = m_dimm_time;
       m_indiP_seeing["dimm_el"] = m_dimm_el;
-      m_indiP_seeing["dimm_fwhm"] = m_dimm_fwhm;
       m_indiP_seeing["dimm_fwhm_corr"] = m_dimm_fwhm_corr;
       
       m_indiP_seeing["mag1_time"] = m_mag1_time;
-      m_indiP_seeing["mag1_el"] = m_mag1_el;
-      m_indiP_seeing["mag1_fwhm"] = m_mag1_fwhm;
       m_indiP_seeing["mag1_fwhm_corr"] = m_mag1_fwhm_corr;
       
       m_indiP_seeing["mag2_time"] = m_mag2_time;
-      m_indiP_seeing["mag2_el"] = m_mag2_el;
-      m_indiP_seeing["mag2_fwhm"] = m_mag2_fwhm;
       m_indiP_seeing["mag2_fwhm_corr"] = m_mag2_fwhm_corr;
    }
    catch(...)
@@ -2335,49 +2312,31 @@ inline
 int tcsInterface::recordTelSee(bool force)
 {
    static int last_dimm_time = 0;
-   static double last_dimm_el = 0;
-   static double last_dimm_fwhm = 0;
-   //static double last_dimm_fwhm_corr = 0;
+   static double last_dimm_fwhm_corr = 0;
    
    static int last_mag1_time = 0;
-   static double last_mag1_el = 0;
-   static double last_mag1_fwhm = 0;
    static double last_mag1_fwhm_corr = 0;
    
    static int last_mag2_time = 0;
-   static double last_mag2_el = 0;
-   static double last_mag2_fwhm = 0;
    static double last_mag2_fwhm_corr = 0;
    
    if(force || m_dimm_time != last_dimm_time ||
-               m_dimm_el != last_dimm_el ||
-               m_dimm_fwhm != last_dimm_fwhm ||
-               /*m_dimm_fwhm_corr != last_dimm_fwhm_corr || //ignore corrected dimm*/
+               m_dimm_fwhm_corr != last_dimm_fwhm_corr ||
                m_mag1_time != last_mag1_time ||
-               m_mag1_el != last_mag1_el ||
-               m_mag1_fwhm != last_mag1_fwhm ||
                m_mag1_fwhm_corr != last_mag1_fwhm_corr ||
                m_mag2_time != last_mag2_time ||
-               m_mag2_el != last_mag2_el ||
-               m_mag2_fwhm != last_mag2_fwhm ||
                m_mag2_fwhm_corr != last_mag2_fwhm_corr)
 
    {
-      telem<telem_telsee>({m_dimm_time, m_dimm_el, m_dimm_fwhm, -1, m_mag1_time, m_mag1_el, m_mag1_fwhm, m_mag1_fwhm_corr, m_mag2_time, m_mag2_el, m_mag2_fwhm, m_mag2_fwhm_corr});
+      telem<telem_telsee>({m_dimm_time, m_dimm_fwhm_corr, m_mag1_time, m_mag1_fwhm_corr, m_mag2_time, m_mag2_fwhm_corr});
 
       last_dimm_time = m_dimm_time;
-      last_dimm_el = m_dimm_el;
-      last_dimm_fwhm = m_dimm_fwhm;
-      //last_dimm_fwhm_corr = m_dimm_fwhm_corr;
+      last_dimm_fwhm_corr = m_dimm_fwhm_corr;
       
       last_mag1_time = m_mag1_time;
-      last_mag1_el = m_mag1_el;
-      last_mag1_fwhm = m_mag1_fwhm;
       last_mag1_fwhm_corr = m_mag1_fwhm_corr;
       
       last_mag2_time = m_mag2_time;
-      last_mag2_el = m_mag2_el;
-      last_mag2_fwhm = m_mag2_fwhm;
       last_mag2_fwhm_corr = m_mag2_fwhm_corr;
    }
    

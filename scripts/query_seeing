@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import sys
 import urllib.request
 import urllib.parse
@@ -10,7 +11,7 @@ scopes = ['dimm', 'clay', 'baade']
 
 def retrieve_one(name):
     now = datetime.now(timezone.utc)
-    start_ts = (now - timedelta(minutes=1)).isoformat()
+    start_ts = (now - timedelta(minutes=5)).isoformat()
     end_ts = now.isoformat()
 
     # First request for seeing
@@ -26,20 +27,26 @@ def retrieve_one(name):
     with urllib.request.urlopen(req) as response:
         seeing_data = json.loads(response.read().decode('utf-8'))
     seeing_points = seeing_data['results']
-    latest_seeing_point = sorted(seeing_points, key=lambda x: x['ts'], reverse=True)[0]
+    seeing_points = list(sorted(seeing_points, key=lambda x: x['ts'], reverse=True))
 
-    return latest_seeing_point
+    return seeing_points[0] if len(seeing_points) else None
 
 def main():
     scopes = ['dimm', 'baade', 'clay']
-    with open(f"/tmp/query_seeing.txt", "w") as fh:
+    with open(f"/tmp/{os.environ.get('USER', 'xsup')}_query_seeing.txt", "w") as fh:
         outstr = "utcdate utctime scope fwhm_corr"
         fh.write(outstr + "\n")
         for name in scopes:
             seeing = retrieve_one(name)
-            utcdate, utctime_usec = seeing['ts'].split('T')
-            utctime, _ = utctime_usec.split('.')[0]
-            outstr = f"{utcdate} {utctime} {seeing['seeing']}"
+            if seeing is None:
+                now_date, now_time = datetime.now(timezone.utc).isoformat().split('T')
+                now_time, _ = now_time.rsplit('.', 1)
+                outstr = f"{now_date} {now_time} {name} -1"
+            else:
+                utcdate, utctime_usec = seeing['ts'].split('T')
+                utctime = utctime_usec.split('.', 1)[0]
+                seeing_corr = seeing['seeing'] if seeing['seeing'] > 0 else -1
+                outstr = f"{utcdate} {utctime} {name} {seeing_corr}"
             print(outstr)
             fh.write(outstr + "\n")
 
