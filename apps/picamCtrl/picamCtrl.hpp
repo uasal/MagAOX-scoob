@@ -396,16 +396,6 @@ picamCtrl::picamCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    m_maxEMGain = 1000;
 
-   m_indiP_fxngensync = pcf::IndiProperty( pcf::IndiProperty::Number );
-   m_indiP_fxngensync.setDevice( m_fxngenName );
-   m_indiP_fxngensync.setName( m_fxngenCh + "freq" );
-   m_indiP_fxngensync.add( pcf::IndiElement( "target" ) );
-   
-   m_indiP_otherCamExptime = pcf::IndiProperty( pcf::IndiProperty::Number );
-   m_indiP_otherCamExptime.setDevice( m_otherCamName );
-   m_indiP_otherCamExptime.setName( "exptime" );
-   m_indiP_otherCamExptime.add( pcf::IndiElement( "target" ) );
-
    return;
 }
 
@@ -439,7 +429,7 @@ void picamCtrl::setupConfig()
 
    config.add("synchro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen device name used for synchronizing the camera.");
    config.add("synchro.channel", "", "synchro.channel", argType::Required, "synchro", "channel", false, "string", "The fxngen channel used for synchronizing the camera.");
-   config.add("synchro.otherCamName", "", "synchro.otherCamName", argType::Required, "synchro", "otherCamName", false, "string", "The other camera (used for synchronizing exposure time while synchro'd)");
+   config.add("synchro.otherCamName", "", "synchro.otherCamName", argType::Required, "synchro", "otherCamName", false, "string", "The other camera (used for coupling exposure time while synchro'd)");
 
    dev::stdCamera<picamCtrl>::setupConfig(config);
    dev::frameGrabber<picamCtrl>::setupConfig(config);
@@ -523,6 +513,17 @@ int picamCtrl::appStartup()
    {
       return log<software_error,-1>({__FILE__,__LINE__});
    }
+
+
+   m_indiP_fxngensync = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_fxngensync.setDevice( m_fxngenName );
+   m_indiP_fxngensync.setName( m_fxngenCh + "freq" );
+   m_indiP_fxngensync.add( pcf::IndiElement( "target" ) );
+   
+   m_indiP_otherCamExptime = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_otherCamExptime.setDevice( m_otherCamName );
+   m_indiP_otherCamExptime.setName( "exptime" );
+   m_indiP_otherCamExptime.add( pcf::IndiElement( "target" ) );
 
    return 0;
 
@@ -1316,6 +1317,7 @@ int picamCtrl::setExpTime()
 
    if (m_synchro)
    {
+      std::cerr << "Setting " << m_otherCamName << " exptime to " << std::to_string(m_expTime) << std::endl;
       m_indiP_otherCamExptime["target"] = m_expTime;
       sendNewProperty(m_indiP_otherCamExptime);
 
