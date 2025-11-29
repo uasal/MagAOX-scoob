@@ -86,8 +86,10 @@ class xrif2fits : public mx::app::application
 
     bool m_noHeader{ false }; /**< if true then no camera header is generated */
 
-    std::string m_dir; ///< The directory to search for files.  Can be empty if full path given in files.  If files is
-                       ///< empty, all archives in dir will be used.  Defaults to `./`.
+    std::string m_dir; /**< The directory to search for files.  Can be empty if full path given in files.  
+                            If files is empty, all archives in dir will be used.  Defaults to `./`.*/
+
+    bool m_overWriteDir {false}; ///< Overwrite an existing directory.  Default is to stop if directory exists.
 
     std::vector<std::string> m_files; /**< List of files to use.  If dir is not empty,
                                            it will be pre-pended to each name.*/
@@ -251,6 +253,16 @@ inline void xrif2fits::setupConfig()
                 "string",
                 "The directory to search for files. Can be empty if full path given in files." );
 
+    config.add( "overwrite",
+                "O",
+                "overwrite",
+                argType::True,
+                "",
+                "overwrite",
+                false,
+                "bool",
+                "Overwrite an existing directory.  Default is to stop if directory exists." );
+
     config.add( "files",
                 "f",
                 "files",
@@ -347,6 +359,7 @@ inline void xrif2fits::loadConfig()
     config( m_noHeader, "noHeader" );
 
     config( m_dir, "dir" );
+    config(m_overWriteDir, "overwrite");
     config( m_files, "files" );
     config( m_outDir, "outDir" );
     config( m_logDir, "logdir" );
@@ -987,11 +1000,21 @@ inline mx::error_t xrif2fits::prepareFiles()
 
         if( !m_timesOnly )
         {
-            errno = 0;
-            if( mkdir( m_outDir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH ) < 0 )
+            if(!m_overWriteDir)
             {
-                return mx::error_report<verboseT>(mx::errno2error_t(errno), "Creating directory " + m_outDir);
+                mx::error_t errc;
+                if(mx::ioutils::dir_exists_is(m_outDir, errc))
+                {
+                    return mx::error_report<verboseT>(mx::error_t::eexist, "Directory " + m_outDir + " already exists.");
+                }
+
+                if(!!errc)
+                {
+                    return mx::error_report<verboseT>(errc, "Checking " + m_outDir);
+                }   
             }
+
+            mx_error_check( mx::ioutils::createDirectories(m_outDir) );
         }
     }
 
