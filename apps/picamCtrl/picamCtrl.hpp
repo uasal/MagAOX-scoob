@@ -201,7 +201,7 @@ protected:
    std::string m_fxngenName { "fxngensync" }; ///< Default fxngen device name
    std::string m_fxngenCh { "C2" }; ///< Default fxngen channel
 
-
+   std::string m_otherCamName;
 
 
 
@@ -356,6 +356,7 @@ protected:
 
    pcf::IndiProperty m_indiP_readouttime;
    pcf::IndiProperty m_indiP_fxngensync;
+   pcf::IndiProperty m_indiP_otherCamExptime;
 
 public:
    INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_adcquality);
@@ -399,6 +400,11 @@ picamCtrl::picamCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    m_indiP_fxngensync.setDevice( m_fxngenName );
    m_indiP_fxngensync.setName( m_fxngenCh + "freq" );
    m_indiP_fxngensync.add( pcf::IndiElement( "target" ) );
+   
+   m_indiP_otherCamExptime = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_otherCamExptime.setDevice( m_otherCamName );
+   m_indiP_otherCamExptime.setName( "exptime" );
+   m_indiP_otherCamExptime.add( pcf::IndiElement( "target" ) );
 
    return;
 }
@@ -431,8 +437,9 @@ void picamCtrl::setupConfig()
 {
    config.add("camera.serialNumber", "", "camera.serialNumber", argType::Required, "camera", "serialNumber", false, "int", "The identifying serial number of the camera.");
 
-   config.add("syncro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen device name used for synchronizing the camera.");
-   config.add("syncro.channel", "", "synchro.channel", argType::Required, "synchro", "channel", false, "string", "The fxngen channel used for synchronizing the camera.");
+   config.add("synchro.deviceName", "", "synchro.deviceName", argType::Required, "synchro", "deviceName", false, "string", "The fxngen device name used for synchronizing the camera.");
+   config.add("synchro.channel", "", "synchro.channel", argType::Required, "synchro", "channel", false, "string", "The fxngen channel used for synchronizing the camera.");
+   config.add("synchro.otherCamName", "", "synchro.otherCamName", argType::Required, "synchro", "otherCamName", false, "string", "The other camera (used for synchronizing exposure time while synchro'd)");
 
    dev::stdCamera<picamCtrl>::setupConfig(config);
    dev::frameGrabber<picamCtrl>::setupConfig(config);
@@ -447,6 +454,7 @@ void picamCtrl::loadConfig()
    config(m_serialNumber, "camera.serialNumber");
    config(m_fxngenName, "synchro.deviceName");
    config(m_fxngenCh, "synchro.channel");
+   config(m_otherCamName, "synchro.otherCamName");
 
    dev::stdCamera<picamCtrl>::loadConfig(config);
    dev::frameGrabber<picamCtrl>::loadConfig(config);
@@ -1306,7 +1314,13 @@ int picamCtrl::setExpTime()
    }
    m_fps = m_FrameRateCalculation;
 
-   if (m_synchro) updateFxnGenSync();
+   if (m_synchro)
+   {
+      m_indiP_otherCamExptime["target"] = m_expTime;
+      sendNewProperty(m_indiP_otherCamExptime);
+
+      updateFxnGenSync();
+   }
 
    recordCamera(true);
 
