@@ -46,5 +46,4 @@ def main():
     return 0
 
 if __name__ == "__main__":
-    debug = sys.argv[-1] == '--debug'
-    sys.exit(main(debug))
+    sys.exit(main())
