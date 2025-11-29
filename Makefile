@@ -26,6 +26,7 @@ apps_aoc = \
 	trippLitePDU \
 	tcsInterface \
 	adcTracker \
+	hwpTracker \
 	kTracker \
 	koolanceCtrl \
 	observerCtrl \
@@ -120,6 +121,7 @@ all_buildable_apps = \
 	dmSpeckle \
 	filterWheelCtrl \
 	flipperCtrl \
+	hwpTracker \
 	indiTSAccumulator \
 	koolanceCtrl \
 	kTracker \
