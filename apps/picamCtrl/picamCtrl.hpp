@@ -355,8 +355,10 @@ protected:
 protected:
 
    pcf::IndiProperty m_indiP_readouttime;
-   pcf::IndiProperty m_indiP_fxngensync;
+   pcf::IndiProperty m_indiP_fxngensync_freq;
+   pcf::IndiProperty m_indiP_fxngensync_output;
    pcf::IndiProperty m_indiP_otherCamExptime;
+   pcf::IndiProperty m_indiP_otherCamSynchro;
 
 public:
    INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_adcquality);
@@ -515,15 +517,25 @@ int picamCtrl::appStartup()
    }
 
 
-   m_indiP_fxngensync = pcf::IndiProperty( pcf::IndiProperty::Number );
-   m_indiP_fxngensync.setDevice( m_fxngenName );
-   m_indiP_fxngensync.setName( m_fxngenCh + "freq" );
-   m_indiP_fxngensync.add( pcf::IndiElement( "target" ) );
+   m_indiP_fxngensync_freq = pcf::IndiProperty( pcf::IndiProperty::Number );
+   m_indiP_fxngensync_freq.setDevice( m_fxngenName );
+   m_indiP_fxngensync_freq.setName( m_fxngenCh + "freq" );
+   m_indiP_fxngensync_freq.add( pcf::IndiElement( "target" ) );
+
+   m_indiP_fxngensync_output = pcf::IndiProperty( pcf::IndiProperty::Text );
+   m_indiP_fxngensync_output.setDevice( m_fxngenName );
+   m_indiP_fxngensync_output.setName( m_fxngenCh + "outp" );
+   m_indiP_fxngensync_output.add( pcf::IndiElement( "value" ) );
    
    m_indiP_otherCamExptime = pcf::IndiProperty( pcf::IndiProperty::Number );
    m_indiP_otherCamExptime.setDevice( m_otherCamName );
    m_indiP_otherCamExptime.setName( "exptime" );
    m_indiP_otherCamExptime.add( pcf::IndiElement( "target" ) );
+
+   m_indiP_otherCamSynchro = pcf::IndiProperty( pcf::IndiProperty::Switch );
+   m_indiP_otherCamSynchro.setDevice( m_otherCamName );
+   m_indiP_otherCamSynchro.setName( "synchro" );
+   m_indiP_otherCamSynchro.add( pcf::IndiElement( "toggle" ) );
 
    return 0;
 
@@ -1269,10 +1281,14 @@ int picamCtrl::setEMGain()
 
 void picamCtrl::updateFxnGenSync()
 {
-
+   
    std::cerr << "Setting fxngen frequency to " << std::to_string(m_fps) << " Hz" << std::endl;
-   m_indiP_fxngensync["target"] = m_fps;
-   sendNewProperty(m_indiP_fxngensync);
+   m_indiP_fxngensync_freq["target"] = m_fps;
+   sendNewProperty(m_indiP_fxngensync_freq);
+
+   // make sure fxngen is on!
+   m_indiP_fxngensync_output["value"] = "On";
+   sendNewProperty(m_indiP_fxngensync_output);
 }
 
 inline
@@ -1929,6 +1945,10 @@ int picamCtrl::configureAcquisition()
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_ReadoutPerTrigger);
       m_synchro = true;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::On, INDI_IDLE);
+
+      std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
+      m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
+      sendNewProperty(m_indiP_otherCamSynchro);
    } 
    else
    {
@@ -1936,6 +1956,10 @@ int picamCtrl::configureAcquisition()
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_NoResponse);
       m_synchro = false;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+
+      std::cerr << "Turning synchro off for " << m_otherCamName << std::endl;
+      m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::Off;
+      sendNewProperty(m_indiP_otherCamSynchro);
    }
 
    //Start continuous acquisition
