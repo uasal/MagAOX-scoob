@@ -1631,11 +1631,9 @@ int tcsInterface::getSeeing()
       sec_midnight = last_query % 86400;
 
       std::ifstream fin;
-      std::string label, datestr, timestr, fwhmstr;
+      std::string label, datestr, timestr, scopestr, fwhmcorrstr;
       double h, m,s;
-
-      /* process DIMM */
-      fin.open("/tmp/dimm.tsv");
+      fin.open("/tmp/query_seeing.txt");
    
       if(fin.fail())
       {
@@ -1646,12 +1644,15 @@ int tcsInterface::getSeeing()
       fin >> label;
       fin >> label;
       fin >> label;
+
       fin >> datestr;
       fin >> timestr;
+      fin >> scopestr;
+      if (scopestr != "dimm") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
+      }
 
       fin >> m_dimm_fwhm;
-      fin >> m_dimm_el;
-      fin.close();
       
       parse_xms(h, m, s, timestr);
 
@@ -1660,34 +1661,19 @@ int tcsInterface::getSeeing()
       dt = sec_midnight - m_dimm_time;
       if(dt < 0) dt = 86400-dt;
 
-      if(dt > 300 ||m_dimm_fwhm <= 0)
+      if(dt > 300 || m_dimm_fwhm <= 0)
       {
          m_dimm_fwhm = -1;
          m_dimm_fwhm_corr = -1;
       }
-      else
-      {
-         m_dimm_fwhm_corr = m_dimm_fwhm * pow(cos( (90.-m_dimm_el)*3.14159/180.), 3./5.);
-      }
-      
-      /* process mag1 */
-      fin.open("/tmp/mag1.tsv");
-   
-      if(fin.fail())
-      {
-         log<software_error>({__FILE__, __LINE__, "Error reading mag1 seeing"});
-         return -1;
-      }
-
-      fin >> label;
-      fin >> label;
-      fin >> label;
       fin >> datestr;
       fin >> timestr;
+      fin >> scopestr;
+      if (scopestr != "baade") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
+      }
 
-      fin >> m_mag1_fwhm;
-      fin >> m_mag1_el;
-      fin.close();
+      fin >> m_mag1_fwhm_corr;
       
       parse_xms(h, m, s, timestr);
 
@@ -1696,33 +1682,19 @@ int tcsInterface::getSeeing()
       dt = sec_midnight - m_mag1_time;
       if(dt < 0) dt = 86400-dt;
 
-      if(dt > 300 ||m_mag1_fwhm <= 0)
+      if(dt > 300 || m_mag1_fwhm_corr <= 0)
       {
-         m_mag1_fwhm = -1;
          m_mag1_fwhm_corr = -1;
       }
-      else
-      {
-         m_mag1_fwhm_corr = m_mag1_fwhm * pow(cos( (90.-m_mag1_el)*3.14159/180.), 3./5.);
-      }
-      
-      /* process mag2 */
-      fin.open("/tmp/mag2.tsv");
-   
-      if(fin.fail())
-      {
-         log<software_error>({__FILE__, __LINE__, "Error reading mag2 seeing"});
-         return -1;
-      }
 
-      fin >> label;
-      fin >> label;
-      fin >> label;
       fin >> datestr;
       fin >> timestr;
+      fin >> scopestr;
+      if (scopestr != "clay") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
+      }
 
-      fin >> m_mag2_fwhm;
-      fin >> m_mag2_el;
+      fin >> m_mag2_fwhm_corr;
       fin.close();
       
       parse_xms(h, m, s, timestr);
@@ -1732,16 +1704,11 @@ int tcsInterface::getSeeing()
       dt = sec_midnight - m_mag2_time;
       if(dt < 0) dt = 86400-dt;
 
-      if(dt > 300 ||m_mag2_fwhm <= 0)
+      if(dt > 300 || m_mag2_fwhm_corr <= 0)
       {
-         m_mag2_fwhm = -1;
          m_mag2_fwhm_corr = -1;
       }
-      else
-      {
-         m_mag2_fwhm_corr = m_mag2_fwhm * pow(cos( (90.-m_mag2_el)*3.14159/180.), 3./5.);
-      }
-      
+
       if( recordTelSee() < 0)
       {
          return log<software_error,-1>({__FILE__,__LINE__});
