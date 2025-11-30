@@ -55,6 +55,7 @@ class hwpTracker : public MagAOXApp<true>, public dev::telemeter<hwpTracker>
 
     float m_hwpTrackingOffset{ 0 }; ///< HWP tracking offset
 
+
     float m_hwpSetPos{ 0 };
 
     std::string m_hwpPosName{ "" };
@@ -73,6 +74,8 @@ class hwpTracker : public MagAOXApp<true>, public dev::telemeter<hwpTracker>
         "tcsi" }; ///< The device name of the TCS Interface providing 'teldata.altitude'.  Default is 'tcsi'
 
     float m_updateInterval{ 10 }; ///< The interval at which to update positions, in seconds.  Default is 10 secs.
+
+    float m_pupilOffset{ 0 }; ///< The pupil offset used for HWP tracking (must match twice the kTracker offset)
 
     bool m_tracking{ false }; ///< Is the HWP in ADI synchronization mode?. Default is false.
 
@@ -218,6 +221,18 @@ void hwpTracker::setupConfig()
                 "float",
                 "The interval at which to update positions, in seconds.  Default is 1 sec." );
 
+
+    config.add( "tracking.pupilOffset",
+                "",
+                "tracking.pupilOffset",
+                argType::Required,
+                "tracking",
+                "pupilOffset",
+                false,
+                "float",
+                "The HWP tracking pupil offset. Must match twice the kTracker offset. Default is 0." );
+
+
     TELEMETER_SETUP_CONFIG( config );
 }
 
@@ -228,6 +243,7 @@ int hwpTracker::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_devName, "hwp.devName" );
     _config( m_tcsDevName, "tcs.devName" );
     _config( m_updateInterval, "tracking.updateInterval" );
+    _config( m_pupilOffset, "tracking.pupilOffset" );
 
     TELEMETER_LOAD_CONFIG( _config );
 
@@ -327,7 +343,7 @@ std::string hwpTracker::getHwpStatus()
 void hwpTracker::getHwpTrackingOffset()
 {
     // While on Nasmyth East, the sign is negative
-    m_hwpTrackingOffset = -0.5 * m_parang + m_altitude;
+    m_hwpTrackingOffset = -0.5 * m_parang + m_altitude + m_pupilOffset;
 }
 
 void hwpTracker::updateHwpPos()
