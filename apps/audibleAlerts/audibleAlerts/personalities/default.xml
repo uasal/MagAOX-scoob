@@ -49,7 +49,7 @@
       <file name="katie.wav" />
     </walk-up>
     <walk-up email="tonucci@strw.leidenuniv.nl">
-      <file name="elena.mp3" />
+      <file name="elena.wav" />
     </walk-up>
     <walk-up email="edenmcewen@arizona.edu">
       <file name="eden.wav" />
@@ -298,6 +298,14 @@
       <speak>we don't even need gee pee yous for this</speak>
       <speak>someone doesn't have enough photons</speak>
       <speak>can anyone spare a photon or two?</speak>
+    </transition>
+  </react-to>
+  <react-to indi-id="camsci1.synchro.toggle">
+    <transition value="On">
+      <speak>Synchronized</speak>
+    </transition>
+    <transition value="Off">
+      <speak>Free running</speak>
     </transition>
   </react-to>
 
