@@ -218,6 +218,7 @@ vm/
 *.egg-info
 __pycache__
 installed_python_interface_timestamp.txt
+magaox-python/build
 
 libMagAOX/doc/diag/Makefile
 libMagAOX/doc/diag/xwcapp_fsm.drawio
