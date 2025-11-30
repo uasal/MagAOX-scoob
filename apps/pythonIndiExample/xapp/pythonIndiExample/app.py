@@ -20,3 +20,7 @@ class pythonIndiExample(XDevice):
 
     def loop(self):
         log.info("Looping")
+
+# Used to make the pyproject.toml just a little simpler,
+# with fewer repetitions of 'pythonIndiExample':
+main = pythonIndiExample.console_app

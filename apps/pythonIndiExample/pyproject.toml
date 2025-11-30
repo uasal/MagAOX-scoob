@@ -3,13 +3,13 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pythonIndiExample"
+name = "xapp-pythonIndiExample"
 description = "Python INDI device implementation example"
-version = "2023.12.21"
+version = "2025.11.30"
 
 authors = [
   {name = "Joseph D. Long", email = "me@joseph-long.com"},
 ]
 
 [project.scripts]
-pythonIndiExample = "pythonIndiExample:pythonIndiExample.console_app"
+pythonIndiExample = "xapp.pythonIndiExample:main"
