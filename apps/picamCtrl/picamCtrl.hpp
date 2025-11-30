@@ -436,6 +436,10 @@ int picamCtrl::setSynchro()
          std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
          m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
          sendNewProperty(m_indiP_otherCamSynchro);
+
+         std::cerr << "Setting " << m_otherCamName << "'s exposure time" << std::endl;
+         m_indiP_otherCamExptime["target"] = m_expTime;
+         sendNewProperty(m_indiP_otherCamExptime);
       }
       else
       {
@@ -2232,10 +2236,13 @@ INDI_NEWCALLBACK_DEFN( picamCtrl, m_indiP_receiveExptime )( const pcf::IndiPrope
         return 0;
     }
 
-    double val = ipRecv["target"].get<double>();
-    std::cerr << "Received exptime from otherCam: " << std::to_string(val) << std::endl;
-    std::cerr << "Doing nothing for now in " << __FILE__ << " " << __LINE__ << std::endl;
-   //  updatesIfChanged<double>(m_indiP_receiveExptime, { "current" }, { m_setExpTime });
+    m_expTimeSet = ipRecv["target"].get<double>();
+
+    updatesIfChanged<double>(m_indiP_receiveExptime, { "current" }, { m_expTimeSet });
+    
+    // we don't need to strictly reconfig because setExpTime works online, but this
+    // eludes an infinite loop of triggering the 'otherCam' in setExptime 
+    m_reconfig = 1;
 
     return 0;
 }
