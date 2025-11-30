@@ -1331,7 +1331,7 @@ int picamCtrl::setExpTime()
    }
    m_fps = m_FrameRateCalculation;
 
-   if (m_synchro)
+   if (m_synchro && !m_otherCamName.empty())
    {
       std::cerr << "Setting " << m_otherCamName << " exptime to " << std::to_string(m_expTime) << std::endl;
       m_indiP_otherCamExptime["target"] = m_expTime;
@@ -1946,9 +1946,12 @@ int picamCtrl::configureAcquisition()
       m_synchro = true;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::On, INDI_IDLE);
 
-      std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
-      m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
-      sendNewProperty(m_indiP_otherCamSynchro);
+      if (!m_otherCamName.empty())
+      {
+         std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
+         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
+         sendNewProperty(m_indiP_otherCamSynchro);
+      }
    } 
    else
    {
@@ -1957,9 +1960,12 @@ int picamCtrl::configureAcquisition()
       m_synchro = false;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::Off, INDI_IDLE);
 
-      std::cerr << "Turning synchro off for " << m_otherCamName << std::endl;
-      m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::Off;
-      sendNewProperty(m_indiP_otherCamSynchro);
+      if (!m_otherCamName.empty())
+      {
+         std::cerr << "Turning synchro off for " << m_otherCamName << std::endl;
+         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::Off;
+         sendNewProperty(m_indiP_otherCamSynchro);
+      }
    }
 
    //Start continuous acquisition
