@@ -465,11 +465,11 @@ void siglentSDG::setupConfig()
    config.add("fxngen.C1outpOn", "", "fxngen.C1outpOn", argType::Required, "fxngen", "C1outpOn", false, "bool", "Whether (true) or not (false) C1 output is enabled at startup. Only effective wavefrom is pulse. Default is false.");
    config.add("fxngen.C2outpOn", "", "fxngen.C2outpOn", argType::Required, "fxngen", "C2outpOn", false, "bool", "Whether (true) or not (false) C2 output is enabled at startup. Only effective wavefrom is pulse. Default is false.");
    
-   config.add("fxngen.C1ampDefault", "", "fxngen.C1ampDefault", argType::Required, "fxngen", "C1ampDefault", false, "float", "C1 Default P2V Amplitude of waveform . Default = 0.0");
-   config.add("fxngen.C2ampDefault", "", "fxngen.C2ampDefault", argType::Required, "fxngen", "C2ampDefault", false, "float", "C2 Default P2V Amplitude of waveform . Default = 0.0");
+   config.add("fxngen.C1ampDefault", "", "fxngen.C1ampDefault", argType::Required, "fxngen", "C1ampDefault", false, "float", "C1 Default P2V Amplitude of waveform. Default = 0.0");
+   config.add("fxngen.C2ampDefault", "", "fxngen.C2ampDefault", argType::Required, "fxngen", "C2ampDefault", false, "float", "C2 Default P2V Amplitude of waveform. Default = 0.0");
 
-   config.add("fxngen.C1ofstDefault", "", "fxngen.C1ofstDefault", argType::Required, "fxngen", "C1ofstDefault", false, "float", "C1 Default Offset Amplitude of waveform . Default = 0.0");
-   config.add("fxngen.C2ofstDefault", "", "fxngen.C2ofstDefault", argType::Required, "fxngen", "C2ofstDefault", false, "float", "C2 Default Offset Amplitude of waveform . Default = 0.0");
+   config.add("fxngen.C1ofstDefault", "", "fxngen.C1ofstDefault", argType::Required, "fxngen", "C1ofstDefault", false, "float", "C1 Default Offset Amplitude of waveform. Default = 0.0");
+   config.add("fxngen.C2ofstDefault", "", "fxngen.C2ofstDefault", argType::Required, "fxngen", "C2ofstDefault", false, "float", "C2 Default Offset Amplitude of waveform. Default = 0.0");
    
    config.add("fxngen.C1ampMax", "", "fxngen.C1ampMax", argType::Required, "fxngen", "C1ampMax", false, "float", "C1 Maximum amplitude");
    config.add("fxngen.C2ampMax", "", "fxngen.C2ampMax", argType::Required, "fxngen", "C2ampMax", false, "float", "C2 Maximum amplitude");
