@@ -74,31 +74,10 @@ class IgnorePatternsConfig:
 class BaseConfig:
     '''Base class for telemdb commands providing a `db` config item
     '''
-    databases : dict[str,DbConfig] = xconf.field(default_factory=lambda: [DbConfig()], help="PostgreSQL database connections")
+    databases : dict[str,DbConfig] = xconf.field(default_factory=lambda: {'local': DbConfig()}, help="PostgreSQL database connections")
     hostname : str = xconf.field(default=socket.gethostname(), help="Hostname to identify this computer when running inventory or watch_files")
     data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
     ignore_patterns : IgnorePatternsConfig = xconf.field(default_factory=IgnorePatternsConfig, help="Patterns for files and directories to ignore in the inventory")
-
-    def connect_to_databases(self, existing_connections=None) -> tuple[dict[str, psycopg.Connection],dict[str, Exception]]:
-        if existing_connections is None:
-            existing_connections = []
-        for conn in existing_connections:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        connections = {}
-        exceptions = {}
-        for dbname in self.databases:
-            db = self.databases[dbname]
-            log.debug(f"Connecting to {dbname}...")
-            try:
-                conn = db.connect()
-                connections[dbname] = conn
-                log.debug(f"Connected to {dbname}!")
-            except Exception as e:
-                exceptions[dbname] = e
-        return connections, exceptions
 
 @xconf.config
 class BaseDbDeviceConfig(BaseConfig, IndiDeviceBaseConfig):

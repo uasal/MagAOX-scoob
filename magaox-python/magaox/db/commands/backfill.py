@@ -95,7 +95,8 @@ class Backfill(BaseDbCommand):
             raise RuntimeError(f"Passed a path {path} that we don't know how to read")
         # pass to batch ingest
         log.debug(f"Ingesting {len(records)} record{'s' if len(records) != 1 else ''} into the database")
-        for conn in self.connect_to_databases():
+        for conn_name in self.databases:
+            conn = self.databases[conn_name].connect()
             try:
                 with conn.transaction():
                     cur = conn.cursor()
@@ -112,29 +113,31 @@ class Backfill(BaseDbCommand):
         return path
 
     def main(self):
-        connections = self.connect_to_databases()
-        for conn in connections:
+        for conn_name in self.databases:
+            conn = self.databases[conn_name].connect()
             paths = ingest.identify_non_ingested_telem(
                 conn.cursor(), self.hostname
             )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as pool:
-            futures_to_paths = {}
-            log.info(f"Starting backfill tasks for {len(paths)} path{'s' if len(paths) != 1 else ''}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as pool:
+                futures_to_paths = {}
+                log.info(f"Starting backfill tasks for {len(paths)} path{'s' if len(paths) != 1 else ''}")
 
-            for fp in tqdm(paths[:self.limit]):
-                if os.path.exists(fp):
-                    ft = pool.submit(self.backfill_from_path, fp)
-                    futures_to_paths[ft] = fp
-                else:
-                    log.debug(f"Skipping {fp} because the file does not exist")
-            log.info("Ingesting files")
-            pbar = tqdm(total=len(paths))
-            for ft in concurrent.futures.as_completed(futures_to_paths.keys()):
-                try:
-                    log.debug(f"Finished {ft.result()}")
-                except LogDumpError as e:
-                    log.error(f"logdump exited with exit code 255 on {futures_to_paths[ft]}")
-                except Exception as e:
-                    log.exception(f"Failed to process telem file {futures_to_paths[ft]}")
-                pbar.update()
-            pbar.close()
+                for fp in tqdm(paths[:self.limit]):
+                    if os.path.exists(fp):
+                        ft = pool.submit(self.backfill_from_path, fp)
+                        log.debug(f"Submitted one for {fp}")
+                        futures_to_paths[ft] = fp
+                    else:
+                        log.debug(f"Skipping {fp} because the file does not exist")
+                log.info("Ingesting files")
+                pbar = tqdm(total=len(paths))
+                for ft in concurrent.futures.as_completed(futures_to_paths.keys()):
+                    try:
+                        log.debug(f"Finished {ft.result()}")
+                    except LogDumpError as e:
+                        log.error(f"logdump exited with exit code 255 on {futures_to_paths[ft]}")
+                    except Exception as e:
+                        log.exception(f"Failed to process telem file {futures_to_paths[ft]}")
+                    pbar.update()
+                pbar.close()
+            log.debug(f"Finished {conn_name} ({self.databases[conn_name]})")

@@ -362,11 +362,11 @@ pythonlibs_install: installed_python_interface_timestamp.txt
 
 # Installing the Python interface makes a file so we're not "phony"
 # and it should only re-run if the Python source is changed
-PY_SOURCES := python/pyproject.toml \
-	$(shell find python/magaox -name '*.py')
+PY_SOURCES := magaox-python/pyproject.toml \
+	$(shell find magaox-python/magaox -name '*.py')
 
 installed_python_interface_timestamp.txt: $(PY_SOURCES)
-	$(PYTHON) -m pip install ./python
+	sudo $(PYTHON) -m pip install ./magaox-python
 	date -u -Iseconds > ./installed_python_interface_timestamp.txt
 
 .PHONY: apps_all
