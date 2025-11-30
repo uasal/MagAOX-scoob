@@ -355,13 +355,21 @@ protected:
 protected:
 
    pcf::IndiProperty m_indiP_readouttime;
-   pcf::IndiProperty m_indiP_fxngensync_freq;
-   pcf::IndiProperty m_indiP_fxngensync_output;
-   pcf::IndiProperty m_indiP_otherCamExptime;
-   pcf::IndiProperty m_indiP_otherCamSynchro;
+   pcf::IndiProperty m_indiP_fxngensync_freq; ///< Property for setting fxngensync frequency
+   pcf::IndiProperty m_indiP_fxngensync_output; ///< Proprety for turning on fxngensync
+
+   pcf::IndiProperty m_indiP_receiveSynchro; ///< Synchro that can only be triggered from the otherCam
+   pcf::IndiProperty m_indiP_receiveExptime; ///< Exptime that can only be triggered from the otherCam
+
+   pcf::IndiProperty m_indiP_otherCamExptime; ///< Property for setting otherCam exptime
+   pcf::IndiProperty m_indiP_otherCamSynchro; ///< Property for setting otherCam synchro
 
 public:
    INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_adcquality);
+
+   INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_receiveSynchro);
+
+   INDI_NEWCALLBACK_DECL(picamCtrl, m_indiP_receiveExptime);
 
    /** \name Telemeter Interface
      *
@@ -420,7 +428,25 @@ picamCtrl::~picamCtrl() noexcept
 int picamCtrl::setSynchro()
 {
    m_reconfig = true;
+
+   if (!m_otherCamName.empty())
+   {
+      if (m_synchroSet)
+      {
+         std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
+         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
+         sendNewProperty(m_indiP_otherCamSynchro);
+      }
+      else
+      {
+         std::cerr << "Turning synchro off for " << m_otherCamName << std::endl;
+         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::Off;
+         sendNewProperty(m_indiP_otherCamSynchro);
+      }
+   }
+
    recordCamera(true);
+
    return 0;
 }
 
@@ -526,15 +552,20 @@ int picamCtrl::appStartup()
    m_indiP_fxngensync_output.setDevice( m_fxngenName );
    m_indiP_fxngensync_output.setName( m_fxngenCh + "outp" );
    m_indiP_fxngensync_output.add( pcf::IndiElement( "value" ) );
-   
+
+
+   CREATE_REG_INDI_NEW_NUMBERD(m_indiP_receiveExptime, "receiveExptime", m_minExpTime, m_maxExpTime, m_stepExpTime, "%0.3f", "Exptime", "Other cam");
+   CREATE_REG_INDI_NEW_TOGGLESWITCH(m_indiP_receiveSynchro, "receiveSynchro");
+
+
    m_indiP_otherCamExptime = pcf::IndiProperty( pcf::IndiProperty::Number );
    m_indiP_otherCamExptime.setDevice( m_otherCamName );
-   m_indiP_otherCamExptime.setName( "exptime" );
+   m_indiP_otherCamExptime.setName( "receiveExptime" );
    m_indiP_otherCamExptime.add( pcf::IndiElement( "target" ) );
 
    m_indiP_otherCamSynchro = pcf::IndiProperty( pcf::IndiProperty::Switch );
    m_indiP_otherCamSynchro.setDevice( m_otherCamName );
-   m_indiP_otherCamSynchro.setName( "synchro" );
+   m_indiP_otherCamSynchro.setName( "receiveSynchro" );
    m_indiP_otherCamSynchro.add( pcf::IndiElement( "toggle" ) );
 
    return 0;
@@ -1281,7 +1312,7 @@ int picamCtrl::setEMGain()
 
 void picamCtrl::updateFxnGenSync()
 {
-   
+
    std::cerr << "Setting fxngen frequency to " << std::to_string(m_fps) << " Hz" << std::endl;
    m_indiP_fxngensync_freq["target"] = m_fps;
    sendNewProperty(m_indiP_fxngensync_freq);
@@ -1331,6 +1362,7 @@ int picamCtrl::setExpTime()
    }
    m_fps = m_FrameRateCalculation;
 
+
    if (m_synchro && !m_otherCamName.empty())
    {
       std::cerr << "Setting " << m_otherCamName << " exptime to " << std::to_string(m_expTime) << std::endl;
@@ -1341,7 +1373,6 @@ int picamCtrl::setExpTime()
    }
 
    recordCamera(true);
-
 
    return 0;
 }
@@ -1945,27 +1976,13 @@ int picamCtrl::configureAcquisition()
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_ReadoutPerTrigger);
       m_synchro = true;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::On, INDI_IDLE);
-
-      if (!m_otherCamName.empty())
-      {
-         std::cerr << "Turning synchro on for " << m_otherCamName << std::endl;
-         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::On;
-         sendNewProperty(m_indiP_otherCamSynchro);
-      }
-   } 
+   }
    else
    {
       std::cerr << "Turning synchro off" << std::endl;
       setPicamParameter(m_cameraHandle, PicamParameter_TriggerResponse, PicamTriggerResponse_NoResponse);
       m_synchro = false;
       updateSwitchIfChanged(m_indiP_synchro, "toggle", pcf::IndiElement::Off, INDI_IDLE);
-
-      if (!m_otherCamName.empty())
-      {
-         std::cerr << "Turning synchro off for " << m_otherCamName << std::endl;
-         m_indiP_otherCamSynchro["toggle"] = pcf::IndiElement::Off;
-         sendNewProperty(m_indiP_otherCamSynchro);
-      }
    }
 
    //Start continuous acquisition
@@ -2159,6 +2176,68 @@ int picamCtrl::checkRecordTimes()
 int picamCtrl::recordTelem(const telem_stdcam *)
 {
    return recordCamera(true);
+}
+
+
+INDI_NEWCALLBACK_DEFN( picamCtrl, m_indiP_receiveSynchro )( const pcf::IndiProperty &ipRecv )
+{
+
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_receiveSynchro, ipRecv );
+
+    if( ipRecv.getName() != m_indiP_receiveSynchro.getName() )
+    {
+        log<software_error>( { __FILE__, __LINE__, "wrong INDI property received" } );
+
+        return -1;
+    }
+
+    if( !ipRecv.find( "toggle" ) )
+    {
+        return 0;
+    }
+
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+    {
+        updateSwitchIfChanged( m_indiP_receiveSynchro, "toggle", pcf::IndiElement::On, INDI_IDLE );
+
+        m_synchroSet = true;
+
+    }
+    else
+    {
+        updateSwitchIfChanged( m_indiP_receiveSynchro, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+
+        m_synchroSet = false;
+    }
+
+    m_reconfig = true;
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( picamCtrl, m_indiP_receiveExptime )( const pcf::IndiProperty &ipRecv )
+{
+
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_receiveExptime, ipRecv );
+
+    if( ipRecv.getName() != m_indiP_receiveExptime.getName() )
+    {
+        log<software_error>( { __FILE__, __LINE__, "wrong INDI property received" } );
+
+        return -1;
+    }
+
+    if( !ipRecv.find( "target" ) )
+    {
+        return 0;
+    }
+
+    double val = ipRecv["target"].get<double>();
+    std::cerr << "Received exptime from otherCam: " << std::to_string(val) << std::endl;
+    std::cerr << "Doing nothing for now in " << __FILE__ << " " << __LINE__ << std::endl;
+   //  updatesIfChanged<double>(m_indiP_receiveExptime, { "current" }, { m_setExpTime });
+
+    return 0;
 }
 
 
