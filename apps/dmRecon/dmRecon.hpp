@@ -20,6 +20,7 @@
 #include <mx/math/cuda/cudaPtr.hpp>
 #include <mx/math/cuda/cublasHandle.hpp>
 #include <mx/math/cuda/templateCublas.hpp>
+#include <mx/math/eigenLapack.hpp>
 #include <mx/sigproc/basisUtils2D.hpp>
 
 namespace MagAOX
@@ -121,8 +122,14 @@ class dmRecon : public MagAOXApp<true>,
 
     int m_loopNumber{ 1 }; ///< The loop number.  Default is 1 as in aol1.
 
+    std::string m_respMPath; ///< Optional response matrix.  If set then CM modes are converted by this response.
+
     std::string m_fpsSource{ "camwfs" }; /**< Device name for getting fps of the loop.
                                               This device must have *.fps.current.  Default is camwfs*/
+
+    int m_numModes {0}; ///< Number of modes to reconstruct.  If 0 (default) all modes in CM are used.
+
+    int m_inverseNumModes{ 0 }; /**< Number of modes to use for pseudo-inverse truncation.  If 0 (default) all modes are used.*/
 
     uint16_t m_gpuIndex{ 0 }; /**< Index of the GPU to use for calculations */
 
@@ -130,14 +137,22 @@ class dmRecon : public MagAOXApp<true>,
 
     ///@}
 
+    mx::improc::eigenImage<float> m_respM;
+
+    uint32_t m_width {0};
+
+    uint32_t m_height {0};
+
+    uint32_t m_depth {0};
+
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
-    mx::improc::eigenImage<float> m_maskedDMModes;
+    mx::improc::eigenImage<realT> m_PInv; ///< The pseudo-inverse
 
     // clang-format off
     #ifdef MXLIB_CUDA
 
-    mx::cuda::cudaPtr<float> m_maskedDMModes_GPU;
+    mx::cuda::cudaPtr<realT> m_PInv_GPU; ///< The pseudo-inverse on the GPU
 
     #endif
     // clang-format on
@@ -158,8 +173,7 @@ class dmRecon : public MagAOXApp<true>,
 
     mx::improc::eigenImage<float> m_modevals; ///< The calculated mode amplitudes
 
-    mx::improc::milkImage<float> m_modevalAct; ///< The actual calculated modevals.
-    mx::improc::milkImage<float> m_modevalDiff; ///< The difference in the calculated modevals.
+    //mx::improc::milkImage<float> m_modevalAct;  ///< The actual calculated modevals.
 
     // clang-format off
     #ifdef MXLIB_CUDA
@@ -329,6 +343,36 @@ inline void dmRecon::setupConfig()
                 "int",
                 "The loop number.  Default is 1 as in aol1." );
 
+    config.add( "recon.respMPath",
+                "",
+                "recon.respMPath",
+                argType::Required,
+                "recon",
+                "respMPath",
+                false,
+                "int",
+                "Optional response matrix.  If set then CM modes are converted by this response." );
+
+    config.add( "recon.numModes",
+                "",
+                "recon.numModes",
+                argType::Required,
+                "recon",
+                "numModes",
+                false,
+                "int",
+                "Number of modes to reconstruct.  If 0 (default) all modes in CM are used." );
+
+    config.add( "recon.inverseNumModes",
+                "",
+                "recon.inverseNumModes",
+                argType::Required,
+                "recon",
+                "inverseNumModes",
+                false,
+                "int",
+                "Number of modes to use for pseudo-inverse truncation.  If 0 (default) all modes are used." );
+
     config.add( "recon.fpsSource",
                 "",
                 "recon.fpsSource",
@@ -374,19 +418,25 @@ inline void dmRecon::setupConfig()
 inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     _config( m_loopNumber, "recon.loopNumber" );
+    _config( m_respMPath, "recon.respMPath" );
+    _config( m_numModes, "recon.numModes");
+    _config( m_inverseNumModes, "recon.inverseNumModes");
     _config( m_fpsSource, "recon.fpsSource" );
     _config( m_gpuIndex, "recon.gpuIndex" );
     _config( m_useGPU, "recon.useGPU" );
 
-    std::string loopName = std::format("aol{}",m_loopNumber);
+    std::string loopName = std::format( "aol{}", m_loopNumber );
 
     dmModesSMT::m_shmimName = loopName + "_CMmodesDM";
+    dmModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmModesSMT, _config );
 
-    dmCommandSMT::m_shmimName = std::format("dm{:02}disp_delta", m_loopNumber);
+    dmCommandSMT::m_shmimName = std::format( "dm{:02}disp_delta", m_loopNumber );
+    dmCommandSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmCommandSMT, _config );
 
-    dmMaskSMT::m_shmimName = std::format("dm{:02}disp_actmask", m_loopNumber);
+    dmMaskSMT::m_shmimName = std::format( "dm{:02}disp_actmask", m_loopNumber );
+    dmMaskSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmMaskSMT, _config );
 
     frameGrabberT::m_shmimName = loopName + "_modevalDMf";
@@ -420,6 +470,16 @@ inline int dmRecon::appStartup()
         log<software_critical>( { __FILE__, __LINE__, errno, 0, "Initializing S.M. semaphore" } );
         return -1;
     }
+
+    if(m_respMPath != "")
+    {
+        mx::fits::fitsFile<float> ff;
+        ff.read(m_respM, m_respMPath);
+
+        m_width = sqrt(m_respM.rows());
+        m_height = m_width;
+    }
+
 
     dmModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_APP_STARTUP( dmModesSMT );
@@ -636,10 +696,32 @@ int dmRecon::allocate( const dmModesShmimT & )
 {
     m_dmModesReady = false;
 
+    std::cerr << "modes not ready\n";
+
     dmCommandSMT::m_restart = true;
 
+
+    if(m_respM.rows() == 0)
+    {
+        m_width = dmModesSMT::m_width;
+        m_height = dmModesSMT::m_height;
+    }
+
+    if(m_numModes == 0)
+    {
+        m_depth = dmModesSMT::m_depth;
+    }
+    else 
+    {
+        m_depth = m_numModes;
+        if(m_depth > dmModesSMT::m_depth)
+        {
+            m_depth = dmModesSMT::m_depth;
+        }
+    }
+
     // Can't process modes until mask is ready.
-    if( dmModesSMT::m_width != dmMaskSMT::m_width || dmModesSMT::m_height != dmMaskSMT::m_height || !m_dmMaskReady )
+    if( m_width != dmMaskSMT::m_width || m_height != dmMaskSMT::m_height || !m_dmMaskReady )
     {
         mx::sys::milliSleep( 1000 );
         dmModesSMT::m_restart = true;
@@ -656,27 +738,18 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
 {
     if( m_dmModesReady == true )
     {
-        // This means an new image has come in.  We need to reset and restart everything.
-        dmModesSMT::m_restart = true;
-        dmMaskSMT::m_restart  = true;
+        // This means new image has come in.  We need to reset and restart everything.
+        dmModesSMT::m_restart   = true;
+        dmMaskSMT::m_restart    = true;
         dmCommandSMT::m_restart = true;
         return 0;
     }
 
-    mx::improc::eigenCube<float> dmModes( dmModesSMT::m_width, dmModesSMT::m_height, dmModesSMT::m_depth );
+    mx::improc::eigenCube<float> dmModes( dmModesSMT::m_width, dmModesSMT::m_height, m_depth );
 
-    for( size_t n = 0; n < dmModesSMT::m_width * dmModesSMT::m_height * dmModesSMT::m_depth; ++n )
+    for( size_t n = 0; n < dmModesSMT::m_width * dmModesSMT::m_height * m_depth; ++n )
     {
         dmModes.data()[n] = reinterpret_cast<float *>( curr_src )[n];
-    }
-
-    mx::sigproc::basisNormalize(dmModes, m_mask);
-
-    float npix = m_mask.sum();
-
-    for(int pp = 0; pp < dmModes.planes(); ++pp)
-    {
-        dmModes.image(pp) /= npix;
     }
 
     // Wait for m_commandReady to become false
@@ -684,34 +757,83 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
     {
         mx::sys::milliSleep( 1000 );
     }
+    
+    if(m_respM.rows() > 0)
+    {
+        mx::improc::eigenCube<realT> tmpc;
 
-    std::cerr << "DM modes: " << dmModesSMT::m_width << ' ' << dmModesSMT::m_height << ' ' << dmModesSMT::m_depth
-              << '\n';
-    std::cerr << "DM modes unmasked sum: " << dmModes.asVectors().square().sum() << '\n';
+        int nr = sqrt(m_respM.rows());
 
-    m_maskedDMModes.resize( dmModesSMT::m_depth, m_maskIDX.size() );
+        tmpc.resize(nr, nr, dmModes.planes());
+
+        for( int p = 0; p < dmModes.planes(); ++p )
+        {
+            tmpc.image(p) = (m_respM.matrix() * dmModes.image( p ).matrix()).array();
+            
+            /*float norm = sqrt(tmpc.image(p).square().sum()/m_maskIDX.size());
+            float scale = sqrt(dmModes.image(p).square().sum()/ (dmModes.rows()*dmModes.cols()));
+
+            tmpc.image(p) *= scale/norm;*/
+        }
+
+        dmModes = tmpc;
+
+        mx::fits::fitsFile<float> ff;
+        ff.write("wmodes.fits", dmModes);
+    }
+
+    mx::improc::eigenImage<float> maskedDMModes;
+
+    maskedDMModes.resize( m_maskIDX.size(), dmModes.planes() );
 
     // Load only the unmasked pixels
-    for( int rr = 0; rr < m_maskedDMModes.rows(); ++rr )
+    for( int rr = 0; rr < maskedDMModes.cols(); ++rr )
     {
         for( size_t n = 0; n < m_maskIDX.size(); ++n )
         {
-            m_maskedDMModes( rr, n ) = dmModes.image( rr ).data()[m_maskIDX[n]];
+            maskedDMModes( n, rr ) = dmModes.image( rr ).data()[m_maskIDX[n]];
         }
     }
 
-    std::cerr << "DM modes masked sum: " << m_maskedDMModes.square().sum() << '\n';
+    realT condition;
 
-    m_modevalAct.open("aol1_modevalDM");
-    m_modevalDiff.create("aol1_modevalDMf_diff", dmModesSMT::m_depth, 1);
+    int nRejected;
+
+    realT maxCondition = -1 * m_inverseNumModes; // Specify number of modes to keep.  If 0 it's all.
+
+    int rv = mx::math::eigenPseudoInverse( m_PInv, condition, nRejected, maskedDMModes, maxCondition );
+
+    if( rv < 0 )
+    {
+        log<software_error>( { __FILE__, __LINE__, 0, rv, "error in eigenPseudoInverse " } );
+        m_shutdown = 1;
+        return -1;
+    }
+
+    std::cerr << "PInv: " << m_PInv.rows() << ' ' << m_PInv.cols() << '\n';
+
+    mx::fits::fitsFile<float> ff;
+    ff.write("PInv.fits", m_PInv);
+
+    log<text_log>( std::format( "Inverted CMmodesDM. Rejected {} "
+                                "of {} modes, condition numer = {}",
+                                nRejected,
+                                dmModes.planes(),
+                                condition ) );
+
+    //m_modevalAct.open( "aol1_modevalDM" );
 
     m_dmModesReady = true;
+
+    std::cerr << "modes ready\n";
     return 0;
 }
 
 int dmRecon::allocate( const dmMaskShmimT & )
 {
     m_dmMaskReady = false;
+
+    std::cerr << "mask not ready\n";
 
     dmCommandSMT::m_restart = true;
 
@@ -766,6 +888,7 @@ int dmRecon::processImage( void *curr_src, const dmMaskShmimT & )
               << " good pixels.\n";
 
     m_dmMaskReady = true;
+    std::cerr << "mask ready\n";
     return 0;
 }
 
@@ -773,9 +896,10 @@ int dmRecon::allocate( const dmCommandShmimT & )
 {
     // This is the only place that m_commandReady can be changed
     m_commandReady = false;
+    std::cerr << "command not ready\n";
 
-    if( !m_dmModesReady || !m_dmMaskReady || dmCommandSMT::m_width != dmModesSMT::m_width ||
-        dmCommandSMT::m_height != dmModesSMT::m_height || dmCommandSMT::m_width != dmMaskSMT::m_width ||
+    if( !m_dmModesReady || !m_dmMaskReady || dmCommandSMT::m_width != m_width ||
+        dmCommandSMT::m_height != m_height || dmCommandSMT::m_width != dmMaskSMT::m_width ||
         dmCommandSMT::m_height != dmMaskSMT::m_height )
     {
         dmCommandSMT::m_restart   = true;
@@ -797,7 +921,7 @@ int dmRecon::allocate( const dmCommandShmimT & )
 
     m_command.resize( m_maskIDX.size(), 1 );
 
-    m_modevals.resize( m_maskedDMModes.rows(), 1 );
+    m_modevals.resize( m_PInv.rows(), 1 );
 
     // clang-format off
     #ifdef MXLIB_CUDA
@@ -814,13 +938,13 @@ int dmRecon::allocate( const dmCommandShmimT & )
             return -1;
         }
 
-        mx::error_t ec =
-            m_maskedDMModes_GPU.upload( m_maskedDMModes.data(), m_maskedDMModes.rows(), m_maskedDMModes.cols() );
+        mx::error_t ec = m_PInv_GPU.upload( m_PInv.data(), m_PInv.rows(), m_PInv.cols() );
+
         if( ec != mx::error_t::noerror )
         {
             return log<software_error, -1>( { __FILE__,
                                               __LINE__,
-                                              std::format( "error uploading modes to GPU: [{}] {}",
+                                              std::format( "error uploading PInv to GPU: [{}] {}",
                                                            mx::errorName( ec ),
                                                            mx::errorMessage( ec ) ) } );
         }
@@ -853,6 +977,8 @@ int dmRecon::allocate( const dmCommandShmimT & )
     m_updated      = false;
     m_commandReady = true;
 
+    std::cerr << "command ready\n";
+
     return 0;
 }
 
@@ -878,7 +1004,7 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
     if( !m_useGPU )
     {
         //  CPU:
-        m_modevals = ( m_maskedDMModes.matrix() * m_command.matrix() ).array();
+        m_modevals = ( m_PInv.matrix() * m_command.matrix() ).array();
     }
     else
     {
@@ -898,11 +1024,11 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
         cublasStatus_t cbs = mx::cuda::cublasTgemv( m_cublas,
                                                     CUBLAS_OP_N,
-                                                    m_maskedDMModes_GPU.rows(),
-                                                    m_maskedDMModes_GPU.cols(),
+                                                    m_PInv_GPU.rows(),
+                                                    m_PInv_GPU.cols(),
                                                     &alpha,
-                                                    m_maskedDMModes_GPU.data(),
-                                                    m_maskedDMModes_GPU.rows(),
+                                                    m_PInv_GPU.data(),
+                                                    m_PInv_GPU.rows(),
                                                     m_command_GPU.data(),
                                                     1,
                                                     &beta,
@@ -933,7 +1059,7 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
     #else // MXLIB_CUDA
 
     // CPU:
-    m_modevals = (m_maskedDMModes.matrix() * m_command.matrix()).array()
+    m_modevals = (m_PInv.matrix() * m_command.matrix()).array()
 
     #endif // MXLIB_CUDA
     // clang-format on
@@ -947,18 +1073,10 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         return -1;
     }
 
-    m_modevalDiff = m_modevalAct() - m_modevals;
+    //float rms = sqrt((m_modevalAct() - m_modevals).square().sum() / m_modevals.rows());
+    //float rms0 = sqrt((m_modevalAct()).square().sum() / m_modevals.rows());
 
-    mx::improc::eigenImage<float> act = m_modevalAct();
-
-    mx::fits::fitsFile<float> ff;
-
-    ff.write("mv.fits", m_modevals);
-    ff.write("act.fits", act);
-
-    m_shutdown = true;
-    return -1;
-    
+    //std::cerr << rms / rms0 << '\n';
     return 0;
 }
 
@@ -973,6 +1091,7 @@ int dmRecon::configureAcquisition()
 
     m_fgWaiting = false;
 
+    std::cerr << "Sizing modevalDMf: " << m_modevals.rows() << ' ' << m_modevals.cols() << '\n';
     frameGrabberT::m_width    = m_modevals.rows();
     frameGrabberT::m_height   = m_modevals.cols();
     frameGrabberT::m_dataType = _DATATYPE_FLOAT;
@@ -1009,7 +1128,6 @@ int dmRecon::acquireAndCheckValid()
         return 1;
     }
 
-    // mx::sys::microSleep(1000);
     if( sem_timedwait( &m_smSemaphore, &ts ) == 0 )
     {
         if( m_updated && m_commandReady )

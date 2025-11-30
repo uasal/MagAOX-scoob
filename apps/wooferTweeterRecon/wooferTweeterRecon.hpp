@@ -272,13 +272,16 @@ inline wooferTweeterRecon::wooferTweeterRecon() : MagAOXApp( MAGAOX_CURRENT_SHA1
 
 inline void wooferTweeterRecon::setupConfig()
 {
-    tweeterCommandSMT::m_shmimName = "dm00disp_delta";
+    wooferCommandSMT::m_shmimName = "aol0_modevalDMf";
+    wooferCommandSMT::m_getExistingFirst = true;
     SHMIMMONITORT_SETUP_CONFIG( wooferCommandSMT, config );
 
-    tweeterCommandSMT::m_shmimName = "dm01disp_delta";
+    tweeterCommandSMT::m_shmimName = "aol1_modevalDMf";
+    tweeterCommandSMT::m_getExistingFirst = true;
     SHMIMMONITORT_SETUP_CONFIG( tweeterCommandSMT, config );
 
     wfsModesSMT::m_shmimName = "aol1_modevalWFS";
+    wfsModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_SETUP_CONFIG( wfsModesSMT, config );
 
     // TELEMETER_SETUP_CONFIG( config );
@@ -369,18 +372,28 @@ int wooferTweeterRecon::allocate( const wooferCommandShmimT & )
 {
     m_wooferCommandReady = false;
 
-    if(wooferCommandSMT::m_width != tweeterCommandSMT::m_width || !m_tweeterCommandReady)
+    if(!m_tweeterCommandReady || wooferCommandSMT::m_width > tweeterCommandSMT::m_width)
     {
         mx::sys::milliSleep( 1000 );
         wooferCommandSMT::m_restart = true;
         return 0; // This won't log an error, but setting m_restart will cause it to loop again until sizes match
     }
 
+    m_wooferVals.resize(tweeterCommandSMT::m_width, 1);
+    m_wooferVals.setZero();
+
+    m_wooferCommandReady = true;
+
     return 0;
 }
 
 int wooferTweeterRecon::processImage( void *curr_src, const wooferCommandShmimT & )
 {
+    for(size_t n = 0; n < wooferCommandSMT::m_width; ++n)
+    {
+        m_wooferVals[n] = reinterpret_cast<float *>(curr_src)[n];
+    }
+
     return 0;
 }
 
@@ -388,12 +401,20 @@ int wooferTweeterRecon::allocate( const tweeterCommandShmimT & )
 {
     m_tweeterCommandReady = false;
 
+    m_tweeterVals.resize(tweeterCommandSMT::m_width,1);
 
+    m_tweeterCommandReady = true;
+    
     return 0;
 }
 
 int wooferTweeterRecon::processImage( void *curr_src, const tweeterCommandShmimT & )
 {
+    for(size_t n = 0; n < tweeterCommandSMT::m_width; ++n)
+    {
+        m_tweeterVals[n] = reinterpret_cast<float *>(curr_src)[n];
+    }
+
     return 0;
 }
 
@@ -401,11 +422,25 @@ int wooferTweeterRecon::allocate( const wfsModesShmimT & )
 {
     m_wfsModesReady = false;
 
+    if(!m_tweeterCommandReady || wfsModesSMT::m_width != tweeterCommandSMT::m_width)
+    {
+        mx::sys::milliSleep( 1000 );
+        wooferCommandSMT::m_restart = true;
+        return 0; // This won't log an error, but setting m_restart will cause it to loop again until sizes match
+    }
+    
+    m_wfsModesReady = true;
+
     return 0;
 }
 
 int wooferTweeterRecon::processImage( void *curr_src, const wfsModesShmimT & )
 {
+    for(size_t n = 0; n < tweeterCommandSMT::m_width; ++n)
+    {
+        m_tweeterVals[n] = reinterpret_cast<float *>(curr_src)[n];
+    }
+    
     return 0;
 }
 
