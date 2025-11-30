@@ -333,3 +333,7 @@ class AudibleAlerts(XDevice):
             else:
                 self.log.info(f"Randomly spouting off: {repr(next_utterance)}")
                 speak(next_utterance, self.default_voice, self.api_url, self.config.cache.path)
+
+# Used to make the pyproject.toml just a little simpler,
+# with fewer repetitions of the app name:
+main = AudibleAlerts.console_app

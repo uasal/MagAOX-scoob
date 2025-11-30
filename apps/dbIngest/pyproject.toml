@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dbIngest"
+name = "magaox-dbIngest"
 description = "Per-instrument-computer database ingest virtual device"
 version = "2023.12.21"
 dependencies = [

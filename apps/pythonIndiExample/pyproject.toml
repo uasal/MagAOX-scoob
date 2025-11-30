@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "xapp-pythonIndiExample"
 description = "Python INDI device implementation example"
 version = "2025.11.30"
-
+dependencies = [
+  "xconf",
+  "purepyindi2",
+]
 authors = [
   {name = "Joseph D. Long", email = "me@joseph-long.com"},
 ]

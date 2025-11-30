@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audibleAlerts"
+name = "xapp-audibleAlerts"
 description =  "Audible alerting and text-to-speech for MagAO-X"
-version = "2023.12.21"
+version = "2025.11.30"
 dependencies = [
   "xconf",
   "purepyindi2",
