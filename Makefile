@@ -361,10 +361,11 @@ libs_clean:
 pythonlibs_install: installed_python_interface_timestamp.txt
 
 # Installing the Python interface makes a file so we're not "phony"
-# and it should only re-run if the Python source is changed. Note no
-# recursive wildcards so if things get nested deeper the dependency
-# specifications need to be extended.
-installed_python_interface_timestamp.txt: python/pyproject.toml python/magaox/*.py python/magaox/*.py python/magaox/*/*.py
+# and it should only re-run if the Python source is changed
+PY_SOURCES := python/pyproject.toml \
+	$(shell find python/magaox -name '*.py')
+
+installed_python_interface_timestamp.txt: $(PY_SOURCES)
 	$(PYTHON) -m pip install ./python
 	date -u -Iseconds > ./installed_python_interface_timestamp.txt
 
