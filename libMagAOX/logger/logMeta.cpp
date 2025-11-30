@@ -314,6 +314,7 @@ std::string logMeta::valueNumber( logMap<verboseT> & lm,
             snprintf(str, sizeof(str), m_spec.format.c_str(), val.back());
             res += str;
 
+            std::cerr << "State Vector_Float " << res << '\n';
             return res;
          }
          default:
@@ -488,7 +489,7 @@ mx::fits::fitsHeaderCard<logMeta::verboseT> logMeta::card( logMap<verboseT> &lm,
       return mx::fits::fitsHeaderCard<verboseT>(keyw, vstr, m_spec.comment);
    }
 
-   if(m_detail.valType == valTypes::String)
+   if(m_detail.valType == valTypes::String || m_detail.valType == valTypes::Vector_Bool || m_detail.valType == valTypes::Vector_Float)
    {
       return mx::fits::fitsHeaderCard<verboseT>(keyw, vstr, m_spec.comment);
    }

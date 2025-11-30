@@ -391,6 +391,8 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
 
     try
     {
+        std::cerr << "reading: " << hcfile << '\n';
+
         if( hconfig.readConfig( hcfile, true ) != 0 )
         {
             return mx::error_report<verboseT>( mx::error_t::error, "Error reading header config: " + hcfile );
@@ -415,6 +417,7 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
             }
         }
 
+        std::cerr << "reading include: " + mx::app::application::m_configPathCLBase + include << '\n';
         mx_error_check( readHeaderConfig( mx::app::application::m_configPathCLBase + include ) );
     }
 
@@ -445,6 +448,7 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
 
                     for( auto &field : fields )
                     {
+                        std::cerr << "adding: " << device << ' ' << ec << ' ' << field << '\n';
                         m_logMetas.push_back( logMetaSpec( { device, ec, field } ) );
                     }
                 }
@@ -1029,11 +1033,13 @@ inline mx::error_t xrif2fits::prepareFiles()
     if( m_camera == "" )
     {
         m_camera = m_fileNames[0].appName();
+        std::cerr << "Set camera to: " << m_camera << '\n';
     }
 
     if( m_cameraHeader == "" )
     {
         m_cameraHeader = m_camera + "_header.conf";
+        std::cerr << "Set camera header to: " << m_cameraHeader << '\n';
     }
 
     if( !m_noHeader )
