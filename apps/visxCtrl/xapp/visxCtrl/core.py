@@ -44,7 +44,8 @@ class VisXConfig(BaseConfig):
     full_sdk_path : str = xconf.field(default='/usr/local/lib/libqhyccd.so')
     temp_on_target_pct_diff : float = xconf.field(default=0.05, help="Absolute percent difference between temperature setpoint and currently reported value")
     startup_temp : float = xconf.field(default=-15, help='Startup temperature of the camera.')
-class VisX(XDevice):
+
+class visxCtrl(XDevice):
     config : VisXConfig
     # us
     data_directory : str = "/opt/MagAOX/rawimages/camvisx"
@@ -111,7 +112,7 @@ class VisX(XDevice):
             self.log.debug(f"Exposure time changed to {new_message['target']} seconds")
             self.telem('exptime', {'exptime': self.exposure_time_sec})
         self.update_property(existing_property)
-    
+
     def handle_gain(self, existing_property, new_message):
         log.debug(f"In handle_gain")
         if self.currently_exposing:
@@ -126,7 +127,7 @@ class VisX(XDevice):
             self.log.debug(f"Gain changed to {new_message['target']}")
             self.telem('emGain', {'emGain': self.camera_gain})
         self.update_property(existing_property)
-    
+
     def handle_expose(self, existing_property, new_message):
         if self.sdk is None:
             self.log.debug("Ignoring request for exposure while we don't have an SDK handle")
@@ -281,7 +282,7 @@ class VisX(XDevice):
             current['remaining_sec'] = remaining_sec
             current['remaining_pct'] = remaining_pct
             self.update_property(current)
-        
+
         self.update_from_camera()
 
         self.properties['temp_ccd']['current'] = self.temp_current_deg_c
@@ -350,7 +351,7 @@ class VisX(XDevice):
         meta['INSTRUME'] = 'MagAO-X'
         meta['CAMERA'] = 'VIS-X'
         meta['TELESCOP'] = "Magellan Clay, Las Campanas Obs."
-        with warnings.catch_warnings(): 
+        with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             hdul[0].header.update(meta)
         # Note if exposure was canceled
