@@ -48,7 +48,7 @@ class PupilState(Enum):
 
 class pupilCorAlign(XDevice):
     config : pupilCorAlignConfig
-    
+
     def setup(self):
         self.log.debug(f"I was configured! See? {self.config=}")
         fsm = properties.TextVector(name='fsm')
@@ -69,10 +69,10 @@ class pupilCorAlign(XDevice):
 
         # This select what pupil plane we are aligning to
         self._pupil_state = PupilState.IDLE
-    
+
     def handle_idle(self):
         print("handle_idle")
-    
+
     def handle_closed_loop(self):
         print("handle_closed_loop")
 
@@ -84,3 +84,5 @@ class pupilCorAlign(XDevice):
 
     def loop(self):
         self._state_machine.loop()
+
+main = pupilCorAlign.console_app
