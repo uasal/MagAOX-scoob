@@ -220,8 +220,10 @@ class pupilCorAlign(XDevice):
         fsm.add_element(DefText(name='state', _value=StateCodes.INITIALIZED.name))
         self.add_property(fsm)
 
-        self._state_names = ['idle', 'fwpupil', 'fwlyot', 'centroid', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
-        self._state_callbacks = [None, self.handle_fwpupil, self.handle_fwlyot, self.handle_centroid, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
+        #, 'fwpupilRef', 'fwlyotRef', 'centroidRef']
+        #, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
+        self._state_names = ['idle', 'fwpupil', 'fwlyot', 'centroid']
+        self._state_callbacks = [None, self.handle_fwpupil, self.handle_fwlyot, self.handle_centroid]
         self._state_machine = XStateMachine(self, self._state_names, States, self._state_callbacks)
         
         # Should I make these files configurable?
@@ -318,11 +320,11 @@ class pupilCorAlign(XDevice):
     def stages_are_ready(self):
         '''
         '''
-        if client['fwpupil.fsm.state'] != 'READY':
+        if self.client['fwpupil.fsm.state'] != 'READY':
             return False
-        elif client['fwlyot.fsm.state'] != 'READY':
+        elif self.client['fwlyot.fsm.state'] != 'READY':
             return False
-        elif client['picomotors.fsm.state'] != 'READY':
+        elif self.client['picomotors.fsm.state'] != 'READY':
             return False
         return True
 
@@ -446,7 +448,7 @@ class pupilCorAlign(XDevice):
             existing_property['current'] = new_message['target']
             existing_property['target'] = new_message['target']
             self.num_stack = int(new_message['target'])
-            self.log.debug(f'now averaging over {self.self.num_stack} frames')
+            self.log.debug(f'now averaging over {self.num_stack} frames')
         self.update_property(existing_property)
 
     def handle_gain(self, existing_property, new_message):
