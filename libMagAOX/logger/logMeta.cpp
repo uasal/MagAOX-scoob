@@ -115,16 +115,16 @@ int logMeta::setLog( const logMetaSpec & lms )
             m_spec.format = "%lu";
             break;
          case valTypes::Float:
-            m_spec.format = "%g";
+            m_spec.format = "%G";
             break;
          case valTypes::Double:
-            m_spec.format = "%g";
+            m_spec.format = "%G";
             break;
          case valTypes::Vector_Bool:
             m_spec.format = "%d";
             break;
          case valTypes::Vector_Float:
-            m_spec.format = "%g";
+            m_spec.format = "%G";
             break;
          default:
             std::cerr << "Unrecognised value type for " + m_spec.device + " " + m_spec.keyword + ".  Using format %d/\n";
