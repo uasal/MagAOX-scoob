@@ -228,6 +228,11 @@ public:
    int getCatData();
    int getVaneData();
    int getEnvData();
+
+   /// Record bad seeing measurements on errors in getSeeing().
+   int badSeeing(); 
+
+   /// Query, parse, and record seeing measurements
    int getSeeing();
 
    int updateINDI();
@@ -918,7 +923,6 @@ int tcsInterface::appLogic()
          return 0;
       }
 
-
       if(getSeeing() < 0)
       {
          return 0;
@@ -1591,7 +1595,23 @@ int tcsInterface::getEnvData()
    return 0;
 } //int tcsInterface::getEnvData()
 
-inline
+int tcsInterface::badSeeing()
+{
+      m_dimm_time = 0;
+         m_dimm_fwhm_corr = -1;
+         m_mag1_time = 0;
+         m_mag1_fwhm_corr = -1;
+         m_mag2_time = 0;
+         m_mag2_fwhm_corr = -1;
+
+         if( recordTelSee() < 0)
+         {
+            return log<software_error,-1>({__FILE__,__LINE__});
+         }
+
+         return 0;
+}
+
 int tcsInterface::getSeeing()
 {
    static int last_query = 0;
@@ -1604,10 +1624,19 @@ int tcsInterface::getSeeing()
       int rv = system("query_seeing > /dev/null");
       if(rv < 0)
       {
-         log<software_error>({__FILE__, __LINE__, "Error from seeing query"});
-         return -1;
-      }
+         if(badSeeing()< 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
 
+         if(!m_labMode)
+         {
+            log<software_error>({__FILE__, __LINE__, "Error from seeing query"});
+            return -1;
+         }
+
+         return 0;
+      }
 
       last_query = time(0);
       sec_midnight = last_query % 86400;
@@ -1621,8 +1650,16 @@ int tcsInterface::getSeeing()
 
       if(fin.fail())
       {
+         if(badSeeing()< 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
+
+         if(!m_labMode)
+         {
          log<software_error>({__FILE__, __LINE__, "Error reading dimm seeing"});
          return -1;
+         }
       }
 
       fin >> label;
@@ -1633,10 +1670,31 @@ int tcsInterface::getSeeing()
       fin >> datestr;
       fin >> timestr;
       fin >> scopestr;
-      if (scopestr != "dimm") {
-         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
-      }
       fin >> m_dimm_fwhm_corr;
+
+      //Handle no values from query
+      if(!fin)
+      {
+         if(badSeeing()< 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
+
+         if(!m_labMode)
+         {
+            log<software_error>({__FILE__, __LINE__, "query_seeing returned not enough values"});
+            return -1;
+         }
+         else 
+         {
+            return 0;
+         }
+      }
+
+      if (scopestr != "dimm") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names.  Instead of dimm got: " + scopestr});
+      }
+      
 
       parse_xms(h, m, s, timestr);
 
@@ -1654,11 +1712,30 @@ int tcsInterface::getSeeing()
       fin >> datestr;
       fin >> timestr;
       fin >> scopestr;
-      if (scopestr != "baade") {
-         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
+      fin >> m_mag1_fwhm_corr;
+
+      //Handle no values from query
+      if(!fin)
+      {
+         if(badSeeing()< 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
+
+         if(!m_labMode)
+         {
+            log<software_error>({__FILE__, __LINE__, "query_seeing returned not enough values"});
+            return -1;
+         }
+         else 
+         {
+            return 0;
+         }
       }
 
-      fin >> m_mag1_fwhm_corr;
+      if (scopestr != "baade") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names.  Instead of baade got: " + scopestr});
+      }
 
       parse_xms(h, m, s, timestr);
 
@@ -1676,11 +1753,31 @@ int tcsInterface::getSeeing()
       fin >> datestr;
       fin >> timestr;
       fin >> scopestr;
-      if (scopestr != "clay") {
-         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names"});
+      fin >> m_mag2_fwhm_corr;
+
+      //Handle no values from query
+      if(!fin)
+      {
+         if(badSeeing()< 0)
+         {
+            log<software_error>({__FILE__, __LINE__});
+         }
+
+         if(!m_labMode)
+         {
+            log<software_error>({__FILE__, __LINE__, "query_seeing returned not enough values"});
+            return -1;
+         }
+         else 
+         {
+            return 0;
+         }
       }
 
-      fin >> m_mag2_fwhm_corr;
+      if (scopestr != "clay") {
+         log<software_error>({__FILE__, __LINE__, "Unexpected order of telescope names.  Instead of clay got: " + scopestr});
+      }
+
       fin.close();
 
       parse_xms(h, m, s, timestr);
