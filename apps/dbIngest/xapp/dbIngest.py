@@ -287,3 +287,5 @@ class dbIngest(XDevice):
         this_ts_sec = time.time()
         self.last_update_ts_sec = this_ts_sec
         self.refresh_properties()
+
+main = dbIngest.console_app
