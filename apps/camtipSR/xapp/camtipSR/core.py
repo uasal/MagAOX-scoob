@@ -37,8 +37,8 @@ class camtipSRConfig(BaseConfig):
 
 class States(Enum):
     IDLE = 0
-    CLOSED_LOOP = 1         
-    ONESHOT = 2 
+    CLOSED_LOOP = 1
+    ONESHOT = 2
 
 class camtipSR(XDevice):
     config: camtipSRConfig
@@ -48,7 +48,7 @@ class camtipSR(XDevice):
         fsm = properties.TextVector(name='fsm')
         fsm.add_element(DefText(name='state', _value=StateCodes.INITIALIZED.name))
         self.add_property(fsm)
-        
+
         # init INDI PROPERTY: loop state
         sv = properties.SwitchVector(
             name='state',
@@ -56,10 +56,10 @@ class camtipSR(XDevice):
             perm=constants.PropertyPerm.READ_WRITE,
         )
         sv.add_element(DefSwitch(name="idle", _value=constants.SwitchState.ON))
-        sv.add_element(DefSwitch(name="SRLoop", _value=constants.SwitchState.OFF)) 
-        sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF)) 
-        self.add_property(sv, callback=self.handle_state) 
-        
+        sv.add_element(DefSwitch(name="SRLoop", _value=constants.SwitchState.OFF))
+        sv.add_element(DefSwitch(name="oneshot", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_state)
+
         # init INDI PROPERTY: n_avg
         nv = properties.NumberVector(name='n_avg')
         nv.add_element(DefNumber(
@@ -148,9 +148,9 @@ class camtipSR(XDevice):
         self._dark = False
         self._n_avg = 1
         self._n_jitter = 100
-        self._SR_est = 0.0 
+        self._SR_est = 0.0
         self._SR_est_list = []
-        self._SR_EE = 0.0 
+        self._SR_EE = 0.0
         self._SR_EE_list = []
         self._x0_list = []
         self._y0_list = []
@@ -177,24 +177,24 @@ class camtipSR(XDevice):
         self.properties['fsm']['state'] = StateCodes.READY.name
         self.update_property(self.properties['fsm'])
 
-    def handle_state(self, existing_property, new_message):        
+    def handle_state(self, existing_property, new_message):
         target_list = ['idle', 'SRLoop', 'oneshot']
-        for key in target_list: 
-            if existing_property[key] == constants.SwitchState.ON: 
+        for key in target_list:
+            if existing_property[key] == constants.SwitchState.ON:
                 current_state = key
-        
-        if current_state not in new_message: 
+
+        if current_state not in new_message:
 
             for key in target_list:
-                existing_property[key] = constants.SwitchState.OFF 
-                if key in new_message: 
-                    existing_property[key] = new_message[key] 
+                existing_property[key] = constants.SwitchState.OFF
+                if key in new_message:
+                    existing_property[key] = new_message[key]
 
-                    if key == 'idle': 
+                    if key == 'idle':
                         self._state = States.IDLE
                         self.properties['fsm']['state'] = StateCodes.READY.name
                         self._command = 0
-                        self.log.debug('State changed to idle')                    
+                        self.log.debug('State changed to idle')
                     elif key == 'SRLoop':
                         self._state = States.CLOSED_LOOP
                         #self.modRadius = self.client['modwfs.modRadius.current'] # TODO: uncomment when modwfs is correct
@@ -210,14 +210,14 @@ class camtipSR(XDevice):
             self.update_property(self.properties['fsm'])
 
     def handle_n_avg(self, existing_property, new_message):
-        if 'target' in new_message and new_message['target'] != existing_property['current']: 
+        if 'target' in new_message and new_message['target'] != existing_property['current']:
             existing_property['current'] = new_message['target']
             existing_property['target'] = new_message['target']
             self._n_avg = int(new_message['target'])
         self.update_property(existing_property)
 
     def handle_n_jitter(self, existing_property, new_message):
-        if 'target' in new_message and new_message['target'] != existing_property['current']: 
+        if 'target' in new_message and new_message['target'] != existing_property['current']:
             existing_property['current'] = new_message['target']
             existing_property['target'] = new_message['target']
             self._n_jitter = int(new_message['target'])
@@ -230,7 +230,7 @@ class camtipSR(XDevice):
         self.properties['state']['SRLoop'] = constants.SwitchState.OFF
         self.properties['state']['idle'] = constants.SwitchState.ON
         self.update_property(self.properties['state'])
-        self._state = States.IDLE    
+        self._state = States.IDLE
 
     def fit_SR_gauss(self, img):
         # Set the data in the camtipFitter
@@ -250,7 +250,7 @@ class camtipSR(XDevice):
         self.update_property(self.properties['SR_est'])
         #self.log.info(f"SR  has been set.")
         return
-    
+
     def fit_SR_EE(self, img):
         # Set the data in the camtipFitter
         self.camFit.set_data(img) # background subtracted here
@@ -266,7 +266,7 @@ class camtipSR(XDevice):
         self.update_property(self.properties['SR_EE'])
         #self.log.info(f"SR EE has been set.")
         return
-    
+
     def calc_jitter_RMS(self):
         # this needs to be run AFTER SR_EE
         self._x0_list.append(self.camFit.x0)
@@ -280,7 +280,7 @@ class camtipSR(XDevice):
         self._jitter_y = (y0_all[-1] - np.mean(y0_all)) * self.camFit.px_scale
         mean_sqr = np.mean(((x0_all - np.mean(x0_all))**2 + (y0_all - np.mean(y0_all))**2))
         self._jitter_RSM = np.sqrt(mean_sqr)
-        # set the new jitter values 
+        # set the new jitter values
         self.properties['jitter_RMS']['current'] = self._jitter_RSM
         self.update_property(self.properties['jitter_RMS'])
         self.properties['jitter_x']['current'] = self._jitter_x
@@ -302,8 +302,8 @@ class camtipSR(XDevice):
             self.log.info(f" File has been saved to {outpath}")
         except Exception:
             self.log.exception(f" Unable to save frame!")
-        return 
-    
+        return
+
     def grab_img(self):
         # start of any loop will look for files
         try:
@@ -321,12 +321,12 @@ class camtipSR(XDevice):
             cx, cy =  244, 414
             m = 64
             img = img[cx-m:cx+m, cy-m:cy+m]
-        if img.shape != (128, 128): 
+        if img.shape != (128, 128):
             #self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
             self.transition_to_idle()
             return #TODO: need to figure out how to break the loop here
         return img
-    
+
     def grab_stack(self, n):
         try:
             img_t = self.camera.grab_stack(n, subtract_dark=True) # stack is already averaged
@@ -343,14 +343,14 @@ class camtipSR(XDevice):
             cx, cy =  244, 414
             m = 64
             img = img[cx-m:cx+m, cy-m:cy+m]
-        if img.shape != (128, 128): 
+        if img.shape != (128, 128):
             #self.log.error(f"Image size is {img.shape}, expected (128, 128), set proper ROI")
             self.transition_to_idle()
             return #TODO: need to figure out how to break the loop here
         return img
 
     def loop(self):
-    
+
         if self._state == States.CLOSED_LOOP:
             img = self.grab_img()
             ## CALL FIT FUNCTION
@@ -370,9 +370,3 @@ class camtipSR(XDevice):
             # will now exit out
             self.transition_to_idle()
             return
-
-
-
-
-
-
