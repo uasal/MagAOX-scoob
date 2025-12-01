@@ -11,8 +11,15 @@ dependencies = [
   "purepyindi2",
 ]
 authors = [
-  {name = "Joseph D. Long", email = "me@joseph-long.com"},
+  {name = "MagAO-X Team", email = "lynx@magao-x.org"},
 ]
 
 [project.scripts]
 pythonIndiExample = "xapp.pythonIndiExample:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xapp*"]
+
+[tool.setuptools.package-data]
+"xapp.pythonIndiExample" = ["refdata/*"]

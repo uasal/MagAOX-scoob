@@ -3,7 +3,6 @@
   <random-utterances>
     <speak>pee eye is asleep. I'm the pee eye now.</speak>
     <file name="toughest_battles.wav" />
-    <!-- <speak>please forfeit all <s lang="es">empanadas</s> in a timely manner</speak> -->
     <speak>Oh, that little guy? I wouldn't worry about that little guy</speak>
     <speak>Chicken nugget</speak>
     <speak>I am being so brave right now.</speak>
@@ -62,6 +61,9 @@
     </walk-up>
     <walk-up email="mileslucas@arizona.edu">
       <file name="miles.wav" />
+    </walk-up>
+    <walk-up email="parkertjohnson1@arizona.edu">
+      <file name="parker.mp3" />
     </walk-up>
   </walk-ups>
   <soundboard>
