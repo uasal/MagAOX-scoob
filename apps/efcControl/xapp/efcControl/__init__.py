@@ -14,7 +14,18 @@ from magaox.constants import StateCodes
 from purepyindi2 import device, properties, constants
 from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
-from utils import *
+from hcipy import make_circular_aperture
+
+def measure_center_position(image, threshold=1, mask_diameter=20):
+	center_mask = make_circular_aperture(mask_diameter)(image.grid)
+	mask = center_mask * ((image / np.nanstd(image)) < threshold)
+
+	if np.sum(mask) > 0:
+		xc = np.sum(mask * image.grid.x) / np.sum(mask)
+		yc = np.sum(mask * image.grid.y) / np.sum(mask)
+		return np.array([xc, yc])
+	else:
+		return np.array([0.0, 0.0])
 
 @xconf.config
 class CameraConfig:
@@ -35,7 +46,7 @@ class States(Enum):
 
 class efcControl(XDevice):
     config : efcControlConfig
-    
+
     def setup(self):
         self.log.debug(f"I was configured! See? {self.config=}")
         fsm = properties.TextVector(name='fsm')
@@ -50,7 +61,7 @@ class efcControl(XDevice):
         self.update_property(self.properties['fsm'])
 
     def loop(self):
-       pass 
+       pass
 		# Basic EFC loop
 		# Acquire sequence of images
 		# Need to trigger based on start of exposure?
