@@ -58,4 +58,5 @@ class XStateMachine:
     def loop(self):
         for si, state in enumerate(self._state_enum):
             if self._state == state:
-                self._state_callbacks[si]()
+                if self._state_callbacks[si] is not None:
+                    self._state_callbacks[si]()
