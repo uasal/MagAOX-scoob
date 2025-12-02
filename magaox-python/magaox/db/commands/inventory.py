@@ -17,9 +17,9 @@ class Inventory(BaseDbCommand):
     data_dirs : list[pathlib.Path] = xconf.field(default_factory=lambda: [DEFAULT_PREFIX / x for x in DEFAULT_DATA_DIRS])
 
     def main(self):
-        connections = self.connect_to_databases()
-        for conn in connections:
-            log.info(f"Updating file inventory for {conn.info.dsn}")
+        for db_name in self.databases:
+            conn = self.databases[db_name].connect()
+            log.info(f"Updating file inventory for database {db_name}")
             with conn.transaction():
                 cur = conn.cursor()
                 ingest.update_file_inventory(cur, self.hostname, self.data_dirs, self.ignore_patterns.files, self.ignore_patterns.directories)
