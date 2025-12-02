@@ -179,6 +179,7 @@ class camtipSR(XDevice):
 
     def handle_state(self, existing_property, new_message):
         target_list = ['idle', 'SRLoop', 'oneshot']
+        current_state = None
         for key in target_list:
             if existing_property[key] == constants.SwitchState.ON:
                 current_state = key
@@ -307,12 +308,12 @@ class camtipSR(XDevice):
     def grab_img(self):
         # start of any loop will look for files
         try:
-            img_t = self.camera.grab_stack(1, subtract_dark=True) # stack is already averaged
+            img_t = self.camera.grab(subtract_dark=True)
             self._dark = True
-        except:
+        except RuntimeError:
             if self._dark == True:
                 self.log.info("Error finidng files, likely the dark.")
-            img_t = self.camera.grab_stack(1, subtract_dark=False) # stack is already averaged
+            img_t = self.camera.grab(subtract_dark=False)
             self._dark = False
         img = img_t.shaped # vs. how it would be in a jupyter notebook
         # enforce cropping
@@ -329,12 +330,12 @@ class camtipSR(XDevice):
 
     def grab_stack(self, n):
         try:
-            img_t = self.camera.grab_stack(n, subtract_dark=True) # stack is already averaged
+            img_t = self.camera.grab_stack(n, subtract_dark=True)
             self._dark = True
-        except:
+        except RuntimeError as e:
             if self._dark == True:
-                self.log.info("Error finidng files, likely the dark.")
-            img_t = self.camera.grab_stack(n, subtract_dark=False) # stack is already averaged
+                self.log.warning("Error finding files, likely the dark.")
+            img_t = self.camera.grab_stack(n, subtract_dark=False)
             self._dark = False
         img = img_t.shaped # vs. how it would be in a jupyter notebook
         # enforce cropping
