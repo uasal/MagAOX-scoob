@@ -103,6 +103,9 @@
     <button name="Donny">
       <file name="donny.mp3" />
     </button>
+    <button name="IWant2Believe">
+      <file name="imabeliever_short.mp3" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
