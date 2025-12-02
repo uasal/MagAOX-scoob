@@ -3,6 +3,7 @@ import numpy as np
 import ImageStreamIOWrap
 import pathlib
 import logging
+from .constants import DEFAULT_SHMIM_TIMEOUT_SEC
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class Image(ImageStreamIOWrap.Image):
     def copy(self):
         return np.squeeze(super().copy().T)
 
-    def get_data(self, wait: bool=True, timeout_sec: Optional[float]=5.0, check_before_wait: bool=False):
+    def get_data(self, wait: bool=True, timeout_sec: Optional[float]=DEFAULT_SHMIM_TIMEOUT_SEC, check_before_wait: bool=False):
         '''Get a copy of the image data, optionally waiting (with an
         optional timeout) for an updated frame to arrive before
         returning
