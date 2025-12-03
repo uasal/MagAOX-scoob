@@ -153,6 +153,7 @@
       <speak>We are so back.</speak>
       <speak>I am doing so good right now.</speak>
       <speak>Ready to go Captain.</speak>
+      <file name="mariostart.mp3" />
     </transition>
     <transition op="eq" value="Off">
       <speak>No more adaptive optics for you</speak>
