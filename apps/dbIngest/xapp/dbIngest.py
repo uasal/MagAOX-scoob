@@ -107,7 +107,7 @@ class dbIngest(XDevice):
     last_update_ts_sec : float
     startup_ts_sec : float
     records_since_startup : float
-    _connections : list[psycopg.Connection]
+    _connections : dict[str, psycopg.Connection]
     _connections_to_attempt : set[str]
 
     #add user_log support here
@@ -137,6 +137,7 @@ class dbIngest(XDevice):
 
     def setup(self):
         self.last_update_ts_sec = time.time()
+        self._connections = {}
         self._connections_to_attempt = set(self.config.databases.keys())
         self.records_since_startup = 0
         self.records_per_sec = 0.0
@@ -210,14 +211,14 @@ class dbIngest(XDevice):
 
     def rescan_files(self):
         search_paths = [self.config.common_path_prefix / name for name in self.config.data_dirs]
-        for conn in self._connections:
+        for conn in self.config.databases:
             try:
-                with self._connections[conn].cursor() as cur:
+                with self.config.databases[conn].cursor() as cur:
                     # n.b. the state of the file inventory and which files
                     # are 'new' can be different depending on which
                     # database we're talking about, so we rescan once
                     # per connection
-                    self.log.debug(f"Scanning for new files for {conn.info.dsn}")
+                    self.log.debug(f"Scanning for new files for database {conn}")
                     ingest.update_file_inventory(
                         cur,
                         self.config.hostname,
@@ -225,7 +226,7 @@ class dbIngest(XDevice):
                         self.config.ignore_patterns.files, self.config.ignore_patterns.directories
                     )
             except Exception:
-                self.log.exception(f"Failed to rescan/inventory files for {conn.info.dsn}, attempting to reconnect")
+                self.log.exception(f"Failed to rescan/inventory files for database {conn}, attempting to reconnect")
                 self._connections_to_attempt.add(conn)
         self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
@@ -235,6 +236,7 @@ class dbIngest(XDevice):
             self.log.debug(line)
 
     def loop(self):
+        connections_to_reattempt = set()
         if len(self._connections_to_attempt):
             for configkey in self._connections_to_attempt:
                 try:
@@ -243,9 +245,10 @@ class dbIngest(XDevice):
                     pass
                 try:
                     self._connections[configkey] = self.config.databases[configkey].connect()
-                    self._connections_to_attempt.remove(configkey)
+                    connections_to_reattempt.add(configkey)
                 except Exception:
                     self.log.exception(f"Failed to connect to {configkey} ({self.config.databases[configkey]})")
+            self._connections_to_attempt = connections_to_reattempt
 
         telems = []
         try:
@@ -272,9 +275,10 @@ class dbIngest(XDevice):
         except queue.Empty:
             pass
 
-        for conn in self._connections:
+        for connkey in self._connections:
             try:
-                self.log.debug(f"Batching ingest for {conn.info.dsn}")
+                self.log.debug(f"Batching ingest for {connkey}")
+                conn = self._connections[connkey]
                 with conn.transaction():
                     cur = conn.cursor()
                     ingest.batch_telem(cur, telems)
