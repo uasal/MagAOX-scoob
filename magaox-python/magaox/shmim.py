@@ -37,12 +37,17 @@ class Image(ImageStreamIOWrap.Image):
         self._reopen(name)
 
     def _check_inode(self):
-        return self.path.stat().st_ino != self._opened_with_inode
+        return self.path.stat().st_ino == self._opened_with_inode
 
     def _reopen(self, name):
         this_path = self._get_path(name)
         if not this_path.exists():
             raise FileNotFoundError(f"Looked for {name} at {self._get_path(name)} but no such file exists")
+        try:
+            self.close()
+        except RuntimeError:
+            # raised because Image wasn't open yet, ignore
+            pass
         ret = self.open(name)
         if ret != 0:
             raise RuntimeError(f"ImageStreamIO could not open {repr(name)}")
