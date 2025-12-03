@@ -112,6 +112,9 @@
     <button name="LetsGo">
       <file name="mariostart.mp3" />
     </button>
+    <button name="Shenanigans">
+      <file name="panther.mp3" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
