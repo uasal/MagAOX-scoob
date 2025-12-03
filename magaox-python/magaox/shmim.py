@@ -7,6 +7,7 @@ from .constants import DEFAULT_SHMIM_TIMEOUT_SEC
 
 log = logging.getLogger(__name__)
 
+
 class ShmimTimeout(Exception):
     pass
 
@@ -18,37 +19,12 @@ class Image(ImageStreamIOWrap.Image):
     (i.e. C-ordering) at the copy() and write() boundary for consistency
     with Python image plotting
     '''
-    _milk_shm_prefix = pathlib.Path('/milk/shm')
-    _opened_with_inode : int
     semID : Optional[int] = None
-    def _get_path(self, name):
-        return self._milk_shm_prefix / f"{name}.im.shm"
-
-    @property
-    def name(self):
-        return self.md.name
-
-    @property
-    def path(self) -> pathlib.Path:
-        return self._get_path(self.md.name)
-
     def __init__(self, name):
         super().__init__()
-        self._reopen(name)
-
-    def _check_inode(self):
-        return self.path.stat().st_ino != self._opened_with_inode
-
-    def _reopen(self, name):
-        this_path = self._get_path(name)
-        if not this_path.exists():
-            raise FileNotFoundError(f"Looked for {name} at {self._get_path(name)} but no such file exists")
         ret = self.open(name)
         if ret != 0:
-            raise RuntimeError(f"ImageStreamIO could not open {repr(name)}")
-        assert self.md.name == name
-        self._opened_with_inode = self.md.inode
-        assert this_path.stat().st_ino == self._opened_with_inode
+            raise RuntimeError(f"Could not open {repr(name)}")
 
     def copy(self):
         return np.squeeze(super().copy().T)
@@ -58,59 +34,34 @@ class Image(ImageStreamIOWrap.Image):
         optional timeout) for an updated frame to arrive before
         returning
 
-        We compare the inode of the shmim file to the one we got when we opened it
-        before attempting to await it. When no timeout is set, we always check to ensure
-        we don't try to read stale data. When a timeout is set, we only check after timing out
-        unless `check_before_reading` is `True`. When `wait == False` we check and reopen
-        the shmim before copying.
-
         Parameters
         ----------
-        wait : bool (default: True)
+        check : bool
             Whether to block until the underlying shmim has an update
-        timeout_sec : float (default: 5.0)
-            Number of seconds to wait before giving up (pass `None` to wait forever)
-        check_before_wait : bool (default: False)
-            Check the inode of the shmim before awaiting its semaphore (always True when no timeout supplied)
+        timeout : float
+            Number of seconds to wait before giving up
         '''
-        if self.semID is None:
-            self.semID = self.getsemwaitindex(0)
-        if wait:
-            # ensure we're caught up by zeroing the semaphore before waiting
+        timeout = timeout_sec 
+        check = wait
+        if check:
+            if self.semID is None:
+                self.semID = self.getsemwaitindex(0)
+            
             self.semflush(self.semID)
-            if timeout_sec is None:
-                # We need to detect size changes before we wait or we could wait forever
-                # on a stale shmim
-                if not self._check_inode():
-                    self._reopen(self.name)
-                # Wait until another process writes to this shmim
+            if timeout is None:
                 self.semwait(self.semID)
             else:
-                if check_before_wait:
-                    if not self._check_inode():
-                        log.info(f"Reopening {self.path} because we detected an inode change")
-                        self._reopen(self.name)
-                ret = self.semtimedwait(self.semID, timeout_sec)
+                if timeout < 0:
+                    raise ValueError(f"Invalid timeout: {timeout}")
+                ret = self.semtimedwait(self.semID, timeout)
                 if ret != 0:
-                    if not self._check_inode():
-                        self._reopen(self.name)
-                    log.info(f"Reopening {self.path} because we timed out and detected an inode change")
-                    ret = self.semtimedwait(self.semID, timeout_sec)
-                if ret != 0:
-                    raise ShmimTimeout(f"Timed out after {2 * timeout_sec} sec without new data")
-        else:
-            if not self._check_inode():
-                self._reopen(self.name)
-                log.info(f"Reopening {self.path} because we detected an inode change")
+                    raise ShmimTimeout(f"Timed out after {timeout} sec without new data")
         return self.copy()
 
     def write(self, buffer: np.ndarray):
         '''Set the contents of the shmim, reordering buffer to
         column-major if necessary
         '''
-        if not self._check_inode():
-            self._reopen(self.name)
-            log.info(f"Reopening {self.path} because we detected an inode change")
         if not buffer.flags['F_CONTIGUOUS']:
             data_towrite = buffer.copy('F')
         else:
