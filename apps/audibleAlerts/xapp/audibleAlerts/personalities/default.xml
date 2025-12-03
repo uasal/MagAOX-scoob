@@ -66,7 +66,7 @@
       <file name="parker.mp3" />
     </walk-up>
     <walk-up email="tiffanytn@arizona.edu">
-      <file name="tiffanyisastar.mp3">
+      <file name="tiffanyisastar.mp3" />
     </walk-up>
   </walk-ups>
   <soundboard>
@@ -118,6 +118,13 @@
       <speak>
         <voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice>
       </speak>
+      <speak>Mama pee ya, here we go again</speak>
+    </transition>
+  </react-to>
+  <react-to indi-id="fwfpm.filterName.cmc2">
+    <transition value="On">
+      <speak>Mama pee ya, here we go again</speak>
+      <speak><voice name="larynx:lisa-glow_tts">non è consentito il cappuccino dopo mezzogiorno</voice></speak>
     </transition>
   </react-to>
   <react-to indi-id="flipacq.presetName.in">

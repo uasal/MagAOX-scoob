@@ -2,8 +2,11 @@ from dataclasses import dataclass
 from enum import Enum
 import os.path
 import purepyindi2
+import logging
 from typing import Optional
 import xml.etree.ElementTree as ET
+
+log = logging.getLogger(__name__)
 
 DEFAULT_DEBOUNCE_SEC = 3
 
@@ -47,7 +50,7 @@ class Operation(Enum):
 @dataclass(eq=True, frozen=True)
 class Transition:
     # id duplicated here from Reaction because Transition is used as a dict key and we need uniqueness:
-    indi_id : str  
+    indi_id : str
     value : Optional[purepyindi2.AnyIndiValue]
     value_2 : Optional[purepyindi2.AnyIndiValue]
     debounce_sec : float = DEFAULT_DEBOUNCE_SEC
@@ -150,7 +153,9 @@ class Personality:
                     raise RuntimeError(f"Multiply defined for {indi_id} {operation=} {value=}")
                 transitions[trans] = []
                 for utterance in transition:
-                    assert utterance.tag in ('speak', 'file')
+                    if utterance.tag not in ('speak', 'file'):
+                        log.warning(f"{transition}: {utterance} not 'speak' or 'file'?")
+                        continue
                     transitions[trans].append(xml_to_speechrequest(utterance, file_path))
             reactions.append(Reaction(indi_id=indi_id, transitions=transitions))
         return cls(
