@@ -12,6 +12,8 @@
 #include <mx/improc/eigenCube.hpp>
 using namespace mx::improc;
 
+#include "semUtilsDerived.hpp"
+
 #include "../../ImageStreamIO/pixaccess.hpp"
 
 /** \defgroup dmPokeWFS
@@ -39,41 +41,41 @@ namespace dev
 
 /// A base class to coordinate poking a deformable mirror's actuators and synchronizedreads of a camera image.
 /** CRTP class `derivedT` has the following requirements:
-  * 
+  *
   * - Must be derived from MagAOXApp<true>
-  * 
+  *
   * - Must be derived from `dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::wfsShmimT>` (replace DERIVEDNAME with derivedT class name)
-  * 
+  *
   * - Must be derived from  `dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::darkShmimT>` (replace DERIVEDNAME with derivedT class name)
-  * 
+  *
   * - Must contain the following friend declarations (replace DERIVEDNAME with derivedT class name):
   *   \code
   *      friend class dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::wfsShmimT>;
   *      friend class dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::darkShmimT>;
   *      friend class dev::dmPokeWFS<DERIVEDNAME>
   *   \endcode
-  * 
+  *
   * - Must contain the following typedefs (replace DERIVEDNAME with derivedT class name):
   *   \code
   *       typedef dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::wfsShmimT> shmimMonitorT;
   *       typedef dev::shmimMonitor<DERIVEDNAME, dev::dmPokeWFS<DERIVEDNAME>::darkShmimT> darkShmimMonitorT;
   *       typedef dev::dmPokeWFS<DERIVEDNAME> dmPokeWFST;
-  * 
+  *
   *   \endcode
   * - Must provide the following interfaces:
-  *   \code 
-  *       shmimMonitorT & shmimMonitor() 
+  *   \code
+  *       shmimMonitorT & shmimMonitor()
   *       {
   *           return *static_cast<shmimMonitorT *>(this);
   *       }
-  * 
-  *       darkShmimMonitorT & darkShmimMonitor() 
+  *
+  *       darkShmimMonitorT & darkShmimMonitor()
   *       {
   *           return *static_cast<darkShmimMonitorT *>(this);
   *       }
   *   \endcode
-  * 
-  * - If derivedT has additional shmimMonitor parents, you will need to include these lines in the class 
+  *
+  * - If derivedT has additional shmimMonitor parents, you will need to include these lines in the class
   *   declaration:
   *   \code
   *       using dmPokeWFST::allocate;
@@ -82,35 +84,35 @@ namespace dev
   *
   * - Must provide the following interface:
   *   \code
-  *       // Run the sensor steps 
+  *       // Run the sensor steps
   *       // Coordinates the actions of poking and collecting images.
   *       // Upon completion this calls runSensor.  If \p firstRun == true, one time
   *       // actions such as taking a dark can be executed.
-  *       // 
+  *       //
   *       // returns 0 on success
   *       // returns \< 0 on an error
   *       int runSensor(bool firstRun ///< [in] flag indicating this is the first call.  triggers taking a dark if true.
   *                     );
   *   \endcode
-  * 
+  *
   * - Must provide the following interface:
-  *   \code 
+  *   \code
   *       // Analyze the poke image
-  *       // This analyzes the resulting poke images. 
+  *       // This analyzes the resulting poke images.
   *       //
   *       // returns 0 on success
   *       // returns \< 0 on an error
   *       int analyzeSensor();
   *   \endcode
   *   At the conclusion of analyzeSensor the measured signal (e.g. deltaX and deltaY) should be updated and set in m_indiP_measurement.
-  *   The function \ref updateMeasurement() can be used for this.  However, the updating of the loop counter and the subsequent INDI 
+  *   The function \ref updateMeasurement() can be used for this.  However, the updating of the loop counter and the subsequent INDI
   *   property update is handled automatically after that.
-  * 
+  *
   * - Must be a telemeter with the following interface:
-  * 
+  *
   *     - Must be derived from `dev::telemeter<DERIVEDNAME>` (replace DERIVEDNAME with derivedT class name) and meet the requirements
   *       of `dev::telemeter`
-  * 
+  *
   *     - In the function `derivedT::checkRecordTimes()` required by `dev::telemeter`,  the `telem_pokeloop` type must be checked.
   *       The minimum `derivedT::checkRecordTimes()` is:
   *       \code
@@ -120,20 +122,20 @@ namespace dev
   *         }
   *       \endcode
   *
-  * - Must call this base class's setupConfig(), loadConfig(), appStartup(), appStartup(), and appShutdown() in the 
+  * - Must call this base class's setupConfig(), loadConfig(), appStartup(), appStartup(), and appShutdown() in the
   *    appropriate functions.  For convenience the following macros are defined to provide error checking:
-  *    \code  
+  *    \code
   *       DMPOKEWFS_SETUP_CONFIG( cfig )
   *       DMPOKEWFS_LOAD_CONFIG( cfig )
   *       DMPOKEWFS_APP_STARTUP
   *       DMPOKEWFS_APP_LOGIC
   *       DMPOKEWFS_APP_SHUTDOWN
   *    \endcode
-  * 
+  *
   * \ingroup appdev
   */
 template<class derivedT>
-class dmPokeWFS 
+class dmPokeWFS
 {
 
 public:
@@ -169,7 +171,7 @@ protected:
     /** \name Configurable Parameters
       *@{
       */
-   
+
     std::string m_wfsCamDevName; ///<INDI device name of the WFS camera.  Default is wfscam.shmimName.
 
     double m_wfsSemWait {1.5}; ///< The time in sec to wait on the WFS semaphore.  Default 0.5 sec.
@@ -194,7 +196,7 @@ protected:
     std::mutex m_wfsImageMutex;
 
     mx::improc::milkImage<float> m_rawImage;
-    
+
     mx::improc::milkImage<float> m_pokeImage;
     mx::improc::eigenImage<float> m_pokeLocal;
 
@@ -220,7 +222,7 @@ public:
 
     /**\name MagAOXApp Interface
       *
-      * @{ 
+      * @{
       */
 
     /// Setup the configuration system
@@ -244,13 +246,13 @@ public:
     int loadConfig( mx::app::appConfigurator & config /**< [in] an application configuration from which to load values */);
 
    /// Startup function
-   /** 
+   /**
      * This should be called in `derivedT::appStartup` as
      * \code
        dmPokeWFS<derivedT,realT>::appStartup();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
@@ -262,7 +264,7 @@ public:
        dmPokeWFS<derivedT,realT>::appLogic();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
@@ -274,7 +276,7 @@ public:
        dmPokeWFS<derivedT,realT>::appShutdown();
        \endcode
      * with appropriate error checking.
-     * 
+     *
      * \returns 0 on success
      * \returns -1 on error, which is logged.
      */
@@ -287,9 +289,9 @@ public:
       */
 
     int allocate( const wfsShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/);
-    
-    int processImage( void * curr_src,   ///< [in] pointer to the start of the current frame 
-                      const wfsShmimT &  ///< [in] tag to differentiate shmimMonitor parents. 
+
+    int processImage( void * curr_src,   ///< [in] pointer to the start of the current frame
+                      const wfsShmimT &  ///< [in] tag to differentiate shmimMonitor parents.
                     );
     ///@}
 
@@ -299,17 +301,17 @@ public:
       */
 
     int allocate( const darkShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/);
-    
-    int processImage( void * curr_src,   ///< [in] pointer to the start of the current frame 
-                      const darkShmimT &  ///< [in] tag to differentiate shmimMonitor parents. 
+
+    int processImage( void * curr_src,   ///< [in] pointer to the start of the current frame
+                      const darkShmimT &  ///< [in] tag to differentiate shmimMonitor parents.
                     );
     ///@}
 
-    /** \name WFS Thread 
+    /** \name WFS Thread
       * This thread coordinates the WFS process
       *
       * @{
-      */ 
+      */
 protected:
 
     int m_wfsThreadPrio {1}; ///< Priority of the WFS thread, should normally be > 00.
@@ -319,11 +321,11 @@ protected:
     std::thread m_wfsThread; ///< A separate thread for the actual WFSing
 
     bool m_wfsThreadInit {true}; ///< Synchronizer to ensure wfs thread initializes before doing dangerous things.
-  
+
     pid_t m_wfsThreadID {0}; ///< WFS thread PID.
 
     pcf::IndiProperty m_wfsThreadProp; ///< The property to hold the WFS thread details.
- 
+
     ///Thread starter, called by wfsThreadStart on thread construction.  Calls wfsThreadExec.
     static void wfsThreadStart( dmPokeWFS * s /**< [in] a pointer to an streamWriter instance (normally this) */);
 
@@ -347,7 +349,7 @@ protected:
     ///@}
 
     sem_t m_imageSemaphore; ///< Semaphore used to signal that an image is ready
-    
+
     unsigned m_imageSemWait_sec {1}; ///< The timeout for the image semaphore, seconds component.
 
     unsigned m_imageSemWait_nsec {0}; ///< The timeout for the image semaphore, nanoseconds component.
@@ -355,22 +357,22 @@ protected:
 
     /// Apply a single DM poke pattern and record the results
     /** This accumulates m_nPokeImages*m_nPokeAverage images in m_pokeLocal, so m_pokeLocal
-      * should be zeroed before the first call to this (e.g. for a +1 poke), 
+      * should be zeroed before the first call to this (e.g. for a +1 poke),
       * but not zeroed before the second call (e.g. for the -1 poke). You also need
       * to 0 the DM after finishing a poke pair.
       * See basicRunSensor() for how to use.
-      * 
+      *
       * \returns +1 if exit is due to shutdown or stop request
       * \returns 0 if no error
       * \returns -1 if an error occurs
       */
     int basicTimedPoke(float pokeSign /**< [in] the sign, and possibly a scaling, to apply to m_pokeAmplitude*/);
 
-    /// Run the basic +/- poke sensor steps 
+    /// Run the basic +/- poke sensor steps
     /** Coordinates the actions of poking and collecting images.
-      * 
+      *
       * This can be called from the derived class runSensor.
-      * 
+      *
       * \returns +1 if exit is due to shutdown or stop request
       * \returns 0 if no error
       * \returns -1 if an error occurs
@@ -381,8 +383,8 @@ protected:
                            float deltaY
                          );
 
-    /** \name INDI Interface 
-      * @{ 
+    /** \name INDI Interface
+      * @{
       */
 protected:
 
@@ -412,8 +414,8 @@ protected:
 
     ///@}
 
-    /** \name Telemeter Interface 
-      * @{ 
+    /** \name Telemeter Interface
+      * @{
       */
 
     int recordTelem(const telem_pokeloop *);
@@ -458,7 +460,7 @@ int dmPokeWFS<derivedT>::setupConfig(mx::app::appConfigurator & config)
     config.add("pokecen.nPokeAverage", "", "pokecen.nPokeAverage", argType::Required, "pokecen", "nPokeAverage", false, "int", "The number of poke sequences to average.  Default 10.");
 
 
-    return 0;    
+    return 0;
 }
 
 
@@ -537,24 +539,24 @@ int dmPokeWFS<derivedT>::appStartup()
     m_indiP_nPokeAverage["target"].setValue(m_nPokeAverage);
 
     REG_INDI_SETPROP_DERIVED(m_indiP_wfsFps, m_wfsCamDevName, std::string("fps"));
-    
+
     CREATE_REG_INDI_NEW_TOGGLESWITCH_DERIVED( m_indiP_single, "single");
 
     CREATE_REG_INDI_NEW_TOGGLESWITCH_DERIVED( m_indiP_continuous, "continuous");
 
     CREATE_REG_INDI_NEW_REQUESTSWITCH_DERIVED( m_indiP_stop, "stop");
-        
+
     derived().template registerIndiPropertyReadOnly( m_indiP_measurement, "measurement", pcf::IndiProperty::Number, pcf::IndiProperty::ReadOnly, pcf::IndiProperty::Idle);
-    m_indiP_measurement.add({"delta_x", 0.0}); 
+    m_indiP_measurement.add({"delta_x", 0.0});
     m_indiP_measurement.add({"delta_y", 0.0});
     m_indiP_measurement.add({"counter", 0});
 
-    if(sem_init(&m_wfsSemaphore, 0,0) < 0) 
+    if(sem_init(&m_wfsSemaphore, 0,0) < 0)
     {
         return derivedT::template log<software_critical, -1>({__FILE__, __LINE__, errno,0, "Initializing wfs semaphore"});
     }
 
-    if(sem_init(&m_imageSemaphore, 0,0) < 0) 
+    if(sem_init(&m_imageSemaphore, 0,0) < 0)
     {
         return derivedT::template log<software_critical, -1>({__FILE__, __LINE__, errno,0, "Initializing image semaphore"});
     }
@@ -637,7 +639,7 @@ int dmPokeWFS<derivedT>::appShutdown()
     {
         derivedT::template log<software_error>({__FILE__, __LINE__, "error from shmimMonitorT::appShutdown"});
     }
-    
+
     if(derived().darkShmimMonitor().appShutdown() < 0)
     {
         derivedT::template log<software_error>({__FILE__, __LINE__, "error from darkShmimMonitorT::appShutdown"});
@@ -662,7 +664,7 @@ template<class derivedT>
 int dmPokeWFS<derivedT>::allocate( const wfsShmimT & dummy)
 {
     static_cast<void>(dummy); //be unused
-  
+
     std::unique_lock<std::mutex> lock(m_wfsImageMutex);
 
     m_rawImage.create( derived().m_configName + "_raw", derived().shmimMonitor().width(), derived().shmimMonitor().height());
@@ -671,18 +673,18 @@ int dmPokeWFS<derivedT>::allocate( const wfsShmimT & dummy)
 
     try
     {
-        m_dmStream.open(m_dmChan);    
+        m_dmStream.open(m_dmChan);
     }
-    catch(const std::exception& e) 
+    catch(const std::exception& e)
     {
         return derivedT::template log<software_error,-1>({__FILE__, __LINE__, std::string("exception opening DM: ") + e.what()});
     }
-    
+
     m_dmStream.passive(true);
-    
+
     m_dmImage.resize(m_dmStream.rows(), m_dmStream.cols());
 
-    if(derived().darkShmimMonitor().width() == derived().shmimMonitor().width() && 
+    if(derived().darkShmimMonitor().width() == derived().shmimMonitor().width() &&
          derived().darkShmimMonitor().height() == derived().shmimMonitor().height() )
     {
         m_darkValid = true;
@@ -702,8 +704,8 @@ int dmPokeWFS<derivedT>::allocate( const wfsShmimT & dummy)
     return 0;
 }
 
-template<class derivedT>   
-int dmPokeWFS<derivedT>::processImage( void * curr_src,    
+template<class derivedT>
+int dmPokeWFS<derivedT>::processImage( void * curr_src,
                                        const wfsShmimT &  dummy
                                      )
 {
@@ -746,14 +748,14 @@ template<class derivedT>
 int dmPokeWFS<derivedT>::allocate( const darkShmimT & dummy)
 {
     static_cast<void>(dummy); //be unused
-  
+
     std::unique_lock<std::mutex> lock(m_wfsImageMutex);
 
     m_darkImage.resize(derived().darkShmimMonitor().width(), derived().darkShmimMonitor().height());
 
     darkPixget = getPixPointer<float>(derived().darkShmimMonitor().dataType());
 
-    if(derived().darkShmimMonitor().width() == derived().shmimMonitor().width() && 
+    if(derived().darkShmimMonitor().width() == derived().shmimMonitor().width() &&
          derived().darkShmimMonitor().height() == derived().shmimMonitor().height() )
     {
         std::cerr << "dark is valid " << derived().darkShmimMonitor().width() << " " << derived().shmimMonitor().width() << " ";
@@ -764,12 +766,12 @@ int dmPokeWFS<derivedT>::allocate( const darkShmimT & dummy)
     {
         m_darkValid = false;
     }
-    
+
     return 0;
 }
 
-template<class derivedT> 
-int dmPokeWFS<derivedT>::processImage( void * curr_src,    
+template<class derivedT>
+int dmPokeWFS<derivedT>::processImage( void * curr_src,
                                        const darkShmimT &  dummy
                                      )
 {
@@ -810,13 +812,13 @@ void dmPokeWFS<derivedT>::wfsThreadExec()
     {
         timespec ts;
         XWC_SEM_WAIT_TS_RETVOID_DERIVED(ts, m_wfsSemWait_sec, m_wfsSemWait_nsec);
-      
+
         XWC_SEM_TIMEDWAIT_LOOP_DERIVED( m_wfsSemaphore, ts )
 
         //Lock a mutex here
         if(m_single)
         {
-            m_measuring = 1;    
+            m_measuring = 1;
         }
         else if(m_continuous)
         {
@@ -840,13 +842,13 @@ void dmPokeWFS<derivedT>::wfsThreadExec()
         bool firstRun = true;
 
         while(!m_stopMeasurement && !derived().m_shutdown)
-        {   
+        {
             if( derived().runSensor(firstRun) < 0)
             {
                 derivedT::template log<software_error>({__FILE__, __LINE__, "runSensor returned error"});
                 break;
             }
-            
+
             if(m_stopMeasurement || derived().m_shutdown)
             {
                 break;
@@ -859,7 +861,7 @@ void dmPokeWFS<derivedT>::wfsThreadExec()
             }
 
             ++m_counter;
-            derived().updateIfChanged(m_indiP_measurement, "counter", m_counter);   
+            derived().updateIfChanged(m_indiP_measurement, "counter", m_counter);
             derived().recordPokeLoop();
 
             firstRun = false;
@@ -876,7 +878,7 @@ void dmPokeWFS<derivedT>::wfsThreadExec()
 
         derived().template state(stateCodes::READY);
 
-        
+
     } //outer loop, will exit if derived().m_shutdown==true
 
     return;
@@ -916,12 +918,12 @@ int dmPokeWFS<derivedT>::basicTimedPoke(float pokeSign)
         else
         {
             ready = true;
-        }        
+        }
     }
 
     uint32_t n = 0;
     while(n < m_nPokeImages && !(m_stopMeasurement || derived().m_shutdown))
-    {    
+    {
         //** Now we record the poke image **//
         XWC_SEM_WAIT_TS_DERIVED(ts, m_imageSemWait_sec, m_imageSemWait_nsec);
         XWC_SEM_TIMEDWAIT_LOOP_DERIVED( m_imageSemaphore, ts )
@@ -931,8 +933,8 @@ int dmPokeWFS<derivedT>::basicTimedPoke(float pokeSign)
 
         ++n;
     }
-        
-    if(m_stopMeasurement || derived().m_shutdown) 
+
+    if(m_stopMeasurement || derived().m_shutdown)
     {
         m_dmImage.setZero();
         m_dmStream = m_dmImage;
@@ -971,7 +973,7 @@ int dmPokeWFS<derivedT>::basicRunSensor()
             return rv;
         }
 
-        if(m_stopMeasurement || derived().m_shutdown) 
+        if(m_stopMeasurement || derived().m_shutdown)
         {
             break;
         }
@@ -989,8 +991,8 @@ int dmPokeWFS<derivedT>::basicRunSensor()
         {
             return rv;
         }
-    
-        if(m_stopMeasurement || derived().m_shutdown) 
+
+        if(m_stopMeasurement || derived().m_shutdown)
         {
             break;
         }
@@ -1005,7 +1007,7 @@ int dmPokeWFS<derivedT>::basicRunSensor()
         return derivedT::template log<software_error,-1>({__FILE__, __LINE__, e.what()});
     }
 
-   
+
 
     m_dmImage.setZero();
     m_dmStream = m_dmImage;
@@ -1030,7 +1032,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_nPokeImages )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_nPokeImages, ipRecv)
-   
+
     float target;
 
     if( derived().template indiTargetUpdate(m_indiP_nPokeImages, target, ipRecv, false) < 0)
@@ -1047,7 +1049,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_nPokeAverage )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_nPokeAverage, ipRecv)
-   
+
     float target;
 
     if( derived().template indiTargetUpdate(m_indiP_nPokeAverage, target, ipRecv, false) < 0)
@@ -1064,7 +1066,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_poke_amp )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_poke_amp, ipRecv)
-   
+
     float target;
 
     if( derived().template indiTargetUpdate(m_indiP_poke_amp, target, ipRecv, false) < 0)
@@ -1081,12 +1083,12 @@ template<class derivedT>
 INDI_SETCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_wfsFps )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_wfsFps, ipRecv)
-   
+
     if( ipRecv.find("current") != true ) //this isn't valid
     {
         return 0;
     }
-   
+
     m_wfsFps = ipRecv["current"].get<float>();
 
     return 0;
@@ -1096,7 +1098,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_single )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_single, ipRecv)
-   
+
     if( ipRecv.find("toggle") != true ) //this isn't valid
     {
         return -1;
@@ -1122,7 +1124,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_continuous )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_continuous, ipRecv)
-   
+
     if( ipRecv.find("toggle") != true ) //this isn't valid
     {
         return -1;
@@ -1155,7 +1157,7 @@ template<class derivedT>
 INDI_NEWCALLBACK_DEFN( dmPokeWFS<derivedT>, m_indiP_stop )(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS_DERIVED(m_indiP_stop, ipRecv)
-   
+
     if( ipRecv.find("request") != true ) //this isn't valid
     {
         return -1;
@@ -1202,7 +1204,7 @@ int dmPokeWFS<derivedT>::recordPokeLoop(bool force)
 
 /// Call dmPokeWFS::setupConfig with error checking
 /**
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define DMPOKEWFS_SETUP_CONFIG( cfig )                                                   \
     if(dmPokeWFST::setupConfig(cfig) < 0)                                                \
@@ -1214,13 +1216,13 @@ int dmPokeWFS<derivedT>::recordPokeLoop(bool force)
 
 /// Call dmPokeWFS::loadConfig with error checking
 /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define DMPOKEWFS_LOAD_CONFIG( cfig )                                                             \
     if(dmPokeWFST::loadConfig(cfig) < 0)                                                          \
     {                                                                                             \
         return log<software_error,-1>({__FILE__, __LINE__, "Error from dmPokeWFST::loadConfig"}); \
-    } 
+    }
 
 /// Call dmPokeWFS::appStartup with error checking
 #define DMPOKEWFS_APP_STARTUP                                \

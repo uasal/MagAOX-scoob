@@ -7,13 +7,15 @@ all:
 	@echo "*** $(TARGET) is a Python app, skipping 'build' step. Use 'make install' to install. ***"
 
 install:
-	sudo -H $(PYTHON) -c 'import purepyindi2' || (echo "Need purepyindi2 installed to $(shell which python)" && exit 1)
-	sudo -H $(PYTHON) -c 'import xconf' || (echo "Need xconf installed to $(shell which python)" && exit 1)
+	$(PYTHON) -c 'import purepyindi2' || (echo "Need purepyindi2 installed to $(PYTHON)" && exit 1)
+	$(PYTHON) -c 'import xconf' || (echo "Need xconf installed to $(PYTHON)" && exit 1)
 	sudo -H $(PYTHON) -m pip install .
 	sudo -H ln -sfv $(PYTHON_SCRIPTS_PREFIX)/$(TARGET) /opt/MagAOX/bin/$(TARGET)
+	sudo chmod -R o+rX $(shell $(PYTHON) -c "import $(TARGET), os.path;print(os.path.dirname($(TARGET).__file__))")
 	@echo "*** Install succeeded, app located in /opt/MagAOX/bin/$(TARGET) ***"
 
 .PHONY: all install
 
+.PHONY: clean
 clean:
 	@echo "Nothing to clean for $(TARGET)"

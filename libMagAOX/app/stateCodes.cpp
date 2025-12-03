@@ -1,14 +1,14 @@
-/** \file stateCodes.cpp 
+/** \file stateCodes.cpp
   * \brief MagAO-X Application States
   * \author Jared R. Males (jaredmales@gmail.com)
   *
-  * 
+  *
   * \ingroup app_files
-  */ 
+  */
 
 #include "stateCodes.hpp"
 
-namespace MagAOX 
+namespace MagAOX
 {
 namespace app
 {
@@ -52,13 +52,11 @@ std::string stateCodes::codeText( const stateCodeT & stateCode )
       default:
          return "UNKNOWN";
    }
-
-   return "UNKNOWN";
 }
 
 stateCodes::stateCodeT stateCodes::str2Code( const std::string & stateStr )
 {
-   
+
    if(stateStr == "FAILURE")
    {
       return stateCodes::FAILURE;
@@ -134,12 +132,12 @@ stateCodes::stateCodeT stateCodes::str2CodeFast( const std::string & stateStr )
 {
    switch(stateStr[0])
    {
-      case 'C':   
+      case 'C':
          if(stateStr.size() < 4)
          {
             return -999;
          }
-         
+
          if( stateStr[3] == 'F')
          {
             return stateCodes::CONFIGURING;
@@ -214,6 +212,6 @@ stateCodes::stateCodeT stateCodes::str2CodeFast( const std::string & stateStr )
    }
 }
 
-} //namespace app 
+} //namespace app
 } //namespace MagAOX
 

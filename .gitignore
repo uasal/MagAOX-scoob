@@ -3,6 +3,7 @@
 *.o
 *.a
 *.so
+*.log
 doc/output
 local/
 !local/common.example.mk
@@ -65,6 +66,7 @@ apps/dmMode/dmMode
 apps/dmModulator/dmModulator
 apps/dmPokeCenter/dmPokeCenter
 apps/dmPokeXCorr/dmPokeXCorr
+apps/dmRecon/dmRecon
 apps/dmSpeckle/dmSpeckle
 
 #f
@@ -83,6 +85,7 @@ gui/rtimv/plugins/acquisition/makefile.acquisition
 #h
 apps/hoPredCtrl/hoPredCtrl
 apps/hsfwCtrl/hsfwCtrl
+apps/hwpTracker/hwpTracker
 
 #i
 INDI/INDI/evalINDI
@@ -97,8 +100,12 @@ apps/kcubeCtrl/kcubeCtrl
 apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
+#l
+apps/loPredCtrl/loPredCtrl
+
 #m
 apps/mcp3008Ctrl/mcp3008Ctrl
+apps/modalFilter/modalFilter
 apps/modalGainOpt/modalGainOpt
 apps/modalPSDs/modalPSDs
 apps/mwfsMonitor/mwfsMonitor
@@ -134,7 +141,9 @@ apps/siglentSDG/siglentSDG
 apps/siglentSDG/tests/siglentSDG_test
 apps/smc100ccCtrl/smc100ccCtrl
 apps/sshDigger/sshDigger
+apps/sparkleClock/sparkleClock
 apps/stateRuleEngine/stateRuleEngine
+apps/strehlEstimator/strehlEstimator
 apps/streamCircBuff/streamCircBuff
 apps/streamWriter/streamWriter
 
@@ -145,8 +154,6 @@ apps/t2wOffloader/t2wOffloader
 apps/timeSeriesSimulator/timeSeriesSimulator
 apps/tcsInterface/tcsInterface
 apps/trippLitePDU/trippLitePDU
-apps/trippLitePDU/tests/
-
 apps/ttmModulator/ttmModulator
 
 #u
@@ -188,6 +195,7 @@ utils/doc
 
 ###########################3
 #test files to ignore
+tests/.fftw_wisdom.float
 tests/singleTest
 tests/testMagAOX
 tests/testMagAOXsetuid
@@ -216,6 +224,8 @@ setup/qhyccd_container/sdk_linux64_22.02.17.tgz
 # Python caches, etc
 *.egg-info
 __pycache__
+installed_python_interface_timestamp.txt
+
 libMagAOX/doc/diag/Makefile
 libMagAOX/doc/diag/xwcapp_fsm.drawio
 libMagAOX/doc/diag/xwcapp.drawio
@@ -223,3 +233,13 @@ libMagAOX/doc/diag/xwcapps_connections.drawio
 libMagAOX/doc/diag/png/xwcapp_fsm.png
 libMagAOX/doc/diag/png/xwcapp.png
 libMagAOX/doc/diag/png/xwcapps_connections.png
+
+
+# Coverage files
+**/*.gcno
+**/*.gcda
+*.info
+coverage_report/
+
+# Valgrind logs
+tests/valgrind/logs/*

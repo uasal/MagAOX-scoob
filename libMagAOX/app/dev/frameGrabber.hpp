@@ -15,7 +15,7 @@
 #include <mx/math/vectorUtils.hpp>
 #include <mx/improc/imageUtils.hpp>
 
-#include <ImageStreamIO/ImageStruct.h>
+#include "../../ImageStreamIO/ImageStruct.hpp"
 #include <ImageStreamIO/ImageStreamIO.h>
 
 #include "../../common/paths.hpp"
@@ -34,6 +34,8 @@ namespace dev
   *
   * - Must be derived from MagAOXApp<true>
   *
+  * - Must be derived from telemeter<derivedT> (see below for required interface)
+  *
   * - Must contain the following friend declaration:
   *   \code
   *       friend class dev::frameGrabber<derivedT>; //replace derivedT
@@ -45,42 +47,42 @@ namespace dev
   *   \endcode
   *
   * - must expose the following interface
-  * \code
-    //Configures the camera for acquistion, must also set m_width, m_height, and m_dataType
-    //so that the shared memory can be allocated
-    int derivedT::configureAcquisition();
-
-    //Gets the frames-per-second readout rate
-    //used for the latency statistics
-    float derivedT::fps();
-
-    //Start acquisition.
-    int derivedT::startAcquisition();
-
-    //Acquires the data, and checks if it is valid.
-    //This should set m_currImageTimestamp to the image timestamp.
-    // returns 0 if valid, < 0 on error, > 0 on no data.
-    int derivedT::acquireAndCheckValid()
-
-    //Loads the acquired image into the stream, copying it to the appropriate member of m_imageStream->array.
-    //This could simply be a memcpy.
-    int derivedT::loadImageIntoStream(void * dest);
-
-    //Take any actions needed to reconfigure the system.  Called if m_reconfig is set to true.
-    int derivedT::reconfig()
-  * \endcode
-  * Each of the above functions should return 0 on success, and -1 on an error (except fps).
-  * For `acquireAndCheckValid` >0 will indicate no data but not an error.  In most cases,
-  * an appropriate state code, such as NOTCONNECTED, should be set as well.
+  *   \code
+  *       //Configures the camera for acquistion, must also set m_width, m_height, and m_dataType
+  *       //so that the shared memory can be allocated
+  *       int derivedT::configureAcquisition();
   *
-  * A static configuration variable must be defined in derivedT as
-  * \code
-  * static constexpr bool c_frameGrabber_flippable =true; //or: false
-  * \endcode
-  * which determines whether or not the images can be flipped programatically.
+  *       //Gets the frames-per-second readout rate
+  *       //used for the latency statistics
+  *       float derivedT::fps();
   *
-  * Calls to this class's `setupConfig`, `loadConfig`, `appStartup`, `appLogic`, `updateINDI`, and `appShutdown`
-  * functions must be placed in the derived class's functions of the same name. For convenience the
+  *       //Start acquisition.
+  *       int derivedT::startAcquisition();
+  *
+  *       //Acquires the data, and checks if it is valid.
+  *       //This should set m_currImageTimestamp to the image timestamp.
+  *       // returns 0 if valid, < 0 on error, > 0 on no data.
+  *       int derivedT::acquireAndCheckValid()
+  *
+  *       //Loads the acquired image into the stream, copying it to the appropriate member of m_imageStream->array.
+  *       //This could simply be a memcpy.
+  *       int derivedT::loadImageIntoStream(void * dest);
+  *
+  *       //Take any actions needed to reconfigure the system.  Called if m_reconfig is set to true.
+  *       int derivedT::reconfig()
+  *   \endcode
+  *   Each of the above functions should return 0 on success, and -1 on an error (except fps).
+  *   For `acquireAndCheckValid` >0 will indicate no data but not an error.  In most cases,
+  *   an appropriate state code, such as NOTCONNECTED, should be set as well.
+  *
+  * - A static configuration variable must be defined in derivedT as
+  *   \code
+  *       static constexpr bool c_frameGrabber_flippable =true; //or: false
+  *   \endcode
+  *   which determines whether or not the images can be flipped programmatically.
+  *
+  * - Calls to this class's `setupConfig`, `loadConfig`, `appStartup`, `appLogic`, `updateINDI`, and `appShutdown`
+  *   functions must be placed in the derived class's functions of the same name. For convenience the
   *   following macros are defined to provide error checking:
   *   \code
   *       FRAMEGRABBER_SETUP_CONFIG( cfig )
@@ -126,8 +128,6 @@ class frameGrabber
     int m_defaultFlip{ fgFlipNone };
 
     ///@}
-
-    int m_currentFlip{ fgFlipNone };
 
     uint32_t m_width{ 0 };  ///< The width of the image, once deinterlaced etc.
     uint32_t m_height{ 0 }; ///< The height of the image, once deinterlaced etc.
@@ -349,16 +349,16 @@ int frameGrabber<derivedT>::setupConfig( mx::app::appConfigurator &config )
                 "size_t",
                 "The length of the circular buffer. Sets m_circBuffLength, default is 1." );
 
-    config.add(
-        "framegrabber.latencyTime",
-        "",
-        "framegrabber.latencyTime",
-        argType::Required,
-        "framegrabber",
-        "latencyTime",
-        false,
-        "float",
-        "The maximum length of time to measure latency timings. Sets  m_latencyCircBuffMaxTime, default is 5." );
+    config.add( "framegrabber.latencyTime",
+                "",
+                "framegrabber.latencyTime",
+                argType::Required,
+                "framegrabber",
+                "latencyTime",
+                false,
+                "float",
+                "The maximum length of time to measure latency timings. "
+                "Sets  m_latencyCircBuffMaxTime, default is 5." );
 
     config.add( "framegrabber.latencySize",
                 "",
@@ -394,7 +394,10 @@ int frameGrabber<derivedT>::loadConfig( mx::app::appConfigurator &config )
     config( m_fgThreadPrio, "framegrabber.threadPrio" );
     config( m_fgCpuset, "framegrabber.cpuset" );
     if( m_shmimName == "" )
+    {
         m_shmimName = derived().configName();
+    }
+    
     config( m_shmimName, "framegrabber.shmimName" );
 
     config( m_circBuffLength, "framegrabber.circBuffLength" );
@@ -417,7 +420,9 @@ int frameGrabber<derivedT>::loadConfig( mx::app::appConfigurator &config )
     if( derivedT::c_frameGrabber_flippable )
     {
         std::string flip = "flipNone";
+
         config( flip, "framegrabber.defaultFlip" );
+
         if( flip == "flipNone" )
         {
             m_defaultFlip = fgFlipNone;
@@ -436,9 +441,11 @@ int frameGrabber<derivedT>::loadConfig( mx::app::appConfigurator &config )
         }
         else
         {
-            derivedT::template log<text_log>(
-                { std::string( "invalid framegrabber flip specification (" ) + flip + "), setting flipNone" },
-                logPrio::LOG_ERROR );
+            derivedT::template log<text_log>( { std::string( "invalid framegrabber flip"
+                                                             "specification (" ) +
+                                                flip + "), setting flipNone" },
+                                              logPrio::LOG_ERROR );
+
             m_defaultFlip = fgFlipNone;
         }
     }
@@ -793,9 +800,6 @@ void frameGrabber<derivedT>::fgThreadExec()
 
         m_typeSize = ImageStreamIO_typesize( m_dataType );
 
-        // Here we resolve currentFlip somehow.
-        m_currentFlip = m_defaultFlip;
-
         if( configCircBuffs() < 0 )
         {
             derivedT::template log<software_error>( { __FILE__, __LINE__, "error configuring latency circ. buffs" } );
@@ -967,7 +971,7 @@ void *frameGrabber<derivedT>::loadImageIntoStreamCopy( void *dest, void *src, si
     }
     else
     {
-        switch( m_currentFlip )
+        switch( m_defaultFlip )
         {
         case fgFlipNone:
             return mx::improc::imcpy( dest, src, width, height, szof );

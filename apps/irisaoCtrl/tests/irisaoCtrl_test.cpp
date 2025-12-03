@@ -5,7 +5,7 @@
   */
 #include "../../../tests/catch2/catch.hpp"
 
-#include "../template.hpp"
+#include "../irisaoCtrl.hpp"
 
 using namespace MagAOX::app;
 
@@ -16,11 +16,9 @@ SCENARIO( "xxxx", "[template]" )
 {
    GIVEN("xxxxx")
    {
-      int rv;
-
       WHEN("xxxx")
       {
-         rv = [some test];
+         int rv = 0;
 
          REQUIRE(rv == 0);
       }

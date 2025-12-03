@@ -8,7 +8,7 @@
 
 using namespace MagAOX::app;
 
-SCENARIO( "Getting State Strings From Codes", "[stateCodes]" ) 
+SCENARIO( "Getting State Strings From Codes", "[stateCodes]" )
 {
     GIVEN("a valid state code")
     {
@@ -61,10 +61,13 @@ SCENARIO( "Getting State Strings From Codes", "[stateCodes]" )
 
         str = stateCodes::codeText(stateCodes::SHUTDOWN);
         REQUIRE(str == "SHUTDOWN");
+
+        str = stateCodes::codeText(static_cast<stateCodes::stateCodeT>(std::numeric_limits<stateCodes::stateCodeT>::max()));
+        REQUIRE(str == "UNKNOWN");
     }
 }
 
-SCENARIO( "Getting State Codes From Strings", "[stateCodes]" ) 
+SCENARIO( "Getting State Codes From Strings", "[stateCodes]" )
 {
     GIVEN("a string using stateCodeFast")
     {
@@ -147,6 +150,23 @@ SCENARIO( "Getting State Codes From Strings", "[stateCodes]" )
             sc = stateCodes::str2CodeFast("POW");
             REQUIRE(sc == -999);
 
+        }
+
+        WHEN("invalid strings")
+        {
+            stateCodes::stateCodeT sc;
+
+            sc = stateCodes::str2CodeFast("CONZECTED");
+            REQUIRE(sc == -999);
+
+            sc = stateCodes::str2CodeFast("NOTZOMED");
+            REQUIRE(sc == -999);
+
+            sc = stateCodes::str2CodeFast("POWEROZ");
+            REQUIRE(sc == -999);
+
+            sc = stateCodes::str2CodeFast("ZZZZZZZZZZZZZZZ");
+            REQUIRE(sc == -999);
         }
     }
 
