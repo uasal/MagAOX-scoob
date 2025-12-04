@@ -119,8 +119,7 @@
     <button name="Shenanigans">
       <file name="panther.mp3" />
     </button>
-     </button>
-    <button name="AngryTurbulence">
+     <button name="AngryTurbulence">
       <file name="batushka_clip.wav" />
     </button>
   </soundboard>
