@@ -119,6 +119,9 @@
     <button name="Shenanigans">
       <file name="panther.mp3" />
     </button>
+     <button name="AngryTurbulence">
+      <file name="batushka_clip.wav" />
+    </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
     <transition value="On">
