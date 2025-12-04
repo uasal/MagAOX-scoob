@@ -68,6 +68,10 @@
     <walk-up email="tiffanytn@arizona.edu">
       <file name="tiffanyisastar.mp3" />
     </walk-up>
+    <walk-up>
+    <walk-up email="aweinberger@carnegiescience.edu">
+      <file name="alycia.mp3" />
+    </walk-up>
   </walk-ups>
   <soundboard>
     <button name="NotJared">
@@ -114,6 +118,9 @@
     </button>
     <button name="Shenanigans">
       <file name="panther.mp3" />
+    </button>
+     <button name="AngryTurbulence">
+      <file name="batushka_clip.wav" />
     </button>
   </soundboard>
   <react-to indi-id="fwfpm.filterName.cmc">
