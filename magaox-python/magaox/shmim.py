@@ -56,6 +56,9 @@ class Image(ImageStreamIOWrap.Image):
         assert this_path.stat().st_ino == self._opened_with_inode
 
     def copy(self):
+        if not self._check_inode():
+            log.info(f"Reopening {self.path} because we detected an inode change")
+            self._reopen(self.name)
         return np.squeeze(super().copy().T)
 
     def get_data(self, wait: bool=True, timeout_sec: Optional[float]=DEFAULT_SHMIM_TIMEOUT_SEC, check_before_wait: bool=False):

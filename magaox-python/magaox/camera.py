@@ -196,8 +196,8 @@ class XCam:
                 "No dark found, but subtract_dark=False was not supplied"
             )
         elif self._dark_exists and subtract_dark:
-            dark_shape = self.dark_shmim.shape
-            if np.all(dark_shape == data.shape):
+            dark_shape = np.squeeze(self.dark_shmim).shape
+            if dark_shape == data.shape:
                 dark = self.dark_shmim.copy().astype(float)
                 arr = data - dark
             else:
