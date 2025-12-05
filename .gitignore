@@ -3,6 +3,7 @@
 *.o
 *.a
 *.so
+*.log
 doc/output
 local/
 !local/common.example.mk
@@ -81,6 +82,7 @@ gui/rtimv/plugins/acquisition/makefile.acquisition
 #h
 apps/hoPredCtrl/hoPredCtrl
 apps/hsfwCtrl/hsfwCtrl
+apps/hwpTracker/hwpTracker
 
 #i
 INDI/INDI/evalINDI
@@ -215,6 +217,9 @@ vm/
 # Python caches, etc
 *.egg-info
 __pycache__
+installed_python_interface_timestamp.txt
+magaox-python/build
+
 libMagAOX/doc/diag/Makefile
 libMagAOX/doc/diag/xwcapp_fsm.drawio
 libMagAOX/doc/diag/xwcapp.drawio

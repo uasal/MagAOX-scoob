@@ -269,6 +269,8 @@ mx::error_t logMap<verboseT>::loadAppToFileMap( const std::string               
                 prevLogFound  = true;
                 prevLogSubDir = subdir;
                 prevLogFile_n = n;
+
+                std::cerr << "found previous log: " << tmp_flist[n] << '\n';
                 break;
             }
         } // iteration over tmp_flist
@@ -362,12 +364,24 @@ mx::error_t logMap<verboseT>::loadAppToFileMap( const std::string               
     {
         follLogSubDir = lastFile.subDir( &errc );
         mx_error_check_code( errc );
+        std::cerr << "checking for: " << basedir + follLogSubDir.path() << '\n';
+        bool exists = mx::ioutils::dir_exists_is(basedir + follLogSubDir.path(), errc);
+
+        int n =0;
+        while(!exists && n < 5)
+        {
+            follLogSubDir.subDay();
+            std::cerr << "checking for: " << basedir + follLogSubDir.path() << '\n';
+            exists = mx::ioutils::dir_exists_is(basedir + follLogSubDir.path(), errc);
+            ++n;
+        }
 
         follLogFile_n = static_cast<size_t>( -1 );
     }
 
     if( prevLogSubDir == follLogSubDir ) // special case, probably most common
     {
+        std::cerr << "prevLogSubDir == follLogSubDir\n";
         try
         {
             #ifdef XWCTEST_LOGMAP_LATFM_BADALL3
@@ -404,6 +418,7 @@ mx::error_t logMap<verboseT>::loadAppToFileMap( const std::string               
     }
     else
     {
+        std::cerr << "prevLogSubDir != follLogSubDir\n";
         try
         {
             // clang-format off
@@ -479,23 +494,34 @@ mx::error_t logMap<verboseT>::loadAppToFileMap( const std::string               
 
             std::vector<std::string> tmp_flist;
 
+            /*mx::error_t errc = mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext );
+            if(errc != mx::error_t::dirnotfound)
+            {
+                return mx::error_report<verboseT>(errc);
+            }*/
+
             mx_error_check( mx::ioutils::getFileNames( tmp_flist, basedir + subdir.path(), dev, "", ext ) );
 
-            if( follLogFile_n == static_cast<size_t>( -1 ) )
-            {
-                follLogFile_n = tmp_flist.size();
-            }
-            else
-            {
-                ++follLogFile_n;
-                if( follLogFile_n > tmp_flist.size() )
-                {
-                    return mx::error_report<verboseT>( mx::error_t::sizeerr,
-                                                       "miscounted the number of files somewhere" );
-                }
-            }
 
-            mx_error_check( addFileListToFileMap( dev, tmp_flist, 0, follLogFile_n ) );
+            if(errc == mx::error_t::noerror)
+            {
+
+                if( follLogFile_n == static_cast<size_t>( -1 ) )
+                {
+                    follLogFile_n = tmp_flist.size();
+                }
+                else
+                {
+                    ++follLogFile_n;
+                    if( follLogFile_n > tmp_flist.size() )
+                    {
+                        return mx::error_report<verboseT>( mx::error_t::sizeerr,
+                                                       "miscounted the number of files somewhere" );
+                    }
+                }
+
+                mx_error_check( addFileListToFileMap( dev, tmp_flist, 0, follLogFile_n ) );
+            }
         }
         catch( ... )
         {
@@ -551,13 +577,18 @@ int logMap<verboseT>::getPriorLog( char                      *&logBefore,
     if( hint )
     {
         if( flatlogs::logHeader::timespec( hint ) <= ts )
+        {
             buffer = hint;
+        }
         else
+        {
             buffer = lim.m_memory.data();
+        }
     }
-
     else
+    {
         buffer = lim.m_memory.data();
+    }
 
     priorBuffer = buffer;
     evL         = flatlogs::logHeader::eventCode( buffer );
