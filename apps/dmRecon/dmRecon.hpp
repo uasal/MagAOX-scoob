@@ -127,9 +127,10 @@ class dmRecon : public MagAOXApp<true>,
     std::string m_fpsSource{ "camwfs" }; /**< Device name for getting fps of the loop.
                                               This device must have *.fps.current.  Default is camwfs*/
 
-    int m_numModes {0}; ///< Number of modes to reconstruct.  If 0 (default) all modes in CM are used.
+    int m_numModes{ 0 }; ///< Number of modes to reconstruct.  If 0 (default) all modes in CM are used.
 
-    int m_inverseNumModes{ 0 }; /**< Number of modes to use for pseudo-inverse truncation.  If 0 (default) all modes are used.*/
+    int m_inverseNumModes{
+        0 }; /**< Number of modes to use for pseudo-inverse truncation.  If 0 (default) all modes are used.*/
 
     uint16_t m_gpuIndex{ 0 }; /**< Index of the GPU to use for calculations */
 
@@ -139,11 +140,11 @@ class dmRecon : public MagAOXApp<true>,
 
     mx::improc::eigenImage<float> m_respM;
 
-    uint32_t m_width {0};
+    uint32_t m_width{ 0 };
 
-    uint32_t m_height {0};
+    uint32_t m_height{ 0 };
 
-    uint32_t m_depth {0};
+    uint32_t m_depth{ 0 };
 
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
@@ -173,7 +174,10 @@ class dmRecon : public MagAOXApp<true>,
 
     mx::improc::eigenImage<float> m_modevals; ///< The calculated mode amplitudes
 
-    //mx::improc::milkImage<float> m_modevalAct;  ///< The actual calculated modevals.
+    bool m_writeDMf{ false };
+
+    std::string m_monShmimName;
+    mx::improc::milkImage<float> m_modevalMon; ///< The actual calculated modevals.
 
     // clang-format off
     #ifdef MXLIB_CUDA
@@ -312,6 +316,9 @@ class dmRecon : public MagAOXApp<true>,
 
     pcf::IndiProperty m_indiP_fps;
 
+    pcf::IndiProperty m_indiP_writeDMf;
+    INDI_NEWCALLBACK_DECL( dmRecon, m_indiP_writeDMf );
+
     ///@}
 
     /** \name Telemeter Interface
@@ -419,28 +426,30 @@ inline int dmRecon::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     _config( m_loopNumber, "recon.loopNumber" );
     _config( m_respMPath, "recon.respMPath" );
-    _config( m_numModes, "recon.numModes");
-    _config( m_inverseNumModes, "recon.inverseNumModes");
+    _config( m_numModes, "recon.numModes" );
+    _config( m_inverseNumModes, "recon.inverseNumModes" );
     _config( m_fpsSource, "recon.fpsSource" );
     _config( m_gpuIndex, "recon.gpuIndex" );
     _config( m_useGPU, "recon.useGPU" );
 
     std::string loopName = std::format( "aol{}", m_loopNumber );
 
-    dmModesSMT::m_shmimName = loopName + "_CMmodesDM";
+    dmModesSMT::m_shmimName        = loopName + "_CMmodesDM";
     dmModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmModesSMT, _config );
 
-    dmCommandSMT::m_shmimName = std::format( "dm{:02}disp_delta", m_loopNumber );
+    dmCommandSMT::m_shmimName        = std::format( "dm{:02}disp_delta", m_loopNumber );
     dmCommandSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmCommandSMT, _config );
 
-    dmMaskSMT::m_shmimName = std::format( "dm{:02}disp_actmask", m_loopNumber );
+    dmMaskSMT::m_shmimName        = std::format( "dm{:02}disp_actmask", m_loopNumber );
     dmMaskSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( dmMaskSMT, _config );
 
     frameGrabberT::m_shmimName = loopName + "_modevalDMf";
     FRAMEGRABBER_LOAD_CONFIG( _config );
+
+    m_monShmimName = frameGrabberT::m_shmimName + "_mon";
 
     TELEMETER_LOAD_CONFIG( _config );
 
@@ -465,21 +474,22 @@ inline int dmRecon::appStartup()
         return -1;
     }
 
+    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_writeDMf, "writeDMf" );
+
     if( sem_init( &m_smSemaphore, 0, 0 ) < 0 )
     {
         log<software_critical>( { __FILE__, __LINE__, errno, 0, "Initializing S.M. semaphore" } );
         return -1;
     }
 
-    if(m_respMPath != "")
+    if( m_respMPath != "" )
     {
         mx::fits::fitsFile<float> ff;
-        ff.read(m_respM, m_respMPath);
+        ff.read( m_respM, m_respMPath );
 
-        m_width = sqrt(m_respM.rows());
+        m_width  = sqrt( m_respM.rows() );
         m_height = m_width;
     }
-
 
     dmModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_APP_STARTUP( dmModesSMT );
@@ -507,6 +517,15 @@ int dmRecon::appLogic()
     TELEMETER_APP_LOGIC;
 
     std::unique_lock<std::mutex> lock( m_indiMutex );
+
+    if( m_writeDMf )
+    {
+        updateSwitchIfChanged( m_indiP_writeDMf, "toggle", pcf::IndiElement::On );
+    }
+    else
+    {
+        updateSwitchIfChanged( m_indiP_writeDMf, "toggle", pcf::IndiElement::Off );
+    }
 
     SHMIMMONITORT_UPDATE_INDI( dmModesSMT );
     SHMIMMONITORT_UPDATE_INDI( dmMaskSMT );
@@ -700,21 +719,20 @@ int dmRecon::allocate( const dmModesShmimT & )
 
     dmCommandSMT::m_restart = true;
 
-
-    if(m_respM.rows() == 0)
+    if( m_respM.rows() == 0 )
     {
-        m_width = dmModesSMT::m_width;
+        m_width  = dmModesSMT::m_width;
         m_height = dmModesSMT::m_height;
     }
 
-    if(m_numModes == 0)
+    if( m_numModes == 0 )
     {
         m_depth = dmModesSMT::m_depth;
     }
-    else 
+    else
     {
         m_depth = m_numModes;
-        if(m_depth > dmModesSMT::m_depth)
+        if( m_depth > dmModesSMT::m_depth )
         {
             m_depth = dmModesSMT::m_depth;
         }
@@ -757,19 +775,19 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
     {
         mx::sys::milliSleep( 1000 );
     }
-    
-    if(m_respM.rows() > 0)
+
+    if( m_respM.rows() > 0 )
     {
         mx::improc::eigenCube<realT> tmpc;
 
-        int nr = sqrt(m_respM.rows());
+        int nr = sqrt( m_respM.rows() );
 
-        tmpc.resize(nr, nr, dmModes.planes());
+        tmpc.resize( nr, nr, dmModes.planes() );
 
         for( int p = 0; p < dmModes.planes(); ++p )
         {
-            tmpc.image(p) = (m_respM.matrix() * dmModes.image( p ).matrix()).array();
-            
+            tmpc.image( p ) = ( m_respM.matrix() * dmModes.image( p ).matrix() ).array();
+
             /*float norm = sqrt(tmpc.image(p).square().sum()/m_maskIDX.size());
             float scale = sqrt(dmModes.image(p).square().sum()/ (dmModes.rows()*dmModes.cols()));
 
@@ -779,7 +797,7 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
         dmModes = tmpc;
 
         mx::fits::fitsFile<float> ff;
-        ff.write("wmodes.fits", dmModes);
+        ff.write( "wmodes.fits", dmModes );
     }
 
     mx::improc::eigenImage<float> maskedDMModes;
@@ -813,15 +831,13 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
     std::cerr << "PInv: " << m_PInv.rows() << ' ' << m_PInv.cols() << '\n';
 
     mx::fits::fitsFile<float> ff;
-    ff.write("PInv.fits", m_PInv);
+    ff.write( "PInv.fits", m_PInv );
 
     log<text_log>( std::format( "Inverted CMmodesDM. Rejected {} "
                                 "of {} modes, condition numer = {}",
                                 nRejected,
                                 dmModes.planes(),
                                 condition ) );
-
-    //m_modevalAct.open( "aol1_modevalDM" );
 
     m_dmModesReady = true;
 
@@ -898,9 +914,8 @@ int dmRecon::allocate( const dmCommandShmimT & )
     m_commandReady = false;
     std::cerr << "command not ready\n";
 
-    if( !m_dmModesReady || !m_dmMaskReady || dmCommandSMT::m_width != m_width ||
-        dmCommandSMT::m_height != m_height || dmCommandSMT::m_width != dmMaskSMT::m_width ||
-        dmCommandSMT::m_height != dmMaskSMT::m_height )
+    if( !m_dmModesReady || !m_dmMaskReady || dmCommandSMT::m_width != m_width || dmCommandSMT::m_height != m_height ||
+        dmCommandSMT::m_width != dmMaskSMT::m_width || dmCommandSMT::m_height != dmMaskSMT::m_height )
     {
         dmCommandSMT::m_restart   = true;
         frameGrabberT::m_reconfig = true;
@@ -922,6 +937,8 @@ int dmRecon::allocate( const dmCommandShmimT & )
     m_command.resize( m_maskIDX.size(), 1 );
 
     m_modevals.resize( m_PInv.rows(), 1 );
+
+    m_modevalMon.create(m_monShmimName, m_PInv.rows(),1);
 
     // clang-format off
     #ifdef MXLIB_CUDA
@@ -1073,10 +1090,10 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         return -1;
     }
 
-    //float rms = sqrt((m_modevalAct() - m_modevals).square().sum() / m_modevals.rows());
-    //float rms0 = sqrt((m_modevalAct()).square().sum() / m_modevals.rows());
+    // float rms = sqrt((m_modevalAct() - m_modevals).square().sum() / m_modevals.rows());
+    // float rms0 = sqrt((m_modevalAct()).square().sum() / m_modevals.rows());
 
-    //std::cerr << rms / rms0 << '\n';
+    // std::cerr << rms / rms0 << '\n';
     return 0;
 }
 
@@ -1149,7 +1166,13 @@ int dmRecon::acquireAndCheckValid()
 
 int dmRecon::loadImageIntoStream( void *dest )
 {
-    memcpy( dest, m_modevals.data(), m_modevals.rows() * m_modevals.cols() * sizeof( float ) );
+    if( m_writeDMf )
+    {
+        memcpy( dest, m_modevals.data(), m_modevals.rows() * m_modevals.cols() * sizeof( float ) );
+    }
+
+    //write to the monitor stream
+    m_modevalMon = m_modevals;
 
     return 0;
 }
@@ -1176,6 +1199,33 @@ INDI_SETCALLBACK_DEFN( dmRecon, m_indiP_fpsSource )( const pcf::IndiProperty &ip
     {
         m_fps = fps;
         updateIfChanged( m_indiP_fps, "current", m_fps );
+    }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( dmRecon, m_indiP_writeDMf )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_writeDMf, ipRecv );
+
+    if( ipRecv.find( "toggle" ) != true ) // this isn't valid
+    {
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+    {
+        m_writeDMf = true;
+        log<text_log>( "writing modevalDMf", logPrio::LOG_INFO );
+        updateSwitchIfChanged( m_indiP_writeDMf, "toggle", pcf::IndiElement::On );
+    }
+    else
+    {
+        m_writeDMf = false;
+        log<text_log>( "not writing modevalDMf", logPrio::LOG_INFO );
+        updateSwitchIfChanged( m_indiP_writeDMf, "toggle", pcf::IndiElement::Off );
     }
 
     return 0;

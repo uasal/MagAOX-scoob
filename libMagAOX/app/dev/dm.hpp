@@ -118,7 +118,7 @@ class dm
 
     std::string m_shmimShape; ///< The name of the shmim stream to write the desaturated true shape to.
     std::string m_shmimDelta; ///< The name of the shmim stream to write the desaturated delta command to.
-    std::string m_shmimDiff; ///< The name of the shmim stream to write the difference to.
+    std::string m_shmimDiff;  ///< The name of the shmim stream to write the difference to.
 
     uint32_t m_dmWidth{ 0 };  ///< The width of the images in the stream
     uint32_t m_dmHeight{ 0 }; ///< The height of the images in the stream
@@ -187,14 +187,15 @@ class dm
 
     std::vector<std::string> m_deltaChannels; ///< The names of channels which are treated as delta commands
 
-    std::vector<size_t> m_deltas; ///< Indices of the channels which are delta commands
+    std::vector<size_t> m_deltas;    ///< Indices of the channels which are delta commands
     std::vector<size_t> m_notDeltas; ///< Indices of the channels which are not delta commands
 
-    mx::improc::eigenImage<realT> m_totalFlat; ///< the total of all non-delta channels
+    mx::improc::eigenImage<realT> m_totalFlat;  ///< the total of all non-delta channels
     mx::improc::eigenImage<realT> m_totalDelta; ///< the total of all delta channels
 
     mx::improc::milkImage<realT> m_outputDelta; ///< The true output delta command after saturation.
-    mx::improc::milkImage<realT> m_outputDiff; ///< The difference between command and true delta command after saturation.
+    mx::improc::milkImage<realT>
+        m_outputDiff; ///< The difference between command and true delta command after saturation.
 
     /** \name Saturation Thread Data
      * This thread processes the saturation maps
@@ -1342,47 +1343,60 @@ int dm<derivedT, realT>::loadConfig( mx::app::appConfigurator &config )
     config( m_satTriggerDevice, "dm.satTriggerDevice" );
     config( m_satTriggerProperty, "dm.satTriggerProperty" );
 
-    m_actMask.create(derived().m_shmimName + "_actmask", m_dmWidth, m_dmHeight);
-
-    if( m_actMaskPath != "" )
+    if( m_dmWidth > 0 && m_dmHeight > 0 )
     {
-        mx::improc::eigenImage<realT> actMask;
-
-        mx::fits::fitsFile<realT> ff;
-
-        mx::error_t errc = ff.read( actMask, m_calibPath + '/' + m_actMaskPath );
-        
-        if( errc != mx::error_t::noerror )
+        try
         {
-            derivedT::template log<text_log>( std::format( "error reading actuator mask file {}: "
-                                                           "{} ({})",
-                                                           m_calibPath + '/' + m_actMaskPath,
-                                                           mx::errorMessage( errc ),
-                                                           mx::errorName( errc ) ),
-                                              logPrio::LOG_ERROR );
+            m_actMask.create( derived().m_shmimName + "_actmask", m_dmWidth, m_dmHeight );
+        }
+        catch( const std::exception &e )
+        {
+            derivedT::template log<text_log>( std::format( "exception caught creating actuator mask: "
+                                                           "{}: {}",
+                                                           derived().m_shmimName + "_actmask",
+                                                           e.what(),
+                                                           logPrio::LOG_ERROR ) );
             return -1;
         }
 
-        if( actMask.rows() != m_dmWidth || actMask.cols() != m_dmHeight )
+        if( m_actMaskPath != "" )
         {
-            derivedT::template log<text_log>( std::format( "actuaor mask {}x{} is not same size as flag {}x{}",
-                                                           actMask.rows(),
-                                                           actMask.cols(),
-                                                           m_dmWidth,
-                                                           m_dmHeight ),
-                                              logPrio::LOG_ERROR );
+            mx::improc::eigenImage<realT> actMask;
 
-            return -1;
+            mx::fits::fitsFile<realT> ff;
+
+            mx::error_t errc = ff.read( actMask, m_calibPath + '/' + m_actMaskPath );
+
+            if( errc != mx::error_t::noerror )
+            {
+                derivedT::template log<text_log>( std::format( "error reading actuator mask file {}: "
+                                                               "{} ({})",
+                                                               m_calibPath + '/' + m_actMaskPath,
+                                                               mx::errorMessage( errc ),
+                                                               mx::errorName( errc ) ),
+                                                  logPrio::LOG_ERROR );
+                return -1;
+            }
+
+            if( actMask.rows() != m_dmWidth || actMask.cols() != m_dmHeight )
+            {
+                derivedT::template log<text_log>( std::format( "actuaor mask {}x{} is not same size as flag {}x{}",
+                                                               actMask.rows(),
+                                                               actMask.cols(),
+                                                               m_dmWidth,
+                                                               m_dmHeight ),
+                                                  logPrio::LOG_ERROR );
+
+                return -1;
+            }
+
+            m_actMask = actMask;
         }
-
-        m_actMask = actMask;
-        
+        else
+        {
+            m_actMask().setConstant( 1.0 );
+        }
     }
-    else
-    {
-        m_actMask().setConstant(1.0);
-    }
-
 
     return 0;
 }
@@ -1705,9 +1719,9 @@ int dm<derivedT, realT>::findDMChannels()
         {
             m_notDeltas.push_back( n );
         }
-        else 
+        else
         {
-            m_deltas.push_back(n);
+            m_deltas.push_back( n );
         }
     }
 
@@ -2793,7 +2807,7 @@ int dm<derivedT, realT>::makeDelta()
     }
 
     m_outputDiff = m_totalDelta - m_outputDelta();
-    
+
     return 0;
 }
 
