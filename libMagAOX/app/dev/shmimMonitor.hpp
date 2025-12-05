@@ -639,11 +639,6 @@ void shmimMonitor<derivedT, specificT>::smThreadExec()
             return;
         }
 
-        derivedT::template log<software_info>(
-            { __FILE__,
-              __LINE__,
-              "got semaphore index " + std::to_string( m_semaphoreNumber ) + " for " + m_shmimName } );
-
         ImageStreamIO_semflush( &m_imageStream, m_semaphoreNumber );
 
         sem_t *sem = m_imageStream.semptr[m_semaphoreNumber]; ///< The semaphore to monitor for new image data
