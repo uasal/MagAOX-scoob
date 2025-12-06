@@ -233,20 +233,9 @@ void nnReconstructor::create_engine_context(){
 
 
     auto inputName = engine->getIOTensorName(0);
-    //const char* outputName ;
-    //const char* input2Name = " ";
-    //if (explicit_tt) {
-    //    input2Name = engine->getIOTensorName(1);
-    //    outputName = engine->getIOTensorName(2);
-    //}
-    //else{
-    //    outputName = engine->getIOTensorName(1);
-    //}
-    ///auto outputName = engine->getIOTensorName(2);
-    //auto input2Name = engine->getIOTensorName(1);
     auto outputName = engine->getIOTensorName(1);
     std::cout << "Tensor IO names: " << inputName << ", " << outputName << std::endl;
-    //std::cout << "Tensor IO names: " << inputName << ", " << input2Name << ", " << outputName << std::endl;
+
 
     const auto inputDims = engine->getTensorShape(inputName);
     const auto outputDims = engine->getTensorShape(outputName);
@@ -664,10 +653,12 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
     static_cast<void>( dummy ); // be unused
 
     // aol_imwfs2 is reference and dark subtracted and is power normalized.
+
     Eigen::Map<eigenImage<float>> pwfsIm(reinterpret_cast<float*>(curr_src), m_pwfsHeight, m_pwfsWidth);
 
     // Split up the four pupils for the Neural Network.
     int ki = 0;
+
 
     for( int col_i = -zeroPad; col_i < (m_pupPix - zeroPad); ++col_i )
     {
@@ -693,15 +684,29 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
     if (use_fp16){
         floatToHalfArray(pp_image_half, pp_image, inputSize);
         cudaMemcpy(d_input, pp_image_half, inputSize * sizeof(half), cudaMemcpyHostToDevice);
+        if (explicit_tt){
+            floatToHalfArray(pup_Is_half, pup_Is, input2Size);
+            cudaMemcpy(d_input2, pup_Is_half, input2Size * sizeof(half), cudaMemcpyHostToDevice);
+        }
     }
     else {
         cudaMemcpy(d_input, pp_image, inputSize * sizeof(float), cudaMemcpyHostToDevice);
+        if (explicit_tt){
+            cudaMemcpy(d_input2, pup_Is, input2Size * sizeof(float), cudaMemcpyHostToDevice);
+
+        }
     }
     
 
     // Run inference
-    void* buffers[] = {d_input, d_output};
-    context->executeV2(buffers);
+    if (explicit_tt){
+        void* buffers[] = {d_input, d_input2, d_output};
+        context->executeV2(buffers);
+    }
+    else {
+        void* buffers[] = {d_input, d_output};
+        context->executeV2(buffers);
+    }
 
     // Copy output data back to host
     if (use_fp16){
