@@ -229,9 +229,9 @@ class pupilCorAlign(XDevice):
         self._state_callbacks = [None, self.handle_fwpupil, self.handle_fwlyot, self.handle_centroid]
         self._state_machine = XStateMachine(self, self._state_names, States, self._state_callbacks)
 
-        self._reference_state_names = ['idle', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
-        self._reference_state_callbacks = [None, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
-        self._reference_state_machine = XStateMachine(self, self._reference_state_names, RefStates, self._reference_state_callbacks, 'reference')
+        #self._reference_state_names = ['idle', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
+        #self._reference_state_callbacks = [None, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
+        #self._reference_state_machine = XStateMachine(self, self._reference_state_names, RefStates, self._reference_state_callbacks, 'reference')
         
         # Should I make these files configurable?
         self.pupil_reference = hp.read_field(self.config.calibration.path + "reference_pupil_image.fits")
@@ -270,7 +270,7 @@ class pupilCorAlign(XDevice):
         self.num_stack = 1
         self.gain = 0.25
         self.pattern_repeat = 1
-        self.amp = 0.25
+        self.amp = 0.
         self.sleep_time = 2.0
 
         nv = properties.NumberVector(name='nstack')
@@ -348,7 +348,7 @@ class pupilCorAlign(XDevice):
     def measure_position(self, correlator):
         '''
         '''
-        im = self.camera.grab_stack(self.num_stack)
+        im = self.camera.grab_stack(self.num_stack, check_before_wait=True)
         shift = correlator.measure(im) - self.actuators_shift
         return shift
 
@@ -361,8 +361,8 @@ class pupilCorAlign(XDevice):
                 self.ncpc_dm.actuators += s * self.amp * self.actuator_probe_pattern
                 self.ncpc_dm.send(0.05)
                 
-                self.camera.grab_stack(2)
-                actuator_im += s * self.camera.grab_stack(self.num_stack)
+                self.camera.grab_stack(2, check_before_wait=True)
+                actuator_im += s * self.camera.grab_stack(self.num_stack, check_before_wait=True)
 
                 self.ncpc_dm.actuators -= s * self.amp * self.actuator_probe_pattern
         self.ncpc_dm.send()
@@ -411,7 +411,7 @@ class pupilCorAlign(XDevice):
     def handle_fwpupil_ref(self):
         '''
         '''
-        im = self.camera.grab_stack(self.num_stack)
+        im = self.camera.grab_stack(self.num_stack, check_before_wait=True)
         current_name = self.get_current_state('fwpupil.filterName')
         filename = "reference_{:s}_image.fits".format(current_name.replace('-', '_'))
         write_field(im, self.config.calibration.path + filename)
@@ -419,7 +419,7 @@ class pupilCorAlign(XDevice):
     def handle_fwlyot_ref(self):
         '''
         '''
-        im = self.camera.grab_stack(self.num_stack)
+        im = self.camera.grab_stack(self.num_stack, check_before_wait=True)
         current_name = self.get_current_state('fwlyot.filterName')
         filename = "reference_{:s}_image.fits".format(current_name.replace('-', '_'))
         write_field(im, self.config.calibration.path + filename)
