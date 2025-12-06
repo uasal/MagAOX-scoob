@@ -1,62 +1,189 @@
-#!/usr/bin/env python
-from hcipy import *
+import hcipy import hp
 import numpy as np
-from skimage import feature
+import time 
+import datetime
+import os 
 
-def measure_center_position(image, threshold=1, mask_diameter=20):
-    center_mask = make_circular_aperture(mask_diameter)(image.grid)
-    mask = center_mask * ((image / np.nanstd(image)) < threshold)
+### Make the save directory
+def make_savedir_for_today(start_path='./Data/'):
+    ct = datetime.datetime.now()
+    savedir = start_path + '{:>04d}{:>02d}{:>02d}/'.format(ct.year, ct.month, ct.day)
+    make_savedir(savedir)
+    return savedir
 
-    if np.sum(mask) > 0:
-        xc = np.sum(mask * image.grid.x) / np.sum(mask)
-        yc = np.sum(mask * image.grid.y) / np.sum(mask)
-        return np.array([xc, yc])
+def make_savedir(new_path):
+    try:
+        os.makedirs(new_path, exist_ok=True)
+    except FileExistsError:
+        print("Directory already exists.")
+
+def make_time_stamp():
+    t = time.time()
+    t_seconds = int(t)
+    ms = int(1000 * (t - t_seconds))
+    stamp = '{:d}{:d}'.format(t_seconds, ms)
+    return stamp
+
+def wait_for_ready(client, device, timeout=0.1):
+    time.sleep(timeout)
+    while client[device + '.fsm.state'] != 'READY':
+        time.sleep(timeout)
+
+def make_horizontal_probe(grid, direction='left'):
+    probe = grid.zeros()
+    probe = probe.shaped
+    
+    width = 4
+    height = 4
+    x = (-1.0)**(np.arange(width) - width//2)
+    y = (-1.0)**(np.arange(height) - height//2)
+    
+    # 34 - 15 16 17 18 19 20
+    probe[15:19, 6:10] = np.outer(x, y)
+    probe[15:19, 6:10] = np.outer(y, x)
+    if direction == 'right':
+        probe = probe[:,::-1]
+    
+    return probe.ravel()
+
+def make_vertical_probe(grid, direction='down'):
+    probe = grid.zeros()
+    probe = probe.shaped
+    
+    width = 4
+    height = 4
+    x = (-1.0)**(np.arange(width) - width//2)
+    y = (-1.0)**(np.arange(height) - height//2)
+
+    # 34 - 15 16 17 18 19 20
+    probe[8:12, 15:19] = np.outer(y, x)
+    probe[8:12, 15:19] = np.outer(x, y)
+    probe = np.sign(probe)
+    if direction == 'up':
+        probe = probe[::-1,:]
+    
+    return probe.ravel()
+
+def make_ncpc_alignment_poke_pattern():
+    ncpc_act_grid = hp.make_pupil_grid(34, 34/30.0 * np.array([1.0, np.sqrt(2)]))
+    probe = make_vertical_probe(ncpc_act_grid) + make_vertical_probe(ncpc_act_grid, 'up')
+    probe += make_horizontal_probe(ncpc_act_grid) + make_horizontal_probe(ncpc_act_grid, 'right')
+    return probe
+
+
+def wait_for_state(client, indi_property, value, wait_time=1, tolerance=None):
+    if tolerance is None:
+        while not (client[indi_property] == value):
+            print("Waiting...")
+            time.sleep(wait_time)
     else:
-        return np.array([0.0, 0.0])
+        while not abs(client[indi_property] - value) < tolerance:
+            print("Waiting...")
+            time.sleep(wait_time)
 
-def knife_edge_dist(image, theta=-0.47, mask_diameter=200, threshold=0.5):
-    '''Measure the distance from the knife edge focal plane mask to the center of an image.
-
-
-        Parameters
-        ----------
-        image : array of floats 
-            Default: None.
-        theta: integer
-            The knife edge mask angle with respect to the image's x-axis. Default: 0.
-            mask_diameter: The diameter of the circular mask applied to the image for edge detection. Default: 200.
-            threshold: The sigma used to mask pixels along the circular mask edge. Default: 0.5.
-
-        Returns
-        -------
-        np.array()
-            A NumPy array containing the knife edge distance in X and Y with respect to the image center.
-        '''
-    THETA  = np.deg2rad(theta) # Angle measured from x-axis
+def calibrate_indi_device(client, device_name, device_property, delta_pertubation, camera, measurement_function, num_stack=50, do_wait=False):
+    client.get_properties('{:s}'.format(device_name))
     
-    grid = image.grid
+    property_current = '{:s}.{:s}.current'.format(device_name, device_property)
+    property_target = '{:s}.{:s}.target'.format(device_name, device_property)
+    current_position = client[property_current]
+    print("Probe to {:f} +- {:f}".format(current_position, delta_pertubation))
+    slope = 0
+    for s in [-1, 1]:
+        client[property_target] = current_position + s * delta_pertubation
+        if do_wait:
+            wait_for_state(client, property_current, current_position + s * delta_pertubation, tolerance=0.1 * delta_pertubation)
+        else:
+            time.sleep(5)
 
-    center_mask = make_circular_aperture(mask_diameter)(grid)
-    mask = ((image / np.std(image)) < threshold)
+        # Take measurement
+        camera.grab_stack(3)
+        im = camera.grab_stack(num_stack)
+       
+        measurement = measurement_function(im)
+        slope += s * measurement / (2 * delta_pertubation)
 
-    # Apply circular aperture mask to thresholded field
-    masked_im = (center_mask*mask)
-
-    # Detect edge and convert edge arr back to Field obj
-    edge = feature.canny(masked_im.shaped, sigma=4) # Widened Gaussian filter for edge detection on noisier images
-
-    edge_field = Field(edge.ravel(), image.grid)
-
-    # Get x, y edge coords from edge Field obj
-    x_edge = image.grid.x[edge_field>0]
-    y_edge = image.grid.y[edge_field>0]
-
-    # Project x, y coords onto x and y axes
-    d_normal = x_edge * np.sin(THETA) + y_edge * np.cos(THETA) 
-    d_parallel = x_edge * np.sin(THETA + np.pi/2) + y_edge * np.cos(THETA + np.pi/2) 
-    d = np.hypot(d_normal, d_parallel)
+    client[property_target] = current_position
+    if do_wait:
+        wait_for_state(client, property_current, current_position, tolerance=0.1 * delta_pertubation)
+    else:
+        time.sleep(2)
     
-    # Identify minimum absolute distance from the origin
-    min_dist_indx = np.argmin(abs(d))
+    return slope
 
-    return np.array([0.0, y_edge[min_dist_indx]])
+class XCorrShift():
+    def __init__(self, reference_image, domain_pixels=480, domain_size=40, filter_size=None):
+        self._reference_image = reference_image
+        self._xgrid = hp.make_pupil_grid(domain_pixels, domain_size)
+        
+        self._fft = hp.FastFourierTransform(self._reference_image.grid)
+        self._mft = hp.MatrixFourierTransform(self._xgrid, self._fft.output_grid)
+        
+        self._filter_size = filter_size
+        if filter_size is not None:
+            # Change this to a super gaussian filter to remove ringing.
+            self._spatial_filter = hp.make_circular_aperture(self._filter_size)(self._fft.output_grid)
+        else:
+            self._spatial_filter = 1
+
+        self._kernel = np.conj(self._fft.forward(self._reference_image + 0j))
+
+    def cross_correlate(self, image):
+        xcorr = np.real(self._mft.backward(self._fft.forward(image + 0j) * self._spatial_filter * self._kernel))
+        return xcorr
+        
+    def measure(self, image):           
+        # Do a cross-correlation and find the peak pixel
+        # TODO: implement sub-pixel precision with polynomial fitting
+        xcorr = self.cross_correlate(image)
+        indx_max = np.argmax(xcorr)
+        return self._xgrid.points[indx_max]
+
+
+def align_pupil_mask(camera, reference_image, client, indi_targets, reconstruction_matrix, num_steps=None, shift_offset = np.array([0,0]), options = {'num_stack' : 4}, do_pad=False):
+
+    xcorr_class = XCorrShift(reference_image, 1001, 101, filter_size=1)
+    
+    cmd = np.array([0,0])
+    current_positions = [client['{:s}.current'.format(indi_targets[i])] for i in [0, 1]]
+
+    if num_steps is not None:
+        for k in range(num_steps):      
+            im = camera.grab_stack(options['num_stack'])
+            shift = xcorr_class.measure(im) - shift_offset
+            print(shift)            
+            
+            err = reconstruction_matrix.dot(shift)
+            cmd = cmd - 0.25 * err
+            
+            client['{:s}.target'.format(indi_targets[0])] = current_positions[0] + cmd[0]
+            client['{:s}.target'.format(indi_targets[1])] = current_positions[1] + cmd[1]
+            time.sleep(2)
+    else:
+        not_aligned = True
+        while not_aligned:
+            im = camera.grab_stack(options['num_stack'])
+            if im.shape[0] != 1024 and do_pad:
+                roi_state = camera._get_roi_state
+                roi_h = roi_state['roi_region_h']
+                roi_w = roi_state['roi_region_w']
+
+                w_center = (1024 - roi_w // 2)
+                h_center = (1024 - roi_h // 2)
+                
+                im_padded = np.zeros(1024, 1024)
+                im_padded = im[h_center:h_center + roi_h//2, w_center:w_center + roi_w//2]
+                im = im_padded.copy()
+                
+            shift = xcorr_class.measure(im) - shift_offset
+            print(shift)
+            
+            err = reconstruction_matrix.dot(shift)
+            cmd = cmd - 0.25 * err
+    
+            client['{:s}.target'.format(indi_targets[0])] = current_positions[0] + cmd[0]
+            client['{:s}.target'.format(indi_targets[1])] = current_positions[1] + cmd[1]
+            time.sleep(2)
+
+            if abs(shift[0]) <= 0.11 and abs(shift[1]) <0.11:
+                not_aligned = False
