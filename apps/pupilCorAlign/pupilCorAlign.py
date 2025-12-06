@@ -189,9 +189,12 @@ class States(Enum):
     FWPUPIL = 1
     FWLYOT = 2
     CENTROID = 3
-    FWPUPILREF = 4
-    FWLYOTREF = 5
-    CENTROIDREF = 6
+
+class RefStates(Enum):
+    IDLE = 0
+    FWPUPILREF = 1
+    FWLYOTREF = 2
+    CENTROIDREF = 3
 
 class pupilCorAlign(XDevice):
     config : pupilCorAlignConfig
@@ -225,6 +228,10 @@ class pupilCorAlign(XDevice):
         self._state_names = ['idle', 'fwpupil', 'fwlyot', 'centroid']
         self._state_callbacks = [None, self.handle_fwpupil, self.handle_fwlyot, self.handle_centroid]
         self._state_machine = XStateMachine(self, self._state_names, States, self._state_callbacks)
+
+        self._reference_state_names = ['idle', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
+        self._reference_state_callbacks = [None, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
+        self._reference_state_machine = XStateMachine(self, self._reference_state_names, RefStates, self._reference_state_callbacks, 'reference')
         
         # Should I make these files configurable?
         self.pupil_reference = hp.read_field(self.config.calibration.path + "reference_pupil_image.fits")
