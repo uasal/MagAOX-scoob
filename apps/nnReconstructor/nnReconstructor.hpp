@@ -78,7 +78,6 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
      *@{
      */
     std::string dataDirs;     // Location where the data (onnx file, engine, WFS reference) is stored
-    std::string onnxFileName; // Name of the onnx files
     std::string engineName;   // Name of the engine
     std::string engineDirs;   // Name of the engine
     bool rebuildEngine;       // If true, it will rebuild the engine and save it at engineName
@@ -93,11 +92,15 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int inputH {0};
     int inputW {0};
     int inputSize {0};
+    int input2Size {4};
     int outputSize {0};
+    int zeroPad { 2 };
 
     float* d_input {nullptr};
+    float* d_input2 {nullptr};
     float* d_output {nullptr};
     bool use_fp16 = false;
+    bool explicit_tt = false;
 
     float imageNorm; // Normalization constant for the image intensities
     float modalNorm; // Normalization constant for the modal coefficients
@@ -114,7 +117,9 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     float *modeval{ nullptr };
     half *modeval_half{ nullptr };
     float *pp_image{ nullptr };
+    float *pup_Is{ nullptr };
     half *pp_image_half{ nullptr };
+    half *pup_Is_half{ nullptr };
 
     size_t m_pwfsWidth{ 0 };  ///< The width of the image
     size_t m_pwfsHeight{ 0 }; ///< The height of the image.
@@ -226,9 +231,22 @@ void nnReconstructor::create_engine_context(){
     int numIOTensors = engine->getNbIOTensors();
     std::cout << "Number of IO Tensors: " << numIOTensors << std::endl;
 
+
     auto inputName = engine->getIOTensorName(0);
+    //const char* outputName ;
+    //const char* input2Name = " ";
+    //if (explicit_tt) {
+    //    input2Name = engine->getIOTensorName(1);
+    //    outputName = engine->getIOTensorName(2);
+    //}
+    //else{
+    //    outputName = engine->getIOTensorName(1);
+    //}
+    ///auto outputName = engine->getIOTensorName(2);
+    //auto input2Name = engine->getIOTensorName(1);
     auto outputName = engine->getIOTensorName(1);
-    std::cout << "Tensor IO names: " << inputName << " " << outputName << std::endl;
+    std::cout << "Tensor IO names: " << inputName << ", " << outputName << std::endl;
+    //std::cout << "Tensor IO names: " << inputName << ", " << input2Name << ", " << outputName << std::endl;
 
     const auto inputDims = engine->getTensorShape(inputName);
     const auto outputDims = engine->getTensorShape(outputName);
@@ -249,10 +267,16 @@ void nnReconstructor::prepare_engine_memory(){
     if (use_fp16) {
         // Allocate FP16 memory
         cudaMalloc((void**)&d_input, inputSize * sizeof(half));
+        if (explicit_tt) {
+            cudaMalloc((void**)&d_input2, input2Size * sizeof(half));
+        }
         cudaMalloc((void**)&d_output, outputSize * sizeof(half));
     } else {
         // Allocate FP32 memory
         cudaMalloc((void**)&d_input, inputSize * sizeof(float));
+        if (explicit_tt) {
+            cudaMalloc((void**)&d_input2, input2Size * sizeof(float));
+        }
         cudaMalloc((void**)&d_output, outputSize * sizeof(float));
     }
     
@@ -264,6 +288,8 @@ void nnReconstructor::prepare_engine_memory(){
 void nnReconstructor::cleanup_engine_memory(){
     if(d_input)
         cudaFree(d_input);
+    if(d_input2)
+        cudaFree(d_input2);
     
     if(d_output)
         cudaFree(d_output);
@@ -323,15 +349,6 @@ inline void nnReconstructor::setupConfig()
                 "string",
                 "The path to the directory with the TRT engine." );
 
-    config.add( "parameters.onnxFileName",
-                "",
-                "parameters.onnxFileName",
-                argType::Required,
-                "parameters",
-                "onnxFileName",
-                false,
-                "string",
-                "Name of the Neural Net ONNX file" );
 
     config.add( "parameters.engineName",
                 "",
@@ -381,6 +398,16 @@ inline void nnReconstructor::setupConfig()
                 false,
                 "bool",
                 "If true the half precision mode will be used." );
+    
+    config.add( "parameters.explicit_tt",
+                "",
+                "parameters.explicit_tt",
+                argType::Required,
+                "parameters",
+                "explicit_tt",
+                false,
+                "bool",
+                "If true the model will additionally give the pupil intensities as input to the NN." );
 
     config.add( "parameters.channel",
                 "",
@@ -451,13 +478,13 @@ inline int nnReconstructor::loadConfigImpl( mx::app::appConfigurator &_config )
 
     _config( dataDirs, "parameters.dataDirs" );
     _config( engineDirs, "parameters.engineDirs" );
-    _config( onnxFileName, "parameters.onnxFileName" );
     _config( engineName, "parameters.engineName" );
     _config( rebuildEngine, "parameters.rebuildEngine" );
 
     _config( imageNorm, "parameters.imageNorm" );
     _config( modalNorm, "parameters.modalNorm" );
     _config( use_fp16, "parameters.use_fp16" );
+    _config( explicit_tt, "parameters.explicit_tt" );
     _config( m_modevalChannel, "parameters.channel");
 
     _config( m_pupPix, "parameters.m_pupPix" );
@@ -471,12 +498,12 @@ inline int nnReconstructor::loadConfigImpl( mx::app::appConfigurator &_config )
         std::cout << "Debug configuration loading: " << std::endl;
         std::cout << "dataDirs: " << dataDirs << std::endl;
         std::cout << "engineDirs: " << engineDirs << std::endl;
-        std::cout << "onnxFileName: " << onnxFileName << std::endl;
         std::cout << "engineName: " << engineName << std::endl;
         std::cout << "rebuildEngine: " << rebuildEngine << std::endl;
         std::cout << "imageNorm: " << imageNorm << std::endl;
         std::cout << "modalNorm: " << modalNorm << std::endl;
         std::cout << "use_fp16: " << use_fp16 << std::endl;
+        std::cout << "explicit_tt: " << explicit_tt << std::endl;
         std::cout << "modeval Channel: " << m_modevalChannel << std::endl;
 
         std::cout << "m_pupPix: " << m_pupPix << std::endl;
@@ -542,6 +569,14 @@ inline int nnReconstructor::appShutdown()
     {
         delete[] pp_image_half;
     }
+    if( pup_Is )
+    {
+        delete[] pup_Is;
+    }
+    if( pup_Is_half)
+    {
+        delete[] pup_Is_half;
+    }
     if( modeval )
     {
         delete[] modeval;
@@ -570,13 +605,21 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
     pixels_per_quadrant = m_pupPix * m_pupPix;
     std::cout << "Pixels: " << pixels_per_quadrant << std::endl;
     pp_image = new float[Npup * pixels_per_quadrant];
+    pup_Is = new float[4];
     modeval = new float[outputSize];
     memset( pp_image, 0, sizeof( float ) * Npup * pixels_per_quadrant );
+        if (explicit_tt){
+            memset( pup_Is, 0, sizeof( float) * 4);
+        }
     memset( modeval, 0, sizeof( float) * outputSize);
     if (use_fp16){
         pp_image_half = new half[Npup * pixels_per_quadrant];
         modeval_half = new half[outputSize];
+        pup_Is_half = new half[4];
         memset( pp_image_half, 0, sizeof( half ) * Npup * pixels_per_quadrant );
+        if (explicit_tt){
+            memset( pup_Is_half, 0, sizeof( half ) * 4);
+        }
         memset( modeval_half, 0, sizeof( half) * outputSize);
     }
 
@@ -621,26 +664,34 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
     static_cast<void>( dummy ); // be unused
 
     // aol_imwfs2 is reference and dark subtracted and is power normalized.
-    Eigen::Map<eigenImage<unsigned short>> pwfsIm(static_cast<unsigned short *>( curr_src ), m_pwfsHeight, m_pwfsWidth );
+    Eigen::Map<eigenImage<float>> pwfsIm(reinterpret_cast<float*>(curr_src), m_pwfsHeight, m_pwfsWidth);
 
     // Split up the four pupils for the Neural Network.
     int ki = 0;
 
-    for( int col_i = 0; col_i < m_pupPix; ++col_i )
+    for( int col_i = -zeroPad; col_i < (m_pupPix - zeroPad); ++col_i )
     {
-        for( int row_i = 0; row_i < m_pupPix; ++row_i )
+        for( int row_i = -zeroPad; row_i < (m_pupPix - zeroPad); ++row_i )
         {
-            pp_image[ki] = imageNorm * (realT)pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i );
-            pp_image[ki + pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset1_y + row_i, pup_offset2_x + col_i );
-            pp_image[ki + 2 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset1_x + col_i );
-            pp_image[ki + 3 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset2_x + col_i );
-
+            if ((col_i < 0) or (col_i >= (m_pupPix - 2*zeroPad)) or (row_i < 0) or (row_i >= (m_pupPix - 2*zeroPad))){
+                pp_image[ki] = 0;
+                pp_image[ki + pixels_per_quadrant] = 0;
+                pp_image[ki + 2 * pixels_per_quadrant] = 0;
+                pp_image[ki + 3 * pixels_per_quadrant] = 0;
+            }
+            else {
+                pp_image[ki] = imageNorm * (realT)pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset1_y + row_i, pup_offset2_x + col_i );
+                pp_image[ki + 2 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + 3 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset2_x + col_i );
+            }
             ++ki;
         }
     }
+
     // Copy input data to device
     if (use_fp16){
-        floatToHalfArray(pp_image_half, pp_image, outputSize);
+        floatToHalfArray(pp_image_half, pp_image, inputSize);
         cudaMemcpy(d_input, pp_image_half, inputSize * sizeof(half), cudaMemcpyHostToDevice);
     }
     else {
@@ -654,7 +705,6 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
 
     // Copy output data back to host
     if (use_fp16){
-
         cudaMemcpy(modeval_half, d_output, outputSize * sizeof(half), cudaMemcpyDeviceToHost);
         halfToFloatArray(modeval, modeval_half, outputSize);
     }
