@@ -1,9 +1,11 @@
+from collections.abc import Iterable
 import datetime
 from datetime import timezone
 import logging
 import os
 import pathlib
 import re
+import itertools
 
 from psycopg.types.json import Jsonb
 import orjson
@@ -17,6 +19,7 @@ from ..utils import creation_time_from_filename, parse_iso_datetime_as_utc
 
 log = logging.getLogger(__name__)
 
+INGEST_IDENTIFY_FILES_BATCH_SIZE = 500
 
 def batch_user_log(cur: psycopg.Cursor, records: list[UserLog]):
     """This will be where the logs will insert into user_logs table"""
@@ -54,7 +57,7 @@ DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLU
 ''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in records])
     cur.execute("COMMIT")
 
-def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: list[pathlib.Path]):
+def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[pathlib.Path]):
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
     if len(paths) == 0:
         return []
@@ -130,17 +133,10 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
     file_pattern = re.compile('|'.join(ignored_file_patterns))
     dir_pattern = re.compile('|'.join(ignored_directory_patterns))
     for prefix in data_dirs:
-        for dirpath, dirnames, filenames in os.walk(prefix):
-            if dir_pattern.match(dirpath):
-                log.debug(f"Skipping {dirpath} because it matches the ignored dirs pattern")
-                continue
-            dirpath = pathlib.Path(dirpath)
-            log.info(f"Checking for new files in {dirpath}")
-            new_files = identify_new_files(cur, host, [dirpath / fn for fn in filenames])
-            if len(new_files) == 0:
-                continue
-            else:
-                log.info(f"Found {len(new_files)} new files in {dirpath}")
+        for fpaths in itertools.batched(filter(lambda x: x.is_file(), prefix.glob("**")), INGEST_IDENTIFY_FILES_BATCH_SIZE):
+            new_files = identify_new_files(cur, host, fpaths)
+            log.info(f"Inventorying {len(new_files)} new files")
+            log.debug("\n".join(new_files))
             origin_records = []
             for fn in tqdm(new_files):
                 if file_pattern.match(fn):
@@ -148,18 +144,18 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
                     continue
                 try:
                     stat_result = os.stat(fn)
+                    origin_records.append(FileOrigin(
+                        origin_host=host,
+                        origin_path=fn,
+                        creation_time=creation_time_from_filename(fn, stat_result=stat_result),
+                        modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc),
+                        size_bytes=stat_result.st_size,
+                    ))
                 except FileNotFoundError:
                     log.info(f"Skipped {fn} (broken link?)")
                     continue
                 except OSError as e:
                     log.info(f"Skipping {fn} because of error ({e})")
-                origin_records.append(FileOrigin(
-                    origin_host=host,
-                    origin_path=fn,
-                    creation_time=creation_time_from_filename(fn, stat_result=stat_result),
-                    modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc),
-                    size_bytes=stat_result.st_size,
-                ))
             batch_file_origins(cur, origin_records)
     cur.execute("COMMIT")
 
