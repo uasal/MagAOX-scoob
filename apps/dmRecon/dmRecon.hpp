@@ -176,7 +176,7 @@ class dmRecon : public MagAOXApp<true>,
 
     bool m_writeDMf{ false };
 
-    std::string m_monShmimName;
+    std::string                  m_monShmimName;
     mx::improc::milkImage<float> m_modevalMon; ///< The actual calculated modevals.
 
     // clang-format off
@@ -335,6 +335,8 @@ class dmRecon : public MagAOXApp<true>,
 
 inline dmRecon::dmRecon() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
+    frameGrabberT::m_ownShmim = false;
+
     return;
 }
 
@@ -463,14 +465,13 @@ inline void dmRecon::loadConfig()
 
 inline int dmRecon::appStartup()
 {
-
     REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsSource, std::string( "fps" ) );
 
     createROIndiNumber( m_indiP_fps, "fps" );
     m_indiP_fps.add( pcf::IndiElement( "current" ) );
     if( registerIndiPropertyReadOnly( m_indiP_fps ) < 0 )
     {
-        log<software_error>( { __FILE__, __LINE__ } );
+        log<software_error>( { "" } );
         return -1;
     }
 
@@ -478,7 +479,7 @@ inline int dmRecon::appStartup()
 
     if( sem_init( &m_smSemaphore, 0, 0 ) < 0 )
     {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Initializing S.M. semaphore" } );
+        log<software_critical>( { errno, "Initializing S.M. semaphore" } );
         return -1;
     }
 
@@ -567,9 +568,7 @@ int dmRecon::setGPU()
     if( ce != cudaSuccess )
     {
 
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               std::format( "cudaGetDeviceCount returned error: "
+        log<software_error>( { std::format( "cudaGetDeviceCount returned error: "
                                             "[{}] {}\nNOT USING GPU",
                                             cudaGetErrorName( ce ),
                                             cudaGetErrorString( ce ) ) } );
@@ -594,7 +593,7 @@ int dmRecon::setGPU()
     if( deviceCount == 0 )
     {
         msg += "      no devices found!\nNOT USING GPU";
-        log<software_error>( { __FILE__, __LINE__, msg } );
+        log<software_error>( { msg } );
         m_useGPU = false;
         state( state(), true );
         return -1;
@@ -611,7 +610,7 @@ int dmRecon::setGPU()
                                 "[{}] {}\nNOT USING GPU",
                                 cudaGetErrorName( ce ),
                                 cudaGetErrorString( ce ) );
-            log<software_error>( { __FILE__, __LINE__, msg } );
+            log<software_error>( { msg } );
             m_useGPU = false;
             state( state(), true );
             return -1;
@@ -626,7 +625,7 @@ int dmRecon::setGPU()
                                 "[{}] {}\nNOT USING GPU",
                                 cudaGetErrorName( ce ),
                                 cudaGetErrorString( ce ) );
-            log<software_error>( { __FILE__, __LINE__, msg } );
+            log<software_error>( { msg } );
             m_useGPU = false;
             state( state(), true );
             return -1;
@@ -649,7 +648,7 @@ int dmRecon::setGPU()
     if( m_gpuIndex >= deviceCount )
     {
         msg += std::format( "gpuIndex = {} is not valid for {} devices\nNOT USING GPU", m_gpuIndex, deviceCount );
-        log<software_error>( { __FILE__, __LINE__, msg } );
+        log<software_error>( { msg } );
         m_useGPU = false;
         state( state(), true );
         return -1;
@@ -663,7 +662,7 @@ int dmRecon::setGPU()
                             "[{}] {}\nNOT USING GPU",
                             cudaGetErrorName( ce ),
                             cudaGetErrorString( ce ) );
-        log<software_error>( { __FILE__, __LINE__, msg } );
+        log<software_error>( { msg } );
         m_useGPU = false;
         state( state(), true );
         return -1;
@@ -679,7 +678,7 @@ int dmRecon::setGPU()
                             "[{}] {}\nNOT USING GPU",
                             cublasGetStatusName( cbs ),
                             cublasGetStatusString( cbs ) );
-        log<software_error>( { __FILE__, __LINE__, msg } );
+        log<software_error>( { msg } );
         m_useGPU = false;
         state( state(), true );
         return -1;
@@ -697,7 +696,7 @@ int dmRecon::setGPU()
 
     if( m_useGPU )
     {
-        log<software_error>( { __FILE__, __LINE__, "mxlib was compiled without CUDA support. NOT USING GPU" } );
+        log<software_error>( { "mxlib was compiled without CUDA support. NOT USING GPU" } );
 
         m_useGPU = false;
         state( state(), true );
@@ -823,7 +822,7 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
 
     if( rv < 0 )
     {
-        log<software_error>( { __FILE__, __LINE__, 0, rv, "error in eigenPseudoInverse " } );
+        log<software_error>( { 0, rv, "error in eigenPseudoInverse " } );
         m_shutdown = 1;
         return -1;
     }
@@ -938,7 +937,7 @@ int dmRecon::allocate( const dmCommandShmimT & )
 
     m_modevals.resize( m_PInv.rows(), 1 );
 
-    m_modevalMon.create(m_monShmimName, m_PInv.rows(),1);
+    m_modevalMon.create( m_monShmimName, m_PInv.rows(), 1 );
 
     // clang-format off
     #ifdef MXLIB_CUDA
@@ -949,7 +948,7 @@ int dmRecon::allocate( const dmCommandShmimT & )
         // Do all initializations and uploads here so it's in the right thread on the right device
         if( setGPU() < 0 )
         {
-            log<software_error>( { __FILE__, __LINE__, "setting GPU device failed." } );
+            log<software_error>( { "setting GPU device failed." } );
             m_useGPU = false;
             state( state(), true );
             return -1;
@@ -959,31 +958,22 @@ int dmRecon::allocate( const dmCommandShmimT & )
 
         if( ec != mx::error_t::noerror )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error uploading PInv to GPU: [{}] {}",
-                                                           mx::errorName( ec ),
-                                                           mx::errorMessage( ec ) ) } );
+            return log<software_error, -1>( { std::format(
+                "error uploading PInv to GPU: [{}] {}", mx::errorName( ec ), mx::errorMessage( ec ) ) } );
         }
 
         ec = m_command_GPU.resize( m_command.rows() * m_command.cols() );
         if( ec != mx::error_t::noerror )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error allocating command on GPU: [{}] {}",
-                                                           mx::errorName( ec ),
-                                                           mx::errorMessage( ec ) ) } );
+            return log<software_error, -1>( { std::format(
+                "error allocating command on GPU: [{}] {}", mx::errorName( ec ), mx::errorMessage( ec ) ) } );
         }
 
         ec = m_modevals_GPU.resize( m_modevals.rows() * m_modevals.cols() );
         if( ec != mx::error_t::noerror )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error allocating modevals on GPU: [{}] {}",
-                                                           mx::errorName( ec ),
-                                                           mx::errorMessage( ec ) ) } );
+            return log<software_error, -1>( { std::format(
+                "error allocating modevals on GPU: [{}] {}", mx::errorName( ec ), mx::errorMessage( ec ) ) } );
         }
     }
 
@@ -1029,11 +1019,8 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         mx::error_t ec = m_command_GPU.upload( m_command.data() );
         if( ec != mx::error_t::noerror )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error uploading command to GPU: [{}] {}",
-                                                           mx::errorName( ec ),
-                                                           mx::errorMessage( ec ) ) } );
+            return log<software_error, -1>( { std::format(
+                "error uploading command to GPU: [{}] {}", mx::errorName( ec ), mx::errorMessage( ec ) ) } );
         }
 
         float alpha = 1;
@@ -1054,9 +1041,7 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
         if( cbs != CUBLAS_STATUS_SUCCESS )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error downloading modevals from GPU: [{}] {}",
+            return log<software_error, -1>( { std::format( "error downloading modevals from GPU: [{}] {}",
                                                            cublasGetStatusName( cbs ),
                                                            cublasGetStatusString( cbs ) ) } );
         }
@@ -1064,11 +1049,8 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
         ec = m_modevals_GPU.download( m_modevals.data() );
         if( ec != mx::error_t::noerror )
         {
-            return log<software_error, -1>( { __FILE__,
-                                              __LINE__,
-                                              std::format( "error downloading modevals from GPU: [{}] {}",
-                                                           mx::errorName( ec ),
-                                                           mx::errorMessage( ec ) ) } );
+            return log<software_error, -1>( { std::format(
+                "error downloading modevals from GPU: [{}] {}", mx::errorName( ec ), mx::errorMessage( ec ) ) } );
         }
     }
 
@@ -1083,17 +1065,19 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
     m_updated = true;
 
-    // trigger framegrabber
-    if( sem_post( &m_smSemaphore ) < 0 )
+    if( m_writeDMf )
     {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "Error posting to semaphore" } );
-        return -1;
+        // trigger framegrabber
+        if( sem_post( &m_smSemaphore ) < 0 )
+        {
+            log<software_critical>( { errno, 0, "Error posting to semaphore" } );
+            return -1;
+        }
     }
 
-    // float rms = sqrt((m_modevalAct() - m_modevals).square().sum() / m_modevals.rows());
-    // float rms0 = sqrt((m_modevalAct()).square().sum() / m_modevals.rows());
+    // write to the monitor stream
+    m_modevalMon = m_modevals;
 
-    // std::cerr << rms / rms0 << '\n';
     return 0;
 }
 
@@ -1113,6 +1097,86 @@ int dmRecon::configureAcquisition()
     frameGrabberT::m_height   = m_modevals.cols();
     frameGrabberT::m_dataType = _DATATYPE_FLOAT;
 
+    static int logged = 0;
+
+    if( frameGrabberT::m_imageStream != nullptr )
+    {
+        ImageStreamIO_closeIm( frameGrabberT::m_imageStream );
+        free( frameGrabberT::m_imageStream );
+        frameGrabberT::m_imageStream = nullptr;
+    }
+
+    // b/c ImageStreamIO prints every single time, and latest version don't support stopping it yet, and that
+    // isn't thread-safe-able anyway we do our own checks.  This is the same code in ImageStreamIO_openIm...
+    int  SM_fd;
+    char SM_fname[200];
+    ImageStreamIO_filename( SM_fname, sizeof( SM_fname ), frameGrabberT::m_shmimName.c_str() );
+    SM_fd = open( SM_fname, O_RDWR );
+
+    if( SM_fd == -1 )
+    {
+        if( !logged )
+        {
+            log<text_log>( "ImageStream " + frameGrabberT::m_shmimName + " not found (yet).  Retrying . . .",
+                           logPrio::LOG_NOTICE );
+            logged = 1;
+        }
+
+        return 1;
+    }
+
+    // Found and opened,  close it and then use ImageStreamIO
+    logged = 0;
+    close( SM_fd );
+
+    frameGrabberT::m_imageStream = reinterpret_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+
+    if( ImageStreamIO_openIm( frameGrabberT::m_imageStream, frameGrabberT::m_shmimName.c_str() ) == 0 )
+    {
+        if( frameGrabberT::m_imageStream->md[0].sem < SEMAPHORE_MAXVAL )
+        {
+            ImageStreamIO_closeIm( frameGrabberT::m_imageStream );
+            free( frameGrabberT::m_imageStream );
+            frameGrabberT::m_imageStream = nullptr;
+
+            return 1; // We just need to wait for the server process to finish startup.
+        }
+        else
+        {
+            char SM_fname[200];
+            ImageStreamIO_filename( SM_fname, sizeof( SM_fname ), frameGrabberT::m_shmimName.c_str() );
+
+            struct stat buffer;
+            int         rv = stat( SM_fname, &buffer );
+
+            if( rv != 0 )
+            {
+                log<software_critical>( { errno,
+                                          "Could not get inode for " + frameGrabberT::m_shmimName +
+                                              ". Source process will need to be restarted." } );
+
+                ImageStreamIO_closeIm( frameGrabberT::m_imageStream );
+
+                free( frameGrabberT::m_imageStream );
+
+                frameGrabberT::m_imageStream = nullptr;
+
+                m_shutdown = true;
+
+                return -1;
+            }
+
+            frameGrabberT::m_inode = buffer.st_ino;
+        }
+    }
+    else
+    {
+        free( frameGrabberT::m_imageStream );
+        frameGrabberT::m_imageStream = nullptr;
+
+        return 1; // be patient
+    }
+
     return 0;
 }
 
@@ -1124,6 +1188,7 @@ float dmRecon::fps()
 int dmRecon::startAcquisition()
 {
 
+    std::cerr << "startAcquisition\n";
     return 0;
 }
 
@@ -1134,7 +1199,7 @@ int dmRecon::acquireAndCheckValid()
     errno = 0;
     if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
     {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "clock_gettime" } );
+        log<software_critical>( { errno, "clock_gettime" } );
         return -1;
     }
 
@@ -1166,13 +1231,7 @@ int dmRecon::acquireAndCheckValid()
 
 int dmRecon::loadImageIntoStream( void *dest )
 {
-    if( m_writeDMf )
-    {
-        memcpy( dest, m_modevals.data(), m_modevals.rows() * m_modevals.cols() * sizeof( float ) );
-    }
-
-    //write to the monitor stream
-    m_modevalMon = m_modevals;
+    memcpy( dest, m_modevals.data(), m_modevals.rows() * m_modevals.cols() * sizeof( float ) );
 
     return 0;
 }

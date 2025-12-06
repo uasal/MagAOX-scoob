@@ -1725,6 +1725,20 @@ int dm<derivedT, realT>::findDMChannels()
         }
     }
 
+    std::cerr << "not deltas: ";
+    for(size_t n = 0; n < m_notDeltas.size(); ++n)
+    {
+        std::cerr << n << ' ';
+    }
+    std::cerr << '\n';
+
+    std::cerr << "deltas: ";
+    for(size_t n = 0; n < m_deltas.size(); ++n)
+    {
+        std::cerr << n << ' ';
+    }
+    std::cerr << '\n';
+
     return 0;
 }
 
