@@ -15,7 +15,7 @@ else
     dest="$1"
 fi
 
-declare -a dataFolders=("/opt/MagAOX/logs" "/opt/MagAOX/rawimages" "/opt/MagAOX/telem" "/opt/MagAOX/cacao")
+declare -a dataFolders=("opt/MagAOX/logs" "opt/MagAOX/rawimages" "opt/MagAOX/telem" "opt/MagAOX/cacao")
 
 if ! mount | grep -q "on $dest"; then
     echo "External drive mount appears not to be active for $dest"
@@ -33,18 +33,19 @@ done
 rsyncWithOptions="rsync -a --info=progress2"
 
 for remote in rtc icc; do
-    mkdir -p "$dest/$remote/"
     for folder in "${dataFolders[@]}"; do
+        mkdir -p "$dest/$remote/$folder/"
         $rsyncWithOptions "/srv/$remote/$folder/" "$dest/$remote/$folder/"
     done
 done
 
-mkdir -p $dest/aoc/
 for folder in "${dataFolders[@]}"; do
-    $rsyncWithOptions "$folder/" "$dest/aoc/$folder"
+    mkdir -p "$dest/aoc/$folder"
+    $rsyncWithOptions "/$folder/" "$dest/aoc/$folder"
 done
 for home in /home/*; do
     if [[ $(basename $home) != "data" ]]; then
+        mkdir -p "$dest/aoc/$home/"
         $rsyncWithOptions "$home/" "$dest/aoc/$home/"
     fi
 done
