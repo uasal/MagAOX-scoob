@@ -75,7 +75,6 @@ def _run_logdump_thread(logger_name, logdump_dir, logdump_args, name, message_qu
             log.debug(f"Running logdump command {repr(' '.join(args))} for {name} in follow mode")
             p = subprocess.Popen(args, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
             for line in p.stdout:
-                log.debug(f"Log line read: {line}")
                 message = record_class.from_json(name, line)
                 message_queue.put(message)
             p.wait()  # stdout is over when the process exits
