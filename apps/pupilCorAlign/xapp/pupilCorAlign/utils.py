@@ -1,4 +1,4 @@
-import hcipy import hp
+import hcipy as hp
 import numpy as np
 import time
 import datetime
