@@ -134,7 +134,7 @@ class pupilCorAlign(XDevice):
         self.num_stack = 1
         self.gain = 0.25
         self.pattern_repeat = 1
-        self.amp = 0.
+        self.amp = 0.25
         self.sleep_time = 2.0
 
         nv = properties.NumberVector(name='nstack')
