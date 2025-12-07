@@ -748,7 +748,6 @@ int frameGrabber<derivedT>::configCircBuffs()
     else
     {
         // Set up the latency circ. buffs
-        std::cerr << "Circ Buff setup: " << m_latencyCircBuffMaxTime << ' ' << m_cbFPS << ' ';
         cbIndexT cbSz = 2 * m_latencyCircBuffMaxTime * m_cbFPS;
         if( cbSz > m_latencyCircBuffMaxLength )
         {
@@ -758,8 +757,6 @@ int frameGrabber<derivedT>::configCircBuffs()
         {
             cbSz = 3; // Make variance meaningful
         }
-
-        std::cerr << cbSz << '\n';
 
         m_atimes.maxEntries( cbSz );
         m_wtimes.maxEntries( cbSz );
@@ -791,6 +788,8 @@ void frameGrabber<derivedT>::fgThreadExec()
     uint32_t    imsize[3] = { 0, 0, 0 };
     bool        cbuff     = false;
     std::string shmimName;
+
+    static bool logged_wrong_size = false;
 
     while( derived().shutdown() == 0 )
     {
@@ -847,7 +846,7 @@ void frameGrabber<derivedT>::fgThreadExec()
 
             
         }
-
+        
         if( m_width != imsize[0] || m_height != imsize[1] || m_circBuffLength != imsize[2] || m_imageStream == nullptr )
         {
             if( m_imageStream != nullptr && m_ownShmim )
@@ -857,9 +856,17 @@ void frameGrabber<derivedT>::fgThreadExec()
             }
             else if( m_imageStream != nullptr && !m_ownShmim )
             {
+                if(!logged_wrong_size)
+                {
+                    derivedT::template log<text_log>(std::format("image stream {} is not expected size", m_shmimName), logPrio::LOG_WARNING);
+                    logged_wrong_size = true;
+                }
+
                 sleep( 1 );
                 continue; // we go around and try again, waiting for the shmim to get resized to our expectations
             }
+
+            logged_wrong_size = false;
 
             m_imageStream = reinterpret_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
 
@@ -892,6 +899,7 @@ void frameGrabber<derivedT>::fgThreadExec()
 
         if( derived().startAcquisition() < 0 )
         {
+            std::cerr << "startAcquisition continue\n";
             continue;
         }
 
@@ -998,6 +1006,7 @@ void frameGrabber<derivedT>::fgThreadExec()
 
             if( m_cbFPS != derived().fps() )
             {
+                std::cerr << "configuring due to mismatch m_cbFPS\n";
                 if( configCircBuffs() < 0 )
                 {
                     derivedT::template log<software_error>(

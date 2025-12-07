@@ -783,14 +783,20 @@ int dmRecon::processImage( void *curr_src, const dmModesShmimT & )
 
         tmpc.resize( nr, nr, dmModes.planes() );
 
-        for( int p = 0; p < dmModes.planes(); ++p )
-        {
-            tmpc.image( p ) = ( m_respM.matrix() * dmModes.image( p ).matrix() ).array();
+        std::cerr << __LINE__ << '\n';
 
-            /*float norm = sqrt(tmpc.image(p).square().sum()/m_maskIDX.size());
+        for( int p = 0; p < tmpc.planes(); ++p )
+        {
+            // cast to matrices for math
+            Eigen::Map<Eigen::Matrix<float,-1,-1>> outim(tmpc.image(p).data(), nr*nr,1);
+            Eigen::Map<Eigen::Matrix<float,-1,-1>> inim(dmModes.image(p).data(), dmModes.rows()*dmModes.cols(),1);
+
+            outim = (m_respM.matrix() * inim);
+
+            float norm = sqrt(tmpc.image(p).square().sum()/m_maskIDX.size());
             float scale = sqrt(dmModes.image(p).square().sum()/ (dmModes.rows()*dmModes.cols()));
 
-            tmpc.image(p) *= scale/norm;*/
+            tmpc.image(p) *= scale/norm;
         }
 
         dmModes = tmpc;
@@ -1076,7 +1082,11 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
     }
 
     // write to the monitor stream
-    m_modevalMon = m_modevals;
+    m_modevalMon.setWrite(1);
+    for(uint32_t r = 0; r < m_modevalMon.rows(); ++r)
+    {
+        m_modevalMon(r,0) = m_modevals(r,0);
+    }
 
     return 0;
 }
@@ -1092,7 +1102,6 @@ int dmRecon::configureAcquisition()
 
     m_fgWaiting = false;
 
-    std::cerr << "Sizing modevalDMf: " << m_modevals.rows() << ' ' << m_modevals.cols() << '\n';
     frameGrabberT::m_width    = m_modevals.rows();
     frameGrabberT::m_height   = m_modevals.cols();
     frameGrabberT::m_dataType = _DATATYPE_FLOAT;
