@@ -64,6 +64,16 @@ class XCam:
                 self._roi_state = self._get_roi_state()
                 self.connect_camera()
 
+    def create_grid(self):
+        if self._use_hcipy:
+            from hcipy import make_pupil_grid
+
+            self.grid = make_pupil_grid(
+                self.shape, self._pixel_size * np.array(self.shape)
+            )
+        else:
+            self.grid = None
+
     def connect_camera(self):
         self.shmim = Image(self.shm_name)
 
@@ -76,15 +86,7 @@ class XCam:
             log.warning(
                 "Dark shmim '{:s}' does not exist.".format(self.shm_name + "_dark")
             )
-
-        if self._use_hcipy:
-            from hcipy import make_pupil_grid
-
-            self.grid = make_pupil_grid(
-                self.shape, self._pixel_size * np.array(self.shape)
-            )
-        else:
-            self.grid = None
+        self.create_grid()
 
     @property
     def counter(self):
@@ -210,6 +212,8 @@ class XCam:
 
         if self._use_hcipy:
             from hcipy import Field
+            # recreate grid for each image in case of SHMIM resizing.
+            self.create_grid()
             arr = Field(arr.ravel(), self.grid)
         return arr
 

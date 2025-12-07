@@ -94,6 +94,7 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int inputSize {0};
     int input2Size {4};
     int outputSize {0};
+    int zeroPad { 2 };
 
     float* d_input {nullptr};
     float* d_input2 {nullptr};
@@ -232,17 +233,9 @@ void nnReconstructor::create_engine_context(){
 
 
     auto inputName = engine->getIOTensorName(0);
-    const char* outputName ;
-    const char* input2Name = " ";
-    if (explicit_tt) {
-        input2Name = engine->getIOTensorName(1);
-        outputName = engine->getIOTensorName(2);
-    }
-    else{
-        outputName = engine->getIOTensorName(1);
-    }
-    ///auto outputName = engine->getIOTensorName(2);
-    std::cout << "Tensor IO names: " << inputName << ", " << input2Name << ", " << outputName << std::endl;
+    auto outputName = engine->getIOTensorName(1);
+    std::cout << "Tensor IO names: " << inputName << ", " << outputName << std::endl;
+
 
     const auto inputDims = engine->getTensorShape(inputName);
     const auto outputDims = engine->getTensorShape(outputName);
@@ -660,42 +653,33 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
     static_cast<void>( dummy ); // be unused
 
     // aol_imwfs2 is reference and dark subtracted and is power normalized.
-    Eigen::Map<eigenImage<unsigned short>> pwfsIm(static_cast<unsigned short *>( curr_src ), m_pwfsHeight, m_pwfsWidth );
-    float X1 = 0;
-    float X2 = 0;
-    float X3 = 0;
-    float X4 = 0;
+
+    Eigen::Map<eigenImage<float>> pwfsIm(reinterpret_cast<float*>(curr_src), m_pwfsHeight, m_pwfsWidth);
 
     // Split up the four pupils for the Neural Network.
     int ki = 0;
 
-   for (int col_i = 0; col_i < m_pupPix; ++col_i)
+
+    for( int col_i = -zeroPad; col_i < (m_pupPix - zeroPad); ++col_i )
     {
-        for (int row_i = 0; row_i < m_pupPix; ++row_i)
+        for( int row_i = -zeroPad; row_i < (m_pupPix - zeroPad); ++row_i )
         {
-            // Read once per pixel/quad, reuse for pp_image and sums
-            const float p0 = imageNorm * static_cast<realT>(pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i));
-            const float p1 = imageNorm * static_cast<realT>(pwfsIm(pup_offset1_y + row_i, pup_offset2_x + col_i));
-            const float p2 = imageNorm * static_cast<realT>(pwfsIm(pup_offset2_y + row_i, pup_offset1_x + col_i));
-            const float p3 = imageNorm * static_cast<realT>(pwfsIm(pup_offset2_y + row_i, pup_offset2_x + col_i));
-
-            pp_image[ki]                          = p0;
-            pp_image[ki + pixels_per_quadrant]    = p1;
-            pp_image[ki + 2 * pixels_per_quadrant]= p2;
-            pp_image[ki + 3 * pixels_per_quadrant]= p3;
-
-            X1 += p0;
-            X2 += p1;
-            X3 += p2;
-            X4 += p3;
-
+            if ((col_i < 0) or (col_i >= (m_pupPix - 2*zeroPad)) or (row_i < 0) or (row_i >= (m_pupPix - 2*zeroPad))){
+                pp_image[ki] = 0;
+                pp_image[ki + pixels_per_quadrant] = 0;
+                pp_image[ki + 2 * pixels_per_quadrant] = 0;
+                pp_image[ki + 3 * pixels_per_quadrant] = 0;
+            }
+            else {
+                pp_image[ki] = imageNorm * (realT)pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset1_y + row_i, pup_offset2_x + col_i );
+                pp_image[ki + 2 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + 3 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset2_x + col_i );
+            }
             ++ki;
         }
     }
-    pup_Is[0] = (X1 + X2 - X3 - X4)/(m_pupPix*m_pupPix);
-    pup_Is[1] = (X1 + X3 - X2 - X4)/(m_pupPix*m_pupPix);
-    pup_Is[2] = (X1 + X4 - X2 - X3)/(m_pupPix*m_pupPix);
-    pup_Is[3] = 3e-4;
+
     // Copy input data to device
     if (use_fp16){
         floatToHalfArray(pp_image_half, pp_image, inputSize);
@@ -726,7 +710,6 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
 
     // Copy output data back to host
     if (use_fp16){
-
         cudaMemcpy(modeval_half, d_output, outputSize * sizeof(half), cudaMemcpyDeviceToHost);
         halfToFloatArray(modeval, modeval_half, outputSize);
     }

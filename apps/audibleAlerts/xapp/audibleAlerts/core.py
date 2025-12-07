@@ -7,6 +7,7 @@ from enum import Enum
 import logging
 import os
 import os.path
+import pathlib
 import pprint
 import re
 import xconf
@@ -28,7 +29,7 @@ def drop_xml_tags(raw_xml):
 @xconf.config
 class AudibleAlertsConfig(BaseConfig):
     random_utterance_interval_sec : Union[float, int] = xconf.field(default=15 * 60, help="Seconds since last (real or random) utterance before a random utterance should play")
-    cache : DirectoryConfig = xconf.field(default=DirectoryConfig(path="/tmp/audibleAlerts_cache"))
+    cache : pathlib.Path = xconf.field(default=pathlib.Path("/tmp/audibleAlerts_cache"))
 
 def contains_substitutions(text):
     return '{' in text or '}' in text
@@ -239,7 +240,7 @@ class AudibleAlerts(XDevice):
                     self.log.debug(f"{reaction.indi_id}: {t}: {utterance}")
                     if isinstance(utterance, SSML):
                         if not contains_substitutions(utterance.markup):
-                            result = ssml_to_wav(utterance.markup, self.default_voice, self.api_url, self.config.cache.path)
+                            result = ssml_to_wav(utterance.markup, self.default_voice, self.api_url, self.config.cache)
                             self.log.debug(f"Caching synthesis to {result}")
                         else:
                             self.log.debug(f"Cannot pre-cache because there are substitutions to be made")
@@ -263,8 +264,8 @@ class AudibleAlerts(XDevice):
             self.log.info("Waiting for connection...")
             time.sleep(1)
         self.log.info("Connected.")
-        self.log.debug(f"Caching synthesis output to {self.config.cache.path}")
-        self.config.cache.ensure_exists()
+        self.log.debug(f"Caching synthesis output to {self.config.cache}")
+        self.config.cache.mkdir(exist_ok=True)
         self.load_personality(self.active_personality)
 
         sv = properties.SwitchVector(
@@ -319,7 +320,7 @@ class AudibleAlerts(XDevice):
                 self.log.debug(f"Would have said: {repr(speech)}, but muted")
             else:
                 self.log.info(f"Speaking: {repr(speech)}")
-                speak(speech, self.default_voice, self.api_url, self.config.cache.path)
+                speak(speech, self.default_voice, self.api_url, self.config.cache)
                 self.log.debug("Speech complete")
                 self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
@@ -332,7 +333,7 @@ class AudibleAlerts(XDevice):
                 self.log.debug(f"Would have said: {repr(next_utterance)}, but muted")
             else:
                 self.log.info(f"Randomly spouting off: {repr(next_utterance)}")
-                speak(next_utterance, self.default_voice, self.api_url, self.config.cache.path)
+                speak(next_utterance, self.default_voice, self.api_url, self.config.cache)
 
 # Used to make the pyproject.toml just a little simpler,
 # with fewer repetitions of the app name:
