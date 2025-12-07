@@ -492,7 +492,7 @@ INDI_SETCALLBACK_DEFN( hwpTracker, m_indiP_stagePolRot )( const pcf::IndiPropert
     float hwpStagePos = ipRecv["current"].get<float>();
     
     m_hwpActualPos = m_sign * (hwpStagePos - m_zero);
-    if (fabs(m_hwpActualPos) < 1e-5)
+    if (fabs(m_hwpActualPos) < 1e-2)
         m_hwpActualPos = 0;
     updateIfChanged<float>(m_indiP_hwpActualPos, "value", m_hwpActualPos);
 
