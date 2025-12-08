@@ -38,16 +38,16 @@ namespace app
  * \ingroup wooferTweeterRecon
  */
 
-struct wooferCommandShmimT
+struct wooferModesShmimT
 {
     static std::string configSection()
     {
-        return "wooferCommand";
+        return "wooferModes";
     };
 
     static std::string indiPrefix()
     {
-        return "wooferCommand";
+        return "wooferModes";
     };
 };
 
@@ -61,32 +61,6 @@ struct tweeterModesShmimT
     static std::string indiPrefix()
     {
         return "tweeterModes";
-    };
-};
-
-struct tweeterMaskShmimT
-{
-    static std::string configSection()
-    {
-        return "tweeterMask";
-    };
-
-    static std::string indiPrefix()
-    {
-        return "tweeterMask";
-    };
-};
-
-struct tweeterCommandShmimT
-{
-    static std::string configSection()
-    {
-        return "tweeterCommand";
-    };
-
-    static std::string indiPrefix()
-    {
-        return "tweeterCommand";
     };
 };
 
@@ -109,19 +83,19 @@ struct wfsModesShmimT
  *
  */
 class wooferTweeterRecon : public MagAOXApp<true>,
-                           public dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT>,
-                           public dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT>,
+                           public dev::shmimMonitor<wooferTweeterRecon, wooferModesShmimT>,
+                           public dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT>,
                            public dev::shmimMonitor<wooferTweeterRecon, wfsModesShmimT>
 //, public dev::telemeter<wooferTweeterRecon>
 {
     // Give the test harness access.
     friend class wooferTweeterRecon_test;
 
-    friend class dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT>;
-    typedef dev::shmimMonitor<wooferTweeterRecon, wooferCommandShmimT> wooferCommandSMT;
+    friend class dev::shmimMonitor<wooferTweeterRecon, wooferModesShmimT>;
+    typedef dev::shmimMonitor<wooferTweeterRecon, wooferModesShmimT> wooferModesSMT;
 
-    friend class dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT>;
-    typedef dev::shmimMonitor<wooferTweeterRecon, tweeterCommandShmimT> tweeterCommandSMT;
+    friend class dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT>;
+    typedef dev::shmimMonitor<wooferTweeterRecon, tweeterModesShmimT> tweeterModesSMT;
 
     friend class dev::shmimMonitor<wooferTweeterRecon, wfsModesShmimT>;
     typedef dev::shmimMonitor<wooferTweeterRecon, wfsModesShmimT> wfsModesSMT;
@@ -140,7 +114,35 @@ class wooferTweeterRecon : public MagAOXApp<true>,
 
     std::string m_fpsSource{ "camwfs" };
 
+    uint32_t m_modevalCircBuffLen{ 5000 };
+
+    double m_wooferDt{ 0 };
+
+    double m_tweeterDt{ 0 };
+
+    double m_wfsDt{ 0 };
+
     ///@}
+
+    bool m_wooferModesReady{ false };
+    bool m_tweeterModesReady{ false };
+    bool m_wfsModesReady{ false };
+
+    struct modevals
+    {
+        double             t{ 0 };
+        std::vector<float> vals;
+        bool               reconstructed{ false };
+    };
+
+    std::vector<modevals> m_wooferVals;
+    size_t                m_lastWooferVal{ 0 };
+
+    std::vector<modevals> m_tweeterVals;
+    size_t                m_lastTweeterVal{ 0 };
+
+    std::vector<modevals> m_wfsVals;
+    size_t                m_lastWfsVal{ 0 };
 
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
@@ -191,15 +193,15 @@ class wooferTweeterRecon : public MagAOXApp<true>,
      * \returns 0 on success
      * \returns -1 on an error
      */
-    int allocate( const wooferCommandShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
+    int allocate( const wooferModesShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
 
     /// Process images for the woofer command shmimMonitor
     /**
      * \returns 0 on sucess
      * \returns -1 on an error
      */
-    int processImage( void *curr_src,             ///< [in] pointer to start of current frame.
-                      const wooferCommandShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    int processImage( void *curr_src,           ///< [in] pointer to start of current frame.
+                      const wooferModesShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
     /// Allocate method for the tweeter command shmimMonitor
@@ -207,15 +209,15 @@ class wooferTweeterRecon : public MagAOXApp<true>,
      * \returns 0 on success
      * \returns -1 on an error
      */
-    int allocate( const tweeterCommandShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
+    int allocate( const tweeterModesShmimT & /**< [in] tag to differentiate shmimMonitor parents.*/ );
 
     /// Process images for the tweeter command shmimMonitor
     /**
      * \returns 0 on sucess
      * \returns -1 on an error
      */
-    int processImage( void *curr_src,              ///< [in] pointer to start of current frame.
-                      const tweeterCommandShmimT & ///< [in] tag to differentiate shmimMonitor parents.
+    int processImage( void *curr_src,            ///< [in] pointer to start of current frame.
+                      const tweeterModesShmimT & ///< [in] tag to differentiate shmimMonitor parents.
     );
 
     /// Allocate method for the wfs modes shmimMonitor
@@ -272,16 +274,11 @@ inline wooferTweeterRecon::wooferTweeterRecon() : MagAOXApp( MAGAOX_CURRENT_SHA1
 
 inline void wooferTweeterRecon::setupConfig()
 {
-    wooferCommandSMT::m_shmimName = "aol0_modevalDMf";
-    wooferCommandSMT::m_getExistingFirst = true;
-    SHMIMMONITORT_SETUP_CONFIG( wooferCommandSMT, config );
 
-    tweeterCommandSMT::m_shmimName = "aol1_modevalDMf";
-    tweeterCommandSMT::m_getExistingFirst = true;
-    SHMIMMONITORT_SETUP_CONFIG( tweeterCommandSMT, config );
+    SHMIMMONITORT_SETUP_CONFIG( wooferModesSMT, config );
 
-    wfsModesSMT::m_shmimName = "aol1_modevalWFS";
-    wfsModesSMT::m_getExistingFirst = true;
+    SHMIMMONITORT_SETUP_CONFIG( tweeterModesSMT, config );
+
     SHMIMMONITORT_SETUP_CONFIG( wfsModesSMT, config );
 
     // TELEMETER_SETUP_CONFIG( config );
@@ -300,8 +297,16 @@ inline void wooferTweeterRecon::setupConfig()
 inline int wooferTweeterRecon::loadConfigImpl( mx::app::appConfigurator &_config )
 {
 
-    SHMIMMONITORT_LOAD_CONFIG( wooferCommandSMT, _config );
-    SHMIMMONITORT_LOAD_CONFIG( tweeterCommandSMT, _config );
+    wooferModesSMT::m_shmimName        = "aol0_modevalDMf_mon";
+    wooferModesSMT::m_getExistingFirst = true;
+    SHMIMMONITORT_LOAD_CONFIG( wooferModesSMT, _config );
+
+    tweeterModesSMT::m_shmimName        = "aol1_modevalDMf_mon";
+    tweeterModesSMT::m_getExistingFirst = true;
+    SHMIMMONITORT_LOAD_CONFIG( tweeterModesSMT, _config );
+
+    wfsModesSMT::m_shmimName        = "aol1_modevalWFS";
+    wfsModesSMT::m_getExistingFirst = true;
     SHMIMMONITORT_LOAD_CONFIG( wfsModesSMT, _config );
 
     // TELEMETER_LOAD_CONFIG( _config );
@@ -329,8 +334,8 @@ inline int wooferTweeterRecon::appStartup()
         return -1;
     }
 
-    SHMIMMONITORT_APP_STARTUP( wooferCommandSMT );
-    SHMIMMONITORT_APP_STARTUP( tweeterCommandSMT );
+    SHMIMMONITORT_APP_STARTUP( wooferModesSMT );
+    SHMIMMONITORT_APP_STARTUP( tweeterModesSMT );
     SHMIMMONITORT_APP_STARTUP( wfsModesSMT );
 
     // TELEMETER_APP_STARTUP;
@@ -342,16 +347,23 @@ inline int wooferTweeterRecon::appStartup()
 
 int wooferTweeterRecon::appLogic()
 {
-    SHMIMMONITORT_APP_LOGIC( wooferCommandSMT );
-    SHMIMMONITORT_APP_LOGIC( tweeterCommandSMT );
+    SHMIMMONITORT_APP_LOGIC( wooferModesSMT );
+    SHMIMMONITORT_APP_LOGIC( tweeterModesSMT );
     SHMIMMONITORT_APP_LOGIC( wfsModesSMT );
 
     // TELEMETER_APP_LOGIC;
 
+    if( m_wooferModesReady && m_tweeterModesReady && m_wfsModesReady )
+    {
+        std::cout << m_wooferVals[m_lastWooferVal].t << ' '
+                  << m_tweeterVals[m_lastTweeterVal].t - m_wooferVals[m_lastWooferVal].t << ' '
+                  << m_wfsVals[m_lastWfsVal].t - m_wooferVals[m_lastWooferVal].t << '\n';
+    }
+
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
-    SHMIMMONITORT_UPDATE_INDI( wooferCommandSMT );
-    SHMIMMONITORT_UPDATE_INDI( tweeterCommandSMT );
+    SHMIMMONITORT_UPDATE_INDI( wooferModesSMT );
+    SHMIMMONITORT_UPDATE_INDI( tweeterModesSMT );
     SHMIMMONITORT_UPDATE_INDI( wfsModesSMT );
 
     return 0;
@@ -359,8 +371,8 @@ int wooferTweeterRecon::appLogic()
 
 inline int wooferTweeterRecon::appShutdown()
 {
-    SHMIMMONITORT_APP_SHUTDOWN( wooferCommandSMT );
-    SHMIMMONITORT_APP_SHUTDOWN( tweeterCommandSMT );
+    SHMIMMONITORT_APP_SHUTDOWN( wooferModesSMT );
+    SHMIMMONITORT_APP_SHUTDOWN( tweeterModesSMT );
     SHMIMMONITORT_APP_SHUTDOWN( wfsModesSMT );
 
     // TELEMETER_APP_SHUTDOWN;
@@ -368,52 +380,107 @@ inline int wooferTweeterRecon::appShutdown()
     return 0;
 }
 
-int wooferTweeterRecon::allocate( const wooferCommandShmimT & )
+int wooferTweeterRecon::allocate( const wooferModesShmimT & )
 {
-    m_wooferCommandReady = false;
+    m_wooferModesReady = false;
 
-    if(!m_tweeterCommandReady || wooferCommandSMT::m_width > tweeterCommandSMT::m_width)
+    std::cerr << "woofer modes not ready\n";
+
+    if( !m_wfsModesReady || wooferModesSMT::m_width > wfsModesSMT::m_width )
     {
+        if( m_wfsModesReady )
+        {
+            wfsModesSMT::m_restart = true;
+        }
+
+        wooferModesSMT::m_restart = true;
+
         mx::sys::milliSleep( 1000 );
-        wooferCommandSMT::m_restart = true;
+
         return 0; // This won't log an error, but setting m_restart will cause it to loop again until sizes match
     }
 
-    m_wooferVals.resize(tweeterCommandSMT::m_width, 1);
-    m_wooferVals.setZero();
+    m_wooferVals.resize( m_modevalCircBuffLen );
 
-    m_wooferCommandReady = true;
-
-    return 0;
-}
-
-int wooferTweeterRecon::processImage( void *curr_src, const wooferCommandShmimT & )
-{
-    for(size_t n = 0; n < wooferCommandSMT::m_width; ++n)
+    for( auto &val : m_wooferVals )
     {
-        m_wooferVals[n] = reinterpret_cast<float *>(curr_src)[n];
+        val.t = 0;
+        val.vals.resize( tweeterModesSMT::m_width, 0 );
+        val.reconstructed = false;
     }
 
+    m_wooferModesReady = true;
+
+    std::cerr << "woofer modes ready\n";
+
     return 0;
 }
 
-int wooferTweeterRecon::allocate( const tweeterCommandShmimT & )
+int wooferTweeterRecon::processImage( void *curr_src, const wooferModesShmimT & )
 {
-    m_tweeterCommandReady = false;
-
-    m_tweeterVals.resize(tweeterCommandSMT::m_width,1);
-
-    m_tweeterCommandReady = true;
-    
-    return 0;
-}
-
-int wooferTweeterRecon::processImage( void *curr_src, const tweeterCommandShmimT & )
-{
-    for(size_t n = 0; n < tweeterCommandSMT::m_width; ++n)
+    size_t next = m_lastWooferVal + 1;
+    if( next >= m_wooferVals.size() )
     {
-        m_tweeterVals[n] = reinterpret_cast<float *>(curr_src)[n];
+        next = 0;
     }
+
+    for( size_t n = 0; n < wooferModesSMT::m_width; ++n )
+    {
+        m_wooferVals[next].vals[n] = reinterpret_cast<float *>( curr_src )[n];
+    }
+
+    m_wooferVals[next].t =
+        wooferModesSMT::m_imageStream.md->atime.tv_sec + wooferModesSMT::m_imageStream.md->atime.tv_nsec / 1e9;
+    m_wooferVals[next].reconstructed = false;
+
+    m_lastWooferVal = next;
+
+    return 0;
+}
+
+int wooferTweeterRecon::allocate( const tweeterModesShmimT & )
+{
+    m_tweeterModesReady = false;
+
+    wfsModesSMT::m_restart    = true;
+    wooferModesSMT::m_restart = true;
+
+    std::cerr << "tweeter modes not ready\n";
+
+    m_tweeterVals.resize( m_modevalCircBuffLen );
+
+    for( auto &val : m_tweeterVals )
+    {
+        val.t = 0;
+        val.vals.resize( tweeterModesSMT::m_width, 0 );
+        val.reconstructed = false;
+    }
+
+    m_tweeterModesReady = true;
+
+    std::cerr << "tweeter modes ready\n";
+
+    return 0;
+}
+
+int wooferTweeterRecon::processImage( void *curr_src, const tweeterModesShmimT & )
+{
+    size_t next = m_lastTweeterVal + 1;
+    if( next >= m_tweeterVals.size() )
+    {
+        next = 0;
+    }
+
+    for( size_t n = 0; n < tweeterModesSMT::m_width; ++n )
+    {
+        m_tweeterVals[next].vals[n] = reinterpret_cast<float *>( curr_src )[n];
+    }
+
+    m_tweeterVals[next].t =
+        tweeterModesSMT::m_imageStream.md->atime.tv_sec + tweeterModesSMT::m_imageStream.md->atime.tv_nsec / 1e9;
+    m_tweeterVals[next].reconstructed = false;
+
+    m_lastTweeterVal = next;
 
     return 0;
 }
@@ -422,29 +489,215 @@ int wooferTweeterRecon::allocate( const wfsModesShmimT & )
 {
     m_wfsModesReady = false;
 
-    if(!m_tweeterCommandReady || wfsModesSMT::m_width != tweeterCommandSMT::m_width)
+    std::cerr << "wfs modes not ready\n";
+
+    if( !m_tweeterModesReady || wfsModesSMT::m_width != tweeterModesSMT::m_width )
     {
+        if( m_tweeterModesReady )
+        {
+            tweeterModesSMT::m_restart = true;
+        }
+
+        wfsModesSMT::m_restart = true;
         mx::sys::milliSleep( 1000 );
-        wooferCommandSMT::m_restart = true;
+
         return 0; // This won't log an error, but setting m_restart will cause it to loop again until sizes match
     }
-    
+
+    m_wfsVals.resize( m_modevalCircBuffLen );
+
+    for( auto &val : m_wfsVals )
+    {
+        val.t = 0;
+        val.vals.resize( wfsModesSMT::m_width, 0 );
+        val.reconstructed = false;
+    }
+
     m_wfsModesReady = true;
+
+    std::cerr << "wfs modes ready\n";
 
     return 0;
 }
 
 int wooferTweeterRecon::processImage( void *curr_src, const wfsModesShmimT & )
 {
-    for(size_t n = 0; n < tweeterCommandSMT::m_width; ++n)
+    size_t next = m_lastWfsVal + 1;
+    if( next >= m_wfsVals.size() )
     {
-        m_tweeterVals[n] = reinterpret_cast<float *>(curr_src)[n];
+        next = 0;
     }
-    
+
+    for( size_t n = 0; n < wooferModesSMT::m_width; ++n )
+    {
+        m_wfsVals[next].vals[n] = reinterpret_cast<float *>( curr_src )[n];
+    }
+
+    m_wfsVals[next].t = mx::sys::get_curr_time();
+    //        wfsModesSMT::m_imageStream.md->writetime.tv_sec + wfsModesSMT::m_imageStream.md->writetime.tv_nsec / 1e9;
+    m_wfsVals[next].reconstructed = false;
+
+    m_lastWfsVal = next;
+
     return 0;
 }
 
+int wooferTweeterRecon::recon()
+{
+    size_t st = m_lastWfsVal;
 
+    while( m_wfsVals[st].reconstructed == false )
+    {
+        if( st == 0 )
+        {
+            st = m_wfsVals.size();
+        }
+
+        --st;
+
+        if( st == m_lastWfsVal )
+        {
+            // wrapped around without finding it
+            return 0;
+        }
+    }
+
+    // Find starting woofer value
+    size_t wst = m_lastWooferVal;
+    if( m_wooferVals[wst].t < m_wfsVals[st].t )
+    {
+        // no woofers after the earliest unreconstructed wfs val
+        return 0;
+    }
+
+    while( m_wooferVals[wst].t > m_wfsVals[st].t )
+    {
+        if( wst == 0 )
+        {
+            wst = m_wooferVals.size();
+        }
+
+        --wst;
+
+        if( wst == m_lastWooferVal )
+        {
+            // we wrapped around without finding it
+            return 0;
+        }
+    }
+
+    size_t wnxt = wst + 1;
+    if( wnxt >= m_wooferVals.size() )
+    {
+        wnxt = 0;
+    }
+
+    if( !( m_wooferVals[wst].t <= m_wfsVals[st].t && m_wooferVals[nxt].t >= m_wfsVals[st].t ) )
+    {
+        // an error!
+        return -1;
+    }
+
+    // Find starting tweeter value
+    size_t tst = m_lastTweeterVal;
+    if( m_tweeterVals[tst].t < m_wfsVals[st].t )
+    {
+        // no tweeters after the earliest unreconstructed wfs val
+        return 0;
+    }
+
+    while( m_tweeterVals[wst].t > m_wfsVals[st].t )
+    {
+        if( tst == 0 )
+        {
+            tst = m_tweeterVals.size();
+        }
+
+        --tst;
+
+        if( tst == m_lastTweeterVal )
+        {
+            // we wrapped around without finding it
+            return 0;
+        }
+    }
+
+    size_t tnxt = tst + 1;
+    if( tnxt >= m_tweeterVals.size() )
+    {
+        tnxt = 0;
+    }
+
+    if( !( m_tweeterVals[tst].t <= m_wfsVals[st].t && m_tweeterVals[tnxt].t >= m_wfsVals[st].t ) )
+    {
+        // an error!
+        return -1;
+    }
+
+    {
+
+        double wdt = ( m_wfsVals[st].t - m_wooferVals[wst].t ) / ( m_wooferVals[wnxt].t - m_wooferVals[wst].t );
+        double tdt = ( m_wfsVals[st].t - m_tweeterVals[tst].t ) / ( m_tweeterVals[tnxt].t - m_tweeterVals[tst].t );
+
+        for( size_t n = 0; n < m_wfsVals[st].vals.size(); ++n )
+        {
+            float wval = m_wooferVals[wst].vals[n] + ( m_wooferVals[wnxt].vals[n] - m_wooferVals[wst].vals[n] ) * wdt;
+            float tval =
+                m_tweeterVals[tst].vals[n] + ( m_tweeterVals[tnxt].vals[n] - m_tweeterVals[tst].vals[n] ) * tdt;
+            float wfsval = m_wfsVals[st].vals[n] / m_opticalGain;
+
+            m_outputVal[n] = wval + tval + wfsval;
+        }
+
+        m_wfsVals[st].reconstructed = true;
+
+        //put m_outputVal wherever it goes
+
+        
+        // how to handle "is this already last val?" -- maybe last val gets set at top
+        ++st;
+        if( st >= m_wfsVals.size() )
+        {
+            st = 0;
+        }
+
+        ++wst;
+        if( wst >= m_wooferVals.size() )
+        {
+            wst = 0;
+        }
+
+        ++wnxt;
+        if( wnxt >= m_wooferVals.size() )
+        {
+            wnxt = 0;
+        }
+
+        if( !( m_wooferVals[wst].t <= m_wfsVals[st].t && m_wooferVals[nxt].t >= m_wfsVals[st].t ) )
+        {
+            // not an error, we're done
+            return 0;
+        }
+
+        ++tst;
+        if( tst >= m_tweeterVals.size() )
+        {
+            tst = 0;
+        }
+
+        ++tnxt;
+        if( tnxt >= m_tweeterVals.size() )
+        {
+            tnxt = 0;
+        }
+
+        if( !( m_tweeterVals[tst].t <= m_wfsVals[st].t && m_tweeterVals[tnxt].t >= m_wfsVals[st].t ) )
+        {
+            // not an error, we're done
+            return 0;
+        }
+    }
+}
 
 INDI_SETCALLBACK_DEFN( wooferTweeterRecon, m_indiP_fpsSource )( const pcf::IndiProperty &ipRecv )
 {

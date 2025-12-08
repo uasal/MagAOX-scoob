@@ -899,7 +899,6 @@ void frameGrabber<derivedT>::fgThreadExec()
 
         if( derived().startAcquisition() < 0 )
         {
-            std::cerr << "startAcquisition continue\n";
             continue;
         }
 
