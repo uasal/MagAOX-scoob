@@ -138,6 +138,8 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     bool m_modevalOpened {false};
     bool m_modevalRestart {false};
 
+    timespec m_atime {0,0}; ///< the time when the WFS frame is received
+
   public:
     /// Default c'tor.
     nnReconstructor();
@@ -300,6 +302,15 @@ inline int nnReconstructor::send_to_shmim()
 
     m_modevalStream.md[0].write = 1;
     memcpy( m_modevalStream.array.raw, modeval, outputSize * m_modevalTypeSize );
+
+    if( clock_gettime( CLOCK_REALTIME, &m_modevalStream.md->writetime ) < 0 )
+    {
+        m_shutdown = true;
+        return log<software_critical,-1>( { errno, "clock_gettime" } );
+    }
+
+    m_modevalStream.md->atime = m_atime;
+
     m_modevalStream.md[0].cnt0++;
     m_modevalStream.md[0].write = 0;
 
@@ -651,6 +662,12 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
 inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dummy )
 {
     static_cast<void>( dummy ); // be unused
+
+    if( clock_gettime( CLOCK_REALTIME, &m_atime ) < 0 )
+    {
+        m_shutdown = true;
+        return log<software_critical,-1>( { errno, "clock_gettime" } );
+    }
 
     // aol_imwfs2 is reference and dark subtracted and is power normalized.
 
