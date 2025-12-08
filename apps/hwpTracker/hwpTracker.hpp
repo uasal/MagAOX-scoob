@@ -339,13 +339,13 @@ int hwpTracker::appShutdown()
 std::string hwpTracker::getHwpStatus()
 {
     float tol = 0.5; // degrees
-    if( fabs( m_hwpSetPos - 0 ) < tol )
+    if( fabs( m_hwpCurPos - 0 ) < tol )
         return "Qplus";
-    else if( fabs( m_hwpSetPos - 45 ) < tol )
+    else if( fabs( m_hwpCurPos - 45 ) < tol )
         return "Qminus";
-    else if( fabs( m_hwpSetPos - 22.5 ) < tol )
+    else if( fabs( m_hwpCurPos - 22.5 ) < tol )
         return "Uplus";
-    else if( fabs( m_hwpSetPos - 67.5 ) < tol )
+    else if( fabs( m_hwpCurPos - 67.5 ) < tol )
         return "Uminus";
     else
         return "Unknown";
@@ -370,11 +370,6 @@ void hwpTracker::updateHwpPos()
     m_indiP_hwpStagePos["target"] = hwpStagePos;
     sendNewProperty( m_indiP_hwpStagePos );
 
-    m_hwpPosName = getHwpStatus();
-
-    updateIfChanged<std::string>( m_indiP_hwpPosName, "value", m_hwpPosName );
-
-
     recordPolTrack();
 }
 
@@ -393,8 +388,8 @@ INDI_NEWCALLBACK_DEFN( hwpTracker, m_indiP_hwpSetPos )( const pcf::IndiProperty 
         return 0;
 
     m_hwpSetPos = ipRecv["target"].get<float>();
-
-    updatesIfChanged<float>( m_indiP_hwpSetPos, { "current", "target" }, { m_hwpSetPos, m_hwpSetPos } );
+    
+    updateIfChanged<float>(m_indiP_hwpSetPos, "target", m_hwpSetPos);
 
     updateHwpPos();
 
@@ -497,7 +492,13 @@ INDI_SETCALLBACK_DEFN( hwpTracker, m_indiP_stagePolRot )( const pcf::IndiPropert
     updateIfChanged<float>(m_indiP_hwpActualPos, "value", m_hwpActualPos);
 
     m_hwpCurPos = m_hwpActualPos - m_hwpTrackingOffset;
+    // round to two decimal points
+    m_hwpCurPos = std::round(m_hwpCurPos * 100) / 100;
     updateIfChanged<float>(m_indiP_hwpSetPos, "current", m_hwpCurPos);
+
+    m_hwpPosName = getHwpStatus();
+
+    updateIfChanged<std::string>( m_indiP_hwpPosName, "value", m_hwpPosName );
 
     recordPolTrack();
 
