@@ -179,6 +179,9 @@ class dmRecon : public MagAOXApp<true>,
     std::string                  m_monShmimName;
     mx::improc::milkImage<float> m_modevalMon; ///< The actual calculated modevals.
 
+    mx::improc::milkImage<float> m_modeval;
+    mx::improc::milkImage<float> m_modevalDiff;
+
     // clang-format off
     #ifdef MXLIB_CUDA
 
@@ -945,6 +948,10 @@ int dmRecon::allocate( const dmCommandShmimT & )
 
     m_modevalMon.create( m_monShmimName, m_PInv.rows(), 1 );
 
+    m_modeval.open(std::format("aol{}_modevalDM", m_loopNumber));
+
+    m_modevalDiff.create( std::format("aol{}_modevalDMf_diff", m_loopNumber), m_PInv.rows(), 1 );
+
     // clang-format off
     #ifdef MXLIB_CUDA
     // clang-format on
@@ -1083,10 +1090,15 @@ int dmRecon::processImage( void *curr_src, const dmCommandShmimT & )
 
     // write to the monitor stream
     m_modevalMon.setWrite(1);
+    m_modevalDiff.setWrite();
     for(uint32_t r = 0; r < m_modevalMon.rows(); ++r)
     {
         m_modevalMon(r,0) = m_modevals(r,0);
+        m_modevalDiff(r,0) = m_modevals(r,0) - m_modeval(r,0);
     }
+
+    m_modevalMon.post();
+    m_modevalDiff.post();
 
     return 0;
 }

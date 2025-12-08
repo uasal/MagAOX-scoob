@@ -84,7 +84,7 @@ class t2wOffloader : public MagAOXApp<true>, public dev::shmimMonitor<t2wOffload
 
     uint32_t m_numModes{ 0 };
 
-    int m_loopNumber{0};
+    int m_loopNumber{ 0 };
     ///@}
 
     mx::improc::eigenImage<realT> m_twRespM;
@@ -96,6 +96,9 @@ class t2wOffloader : public MagAOXApp<true>, public dev::shmimMonitor<t2wOffload
     mx::improc::milkImage<realT> m_modevalDM;
     mx::improc::milkImage<realT> m_modevalDMf;
 
+    uint64_t m_lastDMf_cnt0{ 0 };
+    uint64_t m_updatedDMf {0};
+
     mx::improc::eigenImage<realT> m_tweeterMask;
 
     mx::improc::eigenCube<float> m_tModesOrtho;
@@ -104,7 +107,7 @@ class t2wOffloader : public MagAOXApp<true>, public dev::shmimMonitor<t2wOffload
 
     mx::improc::eigenCube<float> m_wModes;
 
-    IMAGE * m_wModesStream {nullptr};
+    IMAGE *m_wModesStream{ nullptr };
 
     float    m_fps{ 0 };  ///< Current FPS from the FPS source.
     uint32_t m_navg{ 0 }; ///< Current navg from the averager
@@ -399,10 +402,9 @@ inline int t2wOffloader::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_actLim, "offload.actLim" );
     _config( m_tweeterModeFile, "offload.tweeterModes" );
     _config( m_tweeterMaskFile, "offload.tweeterMask" );
-    _config( m_wooferMaskFile, "offload.wooferMask");
+    _config( m_wooferMaskFile, "offload.wooferMask" );
     _config( m_maxModes, "offload.maxModes" );
     _config( m_numModes, "offload.numModes" );
-
 
     bool startupOffloading = false;
 
@@ -505,6 +507,8 @@ inline int t2wOffloader::appStartup()
 
 inline int t2wOffloader::appLogic()
 {
+    static uint64_t lastUpdateDMf = 0;
+
     SHMIMMONITOR_APP_LOGIC;
 
     TELEMETER_APP_LOGIC;
@@ -512,6 +516,12 @@ inline int t2wOffloader::appLogic()
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
     SHMIMMONITOR_UPDATE_INDI;
+
+    if(lastUpdateDMf != m_updatedDMf)
+    {
+        std::cerr << std::format("DMf updated {} times\n", m_updatedDMf - lastUpdateDMf);
+        lastUpdateDMf = m_updatedDMf;
+    }
 
     return 0;
 }
@@ -596,8 +606,10 @@ inline int t2wOffloader::allocate( const dev::shmimT &dummy )
 
     m_modeDeltaAmps.resize( 1, m_tModesOrtho.planes() );
 
-    m_modevalDM.create("aol0_modevalDM", m_tModesOrtho.planes(), 1);
-    m_modevalDMf.create("aol0_modevalDMf", m_tModesOrtho.planes(), 1);
+    m_modevalDM.create( "aol0_modevalDM", m_tModesOrtho.planes(), 1 );
+    m_modevalDMf.create( "aol0_modevalDMf", m_tModesOrtho.planes(), 1 );
+
+    m_lastDMf_cnt0 = m_modevalDMf.cnt0();
 
     ///\todo size checks here.
 
@@ -671,16 +683,28 @@ inline int t2wOffloader::processImage( void *curr_src, const dev::shmimT &dummy 
                                                                     m_tModesOrtho.rows() * m_tModesOrtho.cols(),
                                                                     m_tModesOrtho.planes() );
 
-        m_modevalDM.setWrite(true);
+        m_modevalDM.setWrite( true );
+
+        if( m_modevalDMf.cnt0() > m_lastDMf_cnt0 )
+        {
+            for( uint32_t p = 0; p < m_modevalDM.rows() && p < m_modevalDMf.rows(); ++p )
+            {
+                m_modevalDM( p, 0 ) = m_modevalDMf(p,0);
+            }
+
+            ++m_updatedDMf;
+        }
+
+        m_lastDMf_cnt0 = m_modevalDMf.cnt0();
 
         uint32_t p = 0;
         for( ; p < m_numModes && p < m_maxModes; ++p )
         {
             m_modevalDM( p, 0 ) = m_gain * m_modeDeltaAmps( 0, p ) + ( 1.0 - m_leak ) * m_modevalDM( p, 0 );
         }
-        for(; p < m_numModes; ++p)
+        for( ; p < m_numModes; ++p )
         {
-            m_modevalDM(p, 0) = 0;
+            m_modevalDM( p, 0 ) = 0;
         }
 
         m_modevalDM.post();
@@ -757,7 +781,7 @@ int t2wOffloader::zero()
 
     m_dmStream.md[0].write = 1;
 
-    m_modevalDM.setWrite(true);
+    m_modevalDM.setWrite( true );
     m_modevalDM().setZero();
     m_modevalDM.post();
 
@@ -788,8 +812,8 @@ int t2wOffloader::prepareModes()
     ff.read( m_twRespM, m_twRespMPath );
 
     eigenImage<float> wm;
-    ff.read( wm, m_wooferMaskFile);
-    m_wooferMask.create( std::format("aol{}_dmmask", m_loopNumber), wm);
+    ff.read( wm, m_wooferMaskFile );
+    m_wooferMask.create( std::format( "aol{}_dmmask", m_loopNumber ), wm );
 
     for( int p = 0; p < tmodes.planes(); ++p )
     {
@@ -810,7 +834,7 @@ int t2wOffloader::prepareModes()
     m_wModes.resize( 11, 11, m_tModesOrtho.planes() );
     mx::improc::eigenImage<realT> win, wout;
 
-    //win.resize( 11, 11 );
+    // win.resize( 11, 11 );
     wout.resize( 11, 11 );
 
     // Calculate the woofer modes corresponding to the tweeter modes
@@ -821,14 +845,10 @@ int t2wOffloader::prepareModes()
         Eigen::Map<Eigen::Matrix<float, -1, -1>>( wout.data(), wout.rows() * wout.cols(), 1 ) =
             m_twRespM.matrix() * Eigen::Map<Eigen::Matrix<float, -1, -1>>( win.data(), win.rows() * win.cols(), 1 );
 
-        m_wModes.image( p ) = wout*m_wooferMask();
+        m_wModes.image( p ) = wout * m_wooferMask();
     }
 
-
-
-
     ff.write( "/tmp/wModes.fits", m_wModes );
-
 
     m_wModesStream = new IMAGE;
 
@@ -837,8 +857,8 @@ int t2wOffloader::prepareModes()
     imsize[1] = m_wModes.cols();
     imsize[2] = m_wModes.planes();
 
-    std::string imname = std::format("aol{}_CMmodesDM", m_loopNumber);
-    errno_t rv = ImageStreamIO_createIm_gpu( m_wModesStream,
+    std::string imname = std::format( "aol{}_CMmodesDM", m_loopNumber );
+    errno_t     rv     = ImageStreamIO_createIm_gpu( m_wModesStream,
                                              imname.c_str(),
                                              3,
                                              imsize,
@@ -854,10 +874,12 @@ int t2wOffloader::prepareModes()
     {
         delete m_wModesStream;
         m_wModesStream = nullptr;
-        return log<software_error, -1>("failed to create " + imname);
+        return log<software_error, -1>( "failed to create " + imname );
     }
 
-    memcpy(m_wModesStream->array.raw, m_wModes.data(), m_wModes.rows()*m_wModes.cols()*m_wModes.planes()*sizeof(float));
+    memcpy( m_wModesStream->array.raw,
+            m_wModes.data(),
+            m_wModes.rows() * m_wModes.cols() * m_wModes.planes() * sizeof( float ) );
 
     return 0;
 }
@@ -967,7 +989,7 @@ INDI_NEWCALLBACK_DEFN( t2wOffloader, m_indiP_numModes )( const pcf::IndiProperty
 
     if( m_numModes > m_maxModes )
     {
-        log<text_log>( std::format("maximum number of offloadings modes is {}", m_maxModes), logPrio::LOG_WARNING );
+        log<text_log>( std::format( "maximum number of offloadings modes is {}", m_maxModes ), logPrio::LOG_WARNING );
         m_numModes = m_maxModes;
     }
 
