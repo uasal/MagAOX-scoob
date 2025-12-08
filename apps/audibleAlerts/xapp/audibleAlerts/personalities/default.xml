@@ -48,7 +48,7 @@
       <file name="katie.wav" />
     </walk-up>
     <walk-up email="tonucci@strw.leidenuniv.nl">
-      <file name="elena.wav" />
+      <file name="elena.mp3" />
     </walk-up>
     <walk-up email="edenmcewen@arizona.edu">
       <file name="eden.wav" />
@@ -70,6 +70,9 @@
     </walk-up>
     <walk-up email="aweinberger@carnegiescience.edu">
       <file name="alycia.mp3" />
+    </walk-up>
+    <walk-up email="lalbrow@mit.edu">
+      <file name="leah.mp3"/>
     </walk-up>
   </walk-ups>
   <soundboard>
