@@ -622,6 +622,48 @@ SCENARIO( "outletController Configuration", "[outletController]" )
          REQUIRE( offDelays[1] == 108 );
       }
    }
+
+   GIVEN("a config file with errors with 2 channels for 4 outlets")
+   {
+      WHEN("using outlet keyword, start less than 0")
+      {
+         mx::app::writeConfigFile( "/tmp/outletController_test.conf", {"channel1",     "channel2" },
+                                                        {"outlet",       "outlet"   },
+                                                        {"-1,1",           "6,3"   } );
+
+         mx::app::appConfigurator config;
+         config.readConfig("/tmp/outletController_test.conf");
+
+         outletControllerTest pdt;
+         int rv;
+         rv = pdt.setupConfig(config);
+         REQUIRE( rv == 0);
+
+         rv = pdt.loadConfig(config);
+         REQUIRE( rv == -1);
+
+      }
+
+      WHEN("using outlet and onOrder keywords, mismatch sizes")
+      {
+         mx::app::writeConfigFile( "/tmp/outletController_test.conf", {"channel1", "channel1", "channel1", "channel1", "channel1", "channel2" },
+                                                        {"outlets",  "onOrder",  "offOrder", "onDelays", "offDelays",  "outlets"},
+                                                        {"0,1",      "0,1,2",    "0,1",      "0,100",    "0,120",      "1,2", } );
+
+         mx::app::appConfigurator config;
+         config.readConfig("/tmp/outletController_test.conf");
+
+         outletControllerTest pdt;
+         int rv;
+         rv = pdt.setupConfig(config);
+         REQUIRE( rv == 0);
+
+         rv = pdt.loadConfig(config);
+         REQUIRE( rv == -1);
+
+      }
+   
+   }
 }
 
 /// outletController Operation

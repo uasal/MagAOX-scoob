@@ -350,7 +350,6 @@ int outletController<derivedT>::loadConfig( mx::app::appConfigurator & config )
       //Subtract one if the device numbers from 1.
       for(size_t k=0;k<outlets.size(); ++k)
       {
-         ///\todo test this error
          if( (int) outlets[k] - m_firstOne < 0 || (int) outlets[k] - m_firstOne > (int) m_outletStates.size())
          {
             #ifndef OUTLET_CTRL_TEST_NOLOG
@@ -372,7 +371,6 @@ int outletController<derivedT>::loadConfig( mx::app::appConfigurator & config )
          std::vector<size_t> onOrder;
          config.configUnused( onOrder, mx::app::iniFile::makeKey(chSections[n], "onOrder" ) );
          
-         ///\todo test this error
          if(onOrder.size() != m_channels[chSections[n]].m_outlets.size())
          {
             #ifndef OUTLET_CTRL_TEST_NOLOG
