@@ -93,11 +93,12 @@ class pupilCorAlign(XDevice):
         self._state_callbacks = [None, self.handle_fwpupil, self.handle_fwlyot, self.handle_centroid]
         self._state_machine = XStateMachine(self, self._state_names, States, self._state_callbacks)
 
-        #self._reference_state_names = ['idle', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
-        #self._reference_state_callbacks = [None, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
-        #self._reference_state_machine = XStateMachine(self, self._reference_state_names, RefStates, self._reference_state_callbacks, 'reference')
+        self._reference_state_names = ['idle', 'fwpupilRef', 'fwlyotRef', 'centroidRef']
+        self._reference_state_callbacks = [None, self.handle_fwpupil_ref, self.handle_fwlyot_ref, self.handle_centroid_ref]
+        self._reference_state_machine = XStateMachine(self, self._reference_state_names, RefStates, self._reference_state_callbacks, 'reference')
         
         # Should I make these files configurable?
+        # Or should these be auto discoverable?
         self.pupil_reference = hp.read_field(self.config.calibration.path + "reference_pupil_image.fits")
         self.xcorr_pupil = XCorrShift(self.pupil_reference, 1001, 101, filter_size=1)
 
@@ -278,27 +279,37 @@ class pupilCorAlign(XDevice):
         im = self.camera.grab_stack(self.num_stack, check_before_wait=True)
         current_name = self.get_current_state('fwpupil.filterName')
         filename = "reference_{:s}_image.fits".format(current_name.replace('-', '_'))
-        write_field(im, self.config.calibration.path + filename)
+        hp.write_field(im, self.config.calibration.path + filename)
+        self._reference_state_machine.transition_to_idle()
 
     def handle_fwlyot_ref(self):
         '''
         '''
+        print("entering handle fwlyot ref")
         im = self.camera.grab_stack(self.num_stack, check_before_wait=True)
         current_name = self.get_current_state('fwlyot.filterName')
         filename = "reference_{:s}_image.fits".format(current_name.replace('-', '_'))
-        write_field(im, self.config.calibration.path + filename)
+        print(current_name)
+        
+        print("Writing file to {:s}".format(self.config.calibration.path + filename))
+        hp.write_field(im, self.config.calibration.path + filename)
+        
+        print("transition back")
+        self._reference_state_machine.transition_to_idle()
 
     def handle_centroid_ref(self):
         '''
         '''
         actuator_im = self.measure_actuator()
         filename = "actuator_reference_image.fits"
-        write_field(im, self.config.calibration.path + filename)
+        hp.write_field(im, self.config.calibration.path + filename)
+        self._reference_state_machine.transition_to_idle()
 
     def loop(self):
         '''
         '''
         self._state_machine.loop()
+        self._reference_state_machine.loop()
         self.update_properties()
 
     def update_properties(self):
