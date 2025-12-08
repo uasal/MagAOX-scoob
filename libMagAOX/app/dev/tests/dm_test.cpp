@@ -68,6 +68,35 @@ TEST_CASE( "Test dm Configuration", "[dev::dm]" )
         REQUIRE( pdt.calibPath() == "/tmp/dmtest_calibs2/dmtest2" );
     }
 
+    SECTION( "a config file with non-empty [flatDefault, testDefault]" )
+    {
+
+        std::vector<std::string> s, k, v;
+
+        s.insert(s.end(), {"dm", "dm"} );
+        k.insert(k.end(), {"flatDefault", "testDefault"} );
+        v.insert(v.end(), {"default", "default"} );
+
+        mx::app::writeConfigFile( "/tmp/dm_test.conf", s, k, v );
+
+        mx::app::appConfigurator config;
+
+        dm_tests::dmTest pdt( "xx", false );
+
+        int rv;
+        rv = pdt.setupConfig( config );
+        REQUIRE( rv == 0 );
+
+        config.readConfig( "/tmp/dm_test.conf" );
+
+        rv = pdt.loadConfig( config );
+        REQUIRE( rv == 0 );
+
+        REQUIRE( pdt.flatDefault() == "default" );
+        REQUIRE( pdt.testDefault() == "default" );
+
+    }
+
 #ifdef XWCTEST_DOX_REF
     MagAOX::app::dev::dm::setupConfig();
     MagAOX::app::dev::dm::loadConfig();
