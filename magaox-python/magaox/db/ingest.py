@@ -55,38 +55,39 @@ def batch_file_origins(conn: psycopg.Connection, records: list[FileOrigin]):
                 DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLUDED.size_bytes
                 ''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in record_batch])
 
-def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[pathlib.Path]):
+def identify_new_files(conn: psycopg.Connection, this_host: str, paths: Iterable[pathlib.Path]):
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
     if len(paths) == 0:
         return []
-    # Create a temporary table with these paths to join against the db inventory
-    cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
-    query = f'''
-INSERT INTO on_disk_files (path)
-VALUES (%s)
-'''
-    cur.executemany(query, [(x.as_posix(),) for x in paths])
-    # execute_values(cur, query, )
-    log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
+    with conn.transaction():
+        # Create a temporary table with these paths to join against the db inventory
+        cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
+        query = f'''
+    INSERT INTO on_disk_files (path)
+    VALUES (%s)
+    '''
+        cur.executemany(query, [(x.as_posix(),) for x in paths])
+        # execute_values(cur, query, )
+        log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
 
-    # Identify paths without corresponding inventory rows
-    q2 = sql.SQL('''
-WITH
-    already_known_files AS (
-        SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
-    )
-SELECT odf.path as path, akf.origin_path as origin_path
-FROM on_disk_files odf
-LEFT JOIN already_known_files akf ON
-    odf.path = akf.origin_path
-WHERE akf.origin_path IS NULL
-''').format()
-    cur.execute(q2, (this_host,))
-    log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
-    new_files = []
-    for row in cur:
-        new_files.append(row['path'])
-    return new_files
+        # Identify paths without corresponding inventory rows
+        q2 = sql.SQL('''
+    WITH
+        already_known_files AS (
+            SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
+        )
+    SELECT odf.path as path, akf.origin_path as origin_path
+    FROM on_disk_files odf
+    LEFT JOIN already_known_files akf ON
+        odf.path = akf.origin_path
+    WHERE akf.origin_path IS NULL
+    ''').format()
+        cur.execute(q2, (this_host,))
+        log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
+        new_files = []
+        for row in cur:
+            new_files.append(row['path'])
+        return new_files
 
 #add non-ingested-userlogs?
 
@@ -125,14 +126,13 @@ def update_file_inventory(conn: psycopg.Connection, host: str, data_dirs: list[p
     """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
     file_pattern = re.compile('|'.join(ignored_file_patterns))
     dir_pattern = re.compile('|'.join(ignored_directory_patterns))
-    cur = conn.cursor()
     for prefix in data_dirs:
         for fpaths in itertools.batched(filter(lambda x: x.is_file(), prefix.glob("**")), INGEST_IDENTIFY_FILES_BATCH_SIZE):
+            new_files = identify_new_files(conn, host, fpaths)
+            if len(new_files) == 0:
+                log.debug(f"Found zero new files from {fpaths}")
+                continue
             with conn.transaction():
-                new_files = identify_new_files(cur, host, fpaths)
-                if len(new_files) == 0:
-                    log.debug(f"Found zero new files from {fpaths}")
-                    continue
                 log.info(f"Inventorying {len(new_files)} new files")
                 log.debug("\n".join(new_files))
                 origin_records = []
@@ -161,7 +161,7 @@ def update_file_inventory(conn: psycopg.Connection, host: str, data_dirs: list[p
                             continue
                         except OSError as e:
                             log.info(f"Skipping {fn} because of error ({e})")
-                    batch_file_origins(cur, origin_records)
+                    batch_file_origins(conn, origin_records)
 
 def record_file_ingest_time(cur: psycopg.Cursor, rec : FileIngestTime):
     cur.execute("BEGIN")
