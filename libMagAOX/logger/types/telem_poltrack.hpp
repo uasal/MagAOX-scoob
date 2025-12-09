@@ -128,7 +128,7 @@ struct telem_poltrack : public flatbuffer_log
      */
     static logMetaDetail getAccessor( const std::string &member /**< [in] the name of the member */ )
     {
-      a  if( member == "set_angle" )
+        if( member == "set_angle" )
         {
             return logMetaDetail( { "SET ANGLE",
                                     logMeta::valTypes::Float,
