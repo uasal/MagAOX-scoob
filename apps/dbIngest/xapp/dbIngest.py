@@ -192,7 +192,7 @@ class dbIngest(XDevice):
 
         self.startup_ts_sec = time.time()
 
-        log.info("Rescan for files created while we were not running (still requires a backfill to ingest them)")
+        self.log.info("Rescan for files created while we were not running (still requires a backfill to ingest them)")
         self.rescan_files()
 
         self.fs_queue = queue.Queue()
