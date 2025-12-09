@@ -56,37 +56,32 @@ def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[path
     if len(paths) == 0:
         return []
     # Create a temporary table with these paths to join against the db inventory
-    try:
-        cur.execute("BEGIN")
-        cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
-        query = f'''
-    INSERT INTO on_disk_files (path)
-    VALUES (%s)
-    '''
-        cur.executemany(query, [(x.as_posix(),) for x in paths])
-        # execute_values(cur, query, )
-        log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
+    cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
+    query = f'''
+INSERT INTO on_disk_files (path)
+VALUES (%s)
+'''
+    cur.executemany(query, [(x.as_posix(),) for x in paths])
+    # execute_values(cur, query, )
+    log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
 
-        # Identify paths without corresponding inventory rows
-        q2 = sql.SQL('''
-    WITH
-        already_known_files AS (
-            SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
-        )
-    SELECT odf.path as path, akf.origin_path as origin_path
-    FROM on_disk_files odf
-    LEFT JOIN already_known_files akf ON
-        odf.path = akf.origin_path
-    WHERE akf.origin_path IS NULL
-    ''').format()
-        cur.execute(q2, (this_host,))
-        log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
-        new_files = []
-        for row in cur:
-            new_files.append(row['path'])
-    finally:
-        # always discard temporary table
-        cur.execute("ROLLBACK")
+    # Identify paths without corresponding inventory rows
+    q2 = sql.SQL('''
+WITH
+    already_known_files AS (
+        SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
+    )
+SELECT odf.path as path, akf.origin_path as origin_path
+FROM on_disk_files odf
+LEFT JOIN already_known_files akf ON
+    odf.path = akf.origin_path
+WHERE akf.origin_path IS NULL
+''').format()
+    cur.execute(q2, (this_host,))
+    log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
+    new_files = []
+    for row in cur:
+        new_files.append(row['path'])
     return new_files
 
 #add non-ingested-userlogs?
