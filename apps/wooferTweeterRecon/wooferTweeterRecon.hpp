@@ -116,11 +116,11 @@ class wooferTweeterRecon : public MagAOXApp<true>,
 
     uint32_t m_modevalCircBuffLen{ 5000 };
 
-    double m_wooferDt{ 0 };
+    double m_wooferOffset{ 500e-6 };
 
-    double m_tweeterDt{ 0 };
-
-    double m_wfsDt{ 0 };
+    double m_tweeterOffset{ 50e-6 };
+    
+    double m_wfsOffset{ -10e-6 };
 
     ///@}
 
@@ -146,12 +146,17 @@ class wooferTweeterRecon : public MagAOXApp<true>,
 
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
+    float m_invFps{0}; ///< The inverse of FPS
+
+
     float m_opticalGain{ 0.8 };
 
     /// Mutex for locking shared memory access.
     // std::mutex m_shmimMutex;
 
     mx::improc::eigenImage<float> m_outputVal;
+    int m_nvals {5000};
+    int m_nloaded {0};
 
     std::vector<float> m_r0;
     std::vector<float> m_sig;
@@ -303,6 +308,37 @@ inline void wooferTweeterRecon::setupConfig()
                 false,
                 "string",
                 "Device name for getting fps of the loop.  This device should have *.fps.current.  Default is camwfs" );
+
+    config.add( "woofer.offset",
+                "",
+                "woofer.offset",
+                argType::Required,
+                "woofer",
+                "offset",
+                false,
+                "float",
+                "Offset, in seconds, for the woofer command from its write time" );
+
+    config.add( "tweeter.offset",
+                "",
+                "tweeter.offset",
+                argType::Required,
+                "tweeter",
+                "offset",
+                false,
+                "float",
+                "Offset, in seconds, for the tweeter command from its write time" );
+
+    config.add( "wfs.offset",
+                "",
+                "wfs.offset",
+                argType::Required,
+                "wfs",
+                "offset",
+                false,
+                "float",
+                "Offset, in seconds, for the wfs from its acquisition time and 1/fps" );
+            
 }
 
 inline int wooferTweeterRecon::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -323,6 +359,10 @@ inline int wooferTweeterRecon::loadConfigImpl( mx::app::appConfigurator &_config
     // TELEMETER_LOAD_CONFIG( _config );
 
     _config( m_fpsSource, "integrator.fpsSource" );
+
+    _config( m_wooferOffset, "woofer.offset" );
+    _config( m_tweeterOffset, "tweeter.offset" );
+    _config( m_wfsOffset, "wfs.offset" );
 
     return 0;
 }
@@ -375,7 +415,7 @@ int wooferTweeterRecon::appLogic()
     float s2 = mx::math::vectorMean(m_sig);
     float S = exp(-s2*pow(2*3.14159/0.9,2) - 0.28*pow(0.135/r0, 5./3.));
 
-    std::cerr << std::format("r0 = {} +/- {} fwhm = {}\" +/- {}\" at zenith = {} SR = {}\"", r0, vr0, fwhm, vfw, fwhm*cz, S) << '\n';
+    std::cerr << std::format("r0 = {} +/- {} fwhm = {}\" +/- {}\" at zenith = {}\" SR = {}", r0, vr0, fwhm, vfw, fwhm*cz, S) << '\n';
 
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
@@ -435,8 +475,6 @@ int wooferTweeterRecon::allocate( const wooferModesShmimT & )
 
 int wooferTweeterRecon::processImage( void *curr_src, const wooferModesShmimT & )
 {
-    static int n = 0;
-
     size_t next = m_lastWooferVal + 1;
     if( next >= m_wooferVals.size() )
     {
@@ -449,52 +487,10 @@ int wooferTweeterRecon::processImage( void *curr_src, const wooferModesShmimT & 
     }
 
     m_wooferVals[next].t =
-        wooferModesSMT::m_imageStream.md->atime.tv_sec + wooferModesSMT::m_imageStream.md->atime.tv_nsec / 1e9;
+        wooferModesSMT::m_imageStream.md->atime.tv_sec + wooferModesSMT::m_imageStream.md->atime.tv_nsec / 1e9 + m_wooferOffset;
     m_wooferVals[next].reconstructed = false;
 
     m_lastWooferVal = next;
-
-    /*++n;
-
-    if( n > 10 )
-    {
-        size_t wst = m_lastWooferVal;
-        size_t tst = m_lastTweeterVal;
-        size_t fst = m_lastWfsVal;
-        double t   = mx::sys::get_curr_time();
-
-        int m = 0;
-        while( !( m_wooferVals[wst].t == 0 && m_tweeterVals[tst].t == 0 && m_wfsVals[fst].t == 0 ) && m < 10 )
-        {
-            std::cerr << m << ' ' << t - m_wooferVals[wst].t << ' ' << t - m_tweeterVals[tst].t << ' '
-                      << t - m_wfsVals[fst].t << '\n';
-            ++m;
-
-            if( wst == 0 )
-            {
-                wst = m_wooferVals.size();
-            }
-            --wst;
-
-            if( tst == 0 )
-            {
-                tst = m_tweeterVals.size();
-            }
-            --tst;
-
-            if( fst == 0 )
-            {
-                fst = m_wooferVals.size();
-            }
-            --fst;
-        }
-
-        recon();
-
-        m_shutdown = true;
-
-        return 0;
-    }*/
 
     recon();
 
@@ -521,7 +517,7 @@ int wooferTweeterRecon::allocate( const tweeterModesShmimT & )
         val.reconstructed = false;
     }
 
-    m_outputVal.resize( tweeterModesSMT::m_width, 1 );
+    m_outputVal.resize( tweeterModesSMT::m_width, m_nvals );
     m_tweeterModesReady = true;
 
     std::cerr << "tweeter modes ready\n";
@@ -543,7 +539,7 @@ int wooferTweeterRecon::processImage( void *curr_src, const tweeterModesShmimT &
     }
 
     m_tweeterVals[next].t =
-        tweeterModesSMT::m_imageStream.md->atime.tv_sec + tweeterModesSMT::m_imageStream.md->atime.tv_nsec / 1e9;
+        tweeterModesSMT::m_imageStream.md->atime.tv_sec + tweeterModesSMT::m_imageStream.md->atime.tv_nsec / 1e9 + m_tweeterOffset;
     m_tweeterVals[next].reconstructed = false;
 
     m_lastTweeterVal = next;
@@ -600,7 +596,7 @@ int wooferTweeterRecon::processImage( void *curr_src, const wfsModesShmimT & )
     }
 
     m_wfsVals[next].t =
-        wfsModesSMT::m_imageStream.md->writetime.tv_sec + wfsModesSMT::m_imageStream.md->writetime.tv_nsec / 1e9;
+        wfsModesSMT::m_imageStream.md->writetime.tv_sec + wfsModesSMT::m_imageStream.md->writetime.tv_nsec / 1e9 - m_invFps + m_wfsOffset;
     m_wfsVals[next].reconstructed = false;
 
     m_lastWfsVal = next;
@@ -617,13 +613,20 @@ int wooferTweeterRecon::processImage( void *curr_src, const wfsModesShmimT & )
 
 int wooferTweeterRecon::recon()
 {
+    if(m_nloaded != 0)
+    {
+        std::cerr << "we're behind!\n";
+    }
+
     size_t st = m_lastWfsVal;
 
-    int n = 0;
+    size_t wst = m_lastWooferVal;
+
+    size_t tst = m_lastTweeterVal;
+
     while( m_wfsVals[st].reconstructed == false && m_wfsVals[st].t > 0 )
     {
         // Find starting woofer value
-        size_t wst = m_lastWooferVal;
         if( m_wooferVals[wst].t < m_wfsVals[st].t )
         {
             // Starting woofer value is not later than current WFS val
@@ -677,7 +680,6 @@ int wooferTweeterRecon::recon()
         //          << m_wooferVals[wnxt].t - m_wfsVals[st].t << '\n';
 
         // Find starting tweeter value
-        size_t tst = m_lastTweeterVal;
         if( m_tweeterVals[tst].t < m_wfsVals[st].t )
         {
             // Starting tweeter value is not later than current WFS val
@@ -743,10 +745,11 @@ int wooferTweeterRecon::recon()
 
             s2 += wfsval*wfsval;
 
-            m_outputVal(n,0) = 0.04*wval  + tval + wfsval; //wval;// + tval + wfsval;
+            m_outputVal(n,m_nloaded) = 0.04*wval  + tval + wfsval; //wval;// + tval + wfsval;
         }
 
-        float var = m_outputVal.square().sum();
+
+        float var = m_outputVal.col(m_nloaded).square().sum();
         
         float r0 = pow(1.0299*pow(6.5, 5./3.) / ( 4*var * pow(2*3.14159/0.5,2) ), 3./5.);
 
@@ -763,8 +766,18 @@ int wooferTweeterRecon::recon()
 
         m_wfsVals[st].reconstructed = true;
 
+        ++m_nloaded;
+
+        if(m_nloaded >= m_outputVal.cols())
+        {
+            std::cerr << "we're behind more\n";
+            break;
+        }
+
         decst;
     }
+
+    m_nloaded = 0; //resetting until fg implemented 
 
     return 0;
 }
@@ -789,6 +802,15 @@ INDI_SETCALLBACK_DEFN( wooferTweeterRecon, m_indiP_fpsSource )( const pcf::IndiP
     if( fps != m_fps )
     {
         m_fps = fps;
+        if(m_fps <= 0)
+        {
+            m_invFps = 0;
+        }
+        else 
+        {
+            m_invFps = 1.0/m_fps;
+        }
+
         updateIfChanged( m_indiP_fps, "current", m_fps );
     }
 
