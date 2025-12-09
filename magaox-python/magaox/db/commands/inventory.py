@@ -20,6 +20,6 @@ class Inventory(BaseDbCommand):
         for db_name in self.databases:
             conn = self.databases[db_name].connect()
             log.info(f"Updating file inventory for database {db_name}")
-            with conn.transaction():
+            with conn:
                 cur = conn.cursor()
                 ingest.update_file_inventory(cur, self.hostname, self.data_dirs, self.ignore_patterns.files, self.ignore_patterns.directories)

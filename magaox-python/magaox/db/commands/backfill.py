@@ -94,11 +94,18 @@ class Backfill(BaseDbCommand):
         else:
             raise RuntimeError(f"Passed a path {path} that we don't know how to read")
         # pass to batch ingest
-        log.debug(f"Ingesting {len(records)} record{'s' if len(records) != 1 else ''} into the database")
+        n_records = len(records)
+        if n_records == 0:
+            return path
+        elif n_records == 1:
+            log.info(f"Ingesting one record into the database")
+        else:
+            log.info(f"Ingesting {len(records)} record{'s' if len(records) != 1 else ''} into the database")
         for conn_name in self.databases:
             conn = self.databases[conn_name].connect()
+            log.info(f"Connected to {conn_name}")
             try:
-                with conn.transaction():
+                with conn:
                     cur = conn.cursor()
                     ingest.batch_telem(cur, records)
                     ingest.record_file_ingest_time(cur, FileIngestTime(
