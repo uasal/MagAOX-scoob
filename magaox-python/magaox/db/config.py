@@ -88,7 +88,7 @@ class BaseConfig:
     '''
     databases : dict[str,DbConfig] = xconf.field(default_factory=lambda: {'local': DbConfig()}, help="PostgreSQL database connections")
     hostname : str = xconf.field(default=socket.gethostname(), help="Hostname to identify this computer when running inventory or watch_files")
-    data_dirs : list[str] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
+    data_dirs : list[pathlib.Path] = xconf.field(default_factory=lambda: DEFAULT_DATA_DIRS.copy(), help="Inventoried/archived data directories")
     ignore_patterns : IgnorePatternsConfig = xconf.field(default_factory=IgnorePatternsConfig, help="Patterns for files and directories to ignore in the inventory")
 
 @xconf.config

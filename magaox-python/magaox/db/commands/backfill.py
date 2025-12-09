@@ -20,7 +20,7 @@ from tqdm import tqdm
 import xconf
 from ._base import BaseDbCommand
 
-from magaox.db.config import DEFAULT_DATA_DIRS
+from magaox.constants import DEFAULT_PREFIX, DEFAULT_DATA_DIRS
 from magaox.db import ingest
 from magaox.db.records import Telem, FileIngestTime
 from magaox.utils import parse_iso_datetime_as_utc, utcnow, xfilename_to_utc_timestamp
@@ -35,6 +35,8 @@ class Backfill(BaseDbCommand):
     """Process ``.bintel`` files found in data folders that don't already have ingest records
     and populate the ``telem`` table
     """
+
+    data_dirs : list[str] = xconf.field(default_factory=lambda: [DEFAULT_PREFIX / x for x in DEFAULT_DATA_DIRS])
 
     logdump_exe: str = xconf.field(
         default="/opt/MagAOX/bin/logdump",
