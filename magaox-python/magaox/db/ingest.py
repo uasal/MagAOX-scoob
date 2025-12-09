@@ -121,14 +121,15 @@ WHERE
         fns.append(row['origin_path'])
     return fns
 
-def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path],
+def update_file_inventory(conn: psycopg.Connection, host: str, data_dirs: list[pathlib.Path],
                           ignored_file_patterns: list[str], ignored_directory_patterns: list[str]):
     """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
     file_pattern = re.compile('|'.join(ignored_file_patterns))
     dir_pattern = re.compile('|'.join(ignored_directory_patterns))
+    cur = conn.cursor()
     for prefix in data_dirs:
         for fpaths in itertools.batched(filter(lambda x: x.is_file(), prefix.glob("**")), INGEST_IDENTIFY_FILES_BATCH_SIZE):
-            try:
+            with conn.transaction():
                 new_files = identify_new_files(cur, host, fpaths)
                 if len(new_files) == 0:
                     log.debug(f"Found zero new files from {fpaths}")
@@ -161,11 +162,7 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
                             continue
                         except OSError as e:
                             log.info(f"Skipping {fn} because of error ({e})")
-                    cur.execute("BEGIN")
                     batch_file_origins(cur, origin_records)
-                    cur.execute("COMMIT")
-            except psycopg.OperationalError:
-                cur.execute("ROLLBACK")
 
 def record_file_ingest_time(cur: psycopg.Cursor, rec : FileIngestTime):
     cur.execute("BEGIN")

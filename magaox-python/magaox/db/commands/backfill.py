@@ -124,15 +124,13 @@ class Backfill(BaseDbCommand):
     def main(self):
         for conn_name in self.databases:
             conn = self.databases[conn_name].connect()
-            with conn.transaction():
-                cur = conn.cursor()
-                ingest.update_file_inventory(
-                    cur,
-                    self.hostname,
-                    self.data_dirs,
-                    self.ignore_patterns.files,
-                    self.ignore_patterns.directories
-                )
+            ingest.update_file_inventory(
+                conn,
+                self.hostname,
+                self.data_dirs,
+                self.ignore_patterns.files,
+                self.ignore_patterns.directories
+            )
             with conn.transaction():
                 paths = ingest.identify_non_ingested_telem(
                     conn.cursor(), self.hostname
