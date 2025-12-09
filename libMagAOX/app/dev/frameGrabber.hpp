@@ -270,6 +270,8 @@ class frameGrabber
 
     void *loadImageIntoStreamCopy( void *dest, void *src, size_t width, size_t height, size_t szof );
 
+    int openShmim();
+
     /** \name INDI
      *
      *@{
@@ -705,6 +707,7 @@ int frameGrabber<derivedT>::onPowerOff()
 
     m_width  = 0;
     m_height = 0;
+    m_circBuffLength = 1;
 
     updateINDI();
 
@@ -843,10 +846,8 @@ void frameGrabber<derivedT>::fgThreadExec()
                 imsize[2] = 1;
                 cbuff     = false;
             }
-
-            
         }
-        
+
         if( m_width != imsize[0] || m_height != imsize[1] || m_circBuffLength != imsize[2] || m_imageStream == nullptr )
         {
             if( m_imageStream != nullptr && m_ownShmim )
@@ -856,9 +857,10 @@ void frameGrabber<derivedT>::fgThreadExec()
             }
             else if( m_imageStream != nullptr && !m_ownShmim )
             {
-                if(!logged_wrong_size)
+                if( !logged_wrong_size )
                 {
-                    derivedT::template log<text_log>(std::format("image stream {} is not expected size", m_shmimName), logPrio::LOG_WARNING);
+                    derivedT::template log<text_log>(
+                        std::format( "image stream {} is not expected size", m_shmimName ), logPrio::LOG_WARNING );
                     logged_wrong_size = true;
                 }
 
@@ -891,7 +893,7 @@ void frameGrabber<derivedT>::fgThreadExec()
 
             m_imageStream->md->cnt1 = m_circBuffLength - 1;
 
-            cbuff = true; //because we created it!
+            cbuff = true; // because we created it!
         }
 
         // This completes the reconfiguration.
@@ -963,7 +965,7 @@ void frameGrabber<derivedT>::fgThreadExec()
             {
                 *next_wtimearr = m_imageStream->md->writetime;
                 *next_atimearr = m_currImageTimestamp;
-                *next_cntarr = m_imageStream->md->cnt0;
+                *next_cntarr   = m_imageStream->md->cnt0;
             }
 
             // And post
@@ -1008,8 +1010,7 @@ void frameGrabber<derivedT>::fgThreadExec()
                 std::cerr << "configuring due to mismatch m_cbFPS\n";
                 if( configCircBuffs() < 0 )
                 {
-                    derivedT::template log<software_error>(
-                        { "error configuring latency circ. buffs" } );
+                    derivedT::template log<software_error>( { "error configuring latency circ. buffs" } );
                 }
             }
         }
@@ -1063,6 +1064,114 @@ void *frameGrabber<derivedT>::loadImageIntoStreamCopy( void *dest, void *src, si
 }
 
 template <class derivedT>
+int frameGrabber<derivedT>::openShmim()
+{
+    static bool logged = false;
+
+    if( m_imageStream != nullptr )
+    {
+        ImageStreamIO_closeIm( m_imageStream );
+        free( m_imageStream );
+        m_imageStream = nullptr;
+    }
+
+    // b/c ImageStreamIO prints every single time, and latest version don't support stopping it yet, and that
+    // isn't thread-safe-able anyway we do our own checks.  This is the same code in ImageStreamIO_openIm...
+    int  SM_fd;
+    char SM_fname[1024];
+    ImageStreamIO_filename( SM_fname, sizeof( 1024 ), m_shmimName.c_str() );
+    SM_fd = open( SM_fname, O_RDWR );
+
+    if( SM_fd == -1 )
+    {
+        if( !logged )
+        {
+            derivedT::template log<text_log>( "ImageStream " + m_shmimName + " not found (yet).  Retrying . . .",
+                                              logPrio::LOG_NOTICE );
+            logged = true;
+        }
+
+        return 1;
+    }
+
+    // Found and opened,  close it and then use ImageStreamIO
+    logged = false;
+    close( SM_fd );
+
+    m_imageStream = reinterpret_cast<IMAGE *>( malloc( sizeof( IMAGE ) ) );
+
+    if( ImageStreamIO_openIm( m_imageStream, m_shmimName.c_str() ) == 0 )
+    {
+        if( m_imageStream->md[0].sem < SEMAPHORE_MAXVAL )
+        {
+            ImageStreamIO_closeIm( m_imageStream );
+            free( m_imageStream );
+            m_imageStream = nullptr;
+
+            return 1; // We just need to wait for the server process to finish startup.
+        }
+        else
+        {
+            char SM_fname[1024];
+            ImageStreamIO_filename( SM_fname, sizeof( SM_fname ), m_shmimName.c_str() );
+
+            struct stat buffer;
+
+            int rv = stat( SM_fname, &buffer );
+
+            if( rv != 0 )
+            {
+                derivedT::template log<software_critical>( { errno,
+                                                             "Could not get inode for " + m_shmimName +
+                                                                 ". Source process will need to be restarted." } );
+
+                ImageStreamIO_closeIm( m_imageStream );
+
+                free( m_imageStream );
+
+                m_imageStream = nullptr;
+
+                derived().m_shutdown = true;
+
+                return -1;
+            }
+
+            m_inode = buffer.st_ino;
+
+            m_width = m_imageStream->md->size[0];
+
+            if( m_imageStream->md->naxis == 2  )
+            {
+                m_height = m_imageStream->md->size[1];
+                m_circBuffLength  = 1;
+            }
+            else if( m_imageStream->md->naxis == 3 )
+            {
+                m_height = m_imageStream->md->size[1];
+                m_circBuffLength  = m_imageStream->md->size[2];
+            }
+            else
+            {
+                m_height = 1;
+                m_circBuffLength  = 1;
+            }
+
+            m_dataType = m_imageStream->md->datatype;
+            m_typeSize = ImageStreamIO_typesize( m_dataType );
+
+            return 0;
+        }
+    }
+    else
+    {
+        free( m_imageStream );
+        m_imageStream = nullptr;
+
+        return 1; // be patient
+    }
+}
+
+template <class derivedT>
 int frameGrabber<derivedT>::updateINDI()
 {
     if( !derived().m_indiDriver )
@@ -1071,6 +1180,7 @@ int frameGrabber<derivedT>::updateINDI()
     indi::updateIfChanged( m_indiP_shmimName, "name", m_shmimName, derived().m_indiDriver );
     indi::updateIfChanged( m_indiP_frameSize, "width", m_width, derived().m_indiDriver );
     indi::updateIfChanged( m_indiP_frameSize, "height", m_height, derived().m_indiDriver );
+    indi::updateIfChanged( m_indiP_frameSize, "depth", m_circBuffLength, derived().m_indiDriver );
 
     double fpsa = 0;
     double fpsw = 0;
@@ -1145,35 +1255,35 @@ int frameGrabber<derivedT>::recordFGTimings( bool force )
 #define FRAMEGRABBER_LOAD_CONFIG( cfig )                                                                               \
     if( frameGrabberT::loadConfig( cfig ) < 0 )                                                                        \
     {                                                                                                                  \
-        return log<software_error, -1>( { "Error from frameGrabberT::loadConfig" } );              \
+        return log<software_error, -1>( { "Error from frameGrabberT::loadConfig" } );                                  \
     }
 
 /// Call frameGrabberT::appStartup with error checking for frameGrabber
 #define FRAMEGRABBER_APP_STARTUP                                                                                       \
     if( frameGrabberT::appStartup() < 0 )                                                                              \
     {                                                                                                                  \
-        return log<software_error, -1>( { "Error from frameGrabberT::appStartup" } );              \
+        return log<software_error, -1>( { "Error from frameGrabberT::appStartup" } );                                  \
     }
 
 /// Call frameGrabberT::appLogic with error checking for frameGrabber
 #define FRAMEGRABBER_APP_LOGIC                                                                                         \
     if( frameGrabberT::appLogic() < 0 )                                                                                \
     {                                                                                                                  \
-        return log<software_error, -1>( { "Error from frameGrabberT::appLogic" } );                \
+        return log<software_error, -1>( { "Error from frameGrabberT::appLogic" } );                                    \
     }
 
 /// Call frameGrabberT::updateINDI with error checking for frameGrabber
 #define FRAMEGRABBER_UPDATE_INDI                                                                                       \
     if( frameGrabberT::updateINDI() < 0 )                                                                              \
     {                                                                                                                  \
-        return log<software_error, -1>( { "Error from frameGrabberT::updateINDI" } );              \
+        return log<software_error, -1>( { "Error from frameGrabberT::updateINDI" } );                                  \
     }
 
 /// Call frameGrabberT::appShutdown with error checking for frameGrabber
 #define FRAMEGRABBER_APP_SHUTDOWN                                                                                      \
     if( frameGrabberT::appShutdown() < 0 )                                                                             \
     {                                                                                                                  \
-        return log<software_error, -1>( { "Error from frameGrabberT::appShutdown" } );             \
+        return log<software_error, -1>( { "Error from frameGrabberT::appShutdown" } );                                 \
     }
 
 } // namespace dev
