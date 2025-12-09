@@ -609,8 +609,7 @@ inline void nnReconstructor::loadConfig()
 
 inline int nnReconstructor::appStartup()
 {
-    SHMIMMONITOR_APP_STARTUP;
-  
+    
     REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsSource, std::string( "fps" ) );
 
     createROIndiNumber( m_indiP_fps, "fps" );
@@ -634,8 +633,17 @@ inline int nnReconstructor::appStartup()
     create_engine_context();
     prepare_engine_memory();
 
-    //Do this after everything is configure so we can check sizes
+    std::cerr << __LINE__ << '\n';
+
+    //Do this after everything is configured so we can check sizes propertly
     FRAMEGRABBER_APP_STARTUP;
+
+    std::cerr << __LINE__ << '\n';
+
+    SHMIMMONITOR_APP_STARTUP;
+  
+
+    std::cerr << __LINE__ << '\n';
 
     state( stateCodes::OPERATING );
     return 0;
@@ -728,7 +736,9 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
         memset( modeval_half, 0, sizeof( half) * outputSize);
     }
 
-    std::cout << "Close shmims" << std::endl;
+    std::cerr << __LINE__ << '\n';
+
+    //std::cout << "Close shmims" << std::endl;
     // Allocate the DM shmim interface
     /*if(m_modevalOpened){
         ImageStreamIO_closeIm(&m_modevalStream);
@@ -857,12 +867,15 @@ int nnReconstructor::configureAcquisition()
 {
     static bool logged = false;
 
+    std::cerr << __LINE__ << '\n';
     int rv = openShmim();
+    std::cerr << __LINE__ << '\n';
     if(rv != 0)
     {
         return rv;
     }
 
+    std::cerr << __LINE__ << '\n';
     if( frameGrabberT::m_width != outputSize || frameGrabberT::m_height != 1 ||
         frameGrabberT::m_dataType != _DATATYPE_FLOAT )
     {
@@ -879,11 +892,15 @@ int nnReconstructor::configureAcquisition()
         return 1;
     }
 
+    std::cerr << __LINE__ << '\n';
+
     logged = false;
     /*m_modevalWidth = frameGrabberT::m_width;
     m_modevalHeight = frameGrabberT::m_height;
     m_modevalDataType = frameGrabberT::m_dataType;
     m_modevalTypeSize = frameGrabberT::m_typeSize;*/
+
+    std::cerr << __LINE__ << '\n';
 
     return 0;
 }
@@ -895,6 +912,8 @@ float nnReconstructor::fps()
  
 int nnReconstructor::startAcquisition()
 {
+    std::cerr << __LINE__ << '\n';
+    
     return 0;
 }
  
