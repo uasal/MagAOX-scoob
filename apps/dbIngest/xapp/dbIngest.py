@@ -232,20 +232,22 @@ class dbIngest(XDevice):
             self.log.debug(line)
 
     def _ensure_connected(self):
-        if len(self._connections_to_attempt):
-            connections_to_reattempt = set()
-            for configkey in self._connections_to_attempt:
-                try:
-                    self._connections[configkey].close()
-                except Exception:
-                    pass
-                try:
-                    self._connections[configkey] = self.config.databases[configkey].connect()
-                    self.log.info(f"Connected to {configkey} db")
-                except Exception:
-                    self.log.exception(f"Failed to connect to {configkey} ({self.config.databases[configkey]})")
-                    connections_to_reattempt.add(configkey)
-            self._connections_to_attempt = connections_to_reattempt
+        for configkey in self.config.databases.keys():
+            if configkey in self._connections_to_attempt or self._connections[configkey].closed:
+                connections_to_reattempt = set()
+                for configkey in self._connections_to_attempt:
+                    try:
+                        self._connections[configkey].close()
+                    except Exception:
+                        pass
+                    try:
+                        self._connections[configkey] = self.config.databases[configkey].connect()
+                        self.log.info(f"Connected to {configkey} db")
+                    except Exception:
+                        self.log.exception(f"Failed to connect to {configkey} ({self.config.databases[configkey]})")
+                        connections_to_reattempt.add(configkey)
+                self._connections_to_attempt = connections_to_reattempt
+
     def loop(self):
         self._ensure_connected()
         telems = []
