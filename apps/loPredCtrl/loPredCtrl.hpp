@@ -69,6 +69,7 @@ using namespace mx::improc;
 	bool m_outputOpened {false};
 	bool m_outputRestart {false};
 
+
     // The incoming stream name
     uint32_t m_modevalWidth {0}; ///< The width of the shmim
     uint32_t m_modevalHeight {0}; ///< The height of the shmim
@@ -107,6 +108,7 @@ using namespace mx::improc;
 
     bool switch_exploration {false};
     bool use_set_01 {true};
+    bool do_reset_model {false};
 
     //
     std::default_random_engine generator;
@@ -326,7 +328,8 @@ using namespace mx::improc;
 
     generator = std::default_random_engine();
     distribution = std::normal_distribution<DDSPC::realT>(0.0, 1.0);
-
+    
+    /*
     // Allocate the DM
 	if(m_outputOpened){
 		ImageStreamIO_closeIm(&m_outputStream);
@@ -342,7 +345,7 @@ using namespace mx::improc;
 			m_outputOpened = true;
 		}
 	}
-		
+	
 	if(!m_outputOpened){
 		log<text_log>( m_outputName + " not opened.", logPrio::LOG_NOTICE); 
 		return -1;
@@ -355,7 +358,7 @@ using namespace mx::improc;
 		
 		log<text_log>( "Opened " + m_outputName + " " + std::to_string(m_outputWidth) + " x " + std::to_string(m_outputHeight) + " with data type: " + std::to_string(m_outputDataType), logPrio::LOG_NOTICE); 
 	}
-
+    */
 
     controller = new DDSPC::PredictiveController(m_num_modes, m_history, m_future, m_gainCtrl, m_gammaCtrl, m_regularizationCtrl, m_covarianceCtrl);
 
@@ -371,6 +374,12 @@ using namespace mx::improc;
     DDSPC::Matrix exp_noise;
     exp_noise.resize(m_num_modes, 1);
     exp_noise.setZero();
+
+    if(do_reset_model){
+        controller->reset();
+        do_reset_model = false;
+    }
+
 
     if(switch_exploration){
         use_set_01 = !use_set_01;
@@ -420,6 +429,7 @@ using namespace mx::improc;
             }
         }
     }
+    
 
     for(int i=0; i < m_num_modes; i++){
         new_measurement(i, 0) = m_modeval(i,0);
@@ -437,14 +447,14 @@ using namespace mx::improc;
         }   
     }
 
-    send_to_shmim();
-
+    // send_to_shmim();
+    
     if(is_learning){
         controller->update_system();
         controller->update_controller();
     }
 
-    if(frame_counter % 2000 == 0){
+    if(frame_counter % 20 == 0){
         std::cout << "HOWDY" << std::endl;
     }
  
@@ -455,6 +465,7 @@ using namespace mx::improc;
  INDI_NEWCALLBACK_DEFN( loPredCtrl, m_indiP_exploration )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_exploration, ipRecv );
+    // Called in indi like: num_explore, std, regularization, num_explore, std, regularization, .... 
 
     std::string target;
 
@@ -519,7 +530,6 @@ INDI_NEWCALLBACK_DEFN(loPredCtrl, m_indiP_learningToggle )(const pcf::IndiProper
 		is_learning = true;
 		log<text_log>("started learning", logPrio::LOG_NOTICE);
 		updateSwitchIfChanged(m_indiP_learningToggle, "toggle", pcf::IndiElement::On, INDI_BUSY);
-
       }
       return 0;
    }
@@ -530,8 +540,8 @@ INDI_NEWCALLBACK_DEFN(loPredCtrl, m_indiP_learningToggle )(const pcf::IndiProper
       if(is_learning) //is actively learning so change it
       {
         is_learning = false;
-         log<text_log>("stopped learning", logPrio::LOG_NOTICE);
-         updateSwitchIfChanged(m_indiP_learningToggle, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+        log<text_log>("stopped learning", logPrio::LOG_NOTICE);
+        updateSwitchIfChanged(m_indiP_learningToggle, "toggle", pcf::IndiElement::Off, INDI_IDLE);
       }
       return 0;
    }
@@ -566,8 +576,8 @@ INDI_NEWCALLBACK_DEFN(loPredCtrl, m_indiP_predictingToggle )(const pcf::IndiProp
       if(is_predictive_control) //is actively learning so change it
       {
         is_predictive_control = false;
-         log<text_log>("stopped predicting", logPrio::LOG_NOTICE);
-         updateSwitchIfChanged(m_indiP_predictingToggle, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+        log<text_log>("stopped predicting", logPrio::LOG_NOTICE);
+        updateSwitchIfChanged(m_indiP_predictingToggle, "toggle", pcf::IndiElement::Off, INDI_IDLE);
       }
       return 0;
    }
@@ -589,7 +599,10 @@ INDI_NEWCALLBACK_DEFN(loPredCtrl, m_indiP_resetToggle )(const pcf::IndiProperty 
 	if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
 	{   
 		std::lock_guard<std::mutex> guard(m_indiMutex);
-		controller->reset();
+		
+        //controller->reset();
+        do_reset_model = true;
+        log<text_log>("request reset.", logPrio::LOG_NOTICE);
 		updateSwitchIfChanged(m_indiP_resetToggle, "request", pcf::IndiElement::Off, INDI_IDLE);
 	}
    
