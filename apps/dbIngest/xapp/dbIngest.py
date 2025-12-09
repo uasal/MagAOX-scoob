@@ -229,11 +229,6 @@ class dbIngest(XDevice):
                 self._connections_to_attempt.add(conn)
         self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
-    def ingest_line(self, line):
-        # avoid infinite loop of modifying log file and getting notified of the modification
-        if self.log_file_name.encode('utf8') not in line:
-            self.log.debug(line)
-
     def loop(self):
         connections_to_reattempt = set()
         if len(self._connections_to_attempt):
