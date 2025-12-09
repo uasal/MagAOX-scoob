@@ -60,7 +60,7 @@ def identify_new_files(conn: psycopg.Connection, this_host: str, paths: Iterable
     if len(paths) == 0:
         return []
     cur = conn.cursor()
-    with conn.transaction():
+    with conn.transaction(force_rollback=True):
         # Create a temporary table with these paths to join against the db inventory
         cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
         query = f'''
@@ -88,7 +88,7 @@ def identify_new_files(conn: psycopg.Connection, this_host: str, paths: Iterable
         new_files = []
         for row in cur:
             new_files.append(row['path'])
-        return new_files
+    return new_files
 
 #add non-ingested-userlogs?
 
