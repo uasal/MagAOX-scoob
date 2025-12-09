@@ -107,7 +107,7 @@ class Backfill(BaseDbCommand):
             conn = self.databases[conn_name].connect()
             log.info(f"Connected to {conn_name}")
             try:
-                with conn:
+                with conn.transaction():
                     cur = conn.cursor()
                     ingest.batch_telem(cur, records)
                     ingest.record_file_ingest_time(cur, FileIngestTime(
@@ -124,7 +124,7 @@ class Backfill(BaseDbCommand):
     def main(self):
         for conn_name in self.databases:
             conn = self.databases[conn_name].connect()
-            with conn:
+            with conn.transaction():
                 cur = conn.cursor()
                 ingest.update_file_inventory(
                     cur,
@@ -133,7 +133,7 @@ class Backfill(BaseDbCommand):
                     self.ignore_patterns.files,
                     self.ignore_patterns.directories
                 )
-            with conn:
+            with conn.transaction():
                 paths = ingest.identify_non_ingested_telem(
                     conn.cursor(), self.hostname
                 )

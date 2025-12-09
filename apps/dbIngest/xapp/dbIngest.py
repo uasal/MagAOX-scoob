@@ -278,7 +278,7 @@ class dbIngest(XDevice):
         for connkey in self._connections:
             conn = self._connections[connkey]
             try:
-                with conn:
+                with conn.transaction():
                     self.log.debug(f"Batching ingest for {connkey}")
                     cur = conn.cursor()
                     ingest.batch_telem(cur, telems)
