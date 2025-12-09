@@ -192,7 +192,7 @@ class dbIngest(XDevice):
 
         self.startup_ts_sec = time.time()
 
-        # rescan for inventory
+        log.info("Rescan for files created while we were not running (still requires a backfill to ingest them)")
         self.rescan_files()
 
         self.fs_queue = queue.Queue()
@@ -207,17 +207,17 @@ class dbIngest(XDevice):
             self.log.info(f"Watching {dirpath} for changes")
         self.fs_observer.start()
 
-
     def rescan_files(self):
+        self._ensure_connected()
         search_paths = [self.config.common_path_prefix / name for name in self.config.data_dirs]
-        for conn in self.config.databases:
+        for conn_name in self.config.databases:
             try:
-                with self.config.databases[conn].cursor() as cur:
+                with self._connections[conn_name].cursor() as cur:
                     # n.b. the state of the file inventory and which files
                     # are 'new' can be different depending on which
                     # database we're talking about, so we rescan once
                     # per connection
-                    self.log.debug(f"Scanning for new files for database {conn}")
+                    self.log.debug(f"Scanning for new files for database {conn_name}")
                     ingest.update_file_inventory(
                         cur,
                         self.config.hostname,
@@ -225,8 +225,8 @@ class dbIngest(XDevice):
                         self.config.ignore_patterns.files, self.config.ignore_patterns.directories
                     )
             except Exception:
-                self.log.exception(f"Failed to rescan/inventory files for database {conn}, attempting to reconnect")
-                self._connections_to_attempt.add(conn)
+                self.log.exception(f"Failed to rescan/inventory files for database {conn_name}, attempting to reconnect")
+                self._connections_to_attempt.add(conn_name)
         self.log.info(f"Completed startup rescan of file inventory for {self.config.hostname} from {search_paths}")
 
     def ingest_line(self, line):
@@ -234,9 +234,9 @@ class dbIngest(XDevice):
         if self.log_file_name.encode('utf8') not in line:
             self.log.debug(line)
 
-    def loop(self):
-        connections_to_reattempt = set()
+    def _ensure_connected(self):
         if len(self._connections_to_attempt):
+            connections_to_reattempt = set()
             for configkey in self._connections_to_attempt:
                 try:
                     self._connections[configkey].close()
@@ -244,11 +244,13 @@ class dbIngest(XDevice):
                     pass
                 try:
                     self._connections[configkey] = self.config.databases[configkey].connect()
-                    connections_to_reattempt.add(configkey)
+                    self.log.info(f"Connected to {configkey} db")
                 except Exception:
                     self.log.exception(f"Failed to connect to {configkey} ({self.config.databases[configkey]})")
+                    connections_to_reattempt.add(configkey)
             self._connections_to_attempt = connections_to_reattempt
-
+    def loop(self):
+        self._ensure_connected()
         telems = []
         try:
             while rec := self.telem_queue.get(timeout=0.1):
@@ -275,17 +277,16 @@ class dbIngest(XDevice):
             pass
 
         for connkey in self._connections:
+            conn = self._connections[connkey]
             try:
                 self.log.debug(f"Batching ingest for {connkey}")
-                conn = self._connections[connkey]
-                with conn.transaction():
-                    cur = conn.cursor()
-                    ingest.batch_telem(cur, telems)
-                    ingest.batch_file_origins(cur, fs_events)
-                    ingest.batch_user_log(cur, user_logs)
+                cur = conn.cursor()
+                ingest.batch_telem(cur, telems)
+                ingest.batch_file_origins(cur, fs_events)
+                ingest.batch_user_log(cur, user_logs)
             except Exception as e:
-                self.log.exception(f"Caught exception in batch ingest, reconnecting {conn} on next loop()")
-                self._connections_to_attempt.add(conn)
+                self.log.exception(f"Caught exception {e} in batch ingest, reconnecting {connkey} on next loop()")
+                self._connections_to_attempt.add(connkey)
 
         this_ts_sec = time.time()
         self.last_update_ts_sec = this_ts_sec

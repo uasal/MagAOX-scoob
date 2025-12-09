@@ -23,7 +23,6 @@ INGEST_IDENTIFY_FILES_BATCH_SIZE = 500
 
 def batch_user_log(cur: psycopg.Cursor, records: list[UserLog]):
     """This will be where the logs will insert into user_logs table"""
-    cur.execute('BEGIN')
     try:
         cur.executemany('''
         INSERT INTO user_log (ts, device, ec, msg)
@@ -32,30 +31,25 @@ def batch_user_log(cur: psycopg.Cursor, records: list[UserLog]):
         ''', [(rec.ts, rec.device, rec.ec, orjson.dumps(rec.msg).decode('utf8')) for rec in records])
     except Exception as e:
         log.error(f"Error inserting user logs into the database: {e}")
-        cur.execute('ROLLBACK')
+        raise
     else:
-        cur.execute('COMMIT')
         log.debug(f"Inserted {len(records)} user_logs into database")
 
 
 def batch_telem(cur: psycopg.Cursor, records: list[Telem]):
-    cur.execute("BEGIN")
     cur.executemany(f'''
 INSERT INTO telem (ts, device, msg, ec)
 VALUES (%s, %s, %s::JSONB, %s)
 ON CONFLICT (device, ts) DO NOTHING;
 ''', [(rec.ts, rec.device, Jsonb(rec.msg, dumps=orjson.dumps), rec.ec) for rec in records])
-    cur.execute("COMMIT")
 
 def batch_file_origins(cur: psycopg.Cursor, records: list[FileOrigin]):
-    cur.execute("BEGIN")
     cur.executemany(f'''
 INSERT INTO file_origins (origin_host, origin_path, creation_time, modification_time, size_bytes)
 VALUES (%s, %s, %s, %s, %s)
 ON CONFLICT (origin_host, origin_path)
 DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLUDED.size_bytes
 ''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in records])
-    cur.execute("COMMIT")
 
 def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[pathlib.Path]):
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
@@ -91,7 +85,8 @@ def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[path
         for row in cur:
             new_files.append(row['path'])
     finally:
-        cur.execute("ROLLBACK")  # ensure temp table is deleted
+        # we're not inserting anything permanent and need to ensure temp table is deleted
+        cur.execute("ROLLBACK")
     return new_files
 
 #add non-ingested-userlogs?
@@ -135,6 +130,9 @@ def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathli
     for prefix in data_dirs:
         for fpaths in itertools.batched(filter(lambda x: x.is_file(), prefix.glob("**")), INGEST_IDENTIFY_FILES_BATCH_SIZE):
             new_files = identify_new_files(cur, host, fpaths)
+            if len(new_files) == 0:
+                log.debug(f"Found zero new files from {fpaths}")
+                continue
             log.info(f"Inventorying {len(new_files)} new files")
             log.debug("\n".join(new_files))
             origin_records = []

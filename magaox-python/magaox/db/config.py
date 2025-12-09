@@ -22,6 +22,8 @@ __all__ = [
 
 SETUP_USERS_SQL_PATH = pathlib.Path(__file__).parent / 'sql' / 'setup_users.sql'
 
+TCP_USER_TIMEOUT_MS = 5_000
+
 @xconf.config
 class DbConfig:
     host : str = xconf.field(default='localhost', help='Hostname on which PostgreSQL is listening for connections')
@@ -29,6 +31,9 @@ class DbConfig:
     port : int = xconf.field(default=5432, help='TCP port to connect to PostgreSQL on')
     database : str = xconf.field(default='xtelem', help='Name of PostgreSQL database')
     password_file : str = xconf.field(default='/opt/MagAOX/secrets/xtelemdb_password', help="File containing the password for the given user (newlines are stripped). If $XTELEMDB_PASSWORD is set in the environment, it will take precedence.")
+    statement_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced statement timeout")
+    lock_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced lock acquisition timeout")
+    idle_in_transaction_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced idle (abandoned) transaction timeout")
 
     def connect(self) -> psycopg.Connection:
         password = os.environ.get('XTELEMDB_PASSWORD', None)
@@ -45,6 +50,7 @@ class DbConfig:
                 user=self.user,
                 password=password,
                 row_factory=psycopg.rows.dict_row,
+                tcp_user_timeout=TCP_USER_TIMEOUT_MS,
             )
         except Exception as e:
             log.exception("Unable to connect to database.")
@@ -60,10 +66,16 @@ Also, ensure:
 See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
 """)
             raise
+        with conn.cursor() as cur:
+            cur.execute(f"SET statement_timeout = {int(1000 * self.statement_timeout_sec)}")
+            cur.execute(f"SET lock_timeout = {int(1000 * self.lock_timeout_sec)}")
+            cur.execute(f"SET idle_in_transaction_session_timeout = {int(1000 * self.idle_in_transaction_timeout_sec)}")
         return conn
 
     def cursor(self) -> psycopg.Cursor:
         return self.connect().cursor()
+
+
 
 @xconf.config
 class IgnorePatternsConfig:
