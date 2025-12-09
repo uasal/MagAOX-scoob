@@ -192,9 +192,6 @@ class dbIngest(XDevice):
 
         self.startup_ts_sec = time.time()
 
-        self.log.info("Rescan for files created while we were not running (still requires a backfill to ingest them)")
-        self.rescan_files()
-
         self.fs_queue = queue.Queue()
         event_handler = NewXFilesHandler(self.config.hostname, self.fs_queue, self.log.name + '.fs_observer')
         self.fs_observer = Observer()
