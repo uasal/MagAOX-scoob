@@ -59,6 +59,7 @@ def identify_new_files(conn: psycopg.Connection, this_host: str, paths: Iterable
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
     if len(paths) == 0:
         return []
+    cur = conn.cursor()
     with conn.transaction():
         # Create a temporary table with these paths to join against the db inventory
         cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
