@@ -22,7 +22,6 @@ __all__ = [
 
 SETUP_USERS_SQL_PATH = pathlib.Path(__file__).parent / 'sql' / 'setup_users.sql'
 
-TCP_USER_TIMEOUT_MS = 5_000
 
 @xconf.config
 class DbConfig:
@@ -50,7 +49,6 @@ class DbConfig:
                 user=self.user,
                 password=password,
                 row_factory=psycopg.rows.dict_row,
-                tcp_user_timeout=TCP_USER_TIMEOUT_MS,
             )
         except Exception as e:
             log.exception("Unable to connect to database.")
