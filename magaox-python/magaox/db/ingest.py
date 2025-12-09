@@ -55,38 +55,33 @@ def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[path
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''
     if len(paths) == 0:
         return []
-    cur.execute("BEGIN")
-    try:
-        # Create a temporary table with these paths to join against the db inventory
-        cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
-        query = f'''
-    INSERT INTO on_disk_files (path)
-    VALUES (%s)
-    '''
-        cur.executemany(query, [(x.as_posix(),) for x in paths])
-        # execute_values(cur, query, )
-        log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
+    # Create a temporary table with these paths to join against the db inventory
+    cur.execute("CREATE TEMPORARY TABLE on_disk_files ( path VARCHAR(1024) )")
+    query = f'''
+INSERT INTO on_disk_files (path)
+VALUES (%s)
+'''
+    cur.executemany(query, [(x.as_posix(),) for x in paths])
+    # execute_values(cur, query, )
+    log.debug(f"Loaded {len(paths)} paths into temporary table for new file identification")
 
-        # Identify paths without corresponding inventory rows
-        q2 = sql.SQL('''
-    WITH
-        already_known_files AS (
-            SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
-        )
-    SELECT odf.path as path, akf.origin_path as origin_path
-    FROM on_disk_files odf
-    LEFT JOIN already_known_files akf ON
-        odf.path = akf.origin_path
-    WHERE akf.origin_path IS NULL
-    ''').format()
-        cur.execute(q2, (this_host,))
-        log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
-        new_files = []
-        for row in cur:
-            new_files.append(row['path'])
-    finally:
-        # we're not inserting anything permanent and need to ensure temp table is deleted
-        cur.execute("ROLLBACK")
+    # Identify paths without corresponding inventory rows
+    q2 = sql.SQL('''
+WITH
+    already_known_files AS (
+        SELECT origin_path, origin_host FROM file_origins WHERE origin_host = %s
+    )
+SELECT odf.path as path, akf.origin_path as origin_path
+FROM on_disk_files odf
+LEFT JOIN already_known_files akf ON
+    odf.path = akf.origin_path
+WHERE akf.origin_path IS NULL
+''').format()
+    cur.execute(q2, (this_host,))
+    log.debug(f"Found {cur.rowcount} new path{'s' if cur.rowcount != 1 else ''}")
+    new_files = []
+    for row in cur:
+        new_files.append(row['path'])
     return new_files
 
 #add non-ingested-userlogs?
@@ -124,38 +119,41 @@ WHERE
 def update_file_inventory(cur: psycopg.Cursor, host: str, data_dirs: list[pathlib.Path],
                           ignored_file_patterns: list[str], ignored_directory_patterns: list[str]):
     """Update the file_origins table for a database pointed to by `cur` with untracked local files (if any)"""
-    cur.execute("BEGIN")
     file_pattern = re.compile('|'.join(ignored_file_patterns))
     dir_pattern = re.compile('|'.join(ignored_directory_patterns))
     for prefix in data_dirs:
         for fpaths in itertools.batched(filter(lambda x: x.is_file(), prefix.glob("**")), INGEST_IDENTIFY_FILES_BATCH_SIZE):
-            new_files = identify_new_files(cur, host, fpaths)
-            if len(new_files) == 0:
-                log.debug(f"Found zero new files from {fpaths}")
-                continue
-            log.info(f"Inventorying {len(new_files)} new files")
-            log.debug("\n".join(new_files))
-            origin_records = []
-            for fn in tqdm(new_files):
-                if file_pattern.match(fn):
-                    log.debug(f"Skipping {fn} because it matches the ignored files pattern")
+            try:
+                cur.execute("BEGIN")
+                new_files = identify_new_files(cur, host, fpaths)
+                if len(new_files) == 0:
+                    log.debug(f"Found zero new files from {fpaths}")
                     continue
-                try:
-                    stat_result = os.stat(fn)
-                    origin_records.append(FileOrigin(
-                        origin_host=host,
-                        origin_path=fn,
-                        creation_time=creation_time_from_filename(fn, stat_result=stat_result),
-                        modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc),
-                        size_bytes=stat_result.st_size,
-                    ))
-                except FileNotFoundError:
-                    log.info(f"Skipped {fn} (broken link?)")
-                    continue
-                except OSError as e:
-                    log.info(f"Skipping {fn} because of error ({e})")
-            batch_file_origins(cur, origin_records)
-    cur.execute("COMMIT")
+                log.info(f"Inventorying {len(new_files)} new files")
+                log.debug("\n".join(new_files))
+                origin_records = []
+                for fn in tqdm(new_files):
+                    if file_pattern.match(fn):
+                        log.debug(f"Skipping {fn} because it matches the ignored files pattern")
+                        continue
+                    try:
+                        stat_result = os.stat(fn)
+                        origin_records.append(FileOrigin(
+                            origin_host=host,
+                            origin_path=fn,
+                            creation_time=creation_time_from_filename(fn, stat_result=stat_result),
+                            modification_time=datetime.datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc),
+                            size_bytes=stat_result.st_size,
+                        ))
+                    except FileNotFoundError:
+                        log.info(f"Skipped {fn} (broken link?)")
+                        continue
+                    except OSError as e:
+                        log.info(f"Skipping {fn} because of error ({e})")
+                batch_file_origins(cur, origin_records)
+                cur.execute("COMMIT")
+            except psycopg.OperationalError:
+                cur.execute("ROLLBACK")
 
 def record_file_ingest_time(cur: psycopg.Cursor, rec : FileIngestTime):
     cur.execute("BEGIN")
