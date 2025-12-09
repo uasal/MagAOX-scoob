@@ -44,7 +44,7 @@ for folder in "${dataFolders[@]}"; do
     $rsyncWithOptions "/$folder/" "$dest/aoc/$folder"
 done
 for home in /home/*; do
-    if [[ $(basename $home) != "data" ]]; then
+	if [[ $(basename $home) != "data" && $(basename $home) != "guestobs" ]]; then
         mkdir -p "$dest/aoc/$home/"
         $rsyncWithOptions "$home/" "$dest/aoc/$home/"
     fi
