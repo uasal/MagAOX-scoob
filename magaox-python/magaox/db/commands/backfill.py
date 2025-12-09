@@ -36,7 +36,7 @@ class Backfill(BaseDbCommand):
     and populate the ``telem`` table
     """
 
-    data_dirs : list[str] = xconf.field(default_factory=lambda: [DEFAULT_PREFIX / x for x in DEFAULT_DATA_DIRS])
+    data_dirs : list[pathlib.Path] = xconf.field(default_factory=lambda: [DEFAULT_PREFIX / x for x in DEFAULT_DATA_DIRS])
 
     logdump_exe: str = xconf.field(
         default="/opt/MagAOX/bin/logdump",
@@ -124,9 +124,19 @@ class Backfill(BaseDbCommand):
     def main(self):
         for conn_name in self.databases:
             conn = self.databases[conn_name].connect()
-            paths = ingest.identify_non_ingested_telem(
-                conn.cursor(), self.hostname
-            )
+            with conn:
+                cur = conn.cursor()
+                ingest.update_file_inventory(
+                    cur,
+                    self.hostname,
+                    self.data_dirs,
+                    self.ignore_patterns.files,
+                    self.ignore_patterns.directories
+                )
+            with conn:
+                paths = ingest.identify_non_ingested_telem(
+                    conn.cursor(), self.hostname
+                )
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.parallel_jobs) as pool:
                 futures_to_paths = {}
                 log.info(f"Starting backfill tasks for {len(paths)} path{'s' if len(paths) != 1 else ''}")
@@ -144,9 +154,9 @@ class Backfill(BaseDbCommand):
                     try:
                         log.debug(f"Finished {ft.result()}")
                     except LogDumpError as e:
-                        log.error(f"logdump exited with exit code 255 on {futures_to_paths[ft]}")
+                        log.error(f"logdump exited with exit code 255 on {futures_to_paths[ft]} ({e})")
                     except Exception as e:
-                        log.exception(f"Failed to process telem file {futures_to_paths[ft]}")
+                        log.exception(f"Failed to process telem file {futures_to_paths[ft]} ({e})")
                     pbar.update()
                 pbar.close()
             log.debug(f"Finished {conn_name} ({self.databases[conn_name]})")
