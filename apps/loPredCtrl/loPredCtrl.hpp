@@ -183,12 +183,12 @@ using namespace mx::improc;
     // Check if processImage is running
     // while(m_outputStream.md[0].write == 1);
     
-    m_outputStream.md[0].write = 1;
-    memcpy( m_outputStream.array.raw, full_command.data(), m_modevalWidth * m_modevalTypeSize );
-    m_outputStream.md[0].cnt0++;
-    m_outputStream.md[0].write = 0;
+    // m_outputStream.md[0].write = 1;
+    // memcpy( m_outputStream.array.raw, full_command.data(), m_modevalWidth * m_modevalTypeSize );
+    // m_outputStream.md[0].cnt0++;
+    // m_outputStream.md[0].write = 0;
 
-    ImageStreamIO_sempost( &m_outputStream, -1 );
+    //ImageStreamIO_sempost( &m_outputStream, -1 );
 
     return 0;
  }

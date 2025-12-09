@@ -30,7 +30,38 @@ double standard_dev(double data[], int size, int num_skip=0){
     return std::sqrt(variance(data, size, num_skip));
 }
 
+
+float variance(float data[], int size, int num_skip=0){
+    float mean = 0.0;
+    for(int i=num_skip; i<size; i++){
+        mean += data[i];
+    }
+    mean /= (size - num_skip);
+    std::cout << "Mean: " << mean << std::endl;
+
+    float var = 0.0;
+    for(int i=num_skip; i<size; i++){
+        var += (data[i] - mean) * (data[i] - mean);
+    }
+
+    return var / (size - num_skip);
+}
+
+float standard_dev(float data[], int size, int num_skip=0){
+    return std::sqrt(variance(data, size, num_skip));
+}
+
 void write_to_file(std::string filename, double data[], int size){
+    std::ofstream out(filename);
+    for(int i=0; i<size; i++){
+        out << data[i];
+        if(i < (size - 1))
+            out << ',';
+    }
+}
+
+
+void write_to_file(std::string filename, float data[], int size){
     std::ofstream out(filename);
     for(int i=0; i<size; i++){
         out << data[i];
