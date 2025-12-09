@@ -66,10 +66,6 @@ Also, ensure:
 See /opt/MagAOX/source/MagAOX/setup/steps/configure_postgresql.sh for details.
 """)
             raise
-        with conn.cursor() as cur:
-            cur.execute(f"SET statement_timeout = {int(1000 * self.statement_timeout_sec)}")
-            cur.execute(f"SET lock_timeout = {int(1000 * self.lock_timeout_sec)}")
-            cur.execute(f"SET idle_in_transaction_session_timeout = {int(1000 * self.idle_in_transaction_timeout_sec)}")
         return conn
 
     def cursor(self) -> psycopg.Cursor:
