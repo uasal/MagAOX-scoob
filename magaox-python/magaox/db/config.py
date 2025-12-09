@@ -31,9 +31,9 @@ class DbConfig:
     port : int = xconf.field(default=5432, help='TCP port to connect to PostgreSQL on')
     database : str = xconf.field(default='xtelem', help='Name of PostgreSQL database')
     password_file : str = xconf.field(default='/opt/MagAOX/secrets/xtelemdb_password', help="File containing the password for the given user (newlines are stripped). If $XTELEMDB_PASSWORD is set in the environment, it will take precedence.")
-    statement_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced statement timeout")
-    lock_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced lock acquisition timeout")
-    idle_in_transaction_timeout_sec : float = xconf.field(default=20.0, help="Server-side enforced idle (abandoned) transaction timeout")
+    statement_timeout_sec : float = xconf.field(default=60.0, help="Server-side enforced statement timeout")
+    lock_timeout_sec : float = xconf.field(default=60.0, help="Server-side enforced lock acquisition timeout")
+    idle_in_transaction_timeout_sec : float = xconf.field(default=60.0, help="Server-side enforced idle (abandoned) transaction timeout")
 
     def connect(self) -> psycopg.Connection:
         password = os.environ.get('XTELEMDB_PASSWORD', None)
