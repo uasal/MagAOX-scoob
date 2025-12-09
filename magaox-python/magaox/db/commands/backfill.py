@@ -106,19 +106,16 @@ class Backfill(BaseDbCommand):
         for conn_name in self.databases:
             conn = self.databases[conn_name].connect()
             log.info(f"Connected to {conn_name}")
-            try:
-                with conn.transaction():
-                    cur = conn.cursor()
-                    ingest.batch_telem(cur, records)
-                    ingest.record_file_ingest_time(cur, FileIngestTime(
-                        ts=xfilename_to_utc_timestamp(fname),
-                        device=name,
-                        ingested_at=utcnow(),
-                        origin_host=self.hostname,
-                        origin_path=path,
-                    ))
-            finally:
-                conn.close()
+            with conn:
+                cur = conn.cursor()
+                ingest.batch_telem(cur, records)
+                ingest.record_file_ingest_time(cur, FileIngestTime(
+                    ts=xfilename_to_utc_timestamp(fname),
+                    device=name,
+                    ingested_at=utcnow(),
+                    origin_host=self.hostname,
+                    origin_path=path,
+                ))
         return path
 
     def main(self):

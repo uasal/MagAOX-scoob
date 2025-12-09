@@ -20,36 +20,40 @@ from ..utils import creation_time_from_filename, parse_iso_datetime_as_utc
 log = logging.getLogger(__name__)
 
 INGEST_IDENTIFY_FILES_BATCH_SIZE = 500
+TELEM_BATCH_SIZE = 5_000
+FILE_ORIGINS_BATCH_SIZE = 5_000
 
-def batch_user_log(cur: psycopg.Cursor, records: list[UserLog]):
-    """This will be where the logs will insert into user_logs table"""
-    try:
+def batch_user_log(conn: psycopg.Connection, records: list[UserLog]):
+    cur = conn.cursor()
+    with conn.transaction():
         cur.executemany('''
-        INSERT INTO user_log (ts, device, ec, msg)
-        VALUES (%s, %s, %s, %s::JSONB)
-        ON CONFLICT (ts, device) DO NOTHING;
-        ''', [(rec.ts, rec.device, rec.ec, orjson.dumps(rec.msg).decode('utf8')) for rec in records])
-    except Exception as e:
-        log.error(f"Error inserting user logs into the database: {e}")
-        raise
-    else:
+            INSERT INTO user_log (ts, device, ec, msg)
+            VALUES (%s, %s, %s, %s::JSONB)
+            ON CONFLICT (ts, device) DO NOTHING;
+            ''', [(rec.ts, rec.device, rec.ec, orjson.dumps(rec.msg).decode('utf8')) for rec in records])
         log.debug(f"Inserted {len(records)} user_logs into database")
 
 
-def batch_telem(cur: psycopg.Cursor, records: list[Telem]):
-    cur.executemany(f'''
-INSERT INTO telem (ts, device, msg, ec)
-VALUES (%s, %s, %s::JSONB, %s)
-ON CONFLICT (device, ts) DO NOTHING;
-''', [(rec.ts, rec.device, Jsonb(rec.msg, dumps=orjson.dumps), rec.ec) for rec in records])
+def batch_telem(conn: psycopg.Connection, records: list[Telem]):
+    cur = conn.cursor()
+    for record_batch in itertools.batched(records, TELEM_BATCH_SIZE):
+        with conn.transaction():
+            cur.executemany(f'''
+                INSERT INTO telem (ts, device, msg, ec)
+                VALUES (%s, %s, %s::JSONB, %s)
+                ON CONFLICT (device, ts) DO NOTHING;
+                ''', [(rec.ts, rec.device, Jsonb(rec.msg, dumps=orjson.dumps), rec.ec) for rec in record_batch])
 
-def batch_file_origins(cur: psycopg.Cursor, records: list[FileOrigin]):
-    cur.executemany(f'''
-INSERT INTO file_origins (origin_host, origin_path, creation_time, modification_time, size_bytes)
-VALUES (%s, %s, %s, %s, %s)
-ON CONFLICT (origin_host, origin_path)
-DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLUDED.size_bytes
-''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in records])
+def batch_file_origins(conn: psycopg.Connection, records: list[FileOrigin]):
+    cur = conn.cursor()
+    for record_batch in itertools.batched(records, FILE_ORIGINS_BATCH_SIZE):
+        with conn.transaction():
+            cur.executemany(f'''
+                INSERT INTO file_origins (origin_host, origin_path, creation_time, modification_time, size_bytes)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (origin_host, origin_path)
+                DO UPDATE SET modification_time = EXCLUDED.modification_time, size_bytes = EXCLUDED.size_bytes
+                ''', [(rec.origin_host, rec.origin_path, rec.creation_time, rec.modification_time, rec.size_bytes) for rec in record_batch])
 
 def identify_new_files(cur: psycopg.Cursor, this_host: str, paths: Iterable[pathlib.Path]):
     '''Returns the paths from ``paths`` that are not already part of the ``file_origins`` table'''

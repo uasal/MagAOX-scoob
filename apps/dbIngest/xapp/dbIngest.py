@@ -278,12 +278,10 @@ class dbIngest(XDevice):
         for connkey in self._connections:
             conn = self._connections[connkey]
             try:
-                with conn.transaction():
-                    self.log.debug(f"Batching ingest for {connkey}")
-                    cur = conn.cursor()
-                    ingest.batch_telem(cur, telems)
-                    ingest.batch_file_origins(cur, fs_events)
-                    ingest.batch_user_log(cur, user_logs)
+                self.log.debug(f"Batching ingest for {connkey}")
+                ingest.batch_telem(conn, telems)
+                ingest.batch_file_origins(conn, fs_events)
+                ingest.batch_user_log(conn, user_logs)
             except Exception as e:
                 self.log.exception(f"Caught exception {e} in batch ingest, reconnecting {connkey} on next loop()")
                 self._connections_to_attempt.add(connkey)
