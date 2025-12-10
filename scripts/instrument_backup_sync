@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 set -ex
-# If not started as root, sudo yourself
-if [[ "$EUID" != 0 ]]; then
-    sudo -H bash -l $0 "$@"
-    exit $?
-fi
 if [[ $(hostname) != "exao1" ]]; then
     echo "Must run on exao1"
     exit 1
@@ -15,11 +10,13 @@ else
     dest="$1"
 fi
 
-declare -a dataFolders=("opt/MagAOX/logs" "opt/MagAOX/rawimages" "opt/MagAOX/telem" "opt/MagAOX/cacao")
+declare -a dataFolders=("opt/MagAOX/rawimages" "opt/MagAOX/telem" "opt/MagAOX/cacao" "opt/MagAOX/logs" "opt/MagAOX/calib")
 
-if ! mount | grep -q "on $dest"; then
-    echo "External drive mount appears not to be active for $dest"
-    exit 1
+if [[ $dest == /mnt/backup ]]; then
+    if ! mount | grep -q "on $dest"; then
+        echo "External drive mount appears not to be active for $dest"
+        exit 1
+    fi
 fi
 for remote in icc rtc; do
     for folder in "${dataFolders[@]}"; do
@@ -30,7 +27,7 @@ for remote in icc rtc; do
     done
 done
 
-rsyncWithOptions="rsync -a --info=progress2"
+rsyncWithOptions="rsync -rt --info=progress2 --info=name0 $extraRsyncOptions"
 
 for remote in rtc icc; do
     for folder in "${dataFolders[@]}"; do

@@ -282,7 +282,8 @@ scripts_to_install = \
 	hoblockleaks \
 	inventory_files \
 	list_xfiles_by_semester \
-	loop_instrument_backup_sync
+	loop_instrument_backup_sync \
+	cyverse_replicate
 
 .PHONY: all
 all: indi_all libs_all flatlogs/bin/flatlogcodes apps_all guis_all utils_all
