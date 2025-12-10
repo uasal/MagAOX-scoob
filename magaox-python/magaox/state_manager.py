@@ -7,14 +7,15 @@ from magaox.constants import StateCodes
 class XStateMachine:
     '''A generic MagAO-X Indi state machine manager
     '''
-    def __init__(self, device, state_names, state_enum, state_callbacks):
+    def __init__(self, device, state_names, state_enum, state_callbacks, top_level_name='state'):
         self._device = device
         self._state_names = state_names
         self._state_enum = state_enum
         self._state_callbacks = state_callbacks
+        self.top_level_name = top_level_name
 
         sv = properties.SwitchVector(
-            name='state',
+            name=top_level_name,
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
@@ -26,9 +27,9 @@ class XStateMachine:
         
     def transition_to_idle(self):
         for name in self._state_names:
-            self._device.properties['state'][name] = constants.SwitchState.OFF
-        self._device.properties['state']['idle'] = constants.SwitchState.ON
-        self._device.update_property(self._device.properties['state'])
+            self._device.properties[self.top_level_name][name] = constants.SwitchState.OFF
+        self._device.properties[self.top_level_name]['idle'] = constants.SwitchState.ON
+        self._device.update_property(self._device.properties[self.top_level_name])
         self._state = self._state_enum.IDLE
 
     def handle_state(self, existing_property, new_message):
@@ -50,7 +51,7 @@ class XStateMachine:
                                 self._device.properties['fsm']['state'] = StateCodes.READY.name
                             else:
                                 self._device.properties['fsm']['state'] = StateCodes.OPERATING.name
-                            self._device.log.debug('State changed to {:s}'.format(test_state))
+                            self._device.log.info('State {:s} changed to {:s}'.format(self.top_level_name, test_state))
 
             self._device.update_property(existing_property)
             self._device.update_property(self._device.properties['fsm'])

@@ -27,7 +27,9 @@ enum class ruleComparison
     Or,        ///< boolean or
     Nor,       ///< boolean nor
     Xor = Neq, ///< boolean xor, equivalent to not equal
-    Xnor = Eq  ///< boolean xnor, equivalent to equal
+    Xnor = Eq,
+    Imply,
+    Nimply,  ///< boolean xnor, equivalent to equal
 };
 
 /// Get the \ref ruleComparison member from a string representation.
@@ -82,6 +84,14 @@ ruleComparison string2comp( const std::string & cstr )
     else if(cstr == "Xnor")
     {
         return ruleComparison::Xnor;
+    }
+    else if(cstr == "Imply")
+    {
+        return ruleComparison::Imply
+    }
+    else if(cstr == "Nimply")
+    {
+        return ruleComparison::Nimply
     }
     else
     {
@@ -353,6 +363,14 @@ public:
                 break;
             case ruleComparison::Nor:
                 if(!b1 && !b2) rv = true;
+                break;
+            case ruleComparison::Imply:
+                // https://en.wikipedia.org/wiki/Material_conditional
+                if(!b1 || b2) rv=true;
+                break;
+            case ruleComparison::Nimply:
+                // https://en.wikipedia.org/wiki/Material_nonimplication
+                if(b1 && !b2) rv=true;
                 break;
             default:
                 rv = "operator not valid for ruleCompRule";

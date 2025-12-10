@@ -112,7 +112,9 @@ swVal       | compare the state of a switch to either `On` or `Off`   | Eq, Neq 
 elCompNum   | compare the value of two number elements to each other    | Eq, Neq, Lt, LtEq, Gt, GtEq          | equality is tested with a tolerance|
 elCompTxt   | compare the value of two text elements to each other      | Eq, Neq                            ||
 elCompSw    | compare the value of two switch elements to each other    | Eq, Neq                            ||
-ruleComp    | compare the value of two rules to each other                   | Eq/Xnor, Neq/Xor, And, Nand, Or, Nor ||
+ruleComp    | compare the value of two rules to each other                   | Eq/Xnor, Neq/Xor, And, Nand, Or, Nor, Imply, Nimply ||
+
+(Note: [Imply](https://en.wikipedia.org/wiki/IMPLY) and [Nimply](https://en.wikipedia.org/wiki/NIMPLY) are not commutative; the rule order matters)
 
 ### Keyword priority
 |`priority`  | Description                                                   | Notes                       |
