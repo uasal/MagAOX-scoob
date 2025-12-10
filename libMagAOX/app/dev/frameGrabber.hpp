@@ -495,6 +495,8 @@ int frameGrabber<derivedT>::appStartup()
     m_indiP_frameSize["width"] = 0;
     m_indiP_frameSize.add( pcf::IndiElement( "height" ) );
     m_indiP_frameSize["height"] = 0;
+    m_indiP_frameSize.add( pcf::IndiElement( "depth" ) );
+    m_indiP_frameSize["depth"] = 0;
 
     if( derived().registerIndiPropertyNew( m_indiP_frameSize, nullptr ) < 0 )
     {
@@ -1079,7 +1081,7 @@ int frameGrabber<derivedT>::openShmim()
     // isn't thread-safe-able anyway we do our own checks.  This is the same code in ImageStreamIO_openIm...
     int  SM_fd;
     char SM_fname[1024];
-    ImageStreamIO_filename( SM_fname, sizeof( 1024 ), m_shmimName.c_str() );
+    ImageStreamIO_filename( SM_fname, sizeof( SM_fname ), m_shmimName.c_str() );
     SM_fd = open( SM_fname, O_RDWR );
 
     if( SM_fd == -1 )
