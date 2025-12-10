@@ -109,6 +109,9 @@ apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
 apps/mzmqClient/mzmqClient
 
+#n
+apps/nnReconstructor/nnReconstructor
+
 #o
 apps/observerCtrl/observerCtrl
 apps/ocam2KCtrl/ocam2KCtrl
@@ -157,6 +160,7 @@ apps/userGainCtrl/userGainCtrl
 
 #w
 apps/w2tcsOffloader/w2tcsOffloader
+apps/wooferTweeterRecon/wooferTweeterRecon
 
 #x
 apps/xindiserver/tests/remoteDriver_test
