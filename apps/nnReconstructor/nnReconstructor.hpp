@@ -129,7 +129,7 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int pixels_per_quadrant;
 
     int Npup{ 4 };        // Number of pupils
-    //float *modeval{ nullptr };
+
     eigenImage<float> modeval;
 
     half *modeval_half{ nullptr };
@@ -144,17 +144,6 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
 
     uint8_t m_pwfsDataType{ 0 }; ///< The ImageStreamIO type code.
     size_t m_pwfsTypeSize{ 0 };  ///< The size of the type, in bytes.
-
-    // variables for sending the output to aol_modevals
-    //std::string m_modevalChannel;
-    //IMAGE m_modevalStream;
-    //uint32_t m_modevalWidth {0}; ///< The width of the shmim
-    //uint32_t m_modevalHeight {0}; ///< The height of the shmim
-    //uint8_t m_modevalDataType {0}; ///< The ImageStreamIO type code.
-    //size_t m_modevalTypeSize {0};  ///< The size of the type, in bytes.
-
-    //bool m_modevalOpened {false};
-    //bool m_modevalRestart {false};
 
     float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
@@ -375,30 +364,6 @@ void nnReconstructor::cleanup_engine_context(){
         delete runtime;
 };
 
-/*inline int nnReconstructor::send_to_shmim()
-{
-    // Check if processImage is running
-    // while(m_dmStream.md[0].write == 1);
-
-    m_modevalStream.md[0].write = 1;
-    memcpy( m_modevalStream.array.raw, modeval, outputSize * m_modevalTypeSize );
-
-    if( clock_gettime( CLOCK_REALTIME, &m_modevalStream.md->writetime ) < 0 )
-    {
-        m_shutdown = true;
-        return log<software_critical,-1>( { errno, "clock_gettime" } );
-    }
-
-    m_modevalStream.md->atime = m_atime;
-
-    m_modevalStream.md[0].cnt0++;
-    m_modevalStream.md[0].write = 0;
-
-    ImageStreamIO_sempost( &m_modevalStream, -1 );
-
-    return 0;
-}*/
-
 inline nnReconstructor::nnReconstructor() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
     return;
@@ -492,16 +457,6 @@ inline void nnReconstructor::setupConfig()
                 "bool",
                 "If true the model will additionally give the pupil intensities as input to the NN." );
 
-    /*config.add( "parameters.channel",
-                "",
-                "parameters.channel",
-                argType::Required,
-                "parameters",
-                "channel",
-                false,
-                "string",
-                "The output channel." );*/
-
     config.add( "parameters.m_pupPix",
                 "",
                 "parameters.m_pupPix",
@@ -571,7 +526,6 @@ inline int nnReconstructor::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( modalNorm, "parameters.modalNorm" );
     _config( use_fp16, "parameters.use_fp16" );
     _config( explicit_tt, "parameters.explicit_tt" );
-    //_config( m_modevalChannel, "parameters.channel");
 
     _config( m_pupPix, "parameters.m_pupPix" );
     _config( pup_offset1_x, "parameters.pup_offset1_x" );
@@ -690,10 +644,7 @@ inline int nnReconstructor::appShutdown()
     {
         delete[] pup_Is_half;
     }
-    /*if( modeval )
-    {
-        delete[] modeval;
-    }*/
+
     if( modeval_half )
     {
         delete[] modeval_half;
@@ -739,39 +690,6 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
         }
         memset( modeval_half, 0, sizeof( half) * outputSize);
     }
-
-    //std::cout << "Close shmims" << std::endl;
-    // Allocate the DM shmim interface
-    /*if(m_modevalOpened){
-        ImageStreamIO_closeIm(&m_modevalStream);
-    }*/
-
-    /*std::cout << "Open shmims" << std::endl;
-    m_modevalOpened = false;
-    m_modevalRestart = false; //Set this up front, since we're about to restart.
-
-    if( ImageStreamIO_openIm(&m_modevalStream, m_modevalChannel.c_str()) == 0){
-        if(m_modevalStream.md[0].sem < 10){
-            ImageStreamIO_closeIm(&m_modevalStream);
-        }else{
-            m_modevalOpened = true;
-        }
-    }
-
-    std::cout << "Done!" << std::endl;
-    if(!m_modevalOpened){
-        log<text_log>( m_modevalChannel + " not opened.", logPrio::LOG_NOTICE);
-        return -1;
-    }else{
-        m_modevalWidth = m_modevalStream.md->size[0];
-        m_modevalHeight = m_modevalStream.md->size[1];
-
-        m_modevalDataType = m_modevalStream.md->datatype;
-        m_modevalTypeSize = sizeof(float);
-
-        log<text_log>( "Opened " + m_modevalChannel + " " + std::to_string(m_modevalWidth) + " x " + std::to_string(m_modevalHeight) + " with data type: " + std::to_string(m_modevalDataType), logPrio::LOG_NOTICE);
-    }
-*/
 
     return 0;
 }
@@ -853,8 +771,6 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
     }
 
     // Send modal coefficients to the correct stream
-    //send_to_shmim();
-
     m_updated = true;
 
     // trigger framegrabber
@@ -895,11 +811,6 @@ int nnReconstructor::configureAcquisition()
 
 
     logged = false;
-    /*m_modevalWidth = frameGrabberT::m_width;
-    m_modevalHeight = frameGrabberT::m_height;
-    m_modevalDataType = frameGrabberT::m_dataType;
-    m_modevalTypeSize = frameGrabberT::m_typeSize;*/
-
 
     return 0;
 }
@@ -949,7 +860,7 @@ int nnReconstructor::loadImageIntoStream(void * dest)
     memcpy( dest, modeval.data(), modeval.rows() * frameGrabberT::m_typeSize );
 
     m_updated = false;
-    
+
     return 0;
 }
  
