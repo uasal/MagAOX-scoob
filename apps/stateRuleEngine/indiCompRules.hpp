@@ -8,7 +8,6 @@
 #define stateRuleEngine_indiCompRules_hpp
 
 #include <variant>
-#include <mx/mxException.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
                                          //Included here for standalone testing of this file
@@ -26,10 +25,10 @@ enum class ruleComparison
     Nand,      ///< boolean nand
     Or,        ///< boolean or
     Nor,       ///< boolean nor
-    Xor = Neq, ///< boolean xor, equivalent to not equal
-    Xnor = Eq,
     Imply,
-    Nimply,  ///< boolean xnor, equivalent to equal
+    Nimply,  
+    Xor = Neq, ///< boolean xor, equivalent to not equal
+    Xnor = Eq  ///< boolean xnor, equivalent to equal
 };
 
 /// Get the \ref ruleComparison member from a string representation.
@@ -87,11 +86,11 @@ ruleComparison string2comp( const std::string & cstr )
     }
     else if(cstr == "Imply")
     {
-        return ruleComparison::Imply
+        return ruleComparison::Imply;
     }
     else if(cstr == "Nimply")
     {
-        return ruleComparison::Nimply
+        return ruleComparison::Nimply;
     }
     else
     {
