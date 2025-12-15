@@ -1,5 +1,5 @@
-#ifndef rotationStageCtrl_hpp
-#define rotationStageCtrl_hpp
+#ifndef elliptecCtrl_hpp
+#define elliptecCtrl_hpp
 
 #include <string>
 #include <vector>
@@ -28,17 +28,17 @@ namespace app {
  *  cmds: in, gs, gp, hoX, st, us, om, svHH, maXXXXXXXX, mrXXXXXXXX
  */
 
-class rotationStageCtrl
+class elliptecCtrl
   : public MagAOXApp<>
-  , public dev::stdMotionStage<rotationStageCtrl>   // compile surface only; does not call its appStartup/updateINDI
-  , public dev::telemeter<rotationStageCtrl>
+  , public dev::stdMotionStage<elliptecCtrl>   // compile surface only; does not call its appStartup/updateINDI
+  , public dev::telemeter<elliptecCtrl>
 {
-  friend class dev::stdMotionStage<rotationStageCtrl>;
-  friend class dev::telemeter<rotationStageCtrl>;
+  friend class dev::stdMotionStage<elliptecCtrl>;
+  friend class dev::telemeter<elliptecCtrl>;
 
 public:
-  rotationStageCtrl();
-  ~rotationStageCtrl() noexcept {}
+  elliptecCtrl();
+  ~elliptecCtrl() noexcept {}
 
   void setupConfig() override;
   void loadConfig() override;
@@ -57,15 +57,15 @@ public:
   int recordTelem(const telem_stage *);
   int recordStage(bool force = false);
 
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipAbsDeg);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelDeg);    
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipRelMove);    
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipVelPct);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipOptimize);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipSave);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipHome);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipStop);
-  INDI_NEWCALLBACK_DECL(rotationStageCtrl, m_ipStageGoto);  
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipAbsDeg);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipRelDeg);    
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipRelMove);    
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipVelPct);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipOptimize);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipSave);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipHome);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipStop);
+  INDI_NEWCALLBACK_DECL(elliptecCtrl, m_ipStageGoto);  
 
 protected:
   std::string m_port;
@@ -172,7 +172,7 @@ protected:
 
 /* ========================= impl ========================= */
 
-inline rotationStageCtrl::rotationStageCtrl()
+inline elliptecCtrl::elliptecCtrl()
 : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
   m_presetNotation  = "preset";   // keep stdMotionStage surface for telemeter
@@ -181,7 +181,7 @@ inline rotationStageCtrl::rotationStageCtrl()
 
 /* ---------- Config ---------- */
 
-inline void rotationStageCtrl::setupConfig()
+inline void elliptecCtrl::setupConfig()
 {
   // Serial
   config.add("stage.port", "", "stage.port", argType::Required, "stage", "port", false, "string", "Serial device path");
@@ -209,11 +209,11 @@ inline void rotationStageCtrl::setupConfig()
   config.add("comm.maxPollMisses", "3", "comm.maxPollMisses", argType::Optional, "comm", "maxPollMisses", false, "int", "Consecutive poll timeouts tolerated before reconnect");
 
   // stdMotionStage [presets] names/positions
-  dev::stdMotionStage<rotationStageCtrl>::setupConfig(config);
-  dev::telemeter<rotationStageCtrl>::setupConfig(config);
+  dev::stdMotionStage<elliptecCtrl>::setupConfig(config);
+  dev::telemeter<elliptecCtrl>::setupConfig(config);
 }
 
-inline void rotationStageCtrl::loadConfig()
+inline void elliptecCtrl::loadConfig()
 {
   config(m_port, "stage.port");
   config(m_baud, "stage.baud");
@@ -246,7 +246,7 @@ inline void rotationStageCtrl::loadConfig()
   if(m_commMaxMisses < 1) m_commMaxMisses = 1;
 
   // stdMotionStage preset config: [presets] names/positions
-  dev::stdMotionStage<rotationStageCtrl>::loadConfig(config);
+  dev::stdMotionStage<elliptecCtrl>::loadConfig(config);
 
   // Mirror presets into local vectors
   m_userPresetNames = m_presetNames;
@@ -254,12 +254,12 @@ inline void rotationStageCtrl::loadConfig()
   m_userPresetDeg.reserve(m_presetPositions.size());
   for(float v : m_presetPositions) m_userPresetDeg.push_back(static_cast<double>(v));
 
-  dev::telemeter<rotationStageCtrl>::loadConfig(config);
+  dev::telemeter<elliptecCtrl>::loadConfig(config);
 }
 
 /* ---------- Startup/Logic ---------- */
 
-inline int rotationStageCtrl::appStartup()
+inline int elliptecCtrl::appStartup()
 {
   if(state() == stateCodes::UNINITIALIZED)
     return log<text_log,-1>("UNINITIALIZED in appStartup", logPrio::LOG_CRITICAL);
@@ -301,7 +301,7 @@ inline int rotationStageCtrl::appStartup()
   if(!m_userPresetNames.empty()) {
     if(createStandardIndiSelectionSw(m_ipStageGoto, "stageGoto", m_userPresetNames) < 0)
       return log<software_critical,-1>({__FILE__, __LINE__});
-    if(registerIndiPropertyNew(m_ipStageGoto, rotationStageCtrl::st_newCallBack_m_ipStageGoto) < 0)
+    if(registerIndiPropertyNew(m_ipStageGoto, elliptecCtrl::st_newCallBack_m_ipStageGoto) < 0)
       return log<software_error,-1>({__FILE__,__LINE__,"register stageGoto failed"});
   }
 
@@ -311,13 +311,13 @@ inline int rotationStageCtrl::appStartup()
   CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipOptimize, "optimize");
   CREATE_REG_INDI_NEW_REQUESTSWITCH(m_ipSave,     "save");
 
-  if(dev::telemeter<rotationStageCtrl>::appStartup() < 0) return log<software_error,-1>({__FILE__,__LINE__});
+  if(dev::telemeter<elliptecCtrl>::appStartup() < 0) return log<software_error,-1>({__FILE__,__LINE__});
 
   updateStatus_();
   return 0;
 }
 
-inline int rotationStageCtrl::appLogic()
+inline int elliptecCtrl::appLogic()
 {
   if(state() == stateCodes::INITIALIZED)
     return log<text_log,-1>("In appLogic but INITIALIZED", logPrio::LOG_CRITICAL);
@@ -329,7 +329,7 @@ inline int rotationStageCtrl::appLogic()
     if(openPort_() == 0) {
       m_connected = true;
       state(stateCodes::CONNECTED);
-      log<text_log>("rotationStageCtrl connected on " + m_port);
+      log<text_log>("elliptecCtrl connected on " + m_port);
 
       drainInput_();
       (void)q_info_();
@@ -369,13 +369,13 @@ inline int rotationStageCtrl::appLogic()
   indi::updateIfChanged(m_ipAbsDeg, "current", m_posDeg, m_indiDriver, (m_gs==0x09?INDI_BUSY:INDI_IDLE));
   indi::updateIfChanged(m_ipVelPct, "current", m_velPercent, m_indiDriver, INDI_IDLE);
 
-  (void)dev::telemeter<rotationStageCtrl>::appLogic();
+  (void)dev::telemeter<elliptecCtrl>::appLogic();
   return 0;
 }
 
 /* ---------- stdMotionStage surface ---------- */
 
-inline int rotationStageCtrl::stop()
+inline int elliptecCtrl::stop()
 {
   int rc = cmd_stop_();
   if(rc == 0) {
@@ -388,7 +388,7 @@ inline int rotationStageCtrl::stop()
   return rc;
 }
 
-inline int rotationStageCtrl::startHoming()
+inline int elliptecCtrl::startHoming()
 {
   // Non-blocking: issue command, mark pending; main loop will poll and update position
   int rc = cmd_home_(0);
@@ -404,7 +404,7 @@ inline int rotationStageCtrl::startHoming()
   return 0;
 }
 
-inline float rotationStageCtrl::presetNumber()
+inline float elliptecCtrl::presetNumber()
 {
   if(m_userPresetDeg.empty()) return -1.0f;
   double best = 1e300; size_t idx = 0;
@@ -415,7 +415,7 @@ inline float rotationStageCtrl::presetNumber()
   return static_cast<float>(idx + 1);
 }
 
-inline int rotationStageCtrl::moveTo(float presetIndex)
+inline int elliptecCtrl::moveTo(float presetIndex)
 {
   if(m_userPresetDeg.empty()) return -1;
   int idx = static_cast<int>(std::lround(presetIndex)) - 1;
@@ -430,25 +430,25 @@ inline int rotationStageCtrl::moveTo(float presetIndex)
 
 /* ---------- telemeter wrappers ---------- */
 
-inline int rotationStageCtrl::checkRecordTimes()
+inline int elliptecCtrl::checkRecordTimes()
 {
-  return dev::telemeter<rotationStageCtrl>::checkRecordTimes(telem_stage());
+  return dev::telemeter<elliptecCtrl>::checkRecordTimes(telem_stage());
 }
 
-inline int rotationStageCtrl::recordTelem(const telem_stage *)
+inline int elliptecCtrl::recordTelem(const telem_stage *)
 {
   return recordStage(true);
 }
 
-inline int rotationStageCtrl::recordStage(bool force)
+inline int elliptecCtrl::recordStage(bool force)
 {
-  return dev::stdMotionStage<rotationStageCtrl>::recordStage(force);
+  return dev::stdMotionStage<elliptecCtrl>::recordStage(force);
 }
 
 /* ---------- INDI callbacks (non-blocking; main loop polls) ---------- */
 
 // Absolute move
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipAbsDeg, ipRecv);
   double tgt = 0.0;
@@ -468,7 +468,7 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipAbsDeg)(const pcf::IndiProperty &ip
 }
 
 // relDeg: updates m_relStepDeg only
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipRelDeg)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipRelDeg, ipRecv);
   double step = m_relStepDeg;
@@ -481,8 +481,8 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelDeg)(const pcf::IndiProperty &ip
   return 0;
 }
 
-// relMove: fire-and-poll; auto-off immediately
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelMove)(const pcf::IndiProperty &ipRecv)
+// relMove
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipRelMove)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipRelMove, ipRecv);
   if(!ipRecv.find("request")) return 0;
@@ -498,13 +498,12 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipRelMove)(const pcf::IndiProperty &i
 
     (void)q_position_();
 
-    // auto-off now
     indi::updateSwitchIfChanged(m_ipRelMove, "request", pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   }
   return 0;
 }
 
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipVelPct)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipVelPct)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipVelPct, ipRecv);
   int pct = 0;
@@ -518,8 +517,8 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipVelPct)(const pcf::IndiProperty &ip
   return 0;
 }
 
-// optimize/save, runs device-level routine which must be stopped manually
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipOptimize)(const pcf::IndiProperty &ipRecv)
+// optimize routine
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipOptimize)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipOptimize, ipRecv);
   if(!ipRecv.find("request")) return 0;
@@ -534,7 +533,8 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipOptimize)(const pcf::IndiProperty &
   return 0;
 }
 
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipSave)(const pcf::IndiProperty &ipRecv)
+// save routine (saves device internal parameters)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipSave)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipSave, ipRecv);
   if(!ipRecv.find("request")) return 0;
@@ -550,7 +550,7 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipSave)(const pcf::IndiProperty &ipRe
 }
 
 // home
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipHome)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipHome)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipHome, ipRecv);
   if(!ipRecv.find("request")) return 0;
@@ -562,7 +562,7 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipHome)(const pcf::IndiProperty &ipRe
 }
 
 // stop
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStop)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipStop)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipStop, ipRecv);
   if(!ipRecv.find("request")) return 0;
@@ -574,7 +574,7 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStop)(const pcf::IndiProperty &ipRe
 }
 
 // stageGoto: non-blocking; auto-off immediately
-INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty &ipRecv)
+INDI_NEWCALLBACK_DEFN(elliptecCtrl, m_ipStageGoto)(const pcf::IndiProperty &ipRecv)
 {
   INDI_VALIDATE_CALLBACK_PROPS(m_ipStageGoto, ipRecv);
   if(m_userPresetNames.empty() || m_userPresetDeg.empty()) return 0;
@@ -587,7 +587,7 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty 
   }
   if(chosen < 0) return 0;
 
-  // momentary BUSY reflect, then clear
+  // momentary BUSY, then clear
   for(size_t i=0;i<m_userPresetNames.size();++i) {
     const auto &nm = m_userPresetNames[i];
     indi::updateSwitchIfChanged(m_ipStageGoto, nm, (i==(size_t)chosen)?pcf::IndiElement::On:pcf::IndiElement::Off, m_indiDriver, INDI_BUSY);
@@ -601,14 +601,13 @@ INDI_NEWCALLBACK_DEFN(rotationStageCtrl, m_ipStageGoto)(const pcf::IndiProperty 
 
   (void)q_position_();
 
-  // auto-off now
+  // auto-off
   indi::updateSwitchIfChanged(m_ipStageGoto, m_userPresetNames[(size_t)chosen], pcf::IndiElement::Off, m_indiDriver, INDI_IDLE);
   return 0;
 }
 
 /* ---------- Serial ---------- */
-
-inline speed_t rotationStageCtrl::to_termios_baud_(int b)
+inline speed_t elliptecCtrl::to_termios_baud_(int b)
 {
   switch(b){
     case 9600: return B9600;
@@ -620,7 +619,7 @@ inline speed_t rotationStageCtrl::to_termios_baud_(int b)
   }
 }
 
-inline int rotationStageCtrl::openPort_()
+inline int elliptecCtrl::openPort_()
 {
   closePort_();
   m_fd = ::open(m_port.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
@@ -641,12 +640,12 @@ inline int rotationStageCtrl::openPort_()
   return 0;
 }
 
-inline void rotationStageCtrl::closePort_()
+inline void elliptecCtrl::closePort_()
 {
   if(m_fd >= 0) { ::close(m_fd); m_fd = -1; }
 }
 
-inline int rotationStageCtrl::drainInput_()
+inline int elliptecCtrl::drainInput_()
 {
   if(m_fd < 0) return -1;
   char tmp[256];
@@ -657,7 +656,7 @@ inline int rotationStageCtrl::drainInput_()
   return 0;
 }
 
-inline int rotationStageCtrl::writeAll_(const std::string &s)
+inline int elliptecCtrl::writeAll_(const std::string &s)
 {
   if(m_fd < 0) return -1;
   size_t off=0;
@@ -676,7 +675,7 @@ inline int rotationStageCtrl::writeAll_(const std::string &s)
   return 0;
 }
 
-inline int rotationStageCtrl::readFrame_(std::string &out, int timeout_ms)
+inline int elliptecCtrl::readFrame_(std::string &out, int timeout_ms)
 {
   out.clear();
   if(m_fd < 0) return -1;
@@ -698,7 +697,7 @@ inline int rotationStageCtrl::readFrame_(std::string &out, int timeout_ms)
   }
 }
 
-inline int rotationStageCtrl::txrx_(const std::string& cmd, std::string *reply, int timeout_ms)
+inline int elliptecCtrl::txrx_(const std::string& cmd, std::string *reply, int timeout_ms)
 {
   std::string f = frame_(cmd);
   if(writeAll_(f) < 0) return -1;
@@ -711,7 +710,7 @@ inline int rotationStageCtrl::txrx_(const std::string& cmd, std::string *reply, 
 
 /* ---------- Protocol queries ---------- */
 
-inline int rotationStageCtrl::q_info_()
+inline int elliptecCtrl::q_info_()
 {
   std::string r;
   int rc = txrx_("in", &r, m_readTimeoutMs);
@@ -736,7 +735,7 @@ inline int rotationStageCtrl::q_info_()
   return 0;
 }
 
-inline int rotationStageCtrl::q_status_()
+inline int elliptecCtrl::q_status_()
 {
   std::string r;
   const int tmo = (m_gs == 0x09 || m_pending != Pending::None) ? m_busyReadTimeoutMs : m_readTimeoutMs;
@@ -751,7 +750,7 @@ inline int rotationStageCtrl::q_status_()
   return 0;
 }
 
-inline int rotationStageCtrl::q_position_()
+inline int elliptecCtrl::q_position_()
 {
   std::string r;
   const int tmo = (m_gs == 0x09 || m_pending != Pending::None) ? m_busyReadTimeoutMs : m_readTimeoutMs;
@@ -773,7 +772,7 @@ inline int rotationStageCtrl::q_position_()
 
 /* ---------- Commands ---------- */
 
-inline int rotationStageCtrl::cmd_home_(uint8_t dir)
+inline int elliptecCtrl::cmd_home_(uint8_t dir)
 {
   char nib = "0123456789ABCDEF"[dir & 0xF];
   std::string r;
@@ -784,7 +783,7 @@ inline int rotationStageCtrl::cmd_home_(uint8_t dir)
   return 0;
 }
 
-inline int rotationStageCtrl::cmd_stop_()
+inline int elliptecCtrl::cmd_stop_()
 {
   std::string r;
   m_pending = Pending::Stop;
@@ -792,7 +791,7 @@ inline int rotationStageCtrl::cmd_stop_()
   return 0;
 }
 
-inline int rotationStageCtrl::cmd_optimize_wait_()
+inline int elliptecCtrl::cmd_optimize_wait_()
 {
   std::string r;
   m_pending = Pending::Optimize;
@@ -802,7 +801,7 @@ inline int rotationStageCtrl::cmd_optimize_wait_()
   return 0;
 }
 
-inline int rotationStageCtrl::cmd_save_()
+inline int elliptecCtrl::cmd_save_()
 {
   std::string r;
   m_pending = Pending::Save;
@@ -812,7 +811,7 @@ inline int rotationStageCtrl::cmd_save_()
   return rc;
 }
 
-inline int rotationStageCtrl::cmd_setvel_(int pct)
+inline int elliptecCtrl::cmd_setvel_(int pct)
 {
   if(pct < 0) pct = 0;
   if(pct > 100) pct = 100;
@@ -823,7 +822,7 @@ inline int rotationStageCtrl::cmd_setvel_(int pct)
   return rc;
 }
 
-inline int rotationStageCtrl::cmd_moveAbs_pulses_(int32_t pulses)
+inline int elliptecCtrl::cmd_moveAbs_pulses_(int32_t pulses)
 {
   char hex[9]; std::snprintf(hex, sizeof(hex), "%08X", (uint32_t)pulses);
   std::string r;
@@ -834,7 +833,7 @@ inline int rotationStageCtrl::cmd_moveAbs_pulses_(int32_t pulses)
   return 0;
 }
 
-inline int rotationStageCtrl::cmd_moveRel_pulses_(int32_t pulses)
+inline int elliptecCtrl::cmd_moveRel_pulses_(int32_t pulses)
 {
   char hex[9]; std::snprintf(hex, sizeof(hex), "%08X", (uint32_t)pulses);
   std::string r;
@@ -847,19 +846,19 @@ inline int rotationStageCtrl::cmd_moveRel_pulses_(int32_t pulses)
 
 /* ---------- Degree wrappers ---------- */
 
-inline int32_t rotationStageCtrl::degToPulses_(double deg) const
+inline int32_t elliptecCtrl::degToPulses_(double deg) const
 {
   if(m_pulsesPerRev == 0) return 0;
   return (int32_t)std::llround((deg/360.0) * (double)m_pulsesPerRev);
 }
 
-inline double rotationStageCtrl::pulsesToDeg_(int32_t pulses) const
+inline double elliptecCtrl::pulsesToDeg_(int32_t pulses) const
 {
   if(m_pulsesPerRev == 0) return 0.0;
   return (double)pulses * 360.0 / (double)m_pulsesPerRev;
 }
 
-inline int rotationStageCtrl::moveAbsDeg_(double deg)
+inline int elliptecCtrl::moveAbsDeg_(double deg)
 {
   if(!m_allowMultiturn) {
     while(deg < 0.0)   deg += 720.0;
@@ -869,20 +868,20 @@ inline int rotationStageCtrl::moveAbsDeg_(double deg)
   return cmd_moveAbs_pulses_(p);
 }
 
-inline int rotationStageCtrl::moveRelDeg_(double ddeg)
+inline int elliptecCtrl::moveRelDeg_(double ddeg)
 {
   int32_t p = degToPulses_(ddeg);
   return cmd_moveRel_pulses_(p);
 }
 
-inline int rotationStageCtrl::moveRelDegCmdFromRelMove_()
+inline int elliptecCtrl::moveRelDegCmdFromRelMove_()
 {
   return moveRelDeg_(m_relStepDeg);
 }
 
 /* ---------- Poll/resolve ---------- */
 
-inline int rotationStageCtrl::pollDevice_()
+inline int elliptecCtrl::pollDevice_()
 {
   int rcP = q_position_();
   int rcS = q_status_();
@@ -890,7 +889,7 @@ inline int rotationStageCtrl::pollDevice_()
   // Hard errors => reconnect
   if(rcP < 0 || rcS < 0) return -1;
 
-  // Soft timeouts => debounce; only reconnect if too many in a row
+  // Soft timeouts => debounce; reconnect if too many misses in a row
   if(rcP > 0 || rcS > 0) {
     if(++m_commMisses <= m_commMaxMisses) {
       updateStatus_();
@@ -956,7 +955,7 @@ inline int rotationStageCtrl::pollDevice_()
   return 0;
 }
 
-inline void rotationStageCtrl::updateStatus_()
+inline void elliptecCtrl::updateStatus_()
 {
   if(!m_indiDriver) return;
 
@@ -986,7 +985,7 @@ inline void rotationStageCtrl::updateStatus_()
 
 /* ---------- Stage name/position text ---------- */
 
-inline std::string rotationStageCtrl::buildStageNamePosText_() const
+inline std::string elliptecCtrl::buildStageNamePosText_() const
 {
   if(m_userPresetNames.empty() || m_userPresetDeg.empty()) return "(none)";
   const size_t n = std::min(m_userPresetNames.size(), m_userPresetDeg.size());
@@ -1014,5 +1013,5 @@ inline std::string rotationStageCtrl::buildStageNamePosText_() const
 } // namespace app
 } // namespace MagAOX
 
-#endif // rotationStageCtrl_hpp
+#endif // elliptecCtrl_hpp
 

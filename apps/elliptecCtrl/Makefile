@@ -3,6 +3,6 @@ allall: all
 
 OTHER_HEADERS=
 OTHER_OBJS=
-TARGET=rotationStageCtrl
+TARGET=elliptecCtrl
 include ../../Make/magAOXApp.mk
 
