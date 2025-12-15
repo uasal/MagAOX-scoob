@@ -1,21 +1,6 @@
 #ifndef elliptecCtrl_hpp
 #define elliptecCtrl_hpp
 
-#include <string>
-#include <vector>
-#include <cmath>
-#include <cerrno>
-#include <cstring>
-#include <chrono>
-#include <thread>
-#include <termios.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <cctype>
-#include <sstream>
-#include <iomanip>
-
 #include "../../libMagAOX/libMagAOX.hpp"
 #include "../../magaox_git_version.h"
 
