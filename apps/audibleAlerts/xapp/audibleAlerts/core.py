@@ -39,12 +39,12 @@ class AudibleAlerts(XDevice):
     personality : Personality
     _cb_handles : set
     _speech_requests : list[Union[SSML, Recording]]
-    soundboard_sw_prop : properties.SwitchVector = None
+    soundboard_sw_prop : Optional[properties.SwitchVector] = None  # unset during setup until first personality is loaded
     default_voice : str = "coqui-tts:en_ljspeech"  # overridden by personality when loaded
-    personalities : list[str] = ['default', 'lab_mode',]
-    active_personality : str = "default"
+    personalities : list[str] = ['onsky', 'lab_mode',]
+    active_personality : str = "lab_mode"
     api_url : str = "http://localhost:5500/"
-    mute : bool = False
+    mute : bool = True
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
     per_transition_cooldown_ts : dict[Transition, float]
     last_utterance_ts : float = 0
