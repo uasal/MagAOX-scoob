@@ -35,5 +35,5 @@ class Setup(BaseDbCommand):
         connections = self.connect_to_databases()
         for conn in connections:
             self.initialize(conn)
-            log.info(f"Initialized {conn.info.dns}")
+            log.info(f"Initialized {conn}")
         log.info("Success!")

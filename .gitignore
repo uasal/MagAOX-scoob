@@ -112,6 +112,9 @@ apps/mwfsMonitor/mwfsMonitor
 apps/mzmqServer/mzmqServer
 apps/mzmqClient/mzmqClient
 
+#n
+apps/nnReconstructor/nnReconstructor
+
 #o
 apps/observerCtrl/observerCtrl
 apps/ocam2KCtrl/ocam2KCtrl
@@ -162,6 +165,7 @@ apps/userGainCtrl/userGainCtrl
 
 #w
 apps/w2tcsOffloader/w2tcsOffloader
+apps/wooferTweeterRecon/wooferTweeterRecon
 
 #x
 apps/xindiserver/tests/remoteDriver_test
@@ -225,6 +229,7 @@ setup/qhyccd_container/sdk_linux64_22.02.17.tgz
 *.egg-info
 __pycache__
 installed_python_interface_timestamp.txt
+magaox-python/build
 
 libMagAOX/doc/diag/Makefile
 libMagAOX/doc/diag/xwcapp_fsm.drawio

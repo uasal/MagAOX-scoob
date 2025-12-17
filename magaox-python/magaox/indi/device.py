@@ -95,7 +95,7 @@ class NDJSONLogFormatter(MagAOXLogFormatter):
 
 def init_logging(logger : logging.Logger, destination, temporary_log_path, console_log_level, file_log_level, all_verbose):
     root = logging.getLogger()
-    root.setLevel(logging.WARN)
+    root.setLevel(logging.INFO)
     if all_verbose:
         file_log_level = console_log_level = logging.DEBUG
         logger = root

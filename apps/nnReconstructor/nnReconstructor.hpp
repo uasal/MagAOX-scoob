@@ -53,7 +53,7 @@ namespace MagAOX
 namespace app
 {
 
-class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnReconstructor>
+class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnReconstructor>, public dev::frameGrabber<nnReconstructor>, public dev::telemeter<nnReconstructor>
 {
     // Give the test harness access.
     friend class nnReconstructor_test;
@@ -63,6 +63,14 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     // The base shmimMonitor type
     typedef dev::shmimMonitor<nnReconstructor> shmimMonitorT;
 
+    friend class dev::frameGrabber<nnReconstructor>;
+
+    typedef dev::frameGrabber<nnReconstructor> frameGrabberT;
+
+    friend class dev::telemeter<nnReconstructor>;
+    
+    typedef dev::telemeter<nnReconstructor> telemeterT;
+    
     /// Floating point type in which to do all calculations.
     typedef float realT;
 
@@ -70,6 +78,9 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     /** \name app::dev Configurations
      *@{
      */
+    
+    /// This framegrabber can't be flipped
+    static constexpr bool c_frameGrabber_flippable = false;
 
     ///@}
 
@@ -80,8 +91,13 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     std::string dataDirs;     // Location where the data (onnx file, engine, WFS reference) is stored
     std::string engineName;   // Name of the engine
     std::string engineDirs;   // Name of the engine
-    bool rebuildEngine;       // If true, it will rebuild the engine and save it at engineName
+    bool rebuildEngine {false};       // If true, it will rebuild the engine and save it at engineName
     
+    std::string m_fpsSource{ "camwfs" }; /**< Device name for getting fps of the loop.
+                                              This device must have *.fps.current.  Default is camwfs*/
+
+                                              ///@}
+                                              
     Logger logger;			  // The tensorRT logger
     std::vector<char> engineData; // for loading the engine file.
 
@@ -93,7 +109,8 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int inputW {0};
     int inputSize {0};
     int input2Size {4};
-    int outputSize {0};
+    uint32_t outputSize {0};
+    int zeroPad { 2 };
 
     float* d_input {nullptr};
     float* d_input2 {nullptr};
@@ -110,11 +127,13 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int pup_offset2_x; // Horizontal offset to the second set of pupils
     int pup_offset2_y; // Horizontal offset to the second set of pupils
     int pixels_per_quadrant;
-    unsigned long frame_counter{ 0 };
 
     int Npup{ 4 };        // Number of pupils
-    float *modeval{ nullptr };
+
+    eigenImage<float> modeval;
+
     half *modeval_half{ nullptr };
+
     float *pp_image{ nullptr };
     float *pup_Is{ nullptr };
     half *pp_image_half{ nullptr };
@@ -126,16 +145,12 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     uint8_t m_pwfsDataType{ 0 }; ///< The ImageStreamIO type code.
     size_t m_pwfsTypeSize{ 0 };  ///< The size of the type, in bytes.
 
-    // variables for sending the output to aol_modevals
-    std::string m_modevalChannel;
-    IMAGE m_modevalStream;
-    uint32_t m_modevalWidth {0}; ///< The width of the shmim
-    uint32_t m_modevalHeight {0}; ///< The height of the shmim
-    uint8_t m_modevalDataType {0}; ///< The ImageStreamIO type code.
-    size_t m_modevalTypeSize {0};  ///< The size of the type, in bytes.
+    float m_fps{ 0 }; ///< Current FPS from the FPS source.
 
-    bool m_modevalOpened {false};
-    bool m_modevalRestart {false};
+    sem_t m_smSemaphore{ 0 }; ///< Semaphore used to synchronize the fg thread and the dm command thread.
+
+    bool m_updated{ false }; ///< Flag indicating that the mode vals have been updated
+
 
   public:
     /// Default c'tor.
@@ -152,7 +167,9 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     /** This is called by loadConfig().
      */
     int loadConfigImpl(
-        mx::app::appConfigurator &_config /**< [in] an application configuration from which to load values*/ );
+        mx::app::appConfigurator &_config /**< [in] an application configuration 
+        from which to load values*/ 
+    );
 
     virtual void loadConfig();
 
@@ -176,7 +193,7 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     virtual int appShutdown();
 
     // Custom functions
-    int send_to_shmim();
+    //int send_to_shmim();
     
     void load_engine(const std::string filename);
     void create_engine_context();
@@ -192,6 +209,61 @@ class nnReconstructor : public MagAOXApp<true>, public dev::shmimMonitor<nnRecon
     int processImage( void *curr_src,          ///< [in] pointer to start of current frame.
                       const dev::shmimT &dummy ///< [in] tag to differentiate shmimMonitor parents.
     );
+
+
+    /** \name frameGrabber Interface 
+     * @{
+     */
+  
+    /// Configure the output stream for acquistion.
+    /** Tests if stream exists and is expected size.  Creates it if needed. 
+     *  will set m_width, m_height, and m_dataType.
+     */
+    int configureAcquisition();
+ 
+    /// Gets the frames-per-second readout rate
+    /** Used for the latency statistics
+      */
+    float fps();
+ 
+    /// Start acquisition.
+    /** A no-op in this class.
+     */ 
+    int startAcquisition();
+ 
+    /// Acquire data.
+    /** Here just waits on the semaphore.
+     */
+    int acquireAndCheckValid();
+ 
+    /// Loads the modevals into the stream
+    int loadImageIntoStream(void * dest);
+ 
+    ///Take any actions needed to reconfigure the system.  Called if m_reconfig is set to true.
+    int reconfig();
+
+    ///@}
+
+    /** \name INDI interface 
+     * @{
+    */
+
+    pcf::IndiProperty m_indiP_fpsSource;
+    INDI_SETCALLBACK_DECL( nnReconstructor, m_indiP_fpsSource );
+
+    pcf::IndiProperty m_indiP_fps;
+
+    ///@}
+
+    /** \name Telemeter Interface
+     * @{
+     */
+    
+    int checkRecordTimes();
+
+    int recordTelem( const telem_fgtimings * );
+
+    ///@}
 };
 
 void nnReconstructor::load_engine(const std::string filename) {
@@ -232,17 +304,9 @@ void nnReconstructor::create_engine_context(){
 
 
     auto inputName = engine->getIOTensorName(0);
-    const char* outputName ;
-    const char* input2Name = " ";
-    if (explicit_tt) {
-        input2Name = engine->getIOTensorName(1);
-        outputName = engine->getIOTensorName(2);
-    }
-    else{
-        outputName = engine->getIOTensorName(1);
-    }
-    ///auto outputName = engine->getIOTensorName(2);
-    std::cout << "Tensor IO names: " << inputName << ", " << input2Name << ", " << outputName << std::endl;
+    auto outputName = engine->getIOTensorName(1);
+    std::cout << "Tensor IO names: " << inputName << ", " << outputName << std::endl;
+
 
     const auto inputDims = engine->getTensorShape(inputName);
     const auto outputDims = engine->getTensorShape(outputName);
@@ -300,21 +364,6 @@ void nnReconstructor::cleanup_engine_context(){
         delete runtime;
 };
 
-inline int nnReconstructor::send_to_shmim()
-{
-    // Check if processImage is running
-    // while(m_dmStream.md[0].write == 1);
-
-    m_modevalStream.md[0].write = 1;
-    memcpy( m_modevalStream.array.raw, modeval, outputSize * m_modevalTypeSize );
-    m_modevalStream.md[0].cnt0++;
-    m_modevalStream.md[0].write = 0;
-
-    ImageStreamIO_sempost( &m_modevalStream, -1 );
-
-    return 0;
-}
-
 inline nnReconstructor::nnReconstructor() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 {
     return;
@@ -323,7 +372,10 @@ inline nnReconstructor::nnReconstructor() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGA
 inline void nnReconstructor::setupConfig()
 {
     std::cout << "setupConfig()" << std::endl;
-    shmimMonitorT::setupConfig( config );
+
+    SHMIMMONITOR_SETUP_CONFIG( config );
+    FRAMEGRABBER_SETUP_CONFIG( config );
+    TELEMETER_SETUP_CONFIG(config);
 
     config.add( "parameters.dataDirs",
                 "",
@@ -345,7 +397,6 @@ inline void nnReconstructor::setupConfig()
                 "string",
                 "The path to the directory with the TRT engine." );
 
-
     config.add( "parameters.engineName",
                 "",
                 "parameters.engineName",
@@ -355,6 +406,7 @@ inline void nnReconstructor::setupConfig()
                 false,
                 "string",
                 "Name of the TRT engine." );
+
     config.add( "parameters.rebuildEngine",
                 "",
                 "parameters.rebuildEngine",
@@ -404,16 +456,6 @@ inline void nnReconstructor::setupConfig()
                 false,
                 "bool",
                 "If true the model will additionally give the pupil intensities as input to the NN." );
-
-    config.add( "parameters.channel",
-                "",
-                "parameters.channel",
-                argType::Required,
-                "parameters",
-                "channel",
-                false,
-                "string",
-                "The output channel." );
 
     config.add( "parameters.m_pupPix",
                 "",
@@ -470,24 +512,30 @@ inline void nnReconstructor::setupConfig()
 inline int nnReconstructor::loadConfigImpl( mx::app::appConfigurator &_config )
 {
     std::cout << "loadConfigImpl()" << std::endl;
-    shmimMonitorT::loadConfig( config );
+
+    SHMIMMONITOR_LOAD_CONFIG(_config);
+
+    frameGrabberT::m_ownShmim = false;
+    FRAMEGRABBER_LOAD_CONFIG(_config);
 
     _config( dataDirs, "parameters.dataDirs" );
     _config( engineDirs, "parameters.engineDirs" );
     _config( engineName, "parameters.engineName" );
     _config( rebuildEngine, "parameters.rebuildEngine" );
-
     _config( imageNorm, "parameters.imageNorm" );
     _config( modalNorm, "parameters.modalNorm" );
     _config( use_fp16, "parameters.use_fp16" );
     _config( explicit_tt, "parameters.explicit_tt" );
-    _config( m_modevalChannel, "parameters.channel");
 
     _config( m_pupPix, "parameters.m_pupPix" );
     _config( pup_offset1_x, "parameters.pup_offset1_x" );
     _config( pup_offset1_y, "parameters.pup_offset1_y" );
     _config( pup_offset2_x, "parameters.pup_offset2_x" );
     _config( pup_offset2_y, "parameters.pup_offset2_y" );
+
+    _config( m_fpsSource, "recon.fpsSource" );
+
+    TELEMETER_LOAD_CONFIG(_config);
 
     if( true )
     {
@@ -500,7 +548,7 @@ inline int nnReconstructor::loadConfigImpl( mx::app::appConfigurator &_config )
         std::cout << "modalNorm: " << modalNorm << std::endl;
         std::cout << "use_fp16: " << use_fp16 << std::endl;
         std::cout << "explicit_tt: " << explicit_tt << std::endl;
-        std::cout << "modeval Channel: " << m_modevalChannel << std::endl;
+        std::cout << "modeval Channel: " << frameGrabberT::m_shmimName << std::endl;
 
         std::cout << "m_pupPix: " << m_pupPix << std::endl;
         std::cout << "pup_offset1_x: " << pup_offset1_x << std::endl;
@@ -519,11 +567,23 @@ inline void nnReconstructor::loadConfig()
 
 inline int nnReconstructor::appStartup()
 {
-    if( shmimMonitorT::appStartup() < 0 )
+    
+    REG_INDI_SETPROP( m_indiP_fpsSource, m_fpsSource, std::string( "fps" ) );
+
+    createROIndiNumber( m_indiP_fps, "fps" );
+    m_indiP_fps.add( pcf::IndiElement( "current" ) );
+    if( registerIndiPropertyReadOnly( m_indiP_fps ) < 0 )
     {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
+        log<software_error>( { "" } );
+        return -1;
     }
-  
+
+    if( sem_init( &m_smSemaphore, 0, 0 ) < 0 )
+    {
+        log<software_critical>( { errno, "Initializing S.M. semaphore" } );
+        return -1;
+    }
+
     std::string full_filepath = engineDirs + "/" + engineName;
     std::cout << "file: " << full_filepath << std::endl;
 
@@ -531,31 +591,42 @@ inline int nnReconstructor::appStartup()
     create_engine_context();
     prepare_engine_memory();
 
-    // state(stateCodes::READY);
+    //Do this after everything is configured so we can check sizes propertly
+    FRAMEGRABBER_APP_STARTUP;
+
+    SHMIMMONITOR_APP_STARTUP;
+  
+    TELEMETER_APP_STARTUP;
+
     state( stateCodes::OPERATING );
     return 0;
 }
 
 inline int nnReconstructor::appLogic()
 {
-    if( shmimMonitorT::appLogic() < 0 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__ } );
-    }
+    SHMIMMONITOR_APP_LOGIC;
+
+    FRAMEGRABBER_APP_LOGIC;
+
+    TELEMETER_APP_LOGIC;
 
     std::unique_lock<std::mutex> lock( m_indiMutex );
 
-    if( shmimMonitorT::updateINDI() < 0 )
-    {
-        log<software_error>( { __FILE__, __LINE__ } );
-    }
+    SHMIMMONITOR_UPDATE_INDI;
+
+    FRAMEGRABBER_UPDATE_INDI;
+
 
     return 0;
 }
 
 inline int nnReconstructor::appShutdown()
 {
-    shmimMonitorT::appShutdown();
+    SHMIMMONITOR_APP_SHUTDOWN;
+
+    FRAMEGRABBER_APP_SHUTDOWN;
+
+    TELEMETER_APP_SHUTDOWN;
 
     if( pp_image )
     {
@@ -573,10 +644,7 @@ inline int nnReconstructor::appShutdown()
     {
         delete[] pup_Is_half;
     }
-    if( modeval )
-    {
-        delete[] modeval;
-    }
+
     if( modeval_half )
     {
         delete[] modeval_half;
@@ -602,12 +670,16 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
     std::cout << "Pixels: " << pixels_per_quadrant << std::endl;
     pp_image = new float[Npup * pixels_per_quadrant];
     pup_Is = new float[4];
-    modeval = new float[outputSize];
+    //modeval = new float[outputSize];
+    modeval.resize(outputSize, 1);
+
     memset( pp_image, 0, sizeof( float ) * Npup * pixels_per_quadrant );
         if (explicit_tt){
             memset( pup_Is, 0, sizeof( float) * 4);
         }
-    memset( modeval, 0, sizeof( float) * outputSize);
+    //memset( modeval, 0, sizeof( float) * outputSize);
+    modeval.setZero();
+    
     if (use_fp16){
         pp_image_half = new half[Npup * pixels_per_quadrant];
         modeval_half = new half[outputSize];
@@ -619,39 +691,6 @@ inline int nnReconstructor::allocate( const dev::shmimT &dummy )
         memset( modeval_half, 0, sizeof( half) * outputSize);
     }
 
-    std::cout << "Close shmims" << std::endl;
-    // Allocate the DM shmim interface
-    if(m_modevalOpened){
-        ImageStreamIO_closeIm(&m_modevalStream);
-    }
-
-    std::cout << "Open shmims" << std::endl;
-    m_modevalOpened = false;
-    m_modevalRestart = false; //Set this up front, since we're about to restart.
-
-    if( ImageStreamIO_openIm(&m_modevalStream, m_modevalChannel.c_str()) == 0){
-        if(m_modevalStream.md[0].sem < 10){
-            ImageStreamIO_closeIm(&m_modevalStream);
-        }else{
-            m_modevalOpened = true;
-        }
-    }
-
-    std::cout << "Done!" << std::endl;
-    if(!m_modevalOpened){
-        log<text_log>( m_modevalChannel + " not opened.", logPrio::LOG_NOTICE);
-        return -1;
-    }else{
-        m_modevalWidth = m_modevalStream.md->size[0];
-        m_modevalHeight = m_modevalStream.md->size[1];
-
-        m_modevalDataType = m_modevalStream.md->datatype;
-        m_modevalTypeSize = sizeof(float);
-
-        log<text_log>( "Opened " + m_modevalChannel + " " + std::to_string(m_modevalWidth) + " x " + std::to_string(m_modevalHeight) + " with data type: " + std::to_string(m_modevalDataType), logPrio::LOG_NOTICE);
-    }
-
-
     return 0;
 }
 
@@ -659,43 +698,41 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
 {
     static_cast<void>( dummy ); // be unused
 
+    //record arrival time as the atime
+    if( clock_gettime( CLOCK_REALTIME, &(frameGrabberT::m_currImageTimestamp) ) < 0 )
+    {
+        m_shutdown = true;
+        return log<software_critical,-1>( { errno, "clock_gettime" } );
+    }
+
     // aol_imwfs2 is reference and dark subtracted and is power normalized.
-    Eigen::Map<eigenImage<unsigned short>> pwfsIm(static_cast<unsigned short *>( curr_src ), m_pwfsHeight, m_pwfsWidth );
-    float X1 = 0;
-    float X2 = 0;
-    float X3 = 0;
-    float X4 = 0;
+
+    Eigen::Map<eigenImage<float>> pwfsIm(reinterpret_cast<float*>(curr_src), m_pwfsHeight, m_pwfsWidth);
 
     // Split up the four pupils for the Neural Network.
     int ki = 0;
 
-   for (int col_i = 0; col_i < m_pupPix; ++col_i)
+
+    for( int col_i = -zeroPad; col_i < (m_pupPix - zeroPad); ++col_i )
     {
-        for (int row_i = 0; row_i < m_pupPix; ++row_i)
+        for( int row_i = -zeroPad; row_i < (m_pupPix - zeroPad); ++row_i )
         {
-            // Read once per pixel/quad, reuse for pp_image and sums
-            const float p0 = imageNorm * static_cast<realT>(pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i));
-            const float p1 = imageNorm * static_cast<realT>(pwfsIm(pup_offset1_y + row_i, pup_offset2_x + col_i));
-            const float p2 = imageNorm * static_cast<realT>(pwfsIm(pup_offset2_y + row_i, pup_offset1_x + col_i));
-            const float p3 = imageNorm * static_cast<realT>(pwfsIm(pup_offset2_y + row_i, pup_offset2_x + col_i));
-
-            pp_image[ki]                          = p0;
-            pp_image[ki + pixels_per_quadrant]    = p1;
-            pp_image[ki + 2 * pixels_per_quadrant]= p2;
-            pp_image[ki + 3 * pixels_per_quadrant]= p3;
-
-            X1 += p0;
-            X2 += p1;
-            X3 += p2;
-            X4 += p3;
-
+            if ((col_i < 0) or (col_i >= (m_pupPix - 2*zeroPad)) or (row_i < 0) or (row_i >= (m_pupPix - 2*zeroPad))){
+                pp_image[ki] = 0;
+                pp_image[ki + pixels_per_quadrant] = 0;
+                pp_image[ki + 2 * pixels_per_quadrant] = 0;
+                pp_image[ki + 3 * pixels_per_quadrant] = 0;
+            }
+            else {
+                pp_image[ki] = imageNorm * (realT)pwfsIm(pup_offset1_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset1_y + row_i, pup_offset2_x + col_i );
+                pp_image[ki + 2 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset1_x + col_i );
+                pp_image[ki + 3 * pixels_per_quadrant] = imageNorm * (realT)pwfsIm( pup_offset2_y + row_i, pup_offset2_x + col_i );
+            }
             ++ki;
         }
     }
-    pup_Is[0] = (X1 + X2 - X3 - X4)/(m_pupPix*m_pupPix);
-    pup_Is[1] = (X1 + X3 - X2 - X4)/(m_pupPix*m_pupPix);
-    pup_Is[2] = (X1 + X4 - X2 - X3)/(m_pupPix*m_pupPix);
-    pup_Is[3] = 3e-4;
+
     // Copy input data to device
     if (use_fp16){
         floatToHalfArray(pp_image_half, pp_image, inputSize);
@@ -726,24 +763,142 @@ inline int nnReconstructor::processImage( void *curr_src, const dev::shmimT &dum
 
     // Copy output data back to host
     if (use_fp16){
-
         cudaMemcpy(modeval_half, d_output, outputSize * sizeof(half), cudaMemcpyDeviceToHost);
-        halfToFloatArray(modeval, modeval_half, outputSize);
+        halfToFloatArray(modeval.data(), modeval_half, outputSize);
     }
     else {
-        cudaMemcpy(modeval, d_output, outputSize * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(modeval.data(), d_output, outputSize * sizeof(float), cudaMemcpyDeviceToHost);
     }
-    
-
-    if(frame_counter % 2000 == 0)
-        std::cout << "HOWDY" << std::endl;
 
     // Send modal coefficients to the correct stream
-    send_to_shmim();
+    m_updated = true;
 
-    frame_counter++;
+    // trigger framegrabber
+    if( sem_post( &m_smSemaphore ) < 0 )
+    {
+        log<software_critical>( { errno, 0, "Error posting to semaphore" } );
+        return -1;
+    }
 
     return 0;
+}
+
+int nnReconstructor::configureAcquisition()
+{
+    static bool logged = false;
+
+    int rv = openShmim();
+    if(rv != 0)
+    {
+        return rv;
+    }
+
+    if( frameGrabberT::m_width != outputSize || frameGrabberT::m_height != 1 ||
+        frameGrabberT::m_dataType != _DATATYPE_FLOAT )
+    {
+        if( !logged )
+        {
+            log<text_log>( std::format( "{} is wrong size ({}x{}) or type ({})",
+                                        frameGrabberT::m_shmimName,
+                                        frameGrabberT::m_width,
+                                        frameGrabberT::m_height,
+                                        frameGrabberT::m_dataType ),
+                           logPrio::LOG_INFO );
+            logged = true;
+        }
+        return 1;
+    }
+
+
+    logged = false;
+
+    return 0;
+}
+ 
+float nnReconstructor::fps()
+{
+    return m_fps;
+}
+ 
+int nnReconstructor::startAcquisition()
+{    
+    return 0;
+}
+ 
+int nnReconstructor::acquireAndCheckValid()
+{
+    timespec ts;
+
+    errno = 0;
+    if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
+    {
+        log<software_critical>( { errno, "clock_gettime" } );
+        return -1;
+    }
+
+    ts.tv_sec += 1;
+
+    if( sem_timedwait( &m_smSemaphore, &ts ) == 0 )
+    {
+        if( m_updated )
+        {
+            return 0;
+        }
+        else
+        {
+            return 1;
+        }
+    }
+    else
+    {
+        return 1;
+    }
+}
+ 
+int nnReconstructor::loadImageIntoStream(void * dest)
+{
+    memcpy( dest, modeval.data(), modeval.rows() * frameGrabberT::m_typeSize );
+
+    m_updated = false;
+
+    return 0;
+}
+ 
+int nnReconstructor::reconfig()
+{
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( nnReconstructor, m_indiP_fpsSource )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_fpsSource, ipRecv );
+
+    if( ipRecv.find( "current" ) != true ) // this isn't valid
+    {
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    realT fps = ipRecv["current"].get<float>();
+
+    if( fps != m_fps )
+    {
+        m_fps = fps;
+        updateIfChanged( m_indiP_fps, "current", m_fps );
+    }
+
+    return 0;
+}
+
+int nnReconstructor::checkRecordTimes()
+{
+    return telemeterT::checkRecordTimes( telem_fgtimings() );
+}
+
+int nnReconstructor::recordTelem( const telem_fgtimings * )
+{
+    return recordFGTimings( true );
 }
 
 } // namespace app

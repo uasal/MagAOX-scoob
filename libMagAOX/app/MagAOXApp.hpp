@@ -4078,12 +4078,6 @@ std::string MagAOXApp<_useINDI>::driverOutName()
     return m_driverOutName;
 }
 
-template <bool _useINDI>
-std::string MagAOXApp<_useINDI>::driverCtrlName()
-{
-    return m_driverCtrlName;
-}
-
 #ifdef XWCTEST_NAMESPACE
 } //namespace XWCTEST_NAMESPACE
 #endif
