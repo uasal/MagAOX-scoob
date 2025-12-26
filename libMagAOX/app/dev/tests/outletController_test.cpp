@@ -35,6 +35,9 @@ struct outletControllerTest : public MagAOX::app::dev::outletController<outletCo
 
    virtual int turnOutletOn( int outletNum )
    {
+      if (outletNum < 0) {
+         return -1;
+      }
       m_outletStates[outletNum] = 2;
       mx::sys::nanoSleep(1);
       m_timestamps[outletNum] = mx::sys::get_curr_time();
@@ -44,6 +47,10 @@ struct outletControllerTest : public MagAOX::app::dev::outletController<outletCo
 
    virtual int turnOutletOff( int outletNum )
    {
+      if (outletNum < 0) {
+         return -1;
+      }
+      
       m_outletStates[outletNum] = 0;
       mx::sys::nanoSleep(1);
       m_timestamps[outletNum] = mx::sys::get_curr_time();
@@ -1272,6 +1279,41 @@ SCENARIO( "outletController Operation", "[outletController]" )
          //Verify channel state
          REQUIRE( pdt.channelState("channel1") == 0 );
          REQUIRE( pdt.channelState("channel2") == 0 );
+      }
+      WHEN("operating a single channel with bad outlet numbers on first channel")
+      {
+         pdt.m_channels["channel1"].m_outlets[0] = -1;
+         //Turn on channel1
+         int rv = pdt.turnChannelOn("channel1");
+
+         //verify error returned
+         REQUIRE( rv == -1);
+
+         //Turn off channel1
+         rv = pdt.turnChannelOff("channel1");
+
+         //verify error returned
+         REQUIRE( rv == -1);
+
+      }
+      WHEN("operating a single channel with bad outlet numbers on first channel")
+      {
+         int rv = pdt.updateOutletStates();
+         REQUIRE(rv == 0);
+
+         pdt.m_channels["channel2"].m_outlets[1] = -1;
+         //Turn on channel1
+         rv = pdt.turnChannelOn("channel2");
+
+         //verify error returned
+         REQUIRE( rv == -1);
+
+         //Turn off channel1
+         rv = pdt.turnChannelOff("channel2");
+
+         //verify error returned
+         REQUIRE( rv == -1);
+
       }
    }
    GIVEN("a config file with 2 channels for 4 outlets, onOrder reversed")
