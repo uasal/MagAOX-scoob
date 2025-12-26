@@ -282,7 +282,8 @@ scripts_to_install = \
 	hoblockleaks \
 	inventory_files \
 	list_xfiles_by_semester \
-	loop_instrument_backup_sync
+	loop_instrument_backup_sync \
+	cyverse_replicate
 
 .PHONY: all
 all: indi_all libs_all flatlogs/bin/flatlogcodes apps_all guis_all utils_all
@@ -317,7 +318,7 @@ indi_all:
 	cd INDI && ${MAKE} all
 
 .PHONY: indi_install
-indi_install:
+indi_install: indi_all
 	cd INDI && ${MAKE} install
 
 .PHONY: indi_clean
@@ -370,13 +371,13 @@ installed_python_interface_timestamp.txt: $(PY_SOURCES)
 	date -u -Iseconds > ./installed_python_interface_timestamp.txt
 
 .PHONY: apps_all
-apps_all: libs_all
+apps_all: libs_all indi_all
 	for app in ${apps_to_build}; do \
 		(cd apps/$$app && ${MAKE} )|| exit 1; \
 	done
 
 .PHONY: apps_install
-apps_install: libs_install
+apps_install: libs_install indi_install
 	for app in ${apps_to_build}; do \
 		(cd apps/$$app && ${MAKE}  install) || exit 1; \
 	done
@@ -394,13 +395,13 @@ apps_clean:
 	done
 
 .PHONY: guis_all
-guis_all: libs_all rtimv_plugins_all libMagAOX/libMagAOX.hpp.gch libMagAOX/libMagAOX.a
+guis_all: libs_all indi_all rtimv_plugins_all libMagAOX/libMagAOX.hpp.gch libMagAOX/libMagAOX.a
 	for gui in ${guis_to_build}; do \
 		(cd gui/apps/$$gui && ${MAKE} )|| exit 1; \
 	done
 
 .PHONY: guis_install
-guis_install: libs_install rtimv_plugins_install
+guis_install: libs_install indi_install rtimv_plugins_install
 	for gui in ${guis_to_build}; do \
 		(cd gui/apps/$$gui && ${MAKE} install) || exit 1; \
 	done
@@ -412,13 +413,13 @@ guis_clean: rtimv_plugins_clean
 	done
 
 .PHONY: rtimv_plugins_all
-rtimv_plugins_all: libs_all
+rtimv_plugins_all: indi_all libs_all
 	for plg in ${rtimv_plugins_to_build}; do \
 		(cd gui/rtimv/plugins/$$plg && ${MAKE} )|| exit 1; \
 	done
 
 .PHONY: rtimv_plugins_install
-rtimv_plugins_install: libs_install
+rtimv_plugins_install: indi_install libs_install
 	for plg in ${rtimv_plugins_to_build}; do \
 		(cd gui/rtimv/plugins/$$plg && ${MAKE} install) || exit 1; \
 	done
@@ -458,7 +459,7 @@ utils_all: flatlogs/bin/flatlogcodes indi_all libMagAOX/libMagAOX.hpp.gch libMag
 		done
 
 .PHONY: utils_install
-utils_install: flatlogs/bin/flatlogcodes utils_all
+utils_install: flatlogs/bin/flatlogcodes indi_install utils_all
 		for app in ${utils_to_build}; do \
 			(cd utils/$$app && ${MAKE} install) || exit 1; \
 		done

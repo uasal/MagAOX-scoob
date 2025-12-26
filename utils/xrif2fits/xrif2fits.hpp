@@ -26,6 +26,10 @@ using namespace mx::sys::tsop;
 
 #include "../../libMagAOX/libMagAOX.hpp"
 
+#ifndef DEBUG_CRUMB
+#define DEBUG_CRUMB(msg) {std::cerr << msg << '(' << __FILE__ << ' ' << __LINE__ << "\n";}
+#endif
+
 #define ERR_INVOKED_NAME( msg )                                                                                        \
     std::cerr << invokedName + ": " << msg << "\n  at:" << __FILE__ << ' ' << __LINE__ << '\n';
 
@@ -391,7 +395,7 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
 
     try
     {
-        std::cerr << "reading: " << hcfile << '\n';
+        DEBUG_CRUMB("reading: " + hcfile);
 
         if( hconfig.readConfig( hcfile, true ) != 0 )
         {
@@ -417,7 +421,8 @@ inline mx::error_t xrif2fits::readHeaderConfig( const std::string &hcfile )
             }
         }
 
-        std::cerr << "reading include: " + mx::app::application::m_configPathCLBase + include << '\n';
+        DEBUG_CRUMB("reading include: " + mx::app::application::m_configPathCLBase + include);
+
         mx_error_check( readHeaderConfig( mx::app::application::m_configPathCLBase + include ) );
     }
 

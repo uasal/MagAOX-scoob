@@ -56,6 +56,9 @@ class Image(ImageStreamIOWrap.Image):
         assert this_path.stat().st_ino == self._opened_with_inode
 
     def copy(self):
+        if not self._check_inode():
+            log.info(f"Reopening {self.path} because we detected an inode change")
+            self._reopen(self.name)
         return np.squeeze(super().copy().T)
 
     def get_data(self, wait: bool=True, timeout_sec: Optional[float]=DEFAULT_SHMIM_TIMEOUT_SEC, check_before_wait: bool=False):
@@ -78,35 +81,53 @@ class Image(ImageStreamIOWrap.Image):
         check_before_wait : bool (default: False)
             Check the inode of the shmim before awaiting its semaphore (always True when no timeout supplied)
         '''
+        log.debug(f'get_data({wait=}, {timeout_sec=}, {check_before_wait=})')
         if self.semID is None:
             self.semID = self.getsemwaitindex(0)
         if wait:
             # ensure we're caught up by zeroing the semaphore before waiting
+            log.debug("ensure we're caught up by zeroing the semaphore before waiting")
             self.semflush(self.semID)
             if timeout_sec is None:
                 # We need to detect size changes before we wait or we could wait forever
                 # on a stale shmim
+                log.debug('We must check before waiting because otherwise we may already have a stale shmim and wait forever')
                 if not self._check_inode():
+                    log.debug('Reopening bc check before wait found inode change')
                     self._reopen(self.name)
                 # Wait until another process writes to this shmim
+                log.debug('waiting on semaphore, no timeout')
                 self.semwait(self.semID)
             else:
+                log.debug(f"{timeout_sec=}")
                 if check_before_wait:
+                    log.debug('check_before_wait=True')
                     if not self._check_inode():
                         log.info(f"Reopening {self.path} because we detected an inode change")
+                        log.debug(f"Reopening {self.path} because we detected an inode change")
                         self._reopen(self.name)
+                else:
+                    print('not checking before waiting')
                 ret = self.semtimedwait(self.semID, timeout_sec)
+                log.debug(f"{ret=} (first)")
                 if ret != 0:
+                    log.debug('first wait failed')
                     if not self._check_inode():
+                        log.debug('post first wait reopening')
                         self._reopen(self.name)
+                        log.debug('post first wait reopening done')
                     log.info(f"Reopening {self.path} because we timed out and detected an inode change")
                     ret = self.semtimedwait(self.semID, timeout_sec)
+                    log.debug(f"{ret=} (recovery)")
                 if ret != 0:
                     raise ShmimTimeout(f"Timed out after {2 * timeout_sec} sec without new data")
         else:
+            log.debug('not waiting')
             if not self._check_inode():
+                log.debug(f"not waiting, but checking inode shows change so reopen")
                 self._reopen(self.name)
                 log.info(f"Reopening {self.path} because we detected an inode change")
+        log.debug(f"Returning a copy of {self.name}")
         return self.copy()
 
     def write(self, buffer: np.ndarray):

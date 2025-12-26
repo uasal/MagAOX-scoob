@@ -25,7 +25,7 @@ def generate_path_rewrites():
 
 @xconf.config
 class BaseQuicklookCommand(dbconfig.BaseConfig, xconf.Command):
-    database : dbconfig.DbConfig = xconf.field(default=dbconfig.DbConfig(), help="PostgreSQL database connection")
+    target : typing.Optional[str] = xconf.field(default=None, help="The target name (as entered by the observer)")
     title : typing.Optional[str] = xconf.field(default=None, help="All or part of the observation name to process")
     exact_title : bool = xconf.field(default=False, help="Whether to match the given title as a substring anywhere in the observation title")
     email : typing.Optional[str] = xconf.field(default=None, help="Email address for the observer to process")
@@ -38,7 +38,7 @@ class BaseQuicklookCommand(dbconfig.BaseConfig, xconf.Command):
     path_rewrites : list[PathRewriteConfig] = xconf.field(default_factory=generate_path_rewrites, help="Rewrite the paths in the inventory (e.g. to use an NFS mount to read from another host)")
 
     def get_time_range(self):
-        start_dt, end_dt = utils.semester_to_datetime_range(self.semester)
+        start_dt, end_dt = utils.semester_to_datetime_range(self.semester if self.semester is not None else utils.get_current_semester())
         if self.utc_start is not None:
             start_dt = self.utc_start
         if self.utc_end is not None:
