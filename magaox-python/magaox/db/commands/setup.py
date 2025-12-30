@@ -32,12 +32,11 @@ class Setup(BaseDbCommand):
     def initialize(self, conn : psycopg.Connection, telem_table_creation_sql : str):
         c = conn.cursor()
         with conn.transaction():
-            for fn in SETUP_SQL_FILES:
-                sql_fpath = SETUP_SQL_PATH / fn
+            for sql_fpath in sorted(SETUP_SQL_PATH.glob('*.sql')):
                 log.debug(f"Loading SQL from {sql_fpath}")
                 init_sql = sql_fpath.read_text()
                 if not len(init_sql.strip()):
-                    log.debug(f"Skipping {fn} because it's empty")
+                    log.debug(f"Skipping {sql_fpath} because it's empty")
                     continue
                 log.debug("Running SQL:\n\n" + init_sql + "\n\n")
                 c.execute(init_sql)
