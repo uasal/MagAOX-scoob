@@ -26,7 +26,7 @@ class Setup(BaseDbCommand):
         for fn in self.schema_folder.glob('*.fbs'):
             schema_text = open(fn).read()
             one_sql_text = fbs_to_sql.fbs_to_sql(fn.stem, schema_text)
-            sql_text += one_sql_text
+            sql_text += one_sql_text + '\n'
         return sql_text
 
     def initialize(self, conn : psycopg.Connection, telem_table_creation_sql : str):
