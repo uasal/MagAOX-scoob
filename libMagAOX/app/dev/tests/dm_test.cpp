@@ -97,6 +97,70 @@ TEST_CASE( "Test dm Configuration", "[dev::dm]" )
 
     }
 
+    SECTION( "a config file with a non-empty bad [actMaskPath, width, height]" )
+    {
+        std::vector<std::string> s, k, v;
+
+        s.push_back( "dm" );
+        k.push_back( "width" );
+        v.push_back( "50" );
+
+        s.push_back( "dm" );
+        k.push_back( "height" );
+        v.push_back( "50" );
+
+        s.push_back( "dm" );
+        k.push_back( "actMaskPath" );
+        v.push_back( "/tmp/dmtest_actMask2/dmtest2" ); // throws exception
+
+        mx::app::writeConfigFile( "/tmp/dm_test.conf", s, k, v );
+
+        mx::app::appConfigurator config;
+
+        dm_tests::dmTest pdt( "xx", false );
+
+        int rv;
+        rv = pdt.setupConfig( config );
+        REQUIRE( rv == 0 );
+
+        config.readConfig( "/tmp/dm_test.conf" );
+
+        rv = pdt.loadConfig( config );
+        REQUIRE( rv == -1 );
+    }
+
+    SECTION( "a config file with a non-empty [actMaskPath, width, height] and bad dimmensions" )
+    {
+        std::vector<std::string> s, k, v;
+
+        s.push_back( "dm" );
+        k.push_back( "width" );
+        v.push_back( "4294967295" ); // throws exception
+
+        s.push_back( "dm" );
+        k.push_back( "height" );
+        v.push_back( "4294967295" );
+
+        s.push_back( "dm" );
+        k.push_back( "actMaskPath" );
+        v.push_back( "/tmp/dmtest_actMask2/dmtest2" );
+
+        mx::app::writeConfigFile( "/tmp/dm_test.conf", s, k, v );
+
+        mx::app::appConfigurator config;
+
+        dm_tests::dmTest pdt( "xx", false );
+
+        int rv;
+        rv = pdt.setupConfig( config );
+        REQUIRE( rv == 0 );
+
+        config.readConfig( "/tmp/dm_test.conf" );
+
+        rv = pdt.loadConfig( config );
+        REQUIRE( rv == -1 );
+    }
+
 #ifdef XWCTEST_DOX_REF
     MagAOX::app::dev::dm::setupConfig();
     MagAOX::app::dev::dm::loadConfig();
