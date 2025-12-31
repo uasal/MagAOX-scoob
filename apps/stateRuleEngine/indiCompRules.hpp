@@ -11,6 +11,7 @@
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
                                          //Included here for standalone testing of this file
+#include <mx/mxException.hpp>
 
 /// Logical comparisons for the INDI rules
 enum class ruleComparison
@@ -26,7 +27,7 @@ enum class ruleComparison
     Or,        ///< boolean or
     Nor,       ///< boolean nor
     Imply,
-    Nimply,  
+    Nimply,
     Xor = Neq, ///< boolean xor, equivalent to not equal
     Xnor = Eq  ///< boolean xnor, equivalent to equal
 };
