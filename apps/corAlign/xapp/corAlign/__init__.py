@@ -18,7 +18,7 @@ from skimage import feature
 from purepyindi2 import device, properties, constants
 from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
-from utils import *
+from .utils import *
 
 @xconf.config
 class CameraConfig:
