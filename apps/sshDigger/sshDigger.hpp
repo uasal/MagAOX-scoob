@@ -75,13 +75,15 @@ protected:
      * @{
      */
    int m_sshSTDERR {-1}; ///< The output of stderr of the ssh process
+   
    int m_sshSTDERR_input {-1}; ///< The input end of stderr, used to wake up the log thread on shutdown.
 
    int m_sshLogThreadPrio {0}; ///< Priority of the ssh log capture thread, should normally be 0.
 
    std::thread m_sshLogThread; ///< A separate thread for capturing ssh logs
 
-   std::string m_lastSSHLogs;
+   std::string m_lastSSHLogs; ///< Used to prevent re-logging
+
    int m_sshError {0}; ///< Flag to signal when ssh logs an error, and should be restarted via SIGUSR1 to autossh.
 
    ///@}
@@ -219,6 +221,32 @@ int sshDigger::loadConfigImpl( mx::app::appConfigurator & _config )
       {
          found = true;
       }
+
+      //Here we go through and access each unused config just to avoid the critical error for unrecognized configs.
+      if( sections[i] == "") continue; //this is an error
+      
+      std::string rh;
+      _config.configUnused(rh, mx::app::iniFile::makeKey(sections[i], "remoteHost" ) );
+      if( rh == "" )
+      {
+         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no remoteHost).",  logPrio::LOG_WARNING);
+      }
+      int lp=0;
+      _config.configUnused(lp, mx::app::iniFile::makeKey(sections[i], "localPort" ) );
+      if( lp == 0 )
+      {
+         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no localPort).",  logPrio::LOG_WARNING);
+      }
+      int rp = 0;
+      _config.configUnused(rp, mx::app::iniFile::makeKey(sections[i], "remotePort" ) );
+      if( rp == 0 )
+      {
+         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no remotePort).",  logPrio::LOG_WARNING);
+      }
+      int mp = 0;
+      _config.configUnused( mp, mx::app::iniFile::makeKey(sections[i], "monitorPort" ) );
+      bool cmp = false;
+      _config.configUnused( cmp, mx::app::iniFile::makeKey(sections[i], "compress" ) );
    }
 
    if( found == false )
@@ -256,48 +284,24 @@ int sshDigger::loadConfigImpl( mx::app::appConfigurator & _config )
    
    _config.configUnused( m_compress, mx::app::iniFile::makeKey(m_configName, "compress" ) );
    
-   //Here we go through and access each unused config just to avoid the critical error for unrecognized configs.
-   for(size_t i=0;i<sections.size(); ++i)
-   {
-      if( sections[i] == "") continue; //this is an error
-      if( sections[i] == m_configName ) continue; //already done.
-      std::string rh;
-      _config.configUnused(rh, mx::app::iniFile::makeKey(sections[i], "remoteHost" ) );
-      if( rh == "" )
-      {
-         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no remoteHost).",  logPrio::LOG_WARNING);
-      }
-      int lp=0;
-      _config.configUnused(lp, mx::app::iniFile::makeKey(sections[i], "localPort" ) );
-      if( lp == 0 )
-      {
-         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no localPort).",  logPrio::LOG_WARNING);
-      }
-      int rp = 0;
-      _config.configUnused(rp, mx::app::iniFile::makeKey(sections[i], "remotePort" ) );
-      if( rp == 0 )
-      {
-         log<text_log>( "Config section [" + sections[i] + "] may be an invalid tunnel configuration (no remotePort).",  logPrio::LOG_WARNING);
-      }
-      int mp = 0;
-      _config.configUnused( mp, mx::app::iniFile::makeKey(sections[i], "monitorPort" ) );
-      bool cmp = false;
-      _config.configUnused( cmp, mx::app::iniFile::makeKey(sections[i], "compress" ) );
-   }
+   
    
    return 0;
 }
 
 void sshDigger::loadConfig()
 {
-   loadConfigImpl(config);
+   if(loadConfigImpl(config) < 0)
+   {
+      m_shutdown = true;
+
+      log<text_log>("configuration error(s) have occurred", logPrio::LOG_CRITICAL);
+   };
 }
 
 std::string sshDigger::tunnelSpec()
 {
-   std::string ts = mx::ioutils::convertToString(m_localPort) + ":localhost:" + mx::ioutils::convertToString(m_remotePort);
-
-   return ts;
+   return std::format("{}:localhost:{}", m_localPort, m_remotePort);
 }
 
 void sshDigger::genArgsV( std::vector<std::string> & argsV )
@@ -336,16 +340,14 @@ int sshDigger::execTunnel()
    int filedes[2];
    if (pipe(filedes) == -1)
    {
-      log<software_error>({__FILE__, __LINE__, errno});
-      return -1;
+      return log<software_error, -1>({errno, "pipe failed"});
    }
 
    m_tunnelPID  = fork();
 
    if(m_tunnelPID < 0)
    {
-      log<software_error>({__FILE__, __LINE__, errno, std::string("fork failed: ") + strerror(errno)});
-      return -1;
+      return log<software_error, -1>({errno, "fork failed"});
    }
 
    if(m_tunnelPID == 0)
@@ -367,7 +369,7 @@ int sshDigger::execTunnel()
       execvpe("autossh", (char * const*) args, (char * const*) envp);
 
       std::cerr << "returned\n";
-      log<software_error>({__FILE__, __LINE__, errno, std::string("execvp returned: ") + strerror(errno)});
+      log<software_error>({errno, std::string("execvp returned: ") + strerror(errno)});
 
       delete[] args;
 
@@ -381,8 +383,7 @@ int sshDigger::execTunnel()
 
    if(m_log.logLevel() <= logPrio::LOG_INFO)
    {
-      std::string coml = "autossh tunnel started with PID " + mx::ioutils::convertToString(m_tunnelPID);
-      log<text_log>(coml);
+      log<text_log>(std::format("autossh tunnel started with PID {}",m_tunnelPID) );
    }
    return 0;
 }
@@ -402,19 +403,16 @@ int sshDigger::sshLogThreadStart()
    }
    catch( const std::exception & e )
    {
-      log<software_error>({__FILE__,__LINE__, std::string("Exception on ssh log thread start: ") + e.what()});
-      return -1;
+      return log<software_error, -1>({std::string("Exception on ssh log thread start: ") + e.what()});
    }
    catch( ... )
    {
-      log<software_error>({__FILE__,__LINE__, "Unkown exception on ssh log thread start"});
-      return -1;
+      return log<software_error, -1>({"Unkown exception on ssh log thread start"});
    }
 
    if(!m_sshLogThread.joinable())
    {
-      log<software_error>({__FILE__, __LINE__, "ssh log thread did not start"});
-      return -1;
+      return log<software_error, -1>({"ssh log thread did not start"});
    }
 
    sched_param sp;
@@ -424,8 +422,7 @@ int sshDigger::sshLogThreadStart()
 
    if(rv != 0)
    {
-      log<software_error>({__FILE__, __LINE__, rv, "Error setting thread params."});
-      return -1;
+      return log<software_error, -1>({rv, "Error setting thread params."});
    }
 
    return 0;
@@ -519,19 +516,16 @@ int sshDigger::autosshLogThreadStart()
 
    catch( const std::exception & e )
    {
-      log<software_error>({__FILE__,__LINE__, std::string("Exception on autossh log thread start: ") + e.what()});
-      return -1;
+      return log<software_error, -1>({std::string("Exception on autossh log thread start: ") + e.what()});
    }
    catch( ... )
    {
-      log<software_error>({__FILE__,__LINE__, "Unkown exception on autossh log thread start"});
-      return -1;
+      return log<software_error, -1>({"Unkown exception on autossh log thread start"});
    }
 
    if(!m_autosshLogThread.joinable())
    {
-      log<software_error>({__FILE__, __LINE__, "autossh log thread did not start"});
-      return -1;
+      return log<software_error, -1>({"autossh log thread did not start"});
    }
 
    sched_param sp;
@@ -541,8 +535,7 @@ int sshDigger::autosshLogThreadStart()
 
    if(rv != 0)
    {
-      log<software_error>({__FILE__, __LINE__, rv, "Error setting thread params."});
-      return -1;
+      return log<software_error, -1>({rv, "Error setting thread params."});
    }
 
    return 0;
@@ -564,8 +557,7 @@ void sshDigger::autosshLogThreadExec()
 
       if( m_autosshLogFD < 0 )
       {
-         log<software_error>({__FILE__, __LINE__, errno});
-         log<software_error>({__FILE__, __LINE__, "unable to open auto ssh log fifo"});
+         log<software_error>({errno, "unable to open auto ssh log fifo"});
          mx::sys::sleep(1);
       }
    }
@@ -620,30 +612,23 @@ int sshDigger::appStartup()
 
    if( mkfifo( m_autosshLogFile.c_str(), S_IRUSR | S_IWUSR) < 0)
    {
-      log<software_critical>({__FILE__, __LINE__, errno});
-      log<software_critical>({__FILE__, __LINE__, "unable to create autossh log fifo"});
-      return -1;
+      return log<software_critical, -1>({errno, "unable to create autossh log fifo"});
    }
-
 
    if(execTunnel() < 0)
    {
-      log<software_critical>({__FILE__,__LINE__});
-      return -1;
+      return log<software_critical, -1>(std::source_location::current());
    }
 
    if(autosshLogThreadStart() < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
+      return log<software_critical, -1>(std::source_location::current());
    }
 
    if(sshLogThreadStart() < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
+      return log<software_critical, -1>(std::source_location::current());
    }
-
 
    return 0;
 }
@@ -684,23 +669,19 @@ int sshDigger::appLogic()
       if(m_sshLogThread.joinable()) m_sshLogThread.join();
       if(nwr != 1)
       {
-         log<software_error>({__FILE__, __LINE__, errno });
-         log<software_error>({__FILE__, __LINE__, "Error on write to ssh log thread. restart failed."});
-         return -1;
+         return log<software_error,-1>({errno,"Error on write to ssh log thread. restart failed." });
       }
 
       //And now we can restart autossh
       if(execTunnel() < 0)
       {
-         log<software_critical>({__FILE__,__LINE__,"restart of tunnel failed."});
-         return -1;
+         return log<software_critical,-1>({"restart of tunnel failed."});
       }
 
       //And the ssh log thread.
       if(sshLogThreadStart() < 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "restart of ssh log thread failed."});
-         return -1;
+         return log<software_critical, -1>({"restart of ssh log thread failed."});
       }
 
       //Don't need to restart the autossh log thread, becuase we'll give it the same file as log file.
@@ -719,8 +700,7 @@ int sshDigger::appShutdown()
    ssize_t nwr = write(m_sshSTDERR_input, &w, 1);
    if(nwr != 1)
    {
-      log<software_error>({__FILE__, __LINE__, errno });
-      log<software_error>({__FILE__, __LINE__, "Error on write to ssh log thread. Sending SIGTERM."});
+      log<software_error>({errno, "Error on write to ssh log thread. Sending SIGTERM."});
       pthread_kill(m_sshLogThread.native_handle(), SIGTERM);
 
    }
