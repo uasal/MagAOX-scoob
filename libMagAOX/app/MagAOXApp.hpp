@@ -1515,7 +1515,9 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                 "",
                 false,
                 "bool",
-                "Validate the configuration.  App will exit after loading the configuration, but before entering the event loop. Errors from configuratin processing will be shown. Always safe to run." );
+                "Validate the configuration.  App will exit after loading the configuration, but before "
+                "entering the event loop. Errors from configuration processing will be shown. "
+                "Always safe to run." );
 
     // App stuff
     config.add( "loopPause",
