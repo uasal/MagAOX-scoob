@@ -1,11 +1,11 @@
 /** \file logsurgeon.hpp
   * \brief A utility to fix corrupted MagAO-X binary logs.
   *
-  * \ingroup logsurgeon_files
+  * \ingroup files
   */
 
-#ifndef logsurgeon_hpp
-#define logsurgeon_hpp
+#ifndef hpp
+#define hpp
 
 #include <iostream>
 #include <cstring>
@@ -27,11 +27,11 @@ using namespace flatlogs;
   *
   */
 
-/** \defgroup logsurgeon_files logsurgeon Files
+/** \defgroup files logsurgeon Files
   * \ingroup logsurgeon
   */
 
-/// An application to fix corrupted MagAo-X binary logs.
+/// An application to fix corrupted MagAO-X binary logs.
 /** \todo document this
   *
   * \ingroup logsurgeon
@@ -41,26 +41,48 @@ class logsurgeon : public mx::app::application
 protected:
 
    std::string m_fname;
-   bool m_checkOnly;
+   bool m_checkOnly {false};
 
 public:
+
+   enum returnVals
+   {
+      noerror = 0,
+      file_not_specified = -1,
+      file_not_found = -2,
+      errors_found = -100,
+      error = -9999
+   };
+
    virtual void setupConfig();
 
    virtual void loadConfig();
 
    virtual int execute();
+
+   const std::string & fname();
+
+   bool checkOnly();
+
 };
 
 void logsurgeon::setupConfig()
 {
    config.add("file","F", "file" , argType::Required, "", "file", true,  "string", "The single file to process.  If no / are found in name it will look in the specified directory (or MagAO-X default).");
-   config.add("check","", "check", argType::True, "", "file", false,  "bool", "Check-only mode (no modification to files on disk, exit code 0 indicates successful verification.)");
+   config.add("check","", "", argType::Required, "", "check-only", false,  "bool", "Check-only mode config file setting. If true then no modification to files on disk occurs, exit code 0 indicates successful verification.  Default is false.");
+   config.add("checkCL","C", "check-only", argType::True, "", "", false,  "bool", "Check-only mode command-line flag. If true then no modification to files on disk occurs, exit code 0 indicates successful verification. Overrides config file.  Default is false.");
 }
 
 void logsurgeon::loadConfig()
 {
    config(m_fname, "file");
    config(m_checkOnly, "check");
+
+   //Command line always wins
+   if(config.isSet("checkCL"))
+   {
+      m_checkOnly = true;
+   }
 }
 
 int logsurgeon::execute()
@@ -68,9 +90,8 @@ int logsurgeon::execute()
    if(m_fname == "")
    {
       std::cerr << "Must specify filename with -F option.\n";
-      return EXIT_FAILURE;
+      return file_not_specified;
    }
-
 
    FILE * fin ;
    fin = fopen(m_fname.c_str(), "rb");
@@ -78,24 +99,23 @@ int logsurgeon::execute()
    if(!fin)
    {
       std::cerr << "Error opening file " << m_fname << "\n";
-      return EXIT_FAILURE;
+      return file_not_found;
    }
 
    ssize_t fsz = mx::ioutils::fileSize(fin);
 
-
    char * buff = new char[fsz];
 
-   ssize_t nrd = fread(buff, 1, fsz, fin); 
+   ssize_t nrd = fread(buff, 1, fsz, fin);
+   fclose(fin);
+
    if(nrd != fsz)
    {
       std::cerr << __FILE__ << " " << __LINE__ << " did not read complete file.\n";
-      fclose(fin);
       delete[] buff;
 
-      return -1;
+      return error;
    }
-   fclose(fin);
 
    ssize_t gcurr = 0;
    bool inbad = false;
@@ -105,38 +125,44 @@ int logsurgeon::execute()
    ssize_t totBad = 0;
    ssize_t badSt = 0;
    ssize_t kpt = sizeof(logPrioT);
-   
+
    char * gbuff = new char[fsz];
 
-   //Now check each byte to see if it is a potential start of a valid log
+   //Now check each byte to see if it is a valid eventCode,
+   //which makes it a potential start of a valid log
    while(kpt < fsz)
    {
       eventCodeT ec = * ( (eventCodeT*) (&buff[kpt]));
 
       if( logCodeValid(ec) )
       {
-         char * buffst = &buff[kpt- sizeof(logPrioT)];
-         
+         char * buffst = &buff[kpt - sizeof(logPrioT)];
+
          msgLenT len = logHeader::msgLen(buffst);
          msgLenT totLen = len + logHeader::headerSize(buffst);
 
-         //Basic check if size isn't too big
-         if( kpt - (ssize_t) sizeof(logPrioT) + (ssize_t) totLen < (ssize_t) fsz)
+         //Basic check if size isn't too big (i.e. would extend past end of file)
+         ssize_t endpt = kpt - static_cast<ssize_t>(sizeof(logPrioT)) + static_cast<ssize_t>(totLen);
+         if( endpt < static_cast<ssize_t>(fsz))
          {
             //Now we use the flatlogs verifier.
-            char * nbuff = new char[totLen];
-            
+            char * nbuff = (char *) ::operator new( totLen*sizeof(char));
+
             memcpy(nbuff, buffst, totLen);
 
             bufferPtrT buffPtr = bufferPtrT(nbuff);
 
+            //true means good
             if(logVerify(ec, buffPtr, len))
             {
+               //if we pass we check if we're currently in a bad section
                if(inbad)
                {
+                  // if we were in a bad section we record the end of the bad section
                   inbad = false;
 
-                  char * lastGBuff = new char[lastGoodSz];
+                  char * lastGBuff = (char *) ::operator new( lastGoodSz*sizeof(char));
+
                   memcpy(lastGBuff, &buff[lastGoodSt], lastGoodSz);
                   bufferPtrT lgBuffPtr = bufferPtrT(lastGBuff);
 
@@ -155,6 +181,7 @@ int logsurgeon::execute()
                   std::cerr << "\n";
                }
 
+               //It's good so we write it to the good buffer
                memcpy(&gbuff[gcurr], &buff[kpt-sizeof(logPrioT)], totLen);
 
                lastGoodSt = kpt-sizeof(logPrioT);
@@ -165,15 +192,17 @@ int logsurgeon::execute()
 
                continue;
             }
-
          }
       }
+
+      // If here the one of the checks has failed
       if(inbad == false)
       {
+         // a new bad section has started
          badSt = kpt;
+         inbad = true;
       }
 
-      inbad = true;
       ++kpt;
    }
 
@@ -190,7 +219,7 @@ int logsurgeon::execute()
       std::cerr << "Check-only mode set, exiting with error status to indicate failed verification\n";
       delete[] buff;
       delete[] gbuff;
-      return EXIT_FAILURE;
+      return errors_found;
    }
    else
    {
@@ -205,7 +234,7 @@ int logsurgeon::execute()
          std::cerr << "No further action taken\n";
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
 
       ssize_t fwr = fwrite(buff, sizeof(char), fsz, fout);
@@ -218,7 +247,7 @@ int logsurgeon::execute()
          std::cerr << "No further action taken\n";
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
 
       if(fcst != 0)
@@ -227,7 +256,7 @@ int logsurgeon::execute()
          std::cerr << "No further action taken\n";
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
 
       std::cerr << "Wrote original file to: " << bupPath << "\n";
@@ -241,7 +270,7 @@ int logsurgeon::execute()
 
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
 
       fwr = fwrite(gbuff, sizeof(char), gcurr, fout);
@@ -253,15 +282,15 @@ int logsurgeon::execute()
          std::cerr << "Error writing corrected file (" __FILE__ << " " << __LINE__ << ")\n";
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
-   
+
       if(fcst != 0)
       {
          std::cerr << "Error closing corrected file (" __FILE__ << " " << __LINE__ << ")\n";
          delete[] buff;
          delete[] gbuff;
-         return EXIT_FAILURE;
+         return error;
       }
 
       std::cerr << "Wrote corrected file to: " << m_fname << "\n";
@@ -271,7 +300,17 @@ int logsurgeon::execute()
    delete[] buff;
    delete[] gbuff;
 
-   return 0;
+   return noerror;
 }
 
-#endif //logsurgeon_hpp
+const std::string & logsurgeon::fname()
+{
+    return m_fname;
+}
+
+bool logsurgeon::checkOnly()
+{
+    return m_checkOnly;
+}
+
+#endif //hpp
