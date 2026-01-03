@@ -54,7 +54,7 @@ public:
 void logsurgeon::setupConfig()
 {
    config.add("file","F", "file" , argType::Required, "", "file", true,  "string", "The single file to process.  If no / are found in name it will look in the specified directory (or MagAO-X default).");
-   config.add("check","c", "check", argType::True, "", "file", false,  "bool", "Check-only mode (no modification to files on disk, exit code 0 indicates successful verification.)");
+   config.add("check","", "check", argType::True, "", "file", false,  "bool", "Check-only mode (no modification to files on disk, exit code 0 indicates successful verification.)");
 }
 
 void logsurgeon::loadConfig()
