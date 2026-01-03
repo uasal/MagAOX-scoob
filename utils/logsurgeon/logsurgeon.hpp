@@ -86,7 +86,7 @@ int logsurgeon::execute()
 
    char * buff = new char[fsz];
 
-   ssize_t nrd = fread(buff, 1, fsz, fin); 
+   ssize_t nrd = fread(buff, 1, fsz, fin);
    if(nrd != fsz)
    {
       std::cerr << __FILE__ << " " << __LINE__ << " did not read complete file.\n";
@@ -105,7 +105,7 @@ int logsurgeon::execute()
    ssize_t totBad = 0;
    ssize_t badSt = 0;
    ssize_t kpt = sizeof(logPrioT);
-   
+
    char * gbuff = new char[fsz];
 
    //Now check each byte to see if it is a potential start of a valid log
@@ -116,7 +116,7 @@ int logsurgeon::execute()
       if( logCodeValid(ec) )
       {
          char * buffst = &buff[kpt- sizeof(logPrioT)];
-         
+
          msgLenT len = logHeader::msgLen(buffst);
          msgLenT totLen = len + logHeader::headerSize(buffst);
 
@@ -125,7 +125,7 @@ int logsurgeon::execute()
          {
             //Now we use the flatlogs verifier.
             char * nbuff = new char[totLen];
-            
+
             memcpy(nbuff, buffst, totLen);
 
             bufferPtrT buffPtr = bufferPtrT(nbuff);
@@ -255,7 +255,7 @@ int logsurgeon::execute()
          delete[] gbuff;
          return EXIT_FAILURE;
       }
-   
+
       if(fcst != 0)
       {
          std::cerr << "Error closing corrected file (" __FILE__ << " " << __LINE__ << ")\n";

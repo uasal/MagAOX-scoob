@@ -41,7 +41,7 @@ do_catch2_test: catch2_tests
 
 ########################################################################
 ### Build and run Catch2 Entropy tests
-entropy_test: ../generated/binarySchemata.inc catch2_tests.cpp 
+entropy_test: ../generated/binarySchemata.inc catch2_tests.cpp
 	$(AT)python3 generateEntropyTests.py -e $(e) -n $(n) -s $(s) -f $(f)
 	$(AT)g++ -std=$(C_STD) -I. -I.. -I./../types -I../../../flatlogs/include/ -I./generated_tests gen_entropy_tests/generated_test_e$(e)_n$(n).cpp catch2_tests.cpp -o generated_entropy_test_e$(e)_n$(n)
 
@@ -60,5 +60,5 @@ do_test: do_tests
 clean:
 	$(AT)$(RM) -R "./types/generated/" "./generated/" ./do_tests Schemata_test catch2_tests
 
-really_clean: clean 
+really_clean: clean
 	$(AT)$(RM) -R "./generated_tests/"
