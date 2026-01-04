@@ -87,3 +87,4 @@ coverage_clean:
 	find . -name '*.gcda' -delete
 	find . -name '*.gcov' -delete
 	${MAKE} really_clean COVERAGE=1
+	$(AT)$(RM) -R "./generated_tests/"

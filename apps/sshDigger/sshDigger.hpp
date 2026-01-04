@@ -315,7 +315,7 @@ void sshDigger::genArgsV( std::vector<std::string> &argsV )
     {
         comp = "-C";
     }
-    
+
     argsV = { "autossh", "-M" + std::to_string( m_monitorPort ), comp, "-nNTL", tunnelSpec(), m_remoteHost };
 }
 

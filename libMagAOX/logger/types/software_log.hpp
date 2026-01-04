@@ -140,11 +140,12 @@ struct software_log : public flatbuffer_log
 
         // constructors using source location
 
-        messageT( const int32_t  errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be passed here, so strerror can be used later.*/
+        messageT( const int32_t  errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be
+                                                       passed here, so strerror can be used later.*/
                   const int32_t otherCode,  ///< [in] Some other error code, such as a return value or library code.
                   const char   *explanation, ///< [in] explanatory text about the software event
-                  const std::source_location &loc = std::source_location::current()/**< [in] [opt] source location */
-
+                  const std::source_location &loc /**< [in] [opt] source location */
+                  = std::source_location::current()
         )
         {
             auto _file = builder.CreateString( loc.file_name() );
@@ -155,9 +156,10 @@ struct software_log : public flatbuffer_log
         }
 
         /// C'tor for errno only -- code explanation can be looked up later.
-        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be passed here, so strerror can be used later.*/
-                  const std::source_location &loc = std::source_location::current() /**< [in] [opt] source location */
-                   )
+        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be
+                                                    passed here, so strerror can be used later.*/
+                  const std::source_location &loc /**< [in] [opt] source location */
+                  = std::source_location::current() )
         {
             auto _file = builder.CreateString( loc.file_name() );
 
@@ -166,10 +168,11 @@ struct software_log : public flatbuffer_log
         }
 
         /// C'tor for errno with additional explanation.
-        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be passed here, so strerror can be used later.*/
+        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be
+                                                     passed here, so strerror can be used later.*/
                   const char *explanation, ///< [in] explanatory text about the software event
-                  const std::source_location &loc = std::source_location::current() /**< [in] [opt] source location */
-
+                  const std::source_location &loc /**< [in] [opt] source location */
+                  = std::source_location::current()
         )
         {
             auto _file = builder.CreateString( loc.file_name() );
@@ -180,10 +183,11 @@ struct software_log : public flatbuffer_log
         }
 
         /// C'tor for errno with additional explanation.
-        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be passed here, so strerror can be used later.*/
+        messageT( const int32_t errnoCode, /**< [in] The errno code at the time of the log entry. Only errno should be
+                                                     passed here, so strerror can be used later.*/
                   const std::string & explanation, ///< [in] explanatory text about the software event
-                  const std::source_location &loc = std::source_location::current() /**< [in] [opt] source location */
-
+                  const std::source_location &loc /**< [in] [opt] source location */
+                  = std::source_location::current()
         )
         {
             auto _file = builder.CreateString( loc.file_name() );
@@ -195,8 +199,8 @@ struct software_log : public flatbuffer_log
 
         /// C'tor with no codes, just the explanation.
         messageT( const std::string          &explanation, /**< [in] explanatory text about the software event */
-                  const std::source_location &loc    = std::source_location::current()      /**< [in] [opt] source location */
-                   )
+                  const std::source_location &loc          /**< [in] [opt] source location */
+                  = std::source_location::current() )
         {
             auto _file = builder.CreateString( loc.file_name() );
             auto _expl = builder.CreateString( explanation );
@@ -207,8 +211,8 @@ struct software_log : public flatbuffer_log
         }
 
         /// C'tor for a trace log, only the file and line.
-        messageT( const std::source_location &loc = std::source_location::current() /**< [in] [opt] source location */
-                   )
+        messageT( const std::source_location &loc /**< [in] [opt] source location */
+                  = std::source_location::current() )
         {
             auto _file = builder.CreateString( loc.file_name() );
 
