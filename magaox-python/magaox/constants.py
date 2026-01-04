@@ -65,3 +65,5 @@ LINE_FORMAT_REGEX = re.compile(
     r"TELM \[observer\] email: (.*) obs: (.*) (\d)"
 )
 FOLDER_TIMESTAMP_FORMAT = '%Y-%m-%d_%H%M%S'
+
+DEFAULT_SHMIM_TIMEOUT_SEC = 10

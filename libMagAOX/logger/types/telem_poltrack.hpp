@@ -132,14 +132,14 @@ struct telem_poltrack : public flatbuffer_log
         {
             return logMetaDetail( { "SET ANGLE",
                                     logMeta::valTypes::Float,
-                                    logMeta::metaTypes::Continuous,
+                                    logMeta::metaTypes::State,
                                     reinterpret_cast<void *>( &set_angle ) } );
         }
         else if( member == "actual_angle" )
         {
             return logMetaDetail( { "ACTUAL ANGLE",
                                     logMeta::valTypes::Float,
-                                    logMeta::metaTypes::Continuous,
+                                    logMeta::metaTypes::State,
                                     reinterpret_cast<void *>( &actual_angle ) } );
         }
         else if( member == "pos_name" )

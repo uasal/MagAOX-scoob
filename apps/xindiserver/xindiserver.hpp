@@ -133,6 +133,8 @@ protected:
    bool indiserver_z {false}; ///< The inter-indiserver zlib compression flag
 
    std::string m_driverFIFOPath; ///< The path to the local drivers' FIFOs directory
+
+   std::string m_driverPath; ///< The path to the local drivers
    std::vector<std::string> m_local; ///< List of local drivers passed in by config
    std::vector<std::string> m_remote; ///< List of remote drivers, using tunnels, passed in by config
    std::vector<std::string> m_driversAtHosts; ///< List of remote drivers, using driver@host[:port], passed in by config
@@ -143,6 +145,8 @@ protected:
    tunnelMapT m_tunnels; ///< Map of the ssh tunnels, used for processing the remote drivers in m_remote.
 
    std::vector<std::string> m_indiserverCommand; ///< The command line arguments to indiserver
+
+   pid_t m_isPID {0}; ///< The PID of the indiserver process
 
    int m_isSTDERR {-1}; ///< The output of stderr of the indiserver process
    int m_isSTDERR_input {-1}; ///< The input end of stderr, used to wake up the log thread on shutdown.
@@ -181,7 +185,7 @@ public:
    int addLocalDrivers( std::vector<std::string> & driverArgs /**< [out] the vector of command line arguments for exec*/);
 
 
-   ///Validate the remote driver entries, and append them to the indi server command line arguments.
+   /// Validate the remote driver entries, and append them to the indi server command line arguments.
    /** Parses the remote driver specs, then
      * constructs the command line arguments and appends them to the driverArgs vector passed in.
      *
@@ -293,7 +297,41 @@ void xindiserver::loadConfig()
    config(m_driversAtHosts, "remote.drivers@hosts");
    config(m_remoteServers, "remote.servers");
 
-   loadSSHTunnelConfigs(m_tunnels, config);
+   if(loadSSHTunnelConfigs(m_tunnels, config) < 0)
+   {
+      m_shutdown = true;
+      return;
+   }
+
+   if( constructIndiserverCommand(m_indiserverCommand) < 0)
+   {
+      log<software_critical>({__FILE__, __LINE__});
+      m_shutdown = true;
+      return;
+   }
+
+   if( addLocalDrivers(m_indiserverCommand) < 0)
+   {
+      log<software_critical>({__FILE__, __LINE__});
+      m_shutdown = true;
+      return;
+   }
+
+   if( addRemoteDrivers(m_indiserverCommand) < 0)
+   {
+      log<software_critical>({__FILE__, __LINE__});
+      m_shutdown = true;
+      return;
+   }
+
+   if( addRemoteServers(m_indiserverCommand) < 0)
+   {
+      log<software_critical>({__FILE__, __LINE__});
+      m_shutdown = true;
+      return;
+   }
+
+
 }
 
 inline
@@ -314,7 +352,7 @@ int xindiserver::constructIndiserverCommand( std::vector<std::string> & indiserv
       if(indiserver_m > 0)
       {
          indiserverCommand.push_back("-m");
-         indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_m));
+         indiserverCommand.push_back(std::format("{}", indiserver_m));
       }
 
       // The indiserver ignore /tmp/noindi flag
@@ -324,7 +362,7 @@ int xindiserver::constructIndiserverCommand( std::vector<std::string> & indiserv
       if(indiserver_p > 0)
       {
          indiserverCommand.push_back("-p");
-         indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_p));
+         indiserverCommand.push_back(std::format("{}", indiserver_p));
       }
 
       // The indiserver verbosity
@@ -341,7 +379,7 @@ int xindiserver::constructIndiserverCommand( std::vector<std::string> & indiserv
    }
    catch(...)
    {
-      log<software_critical>(software_log::messageT(__FILE__, __LINE__, "Exception thrown by std::vector."));
+      log<software_critical>({"Exception thrown by std::vector."});
       return -1;
    }
 
@@ -372,14 +410,14 @@ int xindiserver::addLocalDrivers( std::vector<std::string> & driverArgs )
 
       if(bad != std::string::npos)
       {
-         log<software_critical>({__FILE__, __LINE__, "Local driver can't have host spec or path(@,:,/): " + m_local[i]});
+         log<software_critical>("Local driver can't have host spec or path(@,:,/): " + m_local[i]);
 
          return XINDISERVER_E_BADDRIVERSPEC;
       }
 
       if( m_driverNames.count(m_local[i]) > 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "Duplicate driver name: " + m_local[i]});
+         log<software_critical>("Duplicate driver name: " + m_local[i]);
          return XINDISERVER_E_DUPLICATEDRIVER;
       }
 
@@ -486,13 +524,13 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
 
       if(m_tunnels.size() == 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "No tunnels specified.\n"});
+         log<software_critical>({__FILE__, __LINE__, "No tunnels specified."});
          return XINDISERVER_E_NOTUNNELS;
       }
 
       if(m_tunnels.count(tunnel) != 1)
       {
-         log<software_critical>({__FILE__, __LINE__, "Tunnel not found for: " + m_remote[i] + "\n"});
+         log<software_critical>({__FILE__, __LINE__, "Tunnel not found for: " + m_remote[i]});
          return XINDISERVER_E_TUNNELNOTFOUND;
       }
 
