@@ -12,7 +12,6 @@
 
 #include "../logMeta.hpp"
 
-
 namespace MagAOX
 {
 namespace logger

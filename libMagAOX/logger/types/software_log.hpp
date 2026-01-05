@@ -145,7 +145,7 @@ struct software_log : public flatbuffer_log
                   const int32_t otherCode,  ///< [in] Some other error code, such as a return value or library code.
                   const char   *explanation, ///< [in] explanatory text about the software event
                   const std::source_location &loc /**< [in] [opt] source location */
-                  = std::source_location::current() 
+                  = std::source_location::current()
         )
         {
             auto _file = builder.CreateString( loc.file_name() );
@@ -206,7 +206,7 @@ struct software_log : public flatbuffer_log
             auto _expl = builder.CreateString( explanation );
 
             auto gs = CreateSoftware_log_fb( builder, _file, loc.line(), 0, 0, _expl );
-            
+
             builder.Finish( gs );
         }
 
