@@ -390,6 +390,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
     subTableDictIndex = 0
 
     # extract log field types and names
+    inMultilineComment = False
     for i in range(len(messageStructIdxs)):
         structIdx = messageStructIdxs[i]
         msgsFieldsList = []
@@ -409,22 +410,49 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     break
                 else:
                     closed = True # parse the field, don't leave loop yet
+                    line = line[:line.rfind(")")]
+            elif inMultilineComment:
+                if "*/" in line:
+                    inMultilineComment = False
+                    structIdx += 1
+                continue
 
 
             # trim line to just get field info
             indexStart = (line.find("messageT(") + len("messageT(")) if "messageT(" in line else 0
 
             indexEnd = len(line)
-            if "//" in line:
-                indexEnd = line.find("//")
-            elif "/*" in line and line.find("/*") < indexEnd:
+            # adjust for comments. Note /* takes precedence over //
+            if "/*" in line and line.find("/*") < indexEnd:
                 indexEnd = line.find("/*")
+                # handle multiline comments
+                if "*/" not in line:
+                    inMultilineComment = True
+            elif "//" in line:
+                indexEnd = line.find("//")
 
-            #ignore default argument
-            if "=" in line and line.find("=") < indexEnd:
-                indexEnd = line.find("=")
 
             line = line[indexStart:indexEnd].strip()
+
+            # handle default argument
+            if "=" in line:
+                print(line)
+                if line.find("=") == indexStart:
+                    # this is the default arg value for msgsFieldList[-1]
+                    # are all default args NOT in schemas? Need to check this
+                    print(msgsFieldsList[-1])
+                    msgsFieldsList[-1].pop("schemaName", None)
+                    msgsFieldsList[-1].pop("schemaType", None)
+                    msgsFieldsList[-1]["testVal"] = line[line.find("="):].strip()
+                    print(msgsFieldsList[-1])
+                    print("HERE1")
+                elif line.find("=") == indexEnd:
+                    # the default arg value is on the next line
+                    pass
+                else:
+                    # default arg value is on this line
+                    pass
+                continue
 
             lineParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]
 
@@ -436,9 +464,9 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     break
 
                 # find type and name
-                type, name = getTypeAndName(field)
+                fieldType, name = getTypeAndName(field)
 
-                fieldDict["type"] = type
+                fieldDict["type"] = fieldType
                 fieldDict["name"] = name
                 # get vector type if necessary
                 if "std::vector" in fieldDict["type"]:
@@ -579,7 +607,8 @@ def main():
         os.remove(file)
 
     types = os.listdir(typesFolderPath)
-    types.sort()
+    # types.sort()
+    types = ["software_log.hpp"]
     baseTypesDict = dict() # map baseTypes to the types that inherit from them
     for type in types:
 
@@ -588,15 +617,15 @@ def main():
         if ".hpp" not in type:
             continue
 
-        # workaround for software_log issues with source_location
-        if "software" in type:
-            print("software")
-            continue
+        # # workaround for software_log issues with source_location
+        # if "software" in type:
+        #     print(f"SKIPPING {type}")
+        #     continue
 
-        # workaround for telsee deprecated fields
-        if "telsee" in type:
-            print("telsee")
-            continue
+        # # workaround for telsee deprecated fields
+        # if "telsee" in type:
+        #     print(f"SKIPPING {type}")
+        #     continue
 
         typePath = os.path.join(typesFolderPath, type)
 
