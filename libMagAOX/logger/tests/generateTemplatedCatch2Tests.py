@@ -9,6 +9,7 @@ import os
 import sys
 import subprocess
 import glob
+import json
 import re
 import pathlib
 import string
@@ -235,6 +236,7 @@ def makeTestInfoDict(hppFname : str, baseTypesDict : dict) -> dict:
                 returnInfo["schemaTableName"] = f"{line[startIndex:endIndex]}_fb"
 
     returnInfo["messageTypes"] = getMessageFieldInfo(messageStructIdxs, headerLines, schemaFieldInfo)
+    # print(json.dumps(returnInfo["messageTypes"], indent=2))
 
     return returnInfo
 
@@ -407,11 +409,17 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     # parenthesis is in comment
                     pass
                 elif line.strip().strip(")") == "":
-                    break
+                    break # fields down
                 else:
-                    closed = True # parse the field, don't leave loop yet
-                    line = line[:line.rfind(")")]
-            elif inMultilineComment:
+                    openParenCount = line.count("(")
+                    closeParenCount = line.count(")")
+                    # check if truly closed or not
+                    if (closeParenCount > openParenCount) or \
+                       (closeParenCount == openParenCount and "messageT(" in line):
+                        closed = True # parse the field, don't leave loop yet
+                        line = line[:line.rfind(")")]
+            
+            if inMultilineComment:
                 if "*/" in line:
                     inMultilineComment = False
                     structIdx += 1
@@ -436,22 +444,23 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
             # handle default argument
             if "=" in line:
-                print(line)
+                print("DEFAULT ARG")
                 if line.find("=") == indexStart:
+                    # msgsFieldsList.pop()
                     # this is the default arg value for msgsFieldList[-1]
                     # are all default args NOT in schemas? Need to check this
-                    print(msgsFieldsList[-1])
                     msgsFieldsList[-1].pop("schemaName", None)
                     msgsFieldsList[-1].pop("schemaType", None)
-                    msgsFieldsList[-1]["testVal"] = line[line.find("="):].strip()
+                    msgsFieldsList[-1]["testVal"] = line.lstrip("=").strip()
+                    msgsFieldsList[-1]["defaultArg"] = True
                     print(msgsFieldsList[-1])
-                    print("HERE1")
                 elif line.find("=") == indexEnd:
                     # the default arg value is on the next line
                     pass
                 else:
                     # default arg value is on this line
                     pass
+                structIdx += 1
                 continue
 
             lineParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]

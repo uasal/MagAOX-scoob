@@ -48,8 +48,8 @@ public:
 
   // Constructor
   {{className}}_{{loop.index0}}({%- for field in msgType -%}
-  {%- if loop.last %}{{field.type}} {{field.name}}_
-  {%- else -%}{{field.type}} {{field.name}}_, {% endif -%}
+  {%- if 'defaultArg' in field and field.defaultArg -%}
+  {%- else -%}{{field.type}} {{field.name}}_ {% if not loop.last %},{% endif -%}{% endif -%}
   {%- endfor -%}
   ) {
     // Save input parameters
