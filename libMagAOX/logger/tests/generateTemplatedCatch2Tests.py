@@ -106,6 +106,9 @@ def getSchemaFieldInfo(fname : str) -> tuple[str, tuple] :
                 inTable = False
                 curSubTable = None
                 continue
+            
+            if ("deprecated" in line):
+                continue
 
             if (line != ""):
                 lineParts = line.strip().rstrip(";").split(":")
@@ -236,7 +239,6 @@ def makeTestInfoDict(hppFname : str, baseTypesDict : dict) -> dict:
                 returnInfo["schemaTableName"] = f"{line[startIndex:endIndex]}_fb"
 
     returnInfo["messageTypes"] = getMessageFieldInfo(messageStructIdxs, headerLines, schemaFieldInfo)
-    # print(json.dumps(returnInfo["messageTypes"], indent=2))
 
     return returnInfo
 
@@ -380,6 +382,18 @@ def makeTestVal(fieldDict : dict) -> str:
 
     return getTestValFromType(fieldDict["type"])
 
+def findMatchingSchemaField(schemaFieldInfo, fieldName) -> tuple:
+    for schemaField in schemaFieldInfo:
+        if isinstance(schemaField, tuple) and schemaField[0] == fieldName:
+                return schemaField
+        if isinstance(schemaField, dict):
+            subTableName = next(iter(schemaField))
+            for subField in schemaField[subTableName]:
+                if len(subField) != 2:
+                    continue
+                if subField[0] == fieldName:
+                    return subField
+    return None # no matching field in schema for given fieldName
 
 
 '''
@@ -444,16 +458,40 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
             # handle default argument
             if "=" in line:
-                print("DEFAULT ARG")
                 if line.find("=") == indexStart:
                     # msgsFieldsList.pop()
+
                     # this is the default arg value for msgsFieldList[-1]
-                    # are all default args NOT in schemas? Need to check this
-                    msgsFieldsList[-1].pop("schemaName", None)
-                    msgsFieldsList[-1].pop("schemaType", None)
-                    msgsFieldsList[-1]["testVal"] = line.lstrip("=").strip()
-                    msgsFieldsList[-1]["defaultArg"] = True
-                    print(msgsFieldsList[-1])
+                    msgsFieldsList[-1]["defaultArg"] = line.lstrip("=").strip()
+
+                    if "std::source_location" in msgsFieldsList[-1]["type"]:
+                        # loc becomes a special keyword now. will separate into fields file and line.
+                        if msgsFieldsList[-1]["name"] == "loc":
+                            msgsFieldsList.pop()
+
+                            # special case software log loc alias for file and line fields.
+                            msgsFieldsList.append(
+                                {
+                                    "type": "char *",
+                                    "name": "file",
+                                    "schemaName": "file",
+                                    "schemaType": "string",
+                                    "testVal": None,
+                                    "defaultArg": True,
+                                    "defaultTestVal": "__FILE__"
+                                }
+                            )
+                            msgsFieldsList.append(
+                                {
+                                    "type": "uint32_t",
+                                    "name": "line",
+                                    "schemaName": "line",
+                                    "schemaType": "uint32",
+                                    "testVal": None,
+                                    "defaultArg": True
+                                }
+                            )
+
                 elif line.find("=") == indexEnd:
                     # the default arg value is on the next line
                     pass
@@ -485,7 +523,13 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     fieldDict["vectorType"] = vectorType
 
                 if len(schemaFieldInfo) != 0:
-                    if isinstance(schemaFieldInfo[fieldCount], tuple):
+                    # check if matching name in schema file exists, this takes priority
+                    matchingSchemaField = findMatchingSchemaField(schemaFieldInfo, fieldDict["name"])
+                    if matchingSchemaField != None and len(matchingSchemaField) == 2:
+                        fieldDict["schemaName"] = matchingSchemaField[0]
+                        fieldDict["schemaType"] = matchingSchemaField[1]
+                        
+                    elif isinstance(schemaFieldInfo[fieldCount], tuple):
                         fieldDict["schemaName"] = schemaFieldInfo[fieldCount][0]
                         fieldDict["schemaType"] = schemaFieldInfo[fieldCount][1]
                         fieldCount += 1
@@ -508,6 +552,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                         # this is why if types are different, then names MUST correspond between
                         # .fbs and .hpp file
                         del fieldDict["schemaName"]
+                        del fieldDict["schemaType"]
 
                 fieldDict["testVal"] = makeTestVal(fieldDict)
 
@@ -517,6 +562,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
             structIdx += 1
 
         msgTypesList.append(msgsFieldsList)
+        # print(json.dumps(msgsFieldsList, indent=2))
 
     return msgTypesList
 
@@ -536,7 +582,6 @@ def makeInheritedTypeInfoDict(typesFolderPath : str, baseName : str, logName : s
     returnInfo["classVarName"] = "".join([word[0].lower() for word in returnInfo["name"].split("_")])
     returnInfo["baseType"] = baseName
     returnInfo["hasGeneratedHfile"] = hasGeneratedHFile(logName)
-
 
     baseHLines = baseHFile.readlines()
 
