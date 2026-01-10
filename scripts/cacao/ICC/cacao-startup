@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+cpath=$(pwd)
+
+cd /opt/MagAOX/cacao/ncpc/ncpc-rootdir
+cacao-setup ncpc
+
+echo "runstart DMch2disp-02" >> /milk/shm/ncpc_fpsCTRL.fifo
+
+cd $cpath
