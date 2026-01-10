@@ -305,8 +305,8 @@ else ifeq ($(MAGAOX_ROLE),ICC)
 else ifeq ($(MAGAOX_ROLE),TIC)
   scripts_to_install += cacao/TIC/cacao-startup
   scripts_to_install += cacao/TIC/cacao-shutdown
-  scripts_to_install += cacao/ICC/kilo-rootdir-scripts/pre-calib-apply
-  scripts_to_install += cacao/ICC/kilo-rootdir-scripts/post-calib-apply
+  scripts_to_install += cacao/TIC/kilo-rootdir-scripts/pre-calib-apply
+  scripts_to_install += cacao/TIC/kilo-rootdir-scripts/post-calib-apply
   scripts_to_install += cacao/hoblockleaks
 endif
 
