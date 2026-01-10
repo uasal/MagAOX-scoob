@@ -2,7 +2,7 @@
 
 #Script to startup the CACTI TIC cacao processes
 #
-#
+# This script is under version control in the MagAO-X source
 
 cpath=$(pwd)
 

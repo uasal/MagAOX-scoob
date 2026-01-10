@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-#Script to shutdown the CACTI TIC cacao processes
+# Script to shutdown the CACTI TIC cacao processes
 #
-#
+# This script is under version control in the MagAO-X source
 
 cpath=$(pwd)
 
