@@ -1691,7 +1691,8 @@ int dm<derivedT, realT>::findDMChannels()
 
     ++m_numChannels;
 
-    derivedT::template log<text_log>( {std::format("Found {} chanels for {} ", m_numChannels, derived().m_shmimName )} );
+    derivedT::template log<text_log>(
+        { std::format( "Found {} chanels for {} ", m_numChannels, derived().m_shmimName ) } );
 
     m_channels.resize( m_numChannels, nullptr );
 
@@ -1973,11 +1974,12 @@ int dm<derivedT, realT>::checkFlats()
 
     mx::error_t errc = mx::ioutils::getFileNames( tfs, m_flatPath, "", "", ".fits" );
 
-    if(errc != mx::error_t::noerror)
+    if( errc != mx::error_t::noerror )
     {
-        if( !gfn_logged)
+        if( !gfn_logged )
         {
-            derivedT::template log<software_error>( { std::format("error getting flat files: {}", mx::errorMessage(errc) } );
+            derivedT::template log<software_error>(
+                { std::format( "error getting flat files: {}", mx::errorMessage( errc ) ) } );
         }
         gfn_logged = true;
         return -1;
@@ -2401,15 +2403,16 @@ int dm<derivedT, realT>::checkTests()
 {
     std::vector<std::string> tfs;
 
-    static bool gfn_logged = false; //tracks if not finding the test path is logged
+    static bool gfn_logged = false; // tracks if not finding the test path is logged
 
     mx::error_t errc = mx::ioutils::getFileNames( tfs, m_testPath, "", "", ".fits" );
 
-    if(errc != mx::error_t::noerror)
+    if( errc != mx::error_t::noerror )
     {
-        if( !gfn_logged)
+        if( !gfn_logged )
         {
-            derivedT::template log<software_error>( { std::format("error getting test files: {}", mx::errorMessage(errc) } );
+            derivedT::template log<software_error>(
+                { std::format( "error getting test files: {}", mx::errorMessage( errc ) ) } );
         }
         gfn_logged = true;
         return -1;
