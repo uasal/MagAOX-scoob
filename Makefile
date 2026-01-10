@@ -459,7 +459,9 @@ rtimv_plugins_clean:
 scripts_install:
 	for script in ${scripts_to_install}; do \
 		sudo -H install -d /opt/MagAOX/bin && \
-		sudo -H install scripts/$$script /opt/MagAOX/bin  && \
+		sudo -H install scripts/$$script /opt/MagAOX/bin ; \
+	done
+	for script in $(notdir ${scripts_to_install}); do \
 		sudo -H ln -fs /opt/MagAOX/bin/$$script /usr/local/bin/$$script; \
 	done
 
