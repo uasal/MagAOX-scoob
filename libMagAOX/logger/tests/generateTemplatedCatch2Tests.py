@@ -382,18 +382,19 @@ def makeTestVal(fieldDict : dict) -> str:
 
     return getTestValFromType(fieldDict["type"])
 
-def findMatchingSchemaField(schemaFieldInfo, fieldName) -> tuple:
+# returns tuple of schema field info, subtable name (none if no subtable)
+def findMatchingSchemaField(schemaFieldInfo, fieldName):
     for schemaField in schemaFieldInfo:
         if isinstance(schemaField, tuple) and schemaField[0] == fieldName:
-                return schemaField
+                return schemaField, None
         if isinstance(schemaField, dict):
             subTableName = next(iter(schemaField))
             for subField in schemaField[subTableName]:
                 if len(subField) != 2:
                     continue
                 if subField[0] == fieldName:
-                    return subField
-    return None # no matching field in schema for given fieldName
+                    return subField, subTableName
+    return None, None # no matching field in schema for given fieldName
 
 
 '''
@@ -523,16 +524,19 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     fieldDict["vectorType"] = vectorType
 
                 if len(schemaFieldInfo) != 0:
-                    # check if matching name in schema file exists, this takes priority
-                    matchingSchemaField = findMatchingSchemaField(schemaFieldInfo, fieldDict["name"])
-                    if matchingSchemaField != None and len(matchingSchemaField) == 2:
-                        fieldDict["schemaName"] = matchingSchemaField[0]
-                        fieldDict["schemaType"] = matchingSchemaField[1]
                         
-                    elif isinstance(schemaFieldInfo[fieldCount], tuple):
+                    if isinstance(schemaFieldInfo[fieldCount], tuple):
                         fieldDict["schemaName"] = schemaFieldInfo[fieldCount][0]
                         fieldDict["schemaType"] = schemaFieldInfo[fieldCount][1]
                         fieldCount += 1
+
+                        # check if matching name in schema file exists, let this overwrite
+                        matchingSchemaField, subTableName = findMatchingSchemaField(schemaFieldInfo, fieldDict["name"])
+                        if matchingSchemaField != None and len(matchingSchemaField) == 2:
+                            subTableStr = f"{subTableName}()->" if subTableName is not None else ""
+                            fieldDict["schemaName"] = f"{subTableStr}{matchingSchemaField[0]}"
+                            fieldDict["schemaType"] = matchingSchemaField[1]
+
                     else:
                         # go into dictionary..
                         subTableName = next(iter(schemaFieldInfo[fieldCount]))
@@ -661,8 +665,7 @@ def main():
         os.remove(file)
 
     types = os.listdir(typesFolderPath)
-    # types.sort()
-    types = ["software_log.hpp"]
+    types.sort()
     baseTypesDict = dict() # map baseTypes to the types that inherit from them
     for type in types:
 
@@ -670,16 +673,6 @@ def main():
         # check valid type to generate tests for
         if ".hpp" not in type:
             continue
-
-        # # workaround for software_log issues with source_location
-        # if "software" in type:
-        #     print(f"SKIPPING {type}")
-        #     continue
-
-        # # workaround for telsee deprecated fields
-        # if "telsee" in type:
-        #     print(f"SKIPPING {type}")
-        #     continue
 
         typePath = os.path.join(typesFolderPath, type)
 
