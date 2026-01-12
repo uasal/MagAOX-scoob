@@ -111,9 +111,9 @@ def getSchemaFieldInfo(fname : str) -> tuple[str, tuple] :
                 continue
 
             if (line != ""):
-                lineParts = line.strip().rstrip(";").split(":")
-                name = lineParts[0]
-                type = lineParts[1].split()[0]
+                fieldParts = line.strip().rstrip(";").split(":")
+                name = fieldParts[0]
+                type = fieldParts[1].split()[0]
 
                 if curSubTable is not None:
                     # add to subtable dict for now, will be added in later
@@ -245,20 +245,20 @@ def makeTestInfoDict(hppFname : str, baseTypesDict : dict) -> dict:
 '''
 Parse out field type and name from string
 '''
-def getTypeAndName(lineParts : list) -> tuple[str, str]:
+def getTypeAndName(fieldParts : list) -> tuple[str, str]:
 
-    typeIdxStart = 1 if (lineParts[0] == "const") else 0
-    fieldType = lineParts[typeIdxStart]
+    typeIdxStart = 1 if (fieldParts[0] == "const") else 0
+    fieldType = fieldParts[typeIdxStart]
 
-    if lineParts[typeIdxStart + 1] == "&":
+    if fieldParts[typeIdxStart + 1] == "&":
         nameIdx = (typeIdxStart + 2)
-    elif lineParts[typeIdxStart + 1] == "*":
+    elif fieldParts[typeIdxStart + 1] == "*":
         nameIdx = (typeIdxStart + 2)
         fieldType += " *"
     else:
         nameIdx = (typeIdxStart + 1)
 
-    name = lineParts[nameIdx].rstrip(")").rstrip(",")
+    name = fieldParts[nameIdx].rstrip(")").rstrip(",")
 
     if name[0] == "*":
         fieldType += " *"
@@ -396,6 +396,39 @@ def findMatchingSchemaField(schemaFieldInfo, fieldName):
                     return subField, subTableName
     return None, None # no matching field in schema for given fieldName
 
+def setDefaultArgOfLastField(fieldsList, fieldParts):
+    # this is the default arg value for msgsFieldList[-1]
+    fieldsList[-1]["defaultArg"] = " ".join(fieldParts).strip("=").strip()
+    
+    # std::source_location aliases separate fields file and line for software_log
+    if "std::source_location" in fieldsList[-1]["type"]:
+        if fieldsList[-1]["name"] == "loc":  # can remove this line if we don't want "loc" strictly associated with alias
+            fieldsList.pop()
+
+            # special case software log loc alias for file and line fields.
+            fieldsList.append(
+                {
+                    "type": "char *",
+                    "name": "file",
+                    "schemaName": "file",
+                    "schemaType": "string",
+                    "testVal": None,
+                    "defaultArg": True,
+                    "defaultTestVal": "__FILE__"
+                }
+            )
+            fieldsList.append(
+                {
+                    "type": "uint32_t",
+                    "name": "line",
+                    "schemaName": "line",
+                    "schemaType": "uint32",
+                    "testVal": None,
+                    "defaultArg": True
+                }
+            )
+
+
 
 '''
 make 2d array. each inner array contains dictionaries corresponding to
@@ -408,6 +441,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
     # extract log field types and names
     inMultilineComment = False
+    inDefaultArgDef = False
     for i in range(len(messageStructIdxs)):
         structIdx = messageStructIdxs[i]
         msgsFieldsList = []
@@ -457,59 +491,39 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
             line = line[indexStart:indexEnd].strip()
 
-            # handle default argument
-            if "=" in line:
-                if line.find("=") == indexStart:
-                    # msgsFieldsList.pop()
+            # # handle default argument 
+            # if "=" in line and line.find("=") == indexStart:
+            #         setDefaultArgOfLastField(msgsFieldsList, line)
+            #         structIdx += 1
+            #         continue
 
-                    # this is the default arg value for msgsFieldList[-1]
-                    msgsFieldsList[-1]["defaultArg"] = line.lstrip("=").strip()
+            fieldParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]
 
-                    if "std::source_location" in msgsFieldsList[-1]["type"]:
-                        # loc becomes a special keyword now. will separate into fields file and line.
-                        if msgsFieldsList[-1]["name"] == "loc":
-                            msgsFieldsList.pop()
-
-                            # special case software log loc alias for file and line fields.
-                            msgsFieldsList.append(
-                                {
-                                    "type": "char *",
-                                    "name": "file",
-                                    "schemaName": "file",
-                                    "schemaType": "string",
-                                    "testVal": None,
-                                    "defaultArg": True,
-                                    "defaultTestVal": "__FILE__"
-                                }
-                            )
-                            msgsFieldsList.append(
-                                {
-                                    "type": "uint32_t",
-                                    "name": "line",
-                                    "schemaName": "line",
-                                    "schemaType": "uint32",
-                                    "testVal": None,
-                                    "defaultArg": True
-                                }
-                            )
-
-                elif line.find("=") == indexEnd:
-                    # the default arg value is on the next line
-                    pass
-                else:
-                    # default arg value is on this line
-                    pass
-                structIdx += 1
-                continue
-
-            lineParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]
-
-            for field in lineParts:
+            for field in fieldParts:
                 fieldDict = {}
+
                 if len(field) > 0 and "//" in field[0]:
                     break
                 if len(field) == 0:
                     break
+
+                # check if this is a default arg value
+                if inDefaultArgDef and len(msgsFieldsList) > 1:
+                    setDefaultArgOfLastField(msgsFieldsList, field)
+                    inDefaultArgDef = False
+                    field.pop(0)
+                    if len(field) == 0:
+                        break
+
+                # handle default arguments that expand across two lines
+                if field[0] == "=":
+                    setDefaultArgOfLastField(msgsFieldsList, field)
+                    continue 
+                if field[-1] == '=':
+                    # set flag but still need to parse this fields info.
+                    # don't leave this loop iteration yet.
+                    inDefaultArgDef = True
+
 
                 # find type and name
                 fieldType, name = getTypeAndName(field)
@@ -562,6 +576,16 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
                 # add field dict to list of fields
                 msgsFieldsList.append(fieldDict)
+
+
+
+                # extract default arg info if applicable
+                # note we do this after the fieldDict has been appended to msgsFieldList. 
+                # This is because the function setDefaultArgOfLastField() does some
+                # special casing to replace std::current_location with field and line
+                # within the msgsFieldsList 
+                if "=" in field:
+                    setDefaultArgOfLastField(msgsFieldsList, field)
 
             structIdx += 1
 
@@ -667,6 +691,7 @@ def main():
     types = os.listdir(typesFolderPath)
     types.sort()
     baseTypesDict = dict() # map baseTypes to the types that inherit from them
+    print("generating tests for...")
     for type in types:
 
         print(type)
