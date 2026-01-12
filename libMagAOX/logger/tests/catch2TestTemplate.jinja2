@@ -17,11 +17,10 @@
 {% set outerLoopI = loop.index0 %}
 {% for field in msgType %}
 {% if 'defaultArg' not in field %}
-{% if "specialAssertVal" in field %}
-const {{field.type}} {{nameCamelCase}}Special{{UPPER_FIRST_CHAR(field.name)}}_{{outerLoopI}} = {{field.specialAssertVal}}; // dummy special case {{field.name}}
-{% else %}
 const {{field.type}} {{nameCamelCase}}{{UPPER_FIRST_CHAR(field.name)}}_{{outerLoopI}} = {{field.testVal}}; // dummy {{field.name}}
 {% endif %}
+{% if 'specialAssertVal' in field %}
+const {{field.type}} {{nameCamelCase}}Special{{UPPER_FIRST_CHAR(field.name)}}_{{outerLoopI}} = {{field.specialAssertVal}}; // dummy special case {{field.name}}
 {% endif %}
 {% endfor %}
 
