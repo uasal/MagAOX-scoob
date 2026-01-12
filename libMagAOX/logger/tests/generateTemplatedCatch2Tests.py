@@ -458,7 +458,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     # parenthesis is in comment
                     pass
                 elif line.strip().strip(")") == "":
-                    break # fields down
+                    break # field is done
                 else:
                     openParenCount = line.count("(")
                     closeParenCount = line.count(")")
@@ -490,12 +490,6 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
 
 
             line = line[indexStart:indexEnd].strip()
-
-            # # handle default argument 
-            # if "=" in line and line.find("=") == indexStart:
-            #         setDefaultArgOfLastField(msgsFieldsList, line)
-            #         structIdx += 1
-            #         continue
 
             fieldParts =  [part.strip().split() for part in line.strip().rstrip(",").split(",")]
 
@@ -577,9 +571,6 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                 # add field dict to list of fields
                 msgsFieldsList.append(fieldDict)
 
-
-
-                # extract default arg info if applicable
                 # note we do this after the fieldDict has been appended to msgsFieldList. 
                 # This is because the function setDefaultArgOfLastField() does some
                 # special casing to replace std::current_location with field and line
@@ -590,7 +581,6 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
             structIdx += 1
 
         msgTypesList.append(msgsFieldsList)
-        # print(json.dumps(msgsFieldsList, indent=2))
 
     return msgTypesList
 
