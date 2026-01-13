@@ -398,7 +398,7 @@ def findMatchingSchemaField(schemaFieldInfo, fieldName):
 def setDefaultArgOfLastField(fieldsList, fieldParts):
     # this is the default arg value for msgsFieldList[-1]
     fieldsList[-1]["defaultArg"] = " ".join(fieldParts).strip("=").strip()
-    
+
     # std::source_location aliases separate fields file and line for software_log
     if "std::source_location" in fieldsList[-1]["type"]:
         if fieldsList[-1]["name"] == "loc":  # can remove this line if we don't want "loc" strictly associated with alias
@@ -466,7 +466,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                        (closeParenCount == openParenCount and "messageT(" in line):
                         closed = True # parse the field, don't leave loop yet
                         line = line[:line.rfind(")")]
-            
+
             if inMultilineComment:
                 if "*/" in line:
                     inMultilineComment = False
@@ -531,7 +531,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                     fieldDict["vectorType"] = vectorType
 
                 if len(schemaFieldInfo) != 0:
-                        
+
                     if isinstance(schemaFieldInfo[fieldCount], tuple):
                         fieldDict["schemaName"] = schemaFieldInfo[fieldCount][0]
                         fieldDict["schemaType"] = schemaFieldInfo[fieldCount][1]
