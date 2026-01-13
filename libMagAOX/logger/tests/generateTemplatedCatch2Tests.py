@@ -105,7 +105,7 @@ def getSchemaFieldInfo(fname : str) -> tuple[str, tuple] :
                 inTable = False
                 curSubTable = None
                 continue
-            
+
             if ("deprecated" in line):
                 continue
 
