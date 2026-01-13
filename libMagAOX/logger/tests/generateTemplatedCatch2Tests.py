@@ -9,7 +9,6 @@ import os
 import sys
 import subprocess
 import glob
-import json
 import re
 import pathlib
 import string
@@ -113,13 +112,13 @@ def getSchemaFieldInfo(fname : str) -> tuple[str, tuple] :
             if (line != ""):
                 fieldParts = line.strip().rstrip(";").split(":")
                 name = fieldParts[0]
-                type = fieldParts[1].split()[0]
+                fieldType = fieldParts[1].split()[0]
 
                 if curSubTable is not None:
                     # add to subtable dict for now, will be added in later
-                    subTables[curSubTable].append((name, type))
+                    subTables[curSubTable].append((name, fieldType))
                 else:
-                    schemaFieldInfo.append((name, type))
+                    schemaFieldInfo.append((name, fieldType))
                 continue
 
     if len(subTables) == 0:
@@ -512,7 +511,7 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                 # handle default arguments that expand across two lines
                 if field[0] == "=":
                     setDefaultArgOfLastField(msgsFieldsList, field)
-                    continue 
+                    continue
                 if field[-1] == '=':
                     # set flag but still need to parse this fields info.
                     # don't leave this loop iteration yet.
@@ -571,10 +570,10 @@ def getMessageFieldInfo(messageStructIdxs: list, lines : list, schemaFieldInfo :
                 # add field dict to list of fields
                 msgsFieldsList.append(fieldDict)
 
-                # note we do this after the fieldDict has been appended to msgsFieldList. 
+                # note we do this after the fieldDict has been appended to msgsFieldList.
                 # This is because the function setDefaultArgOfLastField() does some
                 # special casing to replace std::current_location with field and line
-                # within the msgsFieldsList 
+                # within the msgsFieldsList
                 if "=" in field:
                     setDefaultArgOfLastField(msgsFieldsList, field)
 
