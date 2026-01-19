@@ -1581,8 +1581,12 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         {
             log<text_log>( "enabling power management: " + m_powerDevice + "." + m_powerChannel + "." + m_powerElement +
                            "/" + m_powerTargetElement );
+
             if( registerIndiPropertySet(
-                    m_indiP_powerChannel, m_powerDevice, m_powerChannel, INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
+                    m_indiP_powerChannel, 
+                    m_powerDevice, 
+                    m_powerChannel, 
+                    INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
                 0 )
             {
                 log<software_error>( { __FILE__, __LINE__, "failed to register set property" } );
@@ -3771,8 +3775,7 @@ int MagAOXApp<_useINDI>::powerStateTarget()
 }
 
 template <bool _useINDI>
-INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
-( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )( const pcf::IndiProperty &ipRecv )
 {
     std::string ps;
 
