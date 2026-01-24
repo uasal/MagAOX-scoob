@@ -120,6 +120,9 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
     /// Command a stage to home.
     pcf::IndiProperty m_indiP_req_home;
 
+    /// Command all stages to home.
+    pcf::IndiProperty m_indiP_req_home_all;
+
     /// Command a stage to safely halt.
     pcf::IndiProperty m_indiP_req_halt;
 
@@ -129,6 +132,7 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
   public:
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_tgt_pos );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_home );
+    INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_home_all );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_halt );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_ehalt );
 };
@@ -368,45 +372,46 @@ int zaberLowLevel::appStartup()
     }
 
     REG_INDI_NEWPROP_NOCB( m_indiP_curr_state, "curr_state", pcf::IndiProperty::Text );
-    
+
     REG_INDI_NEWPROP_NOCB( m_indiP_max_pos, "max_pos", pcf::IndiProperty::Text );
-    
+
     REG_INDI_NEWPROP_NOCB( m_indiP_parked, "parked", pcf::IndiProperty::Number );
-    
+
     REG_INDI_NEWPROP_NOCB( m_indiP_lastHomed, "last_homed", pcf::IndiProperty::Number );
-    
+
     REG_INDI_NEWPROP_NOCB( m_indiP_curr_pos, "curr_pos", pcf::IndiProperty::Number );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_temp, "temp", pcf::IndiProperty::Number );
-    
+
     REG_INDI_NEWPROP_NOCB( m_indiP_warn, "warning", pcf::IndiProperty::Switch );
     m_indiP_warn.setRule( pcf::IndiProperty::AnyOfMany );
-    
+
     REG_INDI_NEWPROP( m_indiP_tgt_pos, "tgt_pos", pcf::IndiProperty::Number );
 
-    /*--> Make a switch */
-    REG_INDI_NEWPROP( m_indiP_req_home, "req_home", pcf::IndiProperty::Number );
+    REG_INDI_NEWPROP( m_indiP_req_home, "req_home", pcf::IndiProperty::Switch );
+    m_indiP_req_home.setRule( pcf::IndiProperty::AtMostOne );
 
-    /*--> Make a switch */
-    REG_INDI_NEWPROP( m_indiP_req_halt, "req_halt", pcf::IndiProperty::Number );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_req_home_all, "home_all" );
 
-    /*--> Make a switch */
-    REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Number );
-    
+    REG_INDI_NEWPROP( m_indiP_req_halt, "req_halt", pcf::IndiProperty::Switch );
+    m_indiP_req_halt.setRule( pcf::IndiProperty::AtMostOne );
+
+    REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Switch );
+    m_indiP_req_ehalt.setRule( pcf::IndiProperty::AtMostOne );
 
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         m_indiP_curr_state.add( pcf::IndiElement( m_stages[n].name() ) );
-        
+
         m_indiP_max_pos.add( pcf::IndiElement( m_stages[n].name() ) );
         m_indiP_max_pos[m_stages[n].name()] = -1;
-        
+
         m_indiP_parked.add( pcf::IndiElement( m_stages[n].name() ) );
-        
+
         m_indiP_lastHomed.add( pcf::IndiElement( m_stages[n].name() ) );
-        
+
         m_indiP_curr_pos.add( pcf::IndiElement( m_stages[n].name() ) );
-        
+
         m_indiP_temp.add( pcf::IndiElement( m_stages[n].name() ) );
 
         m_indiP_warn.add( pcf::IndiElement( m_stages[n].name() ) );
@@ -415,12 +420,15 @@ int zaberLowLevel::appStartup()
         m_indiP_tgt_pos.add( pcf::IndiElement( m_stages[n].name() ) );
 
         m_indiP_req_home.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_req_home[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
 
         m_indiP_req_halt.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_req_halt[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
 
         m_indiP_req_ehalt.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_req_ehalt[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
 
-        //Now load last state from disk
+        // Now load last state from disk
         std::ifstream posIn;
         posIn.open( std::format( "{}/{}/{}", m_sysPath, m_configName, m_stages[n].name() ) );
 
@@ -644,6 +652,7 @@ int zaberLowLevel::appLogic()
                     std::cerr << __FILE__ << " " << __LINE__ << "\n";
                     return 0;
                 }
+
                 if( m_stages[i].warnWR() )
                 {
                     updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NOTHOMED" ) );
@@ -739,8 +748,12 @@ int zaberLowLevel::appLogic()
         if( rv == TTY_E_DEVNOTFOUND || rv == TTY_E_NODEVNAMES )
         {
             if( powerState() != 1 || powerStateTarget() != 1 )
+            {
                 return 0; // means we're powering off
+            }
+
             state( stateCodes::NODEVICE );
+
             for( size_t i = 0; i < m_stages.size(); ++i )
             {
                 updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NODEVICE" ) );
@@ -748,10 +761,10 @@ int zaberLowLevel::appLogic()
 
             if( !stateLogged() )
             {
-                std::stringstream logs;
-                logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " not found in udev";
-                log<text_log>( logs.str() );
+                log<text_log>(
+                    std::format( "USB Device {}:{}:{} not found in udev", m_idVendor, m_idProduct, m_serial ) );
             }
+
             return 0;
         }
 
@@ -772,7 +785,9 @@ int zaberLowLevel::appLogic()
     }
 
     if( powerState() != 1 || powerStateTarget() != 1 )
+    {
         return 0; // means we're powering off
+    }
 
     if( state() == stateCodes::FAILURE )
     {
@@ -866,34 +881,100 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_home )( const pcf::IndiPropert
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_req_home, ipRecv );
 
+    // Make sure only one request is sent to avoid racing
+    size_t stageno = std::numeric_limits<size_t>::max();
+
+    bool found = false;
+
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         if( ipRecv.find( m_stages[n].name() ) )
         {
-            int tgt = ipRecv[m_stages[n].name()].get<int>();
-            if( tgt > 0 )
+            if( found )
             {
-                if( m_stages[n].deviceAddress() < 1 )
-                {
-                    return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                      m_stages[n].serial() + " not found in system." } );
-                }
-                std::lock_guard<std::mutex> guard( m_indiMutex );
-
-                if( m_stages[n].homing() )
-                {
-                    continue;
-                }
-
-                if( m_stages[n].home( m_port ) < 0 )
-                {
-                    return log<software_error, -1>( { "error from home for " + m_stages[n].name() } );
-                }
-
-                updateIfChanged( m_indiP_tgt_pos, m_stages[n].name(), 0 );
-                updateIfChanged( m_indiP_parked, m_stages[n].name(), m_stages[n].parked() );
-                updateIfChanged( m_indiP_curr_state, m_stages[n].name(), std::string( "HOMING" ) );
+                log<software_error>( { "more than one stage specified in req_home, rejecting request" } );
+                return -1;
             }
+
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                return log<software_error, -1>( std::format( "stage {} with with "
+                                                             "s/n {} not found",
+                                                             m_stages[n].name(),
+                                                             m_stages[n].serial() ) );
+            }
+
+            stageno = n;
+            found   = true;
+        }
+    }
+
+    if( !found || stageno >= m_stages.size() )
+    {
+        log<software_error>( "no valid stage specified in req_home, rejecting request" );
+        return -1;
+    }
+
+    if( ipRecv[m_stages[stageno].name()].getSwitchState() != pcf::IndiElement::On )
+    {
+        return log<software_warning, 0>( std::format( "request off for stage {} "
+                                                      "in req_home",
+                                                      m_stages[stageno].name() ) );
+    }
+
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( m_stages[stageno].homing() )
+    {
+        return log<software_warning, 0>( std::format( "stage {} is already "
+                                                      "homing in req_home",
+                                                      m_stages[stageno].name() ) );
+    }
+
+    if( m_stages[stageno].home( m_port ) < 0 )
+    {
+        return log<software_error, -1>( std::format( "error from home for {}", m_stages[stageno].name() ) );
+    }
+
+    updateIfChanged( m_indiP_tgt_pos, m_stages[stageno].name(), 0 );
+    updateIfChanged( m_indiP_parked, m_stages[stageno].name(), m_stages[stageno].parked() );
+    updateIfChanged( m_indiP_curr_state, m_stages[stageno].name(), std::string( "HOMING" ) );
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_home_all )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_req_home_all, ipRecv );
+
+    if( !ipRecv.find( "request" ) )
+    {
+        return 0;
+    }
+
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        for( size_t n = 0; n < m_stages.size(); ++n )
+        {
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                continue;
+            }
+            std::lock_guard<std::mutex> guard( m_indiMutex );
+
+            if( m_stages[n].homing() )
+            {
+                continue;
+            }
+
+            if( m_stages[n].home( m_port ) < 0 )
+            {
+                return log<software_error, -1>( { "error from home for " + m_stages[n].name() } );
+            }
+
+            updateIfChanged( m_indiP_tgt_pos, m_stages[n].name(), 0 );
+            updateIfChanged( m_indiP_parked, m_stages[n].name(), m_stages[n].parked() );
+            updateIfChanged( m_indiP_curr_state, m_stages[n].name(), std::string( "HOMING" ) );
         }
     }
 
@@ -904,27 +985,50 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_halt )( const pcf::IndiPropert
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_req_halt, ipRecv );
 
+    // Make sure only one request is sent to avoid racing
+    size_t stageno = std::numeric_limits<size_t>::max();
+
+    bool found = false;
+
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         if( ipRecv.find( m_stages[n].name() ) )
         {
-            int tgt = ipRecv[m_stages[n].name()].get<int>();
-            if( tgt > 0 )
+            if( found )
             {
-                if( m_stages[n].deviceAddress() < 1 )
-                {
-                    return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                      m_stages[n].serial() + " not found in system." } );
-                }
-
-                std::lock_guard<std::mutex> guard( m_indiMutex );
-
-                if( m_stages[n].stop( m_port ) < 0 )
-                {
-                    return log<software_error, -1>( { "error from stop for " + m_stages[n].name() } );
-                }
+                return log<software_error, -1>( "more than one stage specified in req_halt, rejecting request" );
             }
+
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                return log<software_error, -1>( std::format( "stage {} with with "
+                                                             "s/n {} not present",
+                                                             m_stages[n].name(),
+                                                             m_stages[n].serial() ) );
+            }
+
+            stageno = n;
+            found   = true;
         }
+    }
+
+    if( !found || stageno == std::numeric_limits<size_t>::max() )
+    {
+        return log<software_error, -1>( "no valid stage specified in req_home, rejecting request" );
+    }
+
+    if( ipRecv[m_stages[stageno].name()].getSwitchState() != pcf::IndiElement::On )
+    {
+        return log<software_warning, 0>( std::format( "request off for stage {} "
+                                                      "in req_halt",
+                                                      m_stages[stageno].name() ) );
+    }
+
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( m_stages[stageno].stop( m_port ) < 0 )
+    {
+        return log<software_error, -1>( std::format( "error from stop for {}", m_stages[stageno].name() ) );
     }
 
     return 0;
@@ -934,24 +1038,28 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_ehalt )( const pcf::IndiProper
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_req_ehalt, ipRecv );
 
+    // Here we accept multiple ehalts all at once just in case.  It's an emergency~
+    // and we don't stop for errors
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         if( ipRecv.find( m_stages[n].name() ) )
         {
-            int tgt = ipRecv[m_stages[n].name()].get<int>();
-            if( tgt > 0 )
+            if( ipRecv[m_stages[n].name()].getSwitchState() == pcf::IndiElement::On )
             {
                 if( m_stages[n].deviceAddress() < 1 )
                 {
-                    return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                      m_stages[n].serial() + " not found in system." } );
+                    log<software_error>( std::format( "stage {} with s/n {} "
+                                                      "not present",
+                                                      m_stages[n].name(),
+                                                      m_stages[n].serial() ) );
+                    continue;
                 }
 
                 std::lock_guard<std::mutex> guard( m_indiMutex );
 
                 if( m_stages[n].estop( m_port ) < 0 )
                 {
-                    return log<software_error, -1>( { "error from estop for " + m_stages[n].name() } );
+                    log<software_error>( { "error from estop for " + m_stages[n].name() } );
                 }
             }
         }

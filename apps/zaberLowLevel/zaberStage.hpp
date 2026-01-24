@@ -968,7 +968,7 @@ int zaberStage<parentT>::home( z_port port )
     }
 
     m_homing = true;
-
+    m_tgtPos = 0;
     return 0;
 }
 

@@ -493,17 +493,21 @@ int zaberCtrl::startHoming()
 {
     updateSwitchIfChanged( m_indiP_home, "request", pcf::IndiElement::Off, INDI_IDLE );
 
-    pcf::IndiProperty indiP_stageHome = pcf::IndiProperty( pcf::IndiProperty::Text );
+    pcf::IndiProperty indiP_stageHome = pcf::IndiProperty( pcf::IndiProperty::Switch );
     indiP_stageHome.setDevice( m_lowLevelName );
     indiP_stageHome.setName( "req_home" );
     indiP_stageHome.setPerm( pcf::IndiProperty::ReadWrite );
     indiP_stageHome.setState( pcf::IndiProperty::Idle );
     indiP_stageHome.add( pcf::IndiElement( m_stageName ) );
+    indiP_stageHome[m_stageName].setSwitchState(pcf::IndiElement::On);
 
     m_moving      = 2;
     m_homingState = 1;
-    if( sendNewProperty( indiP_stageHome, m_stageName, "1" ) < 0 )
+
+    if( sendNewProperty( indiP_stageHome ) < 0 )
+    {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
 
     return 0;
 }
@@ -512,15 +516,18 @@ int zaberCtrl::stop()
 {
     updateSwitchIfChanged( m_indiP_stop, "request", pcf::IndiElement::Off, INDI_IDLE );
 
-    pcf::IndiProperty indiP_stageHalt = pcf::IndiProperty( pcf::IndiProperty::Text );
+    pcf::IndiProperty indiP_stageHalt = pcf::IndiProperty( pcf::IndiProperty::Switch );
     indiP_stageHalt.setDevice( m_lowLevelName );
     indiP_stageHalt.setName( "req_halt" );
     indiP_stageHalt.setPerm( pcf::IndiProperty::ReadWrite );
     indiP_stageHalt.setState( pcf::IndiProperty::Idle );
     indiP_stageHalt.add( pcf::IndiElement( m_stageName ) );
+    indiP_stageHalt[m_stageName].setSwitchState(pcf::IndiElement::On);
 
-    if( sendNewProperty( indiP_stageHalt, m_stageName, "1" ) < 0 )
+    if( sendNewProperty( indiP_stageHalt ) < 0 )
+    {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
 
     return 0;
 }
@@ -530,7 +537,9 @@ double zaberCtrl::presetNumber()
     for( size_t n = 1; n < m_presetPositions.size(); ++n )
     {
         if( fabs( m_pos - m_presetPositions[n] ) < 1. / m_countsPerMillimeter )
+        {
             return n;
+        }
     }
 
     return 0;
@@ -539,7 +548,9 @@ double zaberCtrl::presetNumber()
 int zaberCtrl::moveTo( const double &target )
 {
     if( target < 0 )
+    {
         return 0;
+    }
 
     m_tgtRawPos = ( target * m_countsPerMillimeter + 0.5 );
 
@@ -549,13 +560,16 @@ int zaberCtrl::moveTo( const double &target )
     indiP_stageTgtPos.setPerm( pcf::IndiProperty::ReadWrite );
     indiP_stageTgtPos.setState( pcf::IndiProperty::Idle );
     indiP_stageTgtPos.add( pcf::IndiElement( m_stageName ) );
+    indiP_stageTgtPos[m_stageName].set(m_tgtRawPos);
 
     m_moving = 1;
     dev::stdMotionStage<zaberCtrl>::recordStage( true );
     recordZaber( true );
 
-    if( sendNewProperty( indiP_stageTgtPos, m_stageName, m_tgtRawPos ) < 0 )
+    if( sendNewProperty( indiP_stageTgtPos ) < 0 )
+    {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
 
     return 0;
 }
@@ -632,11 +646,14 @@ INDI_NEWCALLBACK_DEFN( zaberCtrl, m_indiP_rawPos )( const pcf::IndiProperty &ipR
     indiP_stageTgtPos.setPerm( pcf::IndiProperty::ReadWrite );
     indiP_stageTgtPos.setState( pcf::IndiProperty::Idle );
     indiP_stageTgtPos.add( pcf::IndiElement( m_stageName ) );
+    indiP_stageTgtPos[m_stageName].set(target);
 
     dev::stdMotionStage<zaberCtrl>::recordStage( true );
 
-    if( sendNewProperty( indiP_stageTgtPos, m_stageName, target ) < 0 )
+    if( sendNewProperty( indiP_stageTgtPos ) < 0 )
+    {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
 
     m_tgtRawPos = target;
     m_tgtPos    = m_tgtRawPos / m_countsPerMillimeter;

@@ -211,6 +211,19 @@ struct software_log : public flatbuffer_log
         }
 
         /// C'tor with no codes, just the explanation.
+        messageT( const char                 *explanation, /**< [in] explanatory text about the software event */
+                  const std::source_location &loc          /**< [in] [opt] source location */
+                  = std::source_location::current() )
+        {
+            auto _file = builder.CreateString( loc.file_name() );
+            auto _expl = builder.CreateString( explanation );
+
+            auto gs = CreateSoftware_log_fb( builder, _file, loc.line(), 0, 0, _expl );
+
+            builder.Finish( gs );
+        }
+
+        /// C'tor with no codes, just the explanation.
         messageT( const std::string          &explanation, /**< [in] explanatory text about the software event */
                   const std::source_location &loc          /**< [in] [opt] source location */
                   = std::source_location::current() )
