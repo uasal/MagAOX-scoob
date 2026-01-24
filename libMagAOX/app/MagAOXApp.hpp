@@ -433,7 +433,9 @@ class MagAOXApp : public application
         void elevate()
         {
             if( m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidCalled();
             m_elevated = true;
@@ -442,7 +444,9 @@ class MagAOXApp : public application
         void restore()
         {
             if( !m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidReal();
             m_elevated = false;
@@ -2215,10 +2219,7 @@ int MagAOXApp<_useINDI>::setEuidCalled()
     errno = 0;
     if( sys::th_seteuid( m_euidCalled ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidCalled ({}) failed.  "
                                             "Errno says: {}",
@@ -2236,10 +2237,7 @@ int MagAOXApp<_useINDI>::setEuidReal()
     errno = 0;
     if( sys::th_seteuid( m_euidReal ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidReal ({}) failed.  "
                                             "Errno says: {}",

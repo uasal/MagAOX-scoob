@@ -102,13 +102,16 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
     /// Parked state of the stage.
     pcf::IndiProperty m_indiP_parked;
 
+    /// Time of last homing for the state
+    pcf::IndiProperty m_indiP_lastHomed;
+
     /// Current raw position of the stage.
     pcf::IndiProperty m_indiP_curr_pos;
 
     /// Current temperature of the stage.
     pcf::IndiProperty m_indiP_temp;
 
-    /// Current temperature of the stage.
+    /// Whether the stage has existing warnings.
     pcf::IndiProperty m_indiP_warn;
 
     /// Target raw position of the stage.
@@ -231,8 +234,6 @@ int zaberLowLevel::connect()
         return ZC_NOT_CONNECTED; // We aren't connected.
     }
 
-    log<text_log>( "DRAINING", logPrio::LOG_DEBUG );
-
     int rv = za_drain( m_port );
 
     if( rv != Z_SUCCESS )
@@ -245,7 +246,6 @@ int zaberLowLevel::connect()
     char buffer[256];
 
     //===== First renumber so they are unique.
-    log<text_log>( "Sending: / renumber", logPrio::LOG_DEBUG );
     std::string renum = "/ renumber";
     int         nwr   = za_send( m_port, renum.c_str(), renum.size() );
 
@@ -257,8 +257,6 @@ int zaberLowLevel::connect()
     }
 
     //===== Drain the result
-    log<text_log>( "DRAINING", logPrio::LOG_DEBUG );
-
     rv = za_drain( m_port );
 
     if( rv != Z_SUCCESS )
@@ -269,7 +267,6 @@ int zaberLowLevel::connect()
     }
 
     //======= Now find the stages
-    log<text_log>( "Sending: / get system.serial", logPrio::LOG_DEBUG );
     std::string gss = "/ get system.serial";
     nwr             = za_send( m_port, gss.c_str(), gss.size() );
 
@@ -312,6 +309,7 @@ int zaberLowLevel::loadStages( std::string &serialRes )
     std::vector<std::string> serials;
 
     int rv = parseSystemSerial( addresses, serials, serialRes );
+
     if( rv < 0 )
     {
         log<software_error>( { __FILE__, __LINE__, errno, rv, "error in parseSystemSerial" } );
@@ -343,8 +341,10 @@ int zaberLowLevel::loadStages( std::string &serialRes )
         {
             if( m_stages[n].deviceAddress() < 1 )
             {
-                log<text_log>( "stage " + m_stages[n].name() + " with with s/n " + serials[n] + " not found in system.",
-                               logPrio::LOG_ERROR );
+
+                log<text_log>(
+                    std::format( "stage {} with s/n {} not found in system.", m_stages[n].name(), serials[n] ),
+                    logPrio::LOG_ERROR );
                 state( state(), true );
             }
         }
@@ -368,69 +368,77 @@ int zaberLowLevel::appStartup()
     }
 
     REG_INDI_NEWPROP_NOCB( m_indiP_curr_state, "curr_state", pcf::IndiProperty::Text );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_curr_state.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
-
+    
     REG_INDI_NEWPROP_NOCB( m_indiP_max_pos, "max_pos", pcf::IndiProperty::Text );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_max_pos.add( pcf::IndiElement( m_stages[n].name() ) );
-        m_indiP_max_pos[m_stages[n].name()] = -1;
-    }
-
+    
     REG_INDI_NEWPROP_NOCB( m_indiP_parked, "parked", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_parked.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
-
+    
+    REG_INDI_NEWPROP_NOCB( m_indiP_lastHomed, "last_homed", pcf::IndiProperty::Number );
+    
     REG_INDI_NEWPROP_NOCB( m_indiP_curr_pos, "curr_pos", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_curr_pos.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
 
     REG_INDI_NEWPROP_NOCB( m_indiP_temp, "temp", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_temp.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
-
+    
     REG_INDI_NEWPROP_NOCB( m_indiP_warn, "warning", pcf::IndiProperty::Switch );
     m_indiP_warn.setRule( pcf::IndiProperty::AnyOfMany );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_warn.add( pcf::IndiElement( m_stages[n].name() ) );
-        m_indiP_warn[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
-    }
-
+    
     REG_INDI_NEWPROP( m_indiP_tgt_pos, "tgt_pos", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_tgt_pos.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
 
     /*--> Make a switch */
     REG_INDI_NEWPROP( m_indiP_req_home, "req_home", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_req_home.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
 
     /*--> Make a switch */
     REG_INDI_NEWPROP( m_indiP_req_halt, "req_halt", pcf::IndiProperty::Number );
-    for( size_t n = 0; n < m_stages.size(); ++n )
-    {
-        m_indiP_req_halt.add( pcf::IndiElement( m_stages[n].name() ) );
-    }
 
     /*--> Make a switch */
     REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Number );
+    
+
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
+        m_indiP_curr_state.add( pcf::IndiElement( m_stages[n].name() ) );
+        
+        m_indiP_max_pos.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_max_pos[m_stages[n].name()] = -1;
+        
+        m_indiP_parked.add( pcf::IndiElement( m_stages[n].name() ) );
+        
+        m_indiP_lastHomed.add( pcf::IndiElement( m_stages[n].name() ) );
+        
+        m_indiP_curr_pos.add( pcf::IndiElement( m_stages[n].name() ) );
+        
+        m_indiP_temp.add( pcf::IndiElement( m_stages[n].name() ) );
+
+        m_indiP_warn.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_warn[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
+
+        m_indiP_tgt_pos.add( pcf::IndiElement( m_stages[n].name() ) );
+
+        m_indiP_req_home.add( pcf::IndiElement( m_stages[n].name() ) );
+
+        m_indiP_req_halt.add( pcf::IndiElement( m_stages[n].name() ) );
+
         m_indiP_req_ehalt.add( pcf::IndiElement( m_stages[n].name() ) );
+
+        //Now load last state from disk
+        std::ifstream posIn;
+        posIn.open( std::format( "{}/{}/{}", m_sysPath, m_configName, m_stages[n].name() ) );
+
+        if( !posIn )
+        {
+            continue;
+        }
+
+        if( m_stages[n].readStateFile( posIn ) < 0 )
+        {
+            return log<software_critical, -1>( std::format( "error reading state file for {}", m_stages[n].name() ) );
+        }
+
+        m_indiP_curr_pos[m_stages[n].name()].set( m_stages[n].rawPos() );
+        m_indiP_tgt_pos[m_stages[n].name()].set( m_stages[n].tgtPos() );
+        m_indiP_parked[m_stages[n].name()].set( m_stages[n].parked() );
+        m_indiP_lastHomed[m_stages[n].name()].set( m_stages[n].lastHomed() );
+        m_indiP_max_pos[m_stages[n].name()].set( m_stages[n].maxPos() );
     }
 
     return 0;
@@ -446,16 +454,25 @@ int zaberLowLevel::appLogic()
 
     if( state() == stateCodes::POWERON )
     {
-        state( stateCodes::NODEVICE );
         for( size_t i = 0; i < m_stages.size(); ++i )
         {
-            updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NODEVICE" ) );
+            updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "POWERON" ) );
         }
+
+        state( stateCodes::NODEVICE );
+
+        return 0; // go around once to give POWERON time to propagate
     }
 
     if( state() == stateCodes::NODEVICE )
     {
+        for( size_t i = 0; i < m_stages.size(); ++i )
+        {
+            updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NODEVICE" ) );
+        }
+
         int rv = tty::usbDevice::getDeviceName();
+
         if( rv < 0 && rv != TTY_E_DEVNOTFOUND && rv != TTY_E_NODEVNAMES )
         {
             if( powerState() != 1 || powerStateTarget() != 1 )
@@ -464,6 +481,7 @@ int zaberLowLevel::appLogic()
             }
 
             state( stateCodes::FAILURE );
+
             if( !stateLogged() )
             {
                 log<software_critical>( { __FILE__, __LINE__, rv, tty::ttyErrorString( rv ) } );
@@ -473,22 +491,19 @@ int zaberLowLevel::appLogic()
 
         if( rv == TTY_E_DEVNOTFOUND || rv == TTY_E_NODEVNAMES )
         {
-            state( stateCodes::NODEVICE );
-
             if( !stateLogged() )
             {
-                std::stringstream logs;
-                logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " not found in udev";
-                log<text_log>( logs.str() );
+                log<text_log>(
+                    std::format( "USB Device {}:{}:{} not found in udev", m_idVendor, m_idProduct, m_serial ) );
             }
+
             return 0;
         }
         else
         {
             std::stringstream logs;
-            logs << "USB Device " << m_idVendor << ":" << m_idProduct << ":" << m_serial << " found in udev as "
-                 << m_deviceName;
-            log<text_log>( logs.str() );
+            log<text_log>( std::format(
+                "USB Device {}:{}:{} found in udev as {}", m_idVendor, m_idProduct, m_serial, m_deviceName ) );
 
             state( stateCodes::NOTCONNECTED );
 
@@ -516,10 +531,14 @@ int zaberLowLevel::appLogic()
         if( rv == ZC_CONNECTED )
         {
             state( stateCodes::CONNECTED );
+
             for( size_t i = 0; i < m_stages.size(); ++i )
             {
                 if( m_stages[i].deviceAddress() < 1 )
+                {
                     continue;
+                }
+
                 updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "CONNECTED" ) );
             }
 
@@ -543,6 +562,7 @@ int zaberLowLevel::appLogic()
                 updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NODEVICE" ) );
                 continue; // Skip configured but not found stage
             }
+
             std::lock_guard<std::mutex> guard( m_indiMutex ); // Inside loop so INDI requests can steal it
 
             m_stages[i].disableKnob( m_port ); // Always disable the knob on startup
@@ -599,6 +619,7 @@ int zaberLowLevel::appLogic()
             m_stages[i].getParked( m_port );
 
             updateIfChanged( m_indiP_parked, m_stages[i].name(), m_stages[i].parked() );
+            updateIfChanged( m_indiP_lastHomed, m_stages[i].name(), m_stages[i].lastHomed() );
 
             m_stages[i].updatePos( m_port );
 
@@ -634,14 +655,33 @@ int zaberLowLevel::appLogic()
                         if( m_stages[i].park( m_port ) < 0 )
                         {
                             if( powerState() != 1 || powerStateTarget() != 1 )
+                            {
                                 return 0; // means we're powering off
+                            }
+
                             log<software_error>( { __FILE__, __LINE__ } );
                             state( stateCodes::ERROR );
                             return 0;
                         }
-                    }
 
-                    updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "READY" ) );
+                        std::ofstream posOut;
+
+                        { // scope for priv
+                            elevatedPrivileges ep( this );
+                            posOut.open( std::format( "{}/{}/{}", m_sysPath, m_configName, m_stages[i].name() ) );
+                        }
+
+                        if( !posOut )
+                        {
+                            log<software_error>( std::format( "error opening state file for {}", m_stages[i].name() ) );
+                        }
+                        else if( m_stages[i].writeStateFile( posOut ) < 0 )
+                        {
+                            log<software_error>( std::format( "error writing state file for {}", m_stages[i].name() ) );
+                        }
+
+                        updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "READY" ) );
+                    }
                 }
             }
             else
@@ -680,7 +720,10 @@ int zaberLowLevel::appLogic()
         if( rv < 0 && rv != TTY_E_DEVNOTFOUND && rv != TTY_E_NODEVNAMES )
         {
             if( powerState() != 1 || powerStateTarget() != 1 )
+            {
                 return 0; // means we're powering off
+            }
+
             state( stateCodes::FAILURE );
             for( size_t i = 0; i < m_stages.size(); ++i )
             {
@@ -688,7 +731,7 @@ int zaberLowLevel::appLogic()
             }
             if( !stateLogged() )
             {
-                log<software_critical>( { __FILE__, __LINE__, rv, tty::ttyErrorString( rv ) } );
+                log<software_critical>( { rv, tty::ttyErrorString( rv ) } );
             }
             return rv;
         }
@@ -761,6 +804,7 @@ inline int zaberLowLevel::onPowerOff()
 
         updateIfChanged( m_indiP_warn, m_stages[i].name(), pcf::IndiElement::Off );
     }
+
     return 0;
 }
 
@@ -774,7 +818,10 @@ inline int zaberLowLevel::appShutdown()
     for( size_t i = 0; i < m_stages.size(); ++i )
     {
         if( m_stages[i].deviceAddress() < 1 )
+        {
             continue;
+        }
+
         updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "NODEVICE" ) );
     }
 
@@ -794,8 +841,8 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_tgt_pos )( const pcf::IndiProperty
             {
                 if( m_stages[n].deviceAddress() < 1 )
                 {
-                    return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                      m_stages[n].serial() + " not found in system." } );
+                    return log<software_error, -1>( std::format(
+                        "stage {} with with s/n {} not found in system.", m_stages[n].name(), m_stages[n].serial() ) );
                 }
 
                 std::lock_guard<std::mutex> guard( m_indiMutex );
@@ -829,7 +876,7 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_home )( const pcf::IndiPropert
                 if( m_stages[n].deviceAddress() < 1 )
                 {
                     return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                          m_stages[n].serial() + " not found in system." } );
+                                                      m_stages[n].serial() + " not found in system." } );
                 }
                 std::lock_guard<std::mutex> guard( m_indiMutex );
 
@@ -867,7 +914,7 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_halt )( const pcf::IndiPropert
                 if( m_stages[n].deviceAddress() < 1 )
                 {
                     return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                          m_stages[n].serial() + " not found in system." } );
+                                                      m_stages[n].serial() + " not found in system." } );
                 }
 
                 std::lock_guard<std::mutex> guard( m_indiMutex );
@@ -897,7 +944,7 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_ehalt )( const pcf::IndiProper
                 if( m_stages[n].deviceAddress() < 1 )
                 {
                     return log<software_error, -1>( { "stage " + m_stages[n].name() + " with with s/n " +
-                                                          m_stages[n].serial() + " not found in system." } );
+                                                      m_stages[n].serial() + " not found in system." } );
                 }
 
                 std::lock_guard<std::mutex> guard( m_indiMutex );
