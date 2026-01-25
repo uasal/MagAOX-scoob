@@ -109,6 +109,7 @@ The `ruleType` keyword specifies the type of rule, and the `comp` keyword specif
 numVal      | compare the value of a number element to a numeric value | Eq, Neq, Lt, LtEq, Gt, GtEq          | equality is tested with a tolerance|
 txtVal      | compare the value of a text element to a text value     | Eq, Neq                            ||
 swVal       | compare the state of a switch to either `On` or `Off`   | Eq, Neq                            ||
+timeDiff    | compare the difference between now and a time           | Eq, Neq, Lt, LtEq, Gt, GtEq          | equality is tested with a tolerance|
 elCompNum   | compare the value of two number elements to each other    | Eq, Neq, Lt, LtEq, Gt, GtEq          | equality is tested with a tolerance|
 elCompTxt   | compare the value of two text elements to each other      | Eq, Neq                            ||
 elCompSw    | compare the value of two switch elements to each other    | Eq, Neq                            ||
