@@ -43,7 +43,7 @@ class zaberStage
 
     bool m_homing{ false };
 
-    time_t m_lastHomed{ 0 }; ///< Time stamp of the last time the stage was homed
+    timespec m_lastHomed{ 0, 0 }; ///< Time stamp of the last time the stage was homed
 
     bool m_parked{ false };
 
@@ -445,7 +445,7 @@ bool zaberStage<parentT>::homing()
 template <class parentT>
 time_t zaberStage<parentT>::lastHomed()
 {
-    return m_lastHomed;
+    return m_lastHomed.tv_sec;
 }
 
 template <class parentT>
@@ -649,7 +649,10 @@ int zaberStage<parentT>::getResponse( std::string &response, const za_reply &rep
         {
             m_warnWR    = false; // Clear preemptively
             m_homing    = false;
-            m_lastHomed = time( nullptr );
+            if(clock_gettime(CLOCK_ISIO, &m_lastHomed) < 0)
+            {
+                MagAOXAppT::log<software_error>( {errno, 0, "clock_gettime for last homed"});
+            }
         }
 
         if( rep.warning_flags[0] == '-' )
@@ -675,8 +678,6 @@ int zaberStage<parentT>::getResponse( std::string &response, const za_reply &rep
 template <class parentT>
 int zaberStage<parentT>::sendCommand( std::string &response, z_port port, const std::string &command )
 {
-    MagAOXAppT::log<text_log>( std::string( "Sending: " ) + command, logPrio::LOG_DEBUG2 );
-
     za_send( port, command.c_str(), command.size() );
 
     char buff[256];
@@ -706,8 +707,6 @@ int zaberStage<parentT>::sendCommand( std::string &response, z_port port, const 
             break;
         }
         za_reply rep;
-
-        MagAOXAppT::log<text_log>( std::string( "Received: " ) + buff, logPrio::LOG_DEBUG2 );
 
         rv = za_decode( &rep, buff, sizeof( buff ) );
         if( rv != Z_SUCCESS )
@@ -1629,7 +1628,7 @@ int zaberStage<parentT>::writeStateFile( std::ofstream &fout )
         return MagAOXAppT::log<software_error, -1>( { "error writing max position" } );
     }
 
-    fout << m_lastHomed << '\n';
+    fout << m_lastHomed.tv_sec << '\n';
 
     if( !fout )
     {
@@ -1679,7 +1678,8 @@ int zaberStage<parentT>::readStateFile( std::ifstream &fin )
     m_tgtPos    = rawPos;
     m_parked    = parked;
     m_maxPos    = maxPos;
-    m_lastHomed = lastHomed;
+    m_lastHomed.tv_sec = lastHomed;
+    m_lastHomed.tv_nsec = 0;
 
     return 0;
 }
