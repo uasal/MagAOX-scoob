@@ -73,7 +73,7 @@ void extractRuleProp( pcf::IndiProperty ** prop,            ///< [out] pointer t
         //If the property already exists we just check if it's the right type
         if(maps.props[property]->getType() != type)
         {
-            mxThrowException(mx::err::invalidconfig, "extracPropRule", "property " + property + " exists but is not correct type");
+            throw mx::exception(mx::error_t::invalidconfig, "property " + property + " exists but is not correct type");
         }
 
         *prop = maps.props[property];
@@ -181,7 +181,7 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
 
     if( sections.size() == 0 )
     {
-        mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "no rules found in config");
+        throw mx::exception(mx::error_t::invalidconfig,  "no rules found in config");
     }
 
 
@@ -195,7 +195,7 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
         //If the rule already exists this is an error
         if(maps.rules.count(sections[i]) != 0)
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "duplicate rule: " + sections[i]);
+            throw mx::exception(mx::error_t::invalidconfig, "duplicate rule: " + sections[i]);
         }
 
         std::string ruleType;
@@ -208,8 +208,6 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
         std::string message;
         config.configUnused(message, mx::app::iniFile::makeKey(sections[i], "message" ));
         stripQuotesWS(message); //strips "" and any leading/trailing whitespace
-
-
 
         std::string compstr="Eq";
         config.configUnused(compstr, mx::app::iniFile::makeKey(sections[i], "comp" ));
@@ -280,6 +278,30 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
             std::string target = "On";
             config.configUnused(target, mx::app::iniFile::makeKey(sections[i], "target" ));
             svr->target(target);
+        }
+        else if(ruleType == timeDiffRule::name)
+        {
+            timeDiffRule * nvr = new timeDiffRule;
+            maps.rules.insert(std::pair<std::string, indiCompRule*>({sections[i], nvr}));
+
+            nvr->priority(priority);
+            nvr->message(message);
+            nvr->comparison(comparison);
+
+            pcf::IndiProperty * prop = nullptr;
+            std::string element;
+
+            extractRuleProp( &prop, element, maps, sections[i], "property", "element", pcf::IndiProperty::Number, config );
+            nvr->property(prop);
+            nvr->element(element);
+
+            double target = nvr->target();
+            config.configUnused(target, mx::app::iniFile::makeKey(sections[i], "target" ));
+            nvr->target(target);
+
+            double tol = nvr->tol();
+            config.configUnused(tol, mx::app::iniFile::makeKey(sections[i], "tol" ));
+            nvr->tol(tol);
         }
         else if(ruleType == elCompNumRule::name)
         {
@@ -357,7 +379,7 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
             if(rrkMap.count(sections[i]) > 0)
             {
                 //This probably should be impossible, since we already checked maps.rules above...
-                mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "duplicate ruleRule: " + sections[i]);
+                throw mx::exception(mx::error_t::invalidconfig, "duplicate ruleRule: " + sections[i]);
             }
 
             ruleCompRule * rcr = new ruleCompRule;
@@ -371,28 +393,28 @@ void loadRuleConfig( indiRuleMaps & maps,              ///< [out] contains the r
             config.configUnused(rrk.rule1, mx::app::iniFile::makeKey(sections[i], "rule1" ));
             if(rrk.rule1 == "")
             {
-                mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule1 for ruleVal rule " + sections[i] + " not found");
+                throw mx::exception(mx::error_t::invalidconfig, "rule1 for ruleVal rule " + sections[i] + " not found");
             }
             if(rrk.rule1 == sections[i])
             {
-                mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule1 for ruleVal rule " + sections[i] + " can't equal rule name");
+                throw mx::exception(mx::error_t::invalidconfig, "rule1 for ruleVal rule " + sections[i] + " can't equal rule name");
             }
 
             config.configUnused(rrk.rule2, mx::app::iniFile::makeKey(sections[i], "rule2" ));
             if(rrk.rule2 == "")
             {
-                mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule2 for ruleVal rule " + sections[i] + " not found");
+                throw mx::exception(mx::error_t::invalidconfig, "rule2 for ruleVal rule " + sections[i] + " not found");
             }
             if(rrk.rule2 == sections[i])
             {
-                mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule2 for ruleVal rule " + sections[i] + " can't equal rule name");
+                throw mx::exception(mx::error_t::invalidconfig, "rule2 for ruleVal rule " + sections[i] + " can't equal rule name");
             }
 
             rrkMap.insert(std::pair<std::string, ruleRuleKeys>(sections[i], rrk));
         }
         else
         {
-            mxThrowException(mx::err::notimpl, "loadRuleConfig", "unknown rule type " + ruleType + " in " + sections[i]);
+            throw mx::exception(mx::error_t::notimpl, std::format("unknown rule type {} in {}",ruleType, sections[i]));
         }
     }
 }
@@ -411,17 +433,23 @@ void finalizeRuleValRules( indiRuleMaps & maps,    /**< [in/out] contains the ru
     {
         if( maps.rules.count(it->first) == 0 )
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule parsing error for " + it->first);
+            throw mx::exception(mx::error_t::invalidconfig, std::format("rule parsing error for {}", it->first));
         }
 
         if( maps.rules.count(it->second.rule1) == 0 )
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule1 " + it->second.rule1 + " not found for ruleVal rule " + it->first );
+            throw mx::exception(mx::error_t::invalidconfig, std::format("rule1 {} not found "
+                                                                        "for ruleVal rule {}",
+                                                                         it->second.rule1 ,
+                                                                         it->first ));
         }
 
         if( maps.rules.count(it->second.rule2) == 0 )
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "rule2 " + it->second.rule2 + " not found for ruleVal rule " + it->first );
+            throw mx::exception(mx::error_t::invalidconfig, std::format("rule2 {} not found "
+                                                                        "for ruleVal rule {}",
+                                                                         it->second.rule2 ,
+                                                                         it->first ));
         }
 
         ruleCompRule * rcr = nullptr;
@@ -432,12 +460,12 @@ void finalizeRuleValRules( indiRuleMaps & maps,    /**< [in/out] contains the ru
         }
         catch(const std::exception & e)
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", "error casting " + it->first + ": " + e.what() );
+            std::throw_with_nested(mx::exception(mx::error_t::invalidconfig, std::format("error casting {}", it->first)));
         }
 
         if(rcr == nullptr)
         {
-            mxThrowException(mx::err::invalidconfig, "loadRuleConfig", it->first + " is not a ruleVal rule but has rules" );
+            throw mx::exception(mx::error_t::invalidconfig, std::format("{} is not a ruleVal rule but has rules", it->first ) );
         }
 
         rcr->rule1(maps.rules[it->second.rule1]);

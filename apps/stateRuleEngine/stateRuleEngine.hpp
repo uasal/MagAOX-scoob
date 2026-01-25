@@ -148,9 +148,9 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator & _config )
             loadRuleConfig(m_ruleMaps, rrkMap, _config);
             finalizeRuleValRules(m_ruleMaps, rrkMap);
         }
-        catch(mx::err::mxException & e)
+        catch(const std::exception & e)
         {
-            return log<software_critical,-1>({__FILE__,__LINE__, std::string("Rule config exception caught:\n") + e.what()});
+            return log<software_critical,-1>(std::format("Rule config exception caught:\n{}", e.what()));
         }
     }
     else
@@ -158,7 +158,7 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator & _config )
         std::vector<std::string> conffiles;
         if(mx::ioutils::getFileNames(conffiles, m_configDir + "/" + m_ruleDir, "", "", ".conf") != mx::error_t::noerror)
         {
-            return log<software_critical,-1>({__FILE__,__LINE__, "Error reading rules"});
+            return log<software_critical,-1>("Error reading rules");
         }
 
         for(auto & cnf : conffiles)
@@ -172,7 +172,7 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator & _config )
             //now process the config file
             if( fcfg.readConfig(cnf) < 0 )
             {
-                return log<software_critical,-1>({__FILE__,__LINE__, "error reading rule config file: " + cnf});
+                return log<software_critical,-1>(std::format("error reading rule config file: {}", cnf));
             }
 
             try
@@ -180,9 +180,9 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator & _config )
                 //and finally add to our rule map
                 loadRuleConfig(m_ruleMaps, rrkMap, fcfg);
             }
-            catch(mx::err::mxException & e)
+            catch(const std::exception & e)
             {
-                return log<software_critical,-1>({__FILE__,__LINE__, std::string("Rule config exception caught from ") + cnf + ":\n" + e.what()});
+                return log<software_critical,-1>(std::format("Rule config exception caught from {}:\n{}", cnf, e.what()));
             }
         }
 
@@ -192,7 +192,7 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator & _config )
         }
         catch(const std::exception& e)
         {
-            return log<software_critical,-1>({__FILE__,__LINE__, std::string("Error finalizing rules:\n") + e.what()});
+            return log<software_critical,-1>(std::format("Error finalizing rules:\n{}",e.what()));
         }
 
     }
@@ -204,7 +204,7 @@ void stateRuleEngine::loadConfig()
 {
     if(loadConfigImpl(config) < 0)
     {
-        log<software_critical>({__FILE__,__LINE__,"error in configuration"});
+        log<software_critical>("error in configuration");
         m_shutdown = true;
     }
 }
@@ -220,7 +220,7 @@ int stateRuleEngine::appStartup()
                 if(registerIndiPropertyNew( m_indiP_info, "info", pcf::IndiProperty::Switch, pcf::IndiProperty::ReadOnly,
                                                                 pcf::IndiProperty::Idle, pcf::IndiProperty::AnyOfMany, nullptr) < 0)
                 {
-                    return log<software_critical,-1>({__FILE__, __LINE__});
+                    return log<software_critical,-1>();
                 }
             }
 
@@ -316,7 +316,10 @@ int stateRuleEngine::appLogic()
                 bool val = it->second->value();
 
                 pcf::IndiElement::SwitchStateType onoff = pcf::IndiElement::Off;
-                if(val) onoff = pcf::IndiElement::On;
+                if(val)
+                {
+                    onoff = pcf::IndiElement::On;
+                }
 
                 if(it->second->priority() == rulePriority::info)
                 {

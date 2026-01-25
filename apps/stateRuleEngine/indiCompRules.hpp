@@ -11,7 +11,6 @@
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
                                          //Included here for standalone testing of this file
-#include <mx/mxException.hpp>
 
 /// Logical comparisons for the INDI rules
 enum class ruleComparison
@@ -95,7 +94,7 @@ ruleComparison string2comp( const std::string & cstr )
     }
     else
     {
-        mxThrowException(mx::err::invalidarg, "string2comp", cstr + " is not a valid comparison");
+        throw mx::exception(mx::error_t::invalidarg, cstr + " is not a valid comparison");
     }
 }
 
@@ -136,7 +135,7 @@ rulePriority string2priority(const std::string & pstr)
     }
     else
     {
-        mxThrowException(mx::err::invalidarg, "string2priority", pstr + " is not a valid priority");
+        throw mx::exception(mx::error_t::invalidarg, pstr + " is not a valid priority");
     }
 }
 
@@ -410,12 +409,12 @@ public:
     {
         if(property == nullptr)
         {
-            mxThrowException(mx::err::invalidarg, "onePropRule::property", "property is nullptr");
+            throw mx::exception(mx::error_t::invalidarg, "property is nullptr");
         }
 
         if(property->getType() != m_type)
         {
-            mxThrowException(mx::err::invalidconfig, "onePropRule::property", "property is not correct type");
+            throw mx::exception(mx::error_t::invalidconfig, "property is not correct type");
         }
 
         m_property = property;
@@ -506,12 +505,12 @@ public:
     {
         if(property == nullptr)
         {
-            mxThrowException(mx::err::invalidarg, "twoPropRule::property1", "property is nullptr");
+            throw mx::exception(mx::error_t::invalidarg, "property is nullptr");
         }
 
         if(property->getType() != m_type)
         {
-            mxThrowException(mx::err::invalidconfig, "twoPropRule::property1", "property is not correct type");
+            throw mx::exception(mx::error_t::invalidconfig, "property is not correct type");
         }
 
         m_property1 = property;
@@ -550,12 +549,12 @@ public:
     {
         if(property == nullptr)
         {
-            mxThrowException(mx::err::invalidarg, "twoPropRule::property2", "property is nullptr");
+            throw mx::exception(mx::error_t::invalidarg, "property is nullptr");
         }
 
         if(property->getType() != m_type)
         {
-            mxThrowException(mx::err::invalidconfig, "twoPropRule::property2", "property is not correct type");
+            throw mx::exception(mx::error_t::invalidconfig, "property is not correct type");
         }
 
         m_property2 = property;
@@ -673,7 +672,7 @@ public:
     {
         if(t < 0)
         {
-            mxThrowException(mx::err::invalidarg, "numValRule::tol", "tolerance can't be negative");
+            throw mx::exception(mx::error_t::invalidarg, "tolerance can't be negative");
         }
 
         m_tol = t;
@@ -702,7 +701,7 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "numValRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         double val = (*m_property)[m_element].get<double>();
@@ -710,7 +709,7 @@ public:
         rv = compNum(val, m_target, m_tol);
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "numValRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -766,13 +765,13 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "txtValRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compTxt((*m_property)[m_element].get(), m_target);
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "txtValRule::value()", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -822,7 +821,7 @@ public:
         }
         else
         {
-            mxThrowException(mx::err::invalidarg, "swValRule::target", "invalid switch state");
+            throw mx::exception(mx::error_t::invalidarg, "invalid switch state");
         }
     }
 
@@ -849,13 +848,107 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "swValRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compSw((*m_property)[m_element].getSwitchState(), m_target);
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompSwRule::value()", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
+        }
+
+        return std::get<bool>(rv);
+    }
+};
+
+/// Compare the difference in time between a value and now
+/** Now is the time of evaluation of the rule
+  */
+struct timeDiffRule : public onePropRule
+{
+
+public:
+
+    /// Name of this rule, used by config system
+    static constexpr char name[] = "timeDiff";
+
+protected:
+
+    double m_target {0}; ///< The target value for comparison
+    double m_tol {1e-6}; ///< The tolerance for the comparison
+
+public:
+
+    /// Default c'tor.
+    timeDiffRule() : onePropRule(pcf::IndiProperty::Number)
+    {}
+
+    /// Set the target for the comparison
+    void target( const double & tgt /**< [in] The new target*/)
+    {
+        m_target = tgt;
+    }
+
+    /// Get the target
+    /**
+      * \returns the current value of m_target
+      */
+    const double & target()
+    {
+        return m_target;
+    }
+
+    /// Set the tolerance
+    /** This is used for equality comparison to allow for floating point precision
+      * and text conversions in INDI.  Set to 0 for strict comparison.
+      *
+      * \throws mx::err:invalidarg if the new value is negative
+      */
+    void tol( const double & t /**< [in] the new tolerance*/)
+    {
+        if(t < 0)
+        {
+            throw mx::exception(mx::error_t::invalidarg, "tolerance can't be negative");
+        }
+
+        m_tol = t;
+    }
+
+    /// Get the tolerance
+    /**
+      * \returns the current value of m_tol
+      */
+    const double & tol()
+    {
+        return m_tol;
+    }
+
+    /// Get the value of this rule
+    /** First checks if the rule is currently valid.  The performs the comparison and returns the result.
+      *
+      * \returns the value of the comparison, true or false
+      *
+      * \throws mx::err::invalidconfig if the rule is not currently valid
+      * \throws mx::err::invalidconfig on an error from the comparison
+      *
+      */
+    virtual bool value()
+    {
+        boolorerr_t rv = valid();
+        if(isError(rv))
+        {
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
+        }
+
+        timespec now;
+        clock_gettime(CLOCK_ISIO, &now);
+
+        double val = (1.0*now.tv_sec + now.tv_nsec/1e9) -   (*m_property)[m_element].get<double>();
+
+        rv = compNum(val, m_target, m_tol);
+        if(isError(rv))
+        {
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -890,7 +983,7 @@ public:
     {
         if(t < 0)
         {
-            mxThrowException(mx::err::invalidarg, "numValRule::tol", "tolerance can't be negative");
+            throw mx::exception(mx::error_t::invalidarg, "tolerance can't be negative");
         }
 
         m_tol = t;
@@ -919,13 +1012,13 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompNumRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compNum((*m_property1)[m_element1].get<double>(), (*m_property2)[m_element2].get<double>(), m_tol);
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompNumRule::value()", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -958,13 +1051,13 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompTxtRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compTxt((*m_property1)[m_element1].get(), (*m_property2)[m_element2].get());
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompTxtRule::value()", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -998,13 +1091,13 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompSwRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compSw((*m_property1)[m_element1].getSwitchState(), (*m_property2)[m_element2].getSwitchState());
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "elCompSwRule::value()", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
@@ -1118,13 +1211,13 @@ public:
         boolorerr_t rv = valid();
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "ruleCompRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         rv = compBool(m_rule1->value(), m_rule2->value());
         if(isError(rv))
         {
-            mxThrowException(mx::err::invalidconfig, "ruleCompRule::value", std::get<std::string>(rv));
+            throw mx::exception(mx::error_t::invalidconfig, std::get<std::string>(rv));
         }
 
         return std::get<bool>(rv);
