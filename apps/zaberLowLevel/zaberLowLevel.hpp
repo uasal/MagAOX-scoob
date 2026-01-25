@@ -158,7 +158,7 @@ void zaberLowLevel::loadConfig()
 
     if( rv != 0 && rv != TTY_E_NODEVNAMES && rv != TTY_E_DEVNOTFOUND ) // Ignore error if not plugged in
     {
-        log<software_error>( { __FILE__, __LINE__, rv, tty::ttyErrorString( rv ) } );
+        log<software_error>( { rv, tty::ttyErrorString( rv ) } );
     }
 
     std::vector<std::string> sections;
@@ -167,7 +167,7 @@ void zaberLowLevel::loadConfig()
 
     if( sections.size() == 0 )
     {
-        log<software_error>( { __FILE__, __LINE__, "No stages found" } );
+        log<software_error>( { "No stages found" } );
         return;
     }
 
@@ -224,7 +224,7 @@ int zaberLowLevel::connect()
 
             if( !stateLogged() )
             {
-                log<software_error>( { __FILE__, __LINE__, "can not connect to zaber stage(s)" } );
+                log<software_error>( { "can not connect to zaber stage(s)" } );
             }
 
             return ZC_NOT_CONNECTED; // We aren't connected.
@@ -242,7 +242,7 @@ int zaberLowLevel::connect()
 
     if( rv != Z_SUCCESS )
     {
-        log<software_error>( { __FILE__, __LINE__, rv, "error from za_drain" } );
+        log<software_error>( { rv, "error from za_drain" } );
         state( stateCodes::ERROR );
         return ZC_ERROR;
     }
@@ -265,7 +265,7 @@ int zaberLowLevel::connect()
 
     if( rv != Z_SUCCESS )
     {
-        log<software_error>( { __FILE__, __LINE__, rv, "error from za_drain" } );
+        log<software_error>( { rv, "error from za_drain" } );
         state( stateCodes::ERROR );
         return ZC_ERROR;
     }
@@ -316,7 +316,7 @@ int zaberLowLevel::loadStages( std::string &serialRes )
 
     if( rv < 0 )
     {
-        log<software_error>( { __FILE__, __LINE__, errno, rv, "error in parseSystemSerial" } );
+        log<software_error>( { errno, rv, "error in parseSystemSerial" } );
         state( stateCodes::ERROR );
         return ZC_ERROR;
     }
@@ -492,7 +492,7 @@ int zaberLowLevel::appLogic()
 
             if( !stateLogged() )
             {
-                log<software_critical>( { __FILE__, __LINE__, rv, tty::ttyErrorString( rv ) } );
+                log<software_critical>( { rv, tty::ttyErrorString( rv ) } );
             }
             return -1;
         }
@@ -587,7 +587,7 @@ int zaberLowLevel::appLogic()
                     return 0; // means we're powering off
                 }
 
-                log<software_error>( { __FILE__, __LINE__ } );
+                log<software_error>();
                 state( stateCodes::ERROR );
                 return 0;
             }
@@ -600,7 +600,7 @@ int zaberLowLevel::appLogic()
                     return 0; // means we're powering off
                 }
 
-                log<software_error>( { __FILE__, __LINE__ } );
+                log<software_error>();
                 state( stateCodes::ERROR );
                 return 0;
             }
@@ -613,7 +613,6 @@ int zaberLowLevel::appLogic()
 
     if( state() == stateCodes::READY )
     {
-
         // Here we check complete stage state.
         for( size_t i = 0; i < m_stages.size(); ++i )
         {
@@ -649,7 +648,9 @@ int zaberLowLevel::appLogic()
             {
                 if( m_stages[i].homing() )
                 {
-                    std::cerr << __FILE__ << " " << __LINE__ << "\n";
+                    log<software_error>( std::format( "stage {} idle but in "
+                                                      "state homing. bug.",
+                                                      m_stages[i].name() ) );
                     return 0;
                 }
 
@@ -668,7 +669,7 @@ int zaberLowLevel::appLogic()
                                 return 0; // means we're powering off
                             }
 
-                            log<software_error>( { __FILE__, __LINE__ } );
+                            log<software_error>();
                             state( stateCodes::ERROR );
                             return 0;
                         }
@@ -716,7 +717,7 @@ int zaberLowLevel::appLogic()
                 {
                     return 0; // means we're powering off
                 }
-                log<software_error>( { __FILE__, __LINE__ } );
+                log<software_error>();
                 state( stateCodes::ERROR );
                 return 0;
             }
@@ -780,7 +781,7 @@ int zaberLowLevel::appLogic()
             updateIfChanged( m_indiP_curr_state, m_stages[i].name(), std::string( "FAILURE" ) );
         }
 
-        log<software_critical>( { __FILE__, __LINE__ } );
+        log<software_critical>();
         log<text_log>( "Error NOT due to loss of USB connection.  I can't fix it myself.", logPrio::LOG_CRITICAL );
     }
 

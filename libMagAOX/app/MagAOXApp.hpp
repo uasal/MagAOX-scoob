@@ -2045,7 +2045,7 @@ template <bool _useINDI>
 template <typename logT, int retval>
 int MagAOXApp<_useINDI>::log( logPrioT level )
 {
-    m_log.template log<logT>( level );
+    m_log.template log<logT>( typename logT::messageT(), level );
     return retval;
 }
 
