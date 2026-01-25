@@ -170,10 +170,11 @@ inline void stripQuotesWS( std::string &str )
 /** ///\todo check for insertion failure
  * ///\todo add a constructor that has priority, message, and comparison, to reduce duplication
  */
-void loadRuleConfig(
-    indiRuleMaps &maps, ///< [out] contains the rule and property maps in which to place the items found in config
-    std::map<std::string, ruleRuleKeys> &rrkMap, ///< [out] Holds the ruleVal rule keys aside for later post-processing
-    mx::app::appConfigurator            &config  ///< [in] the application configuration structure
+void loadRuleConfig( indiRuleMaps &maps,                          /**< [out] contains the rule and property maps in
+                                                                             which to place the items found in config */
+                     std::map<std::string, ruleRuleKeys> &rrkMap, /**< [out] Holds the ruleVal rule keys aside for
+                                                                             later post-processing*/
+                     mx::app::appConfigurator &config             /**< [in] the application configuration structure */
 )
 {
     std::vector<std::string> sections;
@@ -191,7 +192,9 @@ void loadRuleConfig(
 
         // If there is no ruleType then this isn't a rule
         if( !ruleTypeSet )
+        {
             continue;
+        }
 
         // If the rule already exists this is an error
         if( maps.rules.count( sections[i] ) != 0 )
@@ -395,6 +398,7 @@ void loadRuleConfig(
             maps.rules.insert( std::pair<std::string, indiCompRule *>( { sections[i], rcr } ) );
 
             rcr->priority( priority );
+            rcr->message( message );
             rcr->comparison( comparison );
 
             ruleRuleKeys rrk;

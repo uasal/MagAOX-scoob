@@ -155,12 +155,23 @@ struct indiCompRule
         return ( rv.index() > 0 );
     }
 
+    static constexpr double default_info_msg_delay    = 0; // Send once
+    static constexpr double default_caution_msg_delay = 60;
+    static constexpr double default_warning_msg_delay = 30;
+    static constexpr double default_alert_msg_delay   = 5;
+
   protected:
     /// The reporting priority for this rule
     rulePriority m_priority{ rulePriority::none };
 
     /// The message used for notifications
     std::string m_message;
+
+    timespec m_lastMsg{ 0, 0 }; ///< Time the message was last sent
+
+    double m_messageDelay{ 0 }; ///< Delay between sending messages
+
+    int m_messageCount{ 0 }; ///< Number of times the message has been sent
 
     /// The comparison for this rule
     ruleComparison m_comparison{ ruleComparison::Eq };
@@ -172,9 +183,38 @@ struct indiCompRule
     }
 
     /// Set priority of this rule
-    void priority( const rulePriority &p /**< [in] the new priority */ )
+    /** Also sets the message delay, to default for priority if not set.
+     */
+    void priority( const rulePriority &p,         /**< [in] the new priority */
+                   double              delay = -1 /**< [in] [opt] the message delay, if \< 0 the default is used */
+    )
     {
         m_priority = p;
+
+        if( delay < 0 )
+        {
+            switch( m_priority )
+            {
+            case rulePriority::info:
+                m_messageDelay = default_info_msg_delay;
+                break;
+            case rulePriority::caution:
+                m_messageDelay = default_caution_msg_delay;
+                break;
+            case rulePriority::warning:
+                m_messageDelay = default_warning_msg_delay;
+                break;
+            case rulePriority::alert:
+                m_messageDelay = default_alert_msg_delay;
+                break;
+            default:
+                m_messageDelay = 0;
+            }
+        }
+        else
+        {
+            m_messageDelay = delay;
+        }
     }
 
     /// Get the rule priority
@@ -193,12 +233,98 @@ struct indiCompRule
     }
 
     /// Get the message
-    /**
+    /** Optionally sets the message time to now.
      * \returns the current message
      */
-    const std::string &message()
+    const std::string &message( bool settime = false /**< If true m_lastMsg is set to now */ )
     {
+        if( settime )
+        {
+            if( clock_gettime( CLOCK_ISIO, &m_lastMsg ) < 0 )
+            {
+                throw mx::exception( mx::errno2error_t( errno ), "getting message time" );
+            }
+        }
+
         return m_message;
+    }
+
+    const timespec &lastMsg()
+    {
+        return m_lastMsg;
+    }
+
+    /// Get the time since the last message
+    double sinceLastMsg()
+    {
+        timespec ts;
+        if( clock_gettime( CLOCK_ISIO, &ts ) < 0 )
+        {
+            throw mx::exception( mx::errno2error_t( errno ), "getting current time" );
+        }
+
+        return ( 1.0 * ts.tv_sec + ts.tv_nsec / 1e9 ) - ( 1.0 * m_lastMsg.tv_sec + m_lastMsg.tv_nsec / 1e9 );
+    }
+
+    /// Check if it's time to send a message
+    /** If the message delay is \<= 0, this is based on message count (i.e. has it been sent).
+     * Otherwise it's based on the time since last sent
+     */
+    bool timeToSend()
+    {
+        if( m_messageDelay <= 0 )
+        {
+            if( m_messageCount == 0 )
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if( m_messageCount == 0 || sinceLastMsg() >= m_messageDelay )
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+    }
+
+    /// Set the message delay
+    void messageDelay( double md /**< [in] the new message delay */ )
+    {
+        m_messageDelay = md;
+    }
+
+    /// Get the message delay
+    double messageDelay()
+    {
+        return m_messageDelay;
+    }
+
+    /// Set the message count
+    void messageCount( int mc /**< [in] the new message count */ )
+    {
+        m_messageCount = mc;
+    }
+
+    /// Increment the message count
+    int incMessageCount()
+    {
+        ++m_messageCount;
+        return m_messageCount;
+    }
+
+    /// Get the message count
+    int messageCount()
+    {
+        return m_messageCount;
     }
 
     /// Set the comparison for this rule

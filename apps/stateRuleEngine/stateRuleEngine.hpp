@@ -155,7 +155,7 @@ int stateRuleEngine::loadConfigImpl( mx::app::appConfigurator &_config )
     else
     {
         std::vector<std::string> conffiles;
-        if( mx::ioutils::getFileNames( conffiles, m_configDir + "/" + m_ruleDir, "", "", ".conf" ) !=
+        if( mx::ioutils::getFileNames( conffiles, m_configDir + '/' + m_ruleDir, "", "", ".conf" ) !=
             mx::error_t::noerror )
         {
             return log<software_critical, -1>( "Error reading rules" );
@@ -320,20 +320,12 @@ int stateRuleEngine::appLogic()
 {
     for( auto it = m_ruleMaps.rules.begin(); it != m_ruleMaps.rules.end(); ++it )
     {
-#if 0
-        try
-        {
-            bool val = it->second->value();
-            std::cerr << it->first << " " << val << "\n";
-        }
-        catch(...){}
-#endif
-
         if( it->second->priority() != rulePriority::none )
         {
             try
             {
                 bool val = it->second->value();
+                logPrioT prio;
 
                 pcf::IndiElement::SwitchStateType onoff = pcf::IndiElement::Off;
                 if( val )
@@ -343,19 +335,43 @@ int stateRuleEngine::appLogic()
 
                 if( it->second->priority() == rulePriority::info )
                 {
+                    prio = logPrio::LOG_INFO;
                     updateSwitchIfChanged( m_indiP_info, it->first, onoff );
                 }
                 else if( it->second->priority() == rulePriority::caution )
                 {
+                    prio = logPrio::LOG_WARNING;
                     updateSwitchIfChanged( m_indiP_caution, it->first, onoff );
                 }
                 else if( it->second->priority() == rulePriority::warning )
                 {
+                    prio = logPrio::LOG_ERROR;
                     updateSwitchIfChanged( m_indiP_warning, it->first, onoff );
                 }
                 else
                 {
+                    prio = logPrio::LOG_ALERT;
                     updateSwitchIfChanged( m_indiP_alert, it->first, onoff );
+                }
+
+                if(val)
+                {
+                    if(it->second->timeToSend())
+                    {
+                        if(it->second->message(true) == "") //Set the time no matter what
+                        {
+                            log<text_log>(it->first, prio); //if no message use the rule name
+                        }
+                        else 
+                        {
+                            log<text_log>(it->second->message(), prio);
+                        }
+                        it->second->incMessageCount();
+                    }
+                }
+                else 
+                {
+                    it->second->messageCount(0); //resets so that next time will get sent
                 }
             }
             catch( const std::exception &e )
