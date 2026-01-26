@@ -325,9 +325,8 @@ int stateRuleEngine::appLogic()
             try
             {
                 bool val = it->second->value();
-                logPrioT prio;
-
                 pcf::IndiElement::SwitchStateType onoff = pcf::IndiElement::Off;
+
                 if( val )
                 {
                     onoff = pcf::IndiElement::On;
@@ -335,41 +334,68 @@ int stateRuleEngine::appLogic()
 
                 if( it->second->priority() == rulePriority::info )
                 {
-                    prio = logPrio::LOG_INFO;
                     updateSwitchIfChanged( m_indiP_info, it->first, onoff );
                 }
                 else if( it->second->priority() == rulePriority::caution )
                 {
-                    prio = logPrio::LOG_WARNING;
                     updateSwitchIfChanged( m_indiP_caution, it->first, onoff );
                 }
                 else if( it->second->priority() == rulePriority::warning )
                 {
-                    prio = logPrio::LOG_ERROR;
                     updateSwitchIfChanged( m_indiP_warning, it->first, onoff );
                 }
                 else
                 {
-                    prio = logPrio::LOG_ALERT;
                     updateSwitchIfChanged( m_indiP_alert, it->first, onoff );
                 }
 
-                if(val)
+                if(val && it->second->timeToSend())
                 {
-                    if(it->second->timeToSend())
+                    std::string prio;
+
+                    if( it->second->priority() == rulePriority::info )
                     {
-                        if(it->second->message(true) == "") //Set the time no matter what
-                        {
-                            log<text_log>(it->first, prio); //if no message use the rule name
-                        }
-                        else 
-                        {
-                            log<text_log>(it->second->message(), prio);
-                        }
-                        it->second->incMessageCount();
+                        prio = "INFO";
+                    }
+                    else if( it->second->priority() == rulePriority::caution )
+                    {
+                        prio = "CAUTION";
+                    }
+                    else if( it->second->priority() == rulePriority::warning )
+                    {
+                        prio = "WARNING";
+                    }
+                    else
+                    {
+                        prio = "ALERT";
+                    }
+
+                    pcf::IndiProperty ip;
+                    ip.setDevice( m_configName );
+                    std::string msg;
+
+                    if(it->second->message(true) == "") //Set the time no matter what
+                    {
+                        msg = std::format("{}: {}", prio, it->first);
+                    }
+                    else 
+                    {
+                        msg = std::format("{}: {}", prio, it->second->message());
+                    }
+
+                    it->second->incMessageCount();
+                
+                    ip.setMessage( msg );
+                    try
+                    {
+                        m_indiDriver->sendMessage( ip );
+                    }
+                    catch( const std::exception &e )
+                    {
+                        log<software_error>( std::format( "exception caught from sendMessage: {}", e.what() ) );
                     }
                 }
-                else 
+                else if(!val)
                 {
                     it->second->messageCount(0); //resets so that next time will get sent
                 }

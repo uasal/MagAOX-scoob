@@ -2055,7 +2055,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
     if( logHeader::logLevel( b ) <= logPrio::LOG_NOTICE )
     {
         logStdFormat( std::cerr, b );
-        std::cerr << "\n";
+        std::cerr << '\n';
     }
 
     if( logHeader::logLevel( b ) < logPrio::LOG_ERROR )
@@ -2087,8 +2087,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
         }
         catch( const std::exception &e )
         {
-            log<software_error>(
-                { __FILE__, __LINE__, std::string( "exception caught from sendMessage: " ) + e.what() } );
+            log<software_error>( { std::string( "exception caught from sendMessage: " ) + e.what() } );
         }
     }
 }
