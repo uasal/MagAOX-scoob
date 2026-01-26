@@ -211,6 +211,8 @@ public:
 trippLitePDU::trippLitePDU() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
    m_firstOne = true;
+   m_stateDelay = 5;
+
    setNumberOfOutlets(8);
    m_loopPause=2000000000;//Default to 2 sec loop pause to lessen the load on the PDUs.
 
@@ -390,7 +392,7 @@ int trippLitePDU::appLogic()
 
        int rv = updateOutletStates();
 
-       if(rv < 0) return log<software_error,-1>({__FILE__, __LINE__});
+       if(rv < 0) return log<software_error,-1>();
 
        updateAlarmsAndWarnings();
 
@@ -426,7 +428,7 @@ int trippLitePDU::updateOutletStates()
 
     if(rv < 0 )
     {
-        log<software_error>({__FILE__, __LINE__, "error getting device status"});
+        log<software_error>("error getting device status");
         state(stateCodes::NOTCONNECTED);
         return 0;
     }
@@ -452,7 +454,7 @@ int trippLitePDU::updateOutletStates()
     }
     else
     {
-        log<software_error>({__FILE__, __LINE__, 0, rv, "parse error"});
+        log<software_error>({0, rv, "parse error"});
     }
 
     return 0;
@@ -463,9 +465,7 @@ int trippLitePDU::turnOutletOn( int outletNum )
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
     #ifndef XWC_SIM_MODE
-    std::string cmd = "loadctl on -o ";
-    cmd += mx::ioutils::convertToString<int>(outletNum+1); //Internally 0 counted, device starts at 1.
-    cmd += " --force\r";
+    std::string cmd = std::format("loadctl on -o {} --force\r", (outletNum+1)); //Internally 0 counted, device starts at 1.
 
     int rv = m_telnetConn.writeRead( cmd, true, m_writeTimeout, m_readTimeout);
 
@@ -475,7 +475,10 @@ int trippLitePDU::turnOutletOn( int outletNum )
 
     #endif
 
-    if(rv < 0) return log<software_error, -1>({__FILE__, __LINE__, 0, rv, "telnet error"});
+    if(rv < 0) 
+    {
+        return log<software_error, -1>({0, rv, "telnet error"});
+    }
 
     return 0;
 }
@@ -485,9 +488,7 @@ int trippLitePDU::turnOutletOff( int outletNum )
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
     #ifndef XWC_SIM_MODE
-    std::string cmd = "loadctl off -o ";
-    cmd += mx::ioutils::convertToString<int>(outletNum+1); //Internally 0 counted, device starts at 1.
-    cmd += " --force\r";
+    std::string cmd = std::format("loadctl off -o {} --force\r", (outletNum+1)); //Internally 0 counted, device starts at 1.
 
     int rv = m_telnetConn.writeRead( cmd, true, m_writeTimeout, m_readTimeout);
 
@@ -638,7 +639,7 @@ int trippLitePDU::parsePDUStatus( std::string & strRead )
                     return -3;
                 }
 
-                float V = mx::ioutils::convertFromString<float>( sstr.substr(begin, end-begin) );
+                float V = mx::ioutils::stoT<float>( sstr.substr(begin, end-begin) );
 
                 m_voltage = V;
             }
@@ -663,7 +664,7 @@ int trippLitePDU::parsePDUStatus( std::string & strRead )
                     return -6;
                 }
 
-                float F = mx::ioutils::convertFromString<float>( sstr.substr(begin, end-begin) );
+                float F = mx::ioutils::stoT<float>( sstr.substr(begin, end-begin) );
 
                 m_frequency = F;
             }
@@ -691,7 +692,7 @@ int trippLitePDU::parsePDUStatus( std::string & strRead )
                     return -9;
                 }
 
-                float C = mx::ioutils::convertFromString<float>( sstr.substr(begin, end-begin) );
+                float C = mx::ioutils::stoT<float>( sstr.substr(begin, end-begin) );
 
                 m_current = C;
             }
