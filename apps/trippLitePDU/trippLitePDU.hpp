@@ -300,7 +300,7 @@ int trippLitePDU::appStartup()
     m_indiP_load.add (pcf::IndiElement("voltage"));
     m_indiP_load.add (pcf::IndiElement("current"));
 
-    if(dev::outletController<trippLitePDU>::setupINDI() < 0)
+    if(dev::outletController<trippLitePDU>::appStartup() < 0)
     {
         return log<text_log,-1>("Error setting up INDI for outlet control.", logPrio::LOG_CRITICAL);
     }
