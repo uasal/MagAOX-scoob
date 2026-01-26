@@ -212,6 +212,12 @@ cursesINDI::cursesINDI( const std::string &szName,
 
    m_msgout.open(m_msgFile);
 
+   if(!m_msgout)
+   {
+      throw std::filesystem::filesystem_error(std::format("can't open log file.  you probably need to delete {}", m_msgFile), std::error_code(EPERM, std::system_category()));
+   }
+
+
 }
 
 cursesINDI::~cursesINDI()
