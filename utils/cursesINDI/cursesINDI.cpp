@@ -36,6 +36,11 @@ retry:
       {
          ci = new cursesINDI("cursesINDI", "1.7", "1.7");
       }
+      catch(const std::filesystem::filesystem_error & e)
+      {
+         std::cerr << e.what() << '\n';
+         return -1;
+      }
       catch(...)
       {
          std::cout << "\rcursesINDI: Connection to INDI server failed.  Will retry in 5...";

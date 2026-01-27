@@ -433,7 +433,9 @@ class MagAOXApp : public application
         void elevate()
         {
             if( m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidCalled();
             m_elevated = true;
@@ -442,7 +444,9 @@ class MagAOXApp : public application
         void restore()
         {
             if( !m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidReal();
             m_elevated = false;
@@ -1581,8 +1585,12 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         {
             log<text_log>( "enabling power management: " + m_powerDevice + "." + m_powerChannel + "." + m_powerElement +
                            "/" + m_powerTargetElement );
+
             if( registerIndiPropertySet(
-                    m_indiP_powerChannel, m_powerDevice, m_powerChannel, INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
+                    m_indiP_powerChannel, 
+                    m_powerDevice, 
+                    m_powerChannel, 
+                    INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
                 0 )
             {
                 log<software_error>( { __FILE__, __LINE__, "failed to register set property" } );
@@ -2037,7 +2045,7 @@ template <bool _useINDI>
 template <typename logT, int retval>
 int MagAOXApp<_useINDI>::log( logPrioT level )
 {
-    m_log.template log<logT>( level );
+    m_log.template log<logT>( typename logT::messageT(), level );
     return retval;
 }
 
@@ -2047,7 +2055,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
     if( logHeader::logLevel( b ) <= logPrio::LOG_NOTICE )
     {
         logStdFormat( std::cerr, b );
-        std::cerr << "\n";
+        std::cerr << '\n';
     }
 
     if( logHeader::logLevel( b ) < logPrio::LOG_ERROR )
@@ -2079,8 +2087,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
         }
         catch( const std::exception &e )
         {
-            log<software_error>(
-                { __FILE__, __LINE__, std::string( "exception caught from sendMessage: " ) + e.what() } );
+            log<software_error>( { std::string( "exception caught from sendMessage: " ) + e.what() } );
         }
     }
 }
@@ -2211,10 +2218,7 @@ int MagAOXApp<_useINDI>::setEuidCalled()
     errno = 0;
     if( sys::th_seteuid( m_euidCalled ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidCalled ({}) failed.  "
                                             "Errno says: {}",
@@ -2232,10 +2236,7 @@ int MagAOXApp<_useINDI>::setEuidReal()
     errno = 0;
     if( sys::th_seteuid( m_euidReal ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidReal ({}) failed.  "
                                             "Errno says: {}",
@@ -3771,8 +3772,7 @@ int MagAOXApp<_useINDI>::powerStateTarget()
 }
 
 template <bool _useINDI>
-INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
-( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )( const pcf::IndiProperty &ipRecv )
 {
     std::string ps;
 

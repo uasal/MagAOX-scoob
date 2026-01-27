@@ -212,6 +212,12 @@ cursesINDI::cursesINDI( const std::string &szName,
 
    m_msgout.open(m_msgFile);
 
+   if(!m_msgout)
+   {
+      throw std::filesystem::filesystem_error(std::format("can't open log file.  you probably need to delete {}", m_msgFile), std::error_code(EPERM, std::system_category()));
+   }
+
+
 }
 
 cursesINDI::~cursesINDI()
@@ -336,6 +342,10 @@ void cursesINDI::handleMessage( const pcf::IndiProperty &ipRecv )
       {
          m_msgout << "\033[1m";
       }
+      else if(prio == "CAUT") //given by stateRuleEngine
+      {
+         m_msgout << "\033[93m\033[1m";
+      }
       else if(prio == "WARN")
       {
          m_msgout << "\033[93m\033[1m";
@@ -348,7 +358,7 @@ void cursesINDI::handleMessage( const pcf::IndiProperty &ipRecv )
       {
          m_msgout << "\033[41m\033[1m";
       }
-      else if(prio == "ALRT")
+      else if(prio == "ALRT" || prio == "ALER")
       {
          m_msgout << "\033[41m\033[1m";
       }

@@ -378,16 +378,12 @@ int stdMotionStage<derivedT>::onPowerOff()
    m_preset = 0;
    m_preset_target = 0;
 
-   if( !derived().m_indiDriver ) return 0;
-
    return 0;
 }
 
 template<class derivedT>
 int stdMotionStage<derivedT>::whilePowerOff()
 {
-   if( !derived().m_indiDriver ) return 0;
-
    return 0;
 }
 
