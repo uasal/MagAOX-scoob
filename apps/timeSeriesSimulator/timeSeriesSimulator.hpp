@@ -363,7 +363,7 @@ INDI_NEWCALLBACK_DEFN(timeSeriesSimulator, function)
   }
 
   INDI_VALIDATE_CALLBACK_PROPS(function, ipRecv);
-  
+
     auto updatedSwitches = ipRecv.getElements();
     for (auto fname : SimFunctionNames)
     {
@@ -418,7 +418,7 @@ INDI_NEWCALLBACK_DEFN(timeSeriesSimulator, function)
     updateVals();
 
     return 0;
- 
+
 }
 
 void timeSeriesSimulator::updateSimsensor()

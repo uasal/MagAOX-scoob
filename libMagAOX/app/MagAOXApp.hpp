@@ -83,17 +83,24 @@ namespace XWCTEST_NAMESPACE
  * Through various optional CRTP base classes, many different standard functionalities can be included.
  * The following figure illustrates the facilities provided by a typical app.
  *
- * \image html xwcapp.png "Block diagram of a typical XWCApp. Note that ImageStreamIO (ISIO) is not included by default,
- but there are several ways to interface with 'image streams' provided in XWCTk.  Many different hardware device
- interfaces are similarly provided."
+ * \image html xwcapp.png "Block diagram of a typical XWCApp. Note that ImageStreamIO (ISIO) is not included by default, but there are several ways to interface with 'image streams' provided in XWCTk.  Many different hardware device interfaces are similarly provided."
  *
  * The following figure illustrates the logic of the XWCApp finite state machine (FSM).
  *
  * \image html xwcapp_fsm.png "The XWCApp FSM. The blue sequence highlights the normal 'appLogic' loop."
-
  *
  *
+ * Many XWCApps can be connected across many computers.  Inter-process communication can be conducted with
+ * INDI or ISIO.
  *
+ * \image html xwcapps_connections.png "Connecting XWCApps across several machines, controlling various hardware" width=1200
+ *
+ * XWCApps are designed to be part of control loops. In the following diagram a camera at the focal plane of a coronagraph
+ * is used as the wavefront sensor.  An XWCApp reads out the images and publishes them to shared memory with ISIO.
+ * Loop process, which may themselves be XWCApps or, e.g., CACAO processes, perform loop calculations.
+ * Finally, the deformable mirror controller sends the resultant command to the hardware device.
+ *
+ * \image html xwcapp_loops.png "XWCApps controlling hardware in a control loop." width=1200
 */
 
 /// The base-class for XWCTk applications.
@@ -431,7 +438,9 @@ class MagAOXApp : public application
         void elevate()
         {
             if( m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidCalled();
             m_elevated = true;
@@ -440,7 +449,9 @@ class MagAOXApp : public application
         void restore()
         {
             if( !m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidReal();
             m_elevated = false;
@@ -1661,8 +1672,12 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         {
             log<text_log>( "enabling power management: " + m_powerDevice + "." + m_powerChannel + "." + m_powerElement +
                            "/" + m_powerTargetElement );
+
             if( registerIndiPropertySet(
-                    m_indiP_powerChannel, m_powerDevice, m_powerChannel, INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
+                    m_indiP_powerChannel, 
+                    m_powerDevice, 
+                    m_powerChannel, 
+                    INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
                 0 )
             {
                 log<software_error>( { __FILE__, __LINE__, "failed to register set property" } );
@@ -2129,7 +2144,7 @@ template <bool _useINDI>
 template <typename logT, int retval>
 int MagAOXApp<_useINDI>::log( logPrioT level )
 {
-    m_log.template log<logT>( level );
+    m_log.template log<logT>( typename logT::messageT(), level );
     return retval;
 }
 
@@ -2139,7 +2154,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
     if( logHeader::logLevel( b ) <= logPrio::LOG_NOTICE )
     {
         logStdFormat( std::cerr, b );
-        std::cerr << "\n";
+        std::cerr << '\n';
     }
 
     if( logHeader::logLevel( b ) < logPrio::LOG_ERROR )
@@ -2171,8 +2186,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
         }
         catch( const std::exception &e )
         {
-            log<software_error>(
-                { __FILE__, __LINE__, std::string( "exception caught from sendMessage: " ) + e.what() } );
+            log<software_error>( { std::string( "exception caught from sendMessage: " ) + e.what() } );
         }
     }
 }
@@ -2312,10 +2326,7 @@ int MagAOXApp<_useINDI>::setEuidCalled()
     errno = 0;
     if( sys::th_seteuid( m_euidCalled ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidCalled ({}) failed.  "
                                             "Errno says: {}",
@@ -2333,10 +2344,7 @@ int MagAOXApp<_useINDI>::setEuidReal()
     errno = 0;
     if( sys::th_seteuid( m_euidReal ) < 0 )
     {
-        log<software_error>( { __FILE__,
-                               __LINE__,
-                               errno,
-                               0,
+        log<software_error>( { errno,
                                std::format( "Setting effective user id to "
                                             "euidReal ({}) failed.  "
                                             "Errno says: {}",
@@ -3964,8 +3972,7 @@ int MagAOXApp<_useINDI>::powerStateTarget()
 }
 
 template <bool _useINDI>
-INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
-( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )( const pcf::IndiProperty &ipRecv )
 {
     std::string ps;
 

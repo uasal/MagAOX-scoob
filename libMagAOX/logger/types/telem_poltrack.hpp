@@ -41,7 +41,7 @@ struct telem_poltrack : public flatbuffer_log
         )
         {
             auto _pos_name = builder.CreateString(pos_name);
-         
+
             auto fp = CreateTelem_poltrack_fb( builder, set_angle, actual_angle, _pos_name, tracking);
             builder.Finish( fp );
         }
@@ -80,11 +80,11 @@ struct telem_poltrack : public flatbuffer_log
         }
 
         msg += "tracking: ";
-        if (fbs->tracking()) 
+        if (fbs->tracking())
         {
             msg += "SYNCHRO_ADI ";
-        } 
-        else 
+        }
+        else
         {
             msg += "NONE ";
         }
