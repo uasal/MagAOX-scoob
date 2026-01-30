@@ -11,6 +11,9 @@
 
 #include <mx/improc/eigenImage.hpp>
 #include <mx/improc/milkImage.hpp>
+
+#include <mx/sigproc/circularBuffer.hpp>
+
 #include <mx/ioutils/fits/fitsFile.hpp>
 
 #include "shmimMonitor.hpp"
