@@ -78,9 +78,8 @@ apps/dmSpeckle/dmSpeckle
 #f
 apps/filterWheelCtrl/filterWheelCtrl
 apps/flipperCtrl/flipperCtrl
-
-apps/magAOXMaths/magAOXMaths
 apps/flowRPM/flowRPM
+apps/fsmCtrl/fsmCtrl
 
 #g/gui
 gui/rtimv/plugins/cameraStatus/makefile.cameraStatus
