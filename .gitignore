@@ -71,8 +71,7 @@ apps/dmSpeckle/dmSpeckle
 #f
 apps/filterWheelCtrl/filterWheelCtrl
 apps/flipperCtrl/flipperCtrl
-
-apps/magAOXMaths/magAOXMaths
+apps/fsmCtrl/fsmCtrl
 
 #g/gui
 gui/rtimv/plugins/cameraStatus/makefile.cameraStatus
@@ -99,6 +98,7 @@ apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
 #m
+apps/magAOXMaths/magAOXMaths
 apps/mcp3008Ctrl/mcp3008Ctrl
 apps/modalGainOpt/modalGainOpt
 apps/modalPSDs/modalPSDs
