@@ -76,6 +76,8 @@ class baslerCtrl : public MagAOXApp<>,
 
     static constexpr bool c_stdCamera_vShiftSpeed =
         false; ///< app:dev config to tell stdCamera not to expose vertical shift speed control
+    
+    static constexpr bool c_stdCamera_blacklevel = false; ///< app::dev config to tell stdCamera to expose Blacklevel controls 
 
     static constexpr bool c_stdCamera_emGain =
         false; ///< app::dev config to tell stdCamera to not expose EM gain controls
@@ -698,8 +700,16 @@ int baslerCtrl::configureAcquisition()
                   The CenterX/Y has to be set to false otherwise the software tries to auto-center the frames.
                   See: https://docs.baslerweb.com/image-roi
              */
-        m_camera->CenterX.SetValue( false );
-        m_camera->CenterY.SetValue( false );
+        //m_camera->CenterX.SetValue( false );
+        //m_camera->CenterY.SetValue( false );
+        if (GenApi::IsWritable(m_camera->CenterX))
+        {
+            m_camera->CenterX.SetValue( false ) ;
+        }
+        if (GenApi::IsWritable(m_camera->CenterY))
+        {
+            m_camera->CenterY.SetValue( false ) ;
+        }
 
         // set offsets to 0 so any valid w/h will work.
         m_camera->OffsetX.SetValue( 0 );

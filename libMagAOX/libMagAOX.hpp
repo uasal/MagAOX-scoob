@@ -19,7 +19,6 @@
 #include "app/dev/outletController.hpp"
 #include "app/dev/ioDevice.hpp"
 #include "app/dev/stdMotionStage.hpp"
-#include "app/dev/frameGrabber.hpp"
 #include "app/dev/stdCamera.hpp"
 #include "app/dev/edtCamera.hpp"
 #include "app/dev/dssShutter.hpp"
@@ -27,6 +26,8 @@
 #include "app/dev/summerDevice.hpp"
 #include "app/dev/dm.hpp"
 #include "app/dev/telemeter.hpp"
+#include "app/dev/frameGrabber.hpp"
+
 #include "app/dev/dmPokeWFS.hpp"
 #include "sys/runCommand.hpp"
 

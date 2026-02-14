@@ -15,6 +15,7 @@
 
 //#define XWC_DMTIMINGS
 
+#include <mx/sigproc/circularBuffer.hpp>
 #include <mx/improc/eigenImage.hpp>
 #include <mx/ioutils/fits/fitsFile.hpp>
 

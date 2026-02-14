@@ -1163,7 +1163,6 @@ int asiCtrl::checkRecordTimes()
 {
    return telemeter<asiCtrl>::checkRecordTimes(telem_stdcam());
 }
-
 inline
 int asiCtrl::recordTelem(const telem_stdcam *)
 {
