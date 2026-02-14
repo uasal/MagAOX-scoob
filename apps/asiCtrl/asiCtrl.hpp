@@ -106,10 +106,13 @@ protected:
      *@{
      */
 
-
-   std::string m_serialNumber; ///< The camera's identifying serial number
+   std::string m_serialNumber; ///< The camera's identifying serial number (supports either 16-hex chars or decimal uint64 string)
    ASI_CAMERA_INFO m_camInfo;
-   int m_camNum;
+
+   // - m_camIndex is only for enumeration/logging (0..N-1)
+   // - m_camID is the identifier to use for ALL ASI API calls (CameraID from ASI_CAMERA_INFO)
+   int m_camID   = -1;
+   int m_camIndex = -1;
    bool m_running;
    std::string m_camName;
 
@@ -506,12 +509,13 @@ int asiCtrl::onPowerOff()
 {
    std::lock_guard<std::mutex> lock(m_indiMutex);
 
-   if(m_camNum >= 0)
+   if(m_camID >= 0)
    {
-      ASIStopVideoCapture(m_camNum);
-      ASICloseCamera(m_camNum);
+      ASIStopVideoCapture(m_camID);
+      ASICloseCamera(m_camID);
       m_running = false;
-      m_camNum = -1;
+      m_camID = -1;
+      m_camIndex = -1;
    }
 
    //asi_UninitializeLibrary();
@@ -541,16 +545,14 @@ int asiCtrl::appShutdown()
 {
    dev::frameGrabber<asiCtrl>::appShutdown();
 
-   if(m_camNum >= 0)
+   if(m_camID >= 0)
    {
-      ASIStopVideoCapture(m_camNum);
-      ASICloseCamera(m_camNum);
-      m_camNum = -1;
+      ASIStopVideoCapture(m_camID);
+      ASICloseCamera(m_camID);
+      m_camID = -1;
+      m_camIndex = -1;
    }
 
-   //asi_UninitializeLibrary();
-
-   ///\todo error check these base class fxns.
    dev::frameGrabber<asiCtrl>::appShutdown();
    //dev::dssShutter<asiCtrl>::appShutdown();
 
@@ -563,10 +565,15 @@ int asiCtrl::getASIParameter( long & value,
                                 )
 {
    ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, parameter, &value, &bAuto);
+   ASI_ERROR_CODE rv = ASIGetControlValue(m_camID, parameter, &value, &bAuto);
+
+   if(rv != ASI_SUCCESS)
+   {
+      if(MagAOXAppT::m_powerState == 0) return -1;
+      return -1;
+   }
 
    if(MagAOXAppT::m_powerState == 0) return -1; //Flag error but don't log
-
    return 0;
 }
 
@@ -576,10 +583,13 @@ int asiCtrl::setASIParameter( ASI_CONTROL_TYPE parameter,
                                   bool commit
                                 )
 {
-   ASISetControlValue(m_camNum, parameter, value, ASI_FALSE);
+   ASI_ERROR_CODE rv = ASISetControlValue(m_camID, parameter, value, ASI_FALSE);
+   if(rv != ASI_SUCCESS)
+   {
+      return -1;
+   }
 
    if(!commit) return 0; // what is this?
-
    return 0;
 }
 
@@ -600,11 +610,12 @@ int asiCtrl::connect()
         m_imgBuff = nullptr;
     }
 
-    if (m_camNum >= 0) {
-        ASIStopVideoCapture(m_camNum);
-        ASICloseCamera(m_camNum);
+    if (m_camID >= 0) {
+        ASIStopVideoCapture(m_camID);
+        ASICloseCamera(m_camID);
         m_running = false;
-        m_camNum = -1;
+        m_camID = -1;
+        m_camIndex = -1;
     }
 
     std::cout << "Looking for connected cameras\n";
@@ -621,81 +632,144 @@ int asiCtrl::connect()
     } else {
       log<text_log>(std::to_string(numDevices) + " ASI Cameras found. Attempting to connect");
     }
-    
+
     std::cout << numDevices << " cameras found." << "\n" << "Searching for: "
               << m_camName << " w/ serial #: " << m_serialNumber << "\n";
 
+    int matchingCamID = -1;
     int matchingIndex = -1;
+
+    // Helper lambdas: SN -> hex string; SN -> decimal string (uint64 interpreted big-endian)
+    auto snToHex = [](const ASI_SN &sn)->std::string {
+        char serialHex[17];
+        for (int j = 0; j < 8; ++j) sprintf(serialHex + j * 2, "%02X", sn.id[j]);
+        serialHex[16] = '\0';
+        return std::string(serialHex);
+    };
+
+    auto snToDec = [](const ASI_SN &sn)->std::string {
+        // Interpret the 8 bytes in the same displayed order as hex (big-endian fold)
+        // This allows comparing against configs that store serial as a decimal uint64 string.
+        unsigned long long v = 0;
+        for(int j = 0; j < 8; ++j) {
+            v = (v << 8) | static_cast<unsigned long long>(sn.id[j]);
+        }
+        return std::to_string(v);
+    };
+
+    // Determine whether the config looks like hex or decimal (accept either)
+    auto looksHex16 = [](const std::string &s)->bool {
+        if(s.size() != 16) return false;
+        for(char c : s) {
+            bool isHex = (c >= '0' && c <= '9') ||
+                         (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+            if(!isHex) return false;
+        }
+        return true;
+    };
+
+    const bool cfgIsHex = looksHex16(m_serialNumber);
 
     for (int i = 0; i < numDevices; ++i) {
         ASI_CAMERA_INFO camInfo{};
-        ASIGetCameraProperty(&camInfo, i);
+        if(ASIGetCameraProperty(&camInfo, i) != ASI_SUCCESS) {
+            std::cerr << "ASIGetCameraProperty failed for index " << i << "\n";
+            continue;
+        }
+
+        const int camID = camInfo.CameraID;
 
         std::cout << "Camera index: " << i << "\n";
         std::cout << "  Name: " << camInfo.Name << "\n";
-	std::cout << "Camera id: " << camInfo.CameraID << "\n";
+        std::cout << "  CameraID: " << camID << "\n";
 
-        ASI_SN sn;
-        bool matchFound = false;
+        // Open only (avoid init during discovery)
+        if (ASIOpenCamera(camID) != ASI_SUCCESS) {
+            std::cerr << "  Failed to open camera " << i << "\n";
+            continue;
+        }
 
-	int camID = camInfo.CameraID;
+        ASI_SN sn{};
+        ASI_ERROR_CODE snrv = ASIGetSerialNumber(camID, &sn);
 
-        if (ASIOpenCamera(camID) == ASI_SUCCESS && ASIInitCamera(camID) == ASI_SUCCESS) {
-            if (ASIGetSerialNumber(camID, &sn) == ASI_SUCCESS) {
-                char serialHex[17];
-                for (int j = 0; j < 8; ++j)
-                    sprintf(serialHex + j * 2, "%02X", sn.id[j]);
-                serialHex[16] = '\0';
+        if (snrv == ASI_SUCCESS) {
+            std::string serialHex = snToHex(sn);
+            std::string serialDec = snToDec(sn);
 
-               std::cout << "  Serial Number (Hex): " << serialHex << std::endl;
-               log<text_log>("Index: " + std::to_string(i) + 
-                             " Name: " + m_camName + 
-                             " Serial #: " + serialHex);
+            std::cout << "  Serial Number (Hex): " << serialHex << std::endl;
+            std::cout << "  Serial Number (Dec): " << serialDec << std::endl;
 
-                if (strcmp(camInfo.Name, m_camName.c_str()) == 0 &&
-                    strcmp(m_serialNumber.c_str(), serialHex) == 0) {
-                    std::cerr << "  --> Camera name and serial matched.\n";
-                    matchFound = true;
-                    matchingIndex = i;
-                    log<text_log>("Camera name and serial matched to config");
-                }
+            log<text_log>("Index: " + std::to_string(i) +
+                          " Name: " + std::string(camInfo.Name) +
+                          " SerialHex: " + serialHex +
+                          " SerialDec: " + serialDec);
+
+            const bool nameMatch = (strcmp(camInfo.Name, m_camName.c_str()) == 0);
+
+            bool serialMatch = false;
+            if(cfgIsHex) {
+                serialMatch = (serialHex == m_serialNumber);
             } else {
-                std::cout << "  Serial Number not available for this camera.\n";
+                serialMatch = (serialDec == m_serialNumber);
             }
 
-            // Close for now — reopen later only if it’s the one we want
-            ASICloseCamera(camID);
+            if (nameMatch && serialMatch) {
+                std::cerr << "  --> Camera name and serial matched.\n";
+                matchingCamID = camID;
+                matchingIndex = i;
+                ASICloseCamera(camID);
+                break;
+            }
         } else {
-            std::cerr << "  Failed to open or initialize camera " << i << "\n";
+            // If serial cannot be read without init, do NOT init here to avoid stepping on another app.
+            std::cout << "  Serial Number not readable without init; skipping (discovery is non-invasive).\n";
         }
+
+        ASICloseCamera(camID);
 
         if (powerState() != 1 || powerStateTarget() != 1) return 0;
     }
 
-    if (matchingIndex >= 0) {
-        std::cerr << "Connecting to matched camera index: " << matchingIndex << "\n";
-        m_camNum = matchingIndex;
-        ASIOpenCamera(m_camNum);
-        ASIInitCamera(m_camNum);
+    if (matchingCamID >= 0) {
+        std::cerr << "Connecting to matched camera CameraID: " << matchingCamID
+                  << " (index " << matchingIndex << ")\n";
+
+        m_camID = matchingCamID;
+        m_camIndex = matchingIndex;
+
+        if(ASIOpenCamera(m_camID) != ASI_SUCCESS) {
+            state(stateCodes::ERROR);
+            log<software_error>({__FILE__, __LINE__, "ASIOpenCamera failed on matched camera"});
+            m_camID = -1;
+            m_camIndex = -1;
+            return -1;
+        }
+
+        // Init ONLY the matched camera.
+        if(ASIInitCamera(m_camID) != ASI_SUCCESS) {
+            ASICloseCamera(m_camID);
+            state(stateCodes::ERROR);
+            log<software_error>({__FILE__, __LINE__, "ASIInitCamera failed on matched camera"});
+            m_camID = -1;
+            m_camIndex = -1;
+            return -1;
+        }
+
         state(stateCodes::CONNECTED);
     } else {
         state(stateCodes::NODEVICE);
         if (!stateLogged()) {
-            log<text_log>("Camera not found in available IDs.");
-            m_camNum = -1;
+            log<text_log>("Camera not found in available devices (matched by name+serial).");
+            m_camID = -1;
+            m_camIndex = -1;
         }
     }
 
     return 0;
 }
 
-/*inline
-int asiCtrl::setFPS()
-{
-   return 0;
-}*/
-
-inline 
+inline
 int asiCtrl::powerOnDefaults()
 {
    m_currentROI.x = 4143.5;
@@ -705,12 +779,7 @@ int asiCtrl::powerOnDefaults()
    m_currentROI.bin_x = 2;
    m_currentROI.bin_y = 2;
 
-   //m_gain = 1;
    m_emGainSet = 0;
-
-   //m_width = 8288;
-   //m_height = 5644;
-   //std::cout << m_width << " " << m_height << "\n";
 
    return 0;
 }
@@ -718,18 +787,16 @@ int asiCtrl::powerOnDefaults()
 inline
 int asiCtrl::setEMGain()
 {
-   // not EM gain, but this already exists, so...
-   int rv = ASISetControlValue(m_camNum, ASI_GAIN, m_emGainSet, ASI_FALSE); 
+   int rv = ASISetControlValue(m_camID, ASI_GAIN, m_emGainSet, ASI_FALSE);
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting gain"});
       return -1;
    }
 
-   // maybe report back the actual gain camera went to?
    long gainReal;
-	ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, ASI_GAIN, &gainReal, &bAuto);
+   ASI_BOOL bAuto;
+   ASIGetControlValue(m_camID, ASI_GAIN, &gainReal, &bAuto);
 
    m_emGainSet = gainReal;
 
@@ -738,23 +805,21 @@ int asiCtrl::setEMGain()
    updateIfChanged(m_indiP_emGain, "current", m_emGainSet, INDI_IDLE);
 
    return 0;
-
 }
 
 inline
 int asiCtrl::getEMGain()
 {
    long gainReal;
-	ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, ASI_GAIN, &gainReal, &bAuto);
+   ASI_BOOL bAuto;
+   ASIGetControlValue(m_camID, ASI_GAIN, &gainReal, &bAuto);
 
    log<text_log>( "Got gain of: " + std::to_string(gainReal));
 
    m_emGain = gainReal;
-   
+
    return 0;
 }
-
 
 inline
 int asiCtrl::setExpTime()
@@ -768,27 +833,25 @@ int asiCtrl::setExpTime()
    std::cerr << "Got a min/max for exposure time of: " << expmin << " and " << expmax << "\n";
    */
 
-   int rv = ASISetControlValue(m_camNum, ASI_EXPOSURE, m_expTimeSet * 1e6, ASI_FALSE);
+   int rv = ASISetControlValue(m_camID, ASI_EXPOSURE, m_expTimeSet * 1e6, ASI_FALSE);
    sleep(1);
-   
+
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting exposure time"});
       return -1;
    }
 
-   // maybe report back the actual exposure time the camera went to?
    long expTimeReal;
-	ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, ASI_EXPOSURE, &expTimeReal, &bAuto);
+   ASI_BOOL bAuto;
+   ASIGetControlValue(m_camID, ASI_EXPOSURE, &expTimeReal, &bAuto);
 
    m_expTime = expTimeReal*1e-6;
 
-   //recordCamera();
    log<text_log>( "Set exposure time to: " + std::to_string(m_expTime) + " sec");
 
    updateIfChanged(m_indiP_exptime, "current", m_expTime, INDI_IDLE);
-   
+
    return 0;
 }
 
@@ -827,64 +890,44 @@ int asiCtrl::setNextROI()
    updateSwitchIfChanged(m_indiP_roi_last, "request", pcf::IndiElement::Off, INDI_IDLE);
    updateSwitchIfChanged(m_indiP_roi_default, "request", pcf::IndiElement::Off, INDI_IDLE);
    return 0;
-   
 }
-
 
 inline
 int asiCtrl::configureAcquisition()
 {
    recordCamera(true);
-   ASIStopVideoCapture(m_camNum);
+   ASIStopVideoCapture(m_camID);
    m_running = false;
-
-   //piint frameSize;
-   //piint pixelBitDepth;
-
-   //m_camera_timestamp = 0; // reset tracked timestamp
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
 
-   ASISetControlValue(m_camNum, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE);
-   //ASISetControlValue(m_camNum, ASI_FLIP, ASI_FLIP_VERT, ASI_FALSE);
+   ASISetControlValue(m_camID, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE);
 
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   // Dimensions
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   
-   //  error = SetIsolatedCropModeEx(1, m_nextROI.h, m_nextROI.w, m_nextROI.bin_y, m_nextROI.bin_x, x0, y0);
    ASI_ERROR_CODE error;
-   error = ASISetROIFormat( m_camNum, m_nextROI.w, m_nextROI.h, m_nextROI.bin_x, ASI_IMG_RAW16);   
+   error = ASISetROIFormat( m_camID, m_nextROI.w, m_nextROI.h, m_nextROI.bin_x, ASI_IMG_RAW16);
    if( error < 0 )
    {
-      //std::cerr << PicamEnum2String(PicamEnumeratedType_Error, error) << "\n";
-      //log<software_error>({__FILE__, __LINE__, 0, error, PicamEnum2String(PicamEnumeratedType_Error, error)});
       state(stateCodes::ERROR);
       return -1;
    }
 
    int x0 = m_nextROI.x /  m_nextROI.bin_x - 0.5*(m_nextROI.w);
    int y0 = m_nextROI.y /  m_nextROI.bin_x - 0.5*(m_nextROI.h);
-   error = ASISetStartPos(m_camNum, x0, y0);
+   error = ASISetStartPos(m_camID, x0, y0);
    if( error < 0 )
    {
-      //std::cerr << PicamEnum2String(PicamEnumeratedType_Error, error) << "\n";
-      //log<software_error>({__FILE__, __LINE__, 0, error, PicamEnum2String(PicamEnumeratedType_Error, error)});
       state(stateCodes::ERROR);
       return -1;
    }
 
-   // query the camera for the actual ROI
    int piWidth;
    int piHeight;
    int piBin;
    int piStartX;
    int piStartY;
    ASI_IMG_TYPE pImg_type;
-   ASIGetROIFormat(m_camNum, &piWidth, &piHeight, &piBin, &pImg_type);
-   ASIGetStartPos(m_camNum, &piStartX, &piStartY);
+   ASIGetROIFormat(m_camID, &piWidth, &piHeight, &piBin, &pImg_type);
+   ASIGetStartPos(m_camID, &piStartX, &piStartY);
 
    m_currentROI.x = (piStartX + 0.5*piWidth) * piBin;
    m_currentROI.y = (piStartY + 0.5*piHeight) * piBin;
@@ -893,8 +936,8 @@ int asiCtrl::configureAcquisition()
    m_currentROI.bin_x = piBin;
    m_currentROI.bin_y = piBin;
 
-   m_width  = piWidth;//m_currentROI.w; // /  m_nextROI.bin_x;
-   m_height = piHeight;//m_currentROI.h; // /  m_nextROI.bin_x;
+   m_width  = piWidth;
+   m_height = piHeight;
 
    if (piBin == 1){
       m_bits = 12;
@@ -912,74 +955,40 @@ int asiCtrl::configureAcquisition()
    updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
    updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
-   
-   //We also update target to the settable values
-   /*updateIfChanged( m_indiP_roi_x, "target", m_currentROI.x, INDI_OK);
-   updateIfChanged( m_indiP_roi_y, "target", m_currentROI.y, INDI_OK);
-   updateIfChanged( m_indiP_roi_w, "target", m_currentROI.w, INDI_OK);
-   updateIfChanged( m_indiP_roi_h, "target", m_currentROI.h, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_x, "target", m_currentROI.bin_x, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_y, "target", m_currentROI.bin_y, INDI_OK);*/
-   
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   // Exposure Time and Frame Rate
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
-   //=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*
 
-   int rv = ASISetControlValue(m_camNum, ASI_EXPOSURE, m_expTimeSet * 1000, ASI_FALSE);
-   
+   int rv = ASISetControlValue(m_camID, ASI_EXPOSURE, m_expTimeSet * 1000, ASI_FALSE);
+
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting exposure time"});
       return -1;
    }
 
-   // maybe report back the actual exposure time the camera went to?
    long expTimeReal;
-	ASI_BOOL bAuto;
-   ASIGetControlValue(m_camNum, ASI_EXPOSURE, &expTimeReal, &bAuto);
+   ASI_BOOL bAuto;
+   ASIGetControlValue(m_camID, ASI_EXPOSURE, &expTimeReal, &bAuto);
 
    m_expTime = expTimeReal/1000.0;
 
-   //log<text_log>( "Set exposure time " + mode + " to: " + std::to_string(exptime/1000.0) + " sec");
-
-   m_expTimeSet = m_expTime; //At this point it must be true.
+   m_expTimeSet = m_expTime;
    updateIfChanged(m_indiP_exptime, "current", m_expTime, INDI_IDLE);
    updateIfChanged(m_indiP_exptime, "target", m_expTimeSet, INDI_IDLE);
 
-
-   // gain
-   //rv = ASISetControlValue(m_camNum,ASI_GAIN, m_gain, ASI_FALSE); 
-   //if(rv < 0)
-   //{
-   //   log<software_error>({__FILE__, __LINE__, "Error setting gain"});
-   //   return -1;
-   //}
    setEMGain();
 
-   rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, m_blacklevel , ASI_FALSE); // hard-coded for now, but should be an INDI property
-   
+   rv = ASISetControlValue(m_camID, ASI_BRIGHTNESS, m_blacklevel , ASI_FALSE);
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting black level!"});
       return -1;
    }
 
-
-   // TEMPORARY: HARD CODE HARDWARE BINNING !!!!
-   //rv = ASISetControlValue(m_camNum, ASI_HARDWARE_BIN, 2, ASI_FALSE);
-
-   //Start continuous acquisition
-   //ASIStartVideoCapture(m_camNum);
-
-   // allocate memory for image readout
    m_imgSize = m_nextROI.w*m_nextROI.h*2;
    m_imgBuff = new unsigned char[m_imgSize];
 
-   m_dataType = _DATATYPE_UINT16; 
+   m_dataType = _DATATYPE_UINT16;
 
-   recordCamera(true); 
+   recordCamera(true);
 
    return 0;
 }
@@ -994,9 +1003,9 @@ inline
 int asiCtrl::getBlacklevel()
 {
    long blReal = 0;
-	ASI_BOOL bAuto;
+   ASI_BOOL bAuto;
    sleep(1);
-   int rv = ASIGetControlValue(m_camNum, ASI_BRIGHTNESS, &blReal, &bAuto); // this is always 0 *sigh*
+   int rv = ASIGetControlValue(m_camID, ASI_BRIGHTNESS, &blReal, &bAuto);
    sleep(1);
 
    if (rv != ASI_SUCCESS) {
@@ -1026,8 +1035,8 @@ int asiCtrl::setBlacklevel()
       log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
    }
 
-   int rv = ASISetControlValue(m_camNum, ASI_BRIGHTNESS, blacklevel_to_set, ASI_FALSE);  // replace ASI_BRIGHTNESS with ASI_BLACK_LEVEL after upgrading SDK
-   
+   int rv = ASISetControlValue(m_camID, ASI_BRIGHTNESS, blacklevel_to_set, ASI_FALSE);
+
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting black level!"});
@@ -1039,13 +1048,11 @@ int asiCtrl::setBlacklevel()
    return 0;
 }
 
-
-
 inline
 int asiCtrl::startAcquisition()
 {
    log<text_log>("Starting video capture.");
-   ASIStartVideoCapture(m_camNum);
+   ASIStartVideoCapture(m_camID);
    m_running = true;
    return 0;
 }
@@ -1062,16 +1069,18 @@ int asiCtrl::getTemp()
 inline
 int asiCtrl::setTempSetPt()
 {
-   int rv = ASISetControlValue(m_camNum, ASI_TARGET_TEMP, m_ccdTempSetpt , ASI_FALSE);
+   int rv = ASISetControlValue(m_camID, ASI_TARGET_TEMP, m_ccdTempSetpt , ASI_FALSE);
+   (void)rv;
    return 0;
 }
 
 inline
 int asiCtrl::setTempControl()
-{  
+{
    if(m_tempControlStatusSet)
    {
-      int rv = ASISetControlValue(m_camNum, ASI_COOLER_ON, ASI_TRUE , ASI_FALSE);
+      int rv = ASISetControlValue(m_camID, ASI_COOLER_ON, ASI_TRUE , ASI_FALSE);
+      (void)rv;
       m_tempControlStatus = true;
       m_tempControlStatusStr = "COOLING";
       recordCamera();
@@ -1080,7 +1089,8 @@ int asiCtrl::setTempControl()
    }
    else
    {
-      int rv = ASISetControlValue(m_camNum, ASI_COOLER_ON, ASI_FALSE , ASI_FALSE);
+      int rv = ASISetControlValue(m_camID, ASI_COOLER_ON, ASI_FALSE , ASI_FALSE);
+      (void)rv;
       m_tempControlStatus = false;
       m_tempControlStatusStr = "OFF";
       recordCamera();
@@ -1088,6 +1098,7 @@ int asiCtrl::setTempControl()
       return 0;
    }
 }
+
 inline
 int asiCtrl::setReadoutSpeed()
 {
@@ -1097,14 +1108,8 @@ int asiCtrl::setReadoutSpeed()
 inline
 int asiCtrl::acquireAndCheckValid()
 {
+   ASIGetVideoData(m_camID, m_imgBuff, m_imgSize, 1000);
 
-   // these need to be set elsewhere
-   //long imgSize = width*height*(1 + (Image_type==ASI_IMG_RAW16));
-	//unsigned char* imgBuf = new unsigned char[imgSize];
-
-   ASIGetVideoData(m_camNum, m_imgBuff, m_imgSize, 6000000); // really long time-out (100 minutes)
-
-   // timestamp
    clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
 
    return 0;
@@ -1131,10 +1136,8 @@ int asiCtrl::loadImageIntoStream(void * dest)
 inline
 int asiCtrl::reconfig()
 {
-   ///\todo clean this up.  Just need to wait on acquisition update the first time probably.
-   
    log<text_log>("Stopping video capture.");
-   ASIStopVideoCapture(m_camNum);
+   ASIStopVideoCapture(m_camID);
    m_running = false;
 
    return 0;
@@ -1160,7 +1163,7 @@ int asiCtrl::checkRecordTimes()
 {
    return telemeter<asiCtrl>::checkRecordTimes(telem_stdcam());
 }
-   
+
 inline
 int asiCtrl::recordTelem(const telem_stdcam *)
 {
