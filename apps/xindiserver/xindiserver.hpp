@@ -305,32 +305,36 @@ void xindiserver::loadConfig()
 
    if( constructIndiserverCommand(m_indiserverCommand) < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       m_shutdown = true;
       return;
    }
 
    if( addLocalDrivers(m_indiserverCommand) < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       m_shutdown = true;
       return;
    }
 
    if( addRemoteDrivers(m_indiserverCommand) < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       m_shutdown = true;
       return;
    }
 
    if( addRemoteServers(m_indiserverCommand) < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       m_shutdown = true;
       return;
    }
 
+
+   m_local.clear();
+   m_remote.clear();
+   m_tunnels.clear();
 
 }
 
@@ -345,7 +349,7 @@ int xindiserver::constructIndiserverCommand( std::vector<std::string> & indiserv
       if(indiserver_f.size() > 0)
       {
          indiserverCommand.push_back("-f");
-         indiserverCommand.push_back(mx::ioutils::convertToString(indiserver_f));
+         indiserverCommand.push_back(std::format("{}", indiserver_f));
       }
 
       // The indiserver MB behind setting (passed to indiserver)
@@ -431,7 +435,7 @@ int xindiserver::addLocalDrivers( std::vector<std::string> & driverArgs )
       }
       catch(...)
       {
-         log<software_critical>({__FILE__, __LINE__, "Exception thrown by std::vector"});
+         log<software_critical>("Exception thrown by std::vector");
          return XINDISERVER_E_VECTOREXCEPT;
       }
    }
@@ -459,7 +463,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
 
       if(p == std::string::npos)
       {
-         log<software_critical>({__FILE__, __LINE__, "Error parsing remote driver@host[:port] specification: " + m_driversAtHosts[i] + "\n"});
+         log<software_critical>("Error parsing remote driver@host[:port] specification: " + m_driversAtHosts[i]);
          return XINDISERVER_E_BADDRIVERSPEC;
       }
 
@@ -469,7 +473,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
 
       if( m_driverNames.count(driver) > 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "Duplicate driver name: " + driver});
+         log<software_critical>("Duplicate driver name: " + driver);
          return XINDISERVER_E_DUPLICATEDRIVER;
       }
 
@@ -481,7 +485,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
       }
       catch(...)
       {
-         log<software_critical>({__FILE__, __LINE__, "Exception thrown by vector::push_back."});
+         log<software_critical>("Exception thrown by vector::push_back.");
          return XINDISERVER_E_VECTOREXCEPT;
       }
    }
@@ -503,7 +507,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
 
       if(p == std::string::npos)
       {
-         log<software_critical>({__FILE__, __LINE__, "Error parsing remote driver specification: " + m_remote[i] + "\n"});
+         log<software_critical>("Error parsing remote driver specification: " + m_remote[i]);
          return XINDISERVER_E_BADDRIVERSPEC;
       }
 
@@ -516,7 +520,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
       // name here, and check @hostname later
       if( p && (m_driverNames.count(driver) > 0))
       {
-         log<software_critical>({__FILE__, __LINE__, "Duplicate driver name: " + driver});
+         log<software_critical>("Duplicate driver name: " + driver);
          return XINDISERVER_E_DUPLICATEDRIVER;
       }
 
@@ -524,13 +528,13 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
 
       if(m_tunnels.size() == 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "No tunnels specified."});
+         log<software_critical>("No tunnels specified.");
          return XINDISERVER_E_NOTUNNELS;
       }
 
       if(m_tunnels.count(tunnel) != 1)
       {
-         log<software_critical>({__FILE__, __LINE__, "Tunnel not found for: " + m_remote[i]});
+         log<software_critical>("Tunnel not found for: " + m_remote[i]);
          return XINDISERVER_E_TUNNELNOTFOUND;
       }
 
@@ -554,7 +558,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
       // duplicate @hostname
       if( !p && (m_driverNames.count(oss.str()) > 0))
       {
-         log<software_critical>({__FILE__, __LINE__, "Duplicate @hostname name: " + oss.str()});
+         log<software_critical>("Duplicate @hostname name: " + oss.str());
          return XINDISERVER_E_DUPLICATEDRIVER;
       }
 
@@ -568,7 +572,7 @@ int xindiserver::addRemoteDrivers( std::vector<std::string> & driverArgs )
       }
       catch(...)
       {
-         log<software_critical>({__FILE__, __LINE__, "Exception thrown by vector::push_back."});
+         log<software_critical>("Exception thrown by vector::push_back.");
          return XINDISERVER_E_VECTOREXCEPT;
       }
    }
@@ -595,7 +599,7 @@ int xindiserver::addRemoteServers( std::vector<std::string> & driverArgs )
 
       if(p == 0 || p == std::string::npos)
       {
-         log<software_critical>({__FILE__, __LINE__, "Error parsing remote server specification: " + m_remote[j] + "\n"});
+         log<software_critical>("Error parsing remote server specification: " + m_remote[j] );
          return XINDISERVER_E_BADSERVERSPEC;
       }
 
@@ -604,13 +608,13 @@ int xindiserver::addRemoteServers( std::vector<std::string> & driverArgs )
 
       if(m_tunnels.size() == 0)
       {
-         log<software_critical>({__FILE__, __LINE__, "No tunnels specified.\n"});
+         log<software_critical>("No tunnels specified.");
          return XINDISERVER_E_NOTUNNELS;
       }
 
       if(m_tunnels.count(tunnel) != 1)
       {
-         log<software_critical>({__FILE__, __LINE__, "Tunnel not found for: " + m_remote[j] + "\n"});
+         log<software_critical>("Tunnel not found for: " + m_remote[j]);
          return XINDISERVER_E_TUNNELNOTFOUND;
       }
 
@@ -638,14 +642,14 @@ int xindiserver::addRemoteServers( std::vector<std::string> & driverArgs )
 
          if(bad != std::string::npos)
          {
-            log<software_critical>({__FILE__, __LINE__, "Remote server's Local driver can't have host spec or path(@,:,/): " + local[i]});
+            log<software_critical>("Remote server's Local driver can't have host spec or path(@,:,/): " + local[i]);
 
             return XINDISERVER_E_BADDRIVERSPEC;
          }
 
          if( m_driverNames.count(local[i]) > 0)
          {
-            log<software_critical>({__FILE__, __LINE__, "Duplicate driver name from remote server: " + local[i]});
+            log<software_critical>("Duplicate driver name from remote server: " + local[i]);
             return XINDISERVER_E_DUPLICATEDRIVER;
          }
 
@@ -672,7 +676,7 @@ int xindiserver::addRemoteServers( std::vector<std::string> & driverArgs )
          }
          catch(...)
          {
-            log<software_critical>({__FILE__, __LINE__, "Exception thrown by vector::push_back."});
+            log<software_critical>("Exception thrown by vector::push_back.");
             return XINDISERVER_E_VECTOREXCEPT;
          }
       }
@@ -706,7 +710,7 @@ int xindiserver::initINDIServer()
    int filedes[2];
    if (pipe(filedes) == -1)
    {
-      log<software_error>({__FILE__, __LINE__, errno});
+      log<software_error>(errno);
       return -1;
    }
 
@@ -723,7 +727,7 @@ int xindiserver::initINDIServer()
    // initialization cannot fill the I/O buffer and block
    if(isLogThreadStart() < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       return -1;
    }
 
@@ -740,21 +744,13 @@ int xindiserver::initINDIServer()
 
    // Clean up the INDI server argument vector
    delete[] is_argv;
-
    {
-      std::string comS = mx::ioutils::convertToString(m_isSTDERR)
-                       + "=m_isSTDERR(read)"
-                       + "; "
-                       + mx::ioutils::convertToString(m_isSTDERR_input)
-                       + "=m_isSTDERR_input(write)"
-                       ;
-      log<text_log>(comS);
+      log<text_log>(std::format("{}=m_isSTDERR(read);{}=m_isSTDERR_input(write)", m_isSTDERR, m_isSTDERR_input));
    }
 
    if(m_log.logLevel() <= logPrio::LOG_INFO)
    {
-      std::string coml = "indiserver initialized with return " + mx::ioutils::convertToString(rtn);
-      log<text_log>(coml);
+      log<text_log>(std::format("indiserver initialized with return {}", rtn));
    }
 
    return 0;
@@ -775,18 +771,18 @@ int xindiserver::isLogThreadStart()
    }
    catch( const std::exception & e )
    {
-      log<software_error>({__FILE__,__LINE__, std::string("Exception on I.S. log thread start: ") + e.what()});
+      log<software_error>(std::format("Exception on I.S. log thread start: {}", e.what()));
       return -1;
    }
    catch( ... )
    {
-      log<software_error>({__FILE__,__LINE__, "Unkown exception on I.S. log thread start"});
+      log<software_error>("Unkown exception on I.S. log thread start");
       return -1;
    }
 
    if(!m_isLogThread.joinable())
    {
-      log<software_error>({__FILE__, __LINE__, "I.S. log thread did not start"});
+      log<software_error>("I.S. log thread did not start");
       return -1;
    }
 
@@ -797,7 +793,7 @@ int xindiserver::isLogThreadStart()
 
    if(rv != 0)
    {
-      log<software_error>({__FILE__, __LINE__, rv, "Error setting thread params."});
+      log<software_error>({rv, "Error setting thread params."});
       return -1;
    }
 
@@ -822,7 +818,7 @@ void xindiserver::isLogThreadExec()
       }
       else if(count > (ssize_t) sizeof(buffer)-1)
       {
-         log<software_error>({__FILE__, __LINE__, "read returned too many bytes."});
+         log<software_error>("read returned too many bytes.");
 	 continue;
       }
       else
@@ -862,7 +858,6 @@ int xindiserver::processISLog( std::string logs )
 
    if(ed == std::string::npos)
    {
-      //log<software_error>({__FILE__, __LINE__, "Did not find timestamp : in log entry"});
       log<text_log>(logs, logPrio::LOG_INFO);
       return 0;
    }
@@ -891,7 +886,7 @@ int xindiserver::processISLog( std::string logs )
    if(st == std::string::npos) st = ed;
    if(st == logs.size())
    {
-      log<software_error>({__FILE__, __LINE__, "Did not find log entry."});
+      log<software_error>("Did not find log entry.");
       return -1;
    }
 
@@ -925,41 +920,13 @@ int xindiserver::processISLog( std::string logs )
 
 inline
 int xindiserver::appStartup()
-{
-   if( constructIndiserverCommand(m_indiserverCommand) < 0)
-   {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
-   }
-
-   if( addLocalDrivers(m_indiserverCommand) < 0)
-   {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
-   }
-
-   if( addRemoteDrivers(m_indiserverCommand) < 0)
-   {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
-   }
-
-   if( addRemoteServers(m_indiserverCommand) < 0)
-   {
-      log<software_critical>({__FILE__, __LINE__});
-      return -1;
-   }
-
-   m_local.clear();
-   m_remote.clear();
-   m_tunnels.clear();
-
+{   
    //--------------------
    //Now start indiserver, including logging threads
    //--------------------
    if(initINDIServer() < 0)
    {
-      log<software_critical>({__FILE__, __LINE__});
+      log<software_critical>();
       return -1;
    }
 
@@ -989,8 +956,7 @@ int xindiserver::appShutdown()
       ssize_t nwr = write(m_isSTDERR_input, &w, 1);
       if(nwr != 1)
       {
-         log<software_error>({__FILE__, __LINE__, errno });
-         log<software_error>({__FILE__, __LINE__, "Error on write to i.s. log thread. Sending SIGTERM."});
+         log<software_error>({errno, "Error on write to i.s. log thread. Sending SIGTERM."});
          pthread_kill(m_isLogThread.native_handle(), SIGTERM);
 
       }
