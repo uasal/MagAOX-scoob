@@ -65,6 +65,20 @@ Follow these code style and documentation rules exactly.
   - Example: `jrmales/gui-segfault-fixes`
   - For other users, substitute their username in place of `jrmales`.
 
+13) Class Declarations vs Definitions
+  - Do not include non-trivial function definitions inside class declarations.
+  - Put function definitions below the class declaration (or in `.cpp`), preserving behavior.
+
+14) Scoped Block Comments
+  - For any `{}` block used only to control lock/mutex lifetime, annotate the opening brace as:
+    - `{ //mutex scope`
+
+15) Changed File Documentation Pass
+  - When a file is touched, update documentation quality across the full changed file, not only in modified lines.
+
+16) Keep This File Current
+  - Add new standing style/documentation instructions to `agent_context.md` as they are introduced.
+
 When you finish:
 - Summarize what changed.
 - List affected files.
