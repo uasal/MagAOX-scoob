@@ -2,6 +2,9 @@
 #ifndef dmCtrl_hpp
 #define dmCtrl_hpp
 
+#include <mutex>
+#include <vector>
+
 #include "ui_dmCtrl.h"
 
 #include "../xWidgets/xWidget.hpp"
@@ -23,10 +26,14 @@ protected:
    std::string m_flatShmim;
    bool m_flatSet {false};
    std::string m_flatName;
+   std::vector<std::string> m_flatOptions;
 
    std::string m_testShmim;
    bool m_testSet {false};
    std::string m_testName;
+   std::vector<std::string> m_testOptions;
+
+   std::mutex m_stateMutex;
 
 
 public:
@@ -48,6 +55,8 @@ public:
 
 
 public slots:
+   void onConnectGUI();
+   void onDisconnectGUI();
    void updateGUI();
 
    void on_buttonInit_pressed();
@@ -65,6 +74,8 @@ public slots:
 
 signals:
 
+   void doOnConnect();
+   void doOnDisconnect();
    void doUpdateGUI();
 
 private:
@@ -108,9 +119,11 @@ dmCtrl::dmCtrl( std::string & dmName,
    setXwFont(ui.labelTestShmim);
    setXwFont(ui.labelTestShmim_value);
 
-   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()));
+   connect(this, SIGNAL(doOnConnect()), this, SLOT(onConnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doOnDisconnect()), this, SLOT(onDisconnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()), Qt::QueuedConnection);
 
-   onDisconnect();
+   onDisconnectGUI();
 }
 
 dmCtrl::~dmCtrl()
@@ -137,6 +150,11 @@ void dmCtrl::subscribe()
 
 void dmCtrl::onConnect()
 {
+   emit doOnConnect();
+}
+
+void dmCtrl::onConnectGUI()
+{
    //ui.labelDMName->setEnabled(true);
    ui.fsmState->setEnabled(true);
    ui.labelShmimName->setEnabled(true);
@@ -157,6 +175,11 @@ void dmCtrl::onConnect()
 }
 
 void dmCtrl::onDisconnect()
+{
+   emit doOnDisconnect();
+}
+
+void dmCtrl::onDisconnectGUI()
 {
    //ui.labelDMName->setEnabled(false);
    ui.fsmState->setEnabled(false);
@@ -184,8 +207,6 @@ void dmCtrl::onDisconnect()
    setWindowTitle(QString(m_dmName.c_str()) + QString(" (disconnected)"));
 
    ui.fsmState->onDisconnect();
-
-   multiIndiSubscriber::onDisconnect();
 }
 
 void dmCtrl::handleDefProperty( const pcf::IndiProperty & ipRecv)
@@ -195,6 +216,8 @@ void dmCtrl::handleDefProperty( const pcf::IndiProperty & ipRecv)
 
 void dmCtrl::handleSetProperty( const pcf::IndiProperty & ipRecv)
 {
+   std::lock_guard<std::mutex> lock(m_stateMutex);
+
    if(ipRecv.getDevice() != m_dmName)
    {
       return;
@@ -215,16 +238,12 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty & ipRecv)
    }
    else if(ipRecv.getName() == "flat")
    {
-      ui.comboSelectFlat->clear();
-
+      m_flatOptions.clear();
+      m_flatName = "";
       for(auto it=ipRecv.getElements().begin(); it != ipRecv.getElements().end(); ++it)
       {
-         if(ui.comboSelectFlat->findText(it->first.c_str(), Qt::MatchExactly | Qt::MatchCaseSensitive) == -1)
-         {
-            ui.comboSelectFlat->addItem(it->first.c_str());
-         }
-
-         if(ipRecv[it->first] == pcf::IndiElement::On) ui.comboSelectFlat->setCurrentText(it->first.c_str());
+         m_flatOptions.push_back(it->first);
+         if(ipRecv[it->first] == pcf::IndiElement::On) m_flatName = it->first;
       }
    }
    else if(ipRecv.getName() == "flat_shmim")
@@ -244,16 +263,12 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty & ipRecv)
    }
    else if(ipRecv.getName() == "test")
    {
-      ui.comboSelectTest->clear();
-
+      m_testOptions.clear();
+      m_testName = "";
       for(auto it=ipRecv.getElements().begin(); it != ipRecv.getElements().end(); ++it)
       {
-         if(ui.comboSelectTest->findText(it->first.c_str(), Qt::MatchExactly | Qt::MatchCaseSensitive) == -1)
-         {
-            ui.comboSelectTest->addItem(it->first.c_str());
-         }
-
-         if(ipRecv[it->first] == pcf::IndiElement::On) ui.comboSelectTest->setCurrentText(it->first.c_str());
+         m_testOptions.push_back(it->first);
+         if(ipRecv[it->first] == pcf::IndiElement::On) m_testName = it->first;
 
       }
    }
@@ -279,9 +294,42 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty & ipRecv)
 
 void dmCtrl::updateGUI()
 {
-   ui.labelShmimName_value->setText(m_shmimName.c_str());
-   ui.labelFlatShmim_value->setText(m_flatShmim.c_str());
-   ui.labelTestShmim_value->setText(m_testShmim.c_str());
+   std::string appState;
+   std::string shmimName;
+   std::string flatShmim;
+   std::string testShmim;
+   bool flatSet {false};
+   bool testSet {false};
+   std::string flatName;
+   std::string testName;
+   std::vector<std::string> flatOptions;
+   std::vector<std::string> testOptions;
+
+   {
+      std::lock_guard<std::mutex> lock(m_stateMutex);
+      appState = m_appState;
+      shmimName = m_shmimName;
+      flatShmim = m_flatShmim;
+      testShmim = m_testShmim;
+      flatSet = m_flatSet;
+      testSet = m_testSet;
+      flatName = m_flatName;
+      testName = m_testName;
+      flatOptions = m_flatOptions;
+      testOptions = m_testOptions;
+   }
+
+   ui.labelShmimName_value->setText(shmimName.c_str());
+   ui.labelFlatShmim_value->setText(flatShmim.c_str());
+   ui.labelTestShmim_value->setText(testShmim.c_str());
+
+   ui.comboSelectFlat->clear();
+   for(const auto & opt : flatOptions) ui.comboSelectFlat->addItem(opt.c_str());
+   if(!flatName.empty()) ui.comboSelectFlat->setCurrentText(flatName.c_str());
+
+   ui.comboSelectTest->clear();
+   for(const auto & opt : testOptions) ui.comboSelectTest->addItem(opt.c_str());
+   if(!testName.empty()) ui.comboSelectTest->setCurrentText(testName.c_str());
 
 //    ui.buttonSetFlat->setEnabled(true);
 //    ui.buttonZeroFlat->setEnabled(true);
@@ -289,7 +337,7 @@ void dmCtrl::updateGUI()
 //    ui.buttonSetTest->setEnabled(true);
 //    ui.buttonZeroTest->setEnabled(true);
 //
-   if( m_appState != "NOTHOMED" && m_appState != "READY" && m_appState != "OPERATING" )
+   if( appState != "NOTHOMED" && appState != "READY" && appState != "OPERATING" )
    {
       //Disable & zero all
 
@@ -306,7 +354,7 @@ void dmCtrl::updateGUI()
       return;
    }
 
-   if( m_appState == "NOTHOMED" )
+   if( appState == "NOTHOMED" )
    {
 
       ui.buttonInit->setEnabled(true);
@@ -327,7 +375,7 @@ void dmCtrl::updateGUI()
    ui.buttonRelease->setEnabled(true);
 
 
-   if(m_flatSet == false)
+   if(flatSet == false)
    {
       ui.buttonSetFlat->setEnabled(true);
       ui.buttonZeroFlat->setEnabled(false);
@@ -338,7 +386,7 @@ void dmCtrl::updateGUI()
       ui.buttonZeroFlat->setEnabled(true);
    }
 
-   if(m_testSet == false)
+   if(testSet == false)
    {
       ui.buttonSetTest->setEnabled(true);
       ui.buttonZeroTest->setEnabled(false);

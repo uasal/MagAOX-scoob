@@ -3,10 +3,26 @@
 
 #include <thread>
 #include <mutex>
+#include <atomic>
+#include <vector>
+
+#include <QObject>
+#include <QTimer>
 
 #include <unistd.h>
 
 #include "multiIndiPublisher.hpp"
+
+inline void _dispatchOnDisconnect( multiIndiSubscriber * sub )
+{
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      QTimer::singleShot(0, obj, [sub]() { sub->onDisconnect(); });
+      return;
+   }
+
+   sub->onDisconnect();
+}
 
 /// Class to manage an INDI publisher and multiple INDI subscribers
 /** Primary purpose of this class is to detect lack/loss of connection and
@@ -25,10 +41,11 @@ protected:
    //std::vector<multiIndiSubscriber *> m_subscribers; ///< Pointers to the subscribers themselves
 
    multiIndiPublisher * m_publisher {nullptr}; ///< The publisher, which is the INDI client which manages the distrubtion of properties to subscribers.
+   std::mutex m_mutex;
 
    std::thread m_monThread;
 
-   bool m_shutdown {false};
+   std::atomic_bool m_shutdown {false};
 
 public:
    /// Default c'tor
@@ -86,6 +103,19 @@ public:
    /** If connected, this immediately calls the subscribers subscribe member function.
      */
    virtual int addSubscriber( multiIndiSubscriber * sub /**< [in] the subscriber to add*/);
+   virtual void unsubscribe( multiIndiSubscriber * sub );
+
+   virtual void sendNewProperty( const pcf::IndiProperty &ipSend)
+   {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      if(m_publisher) m_publisher->sendNewProperty(ipSend);
+   }
+
+   virtual void sendGetProperties(const pcf::IndiProperty &ipSend)
+   {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      if(m_publisher) m_publisher->sendGetProperties(ipSend);
+   }
 
    ///
    /*
@@ -113,7 +143,7 @@ multiIndiManager::multiIndiManager( const std::string & clientName,
 inline
 multiIndiManager::~multiIndiManager()
 {
-   m_shutdown = true;
+   m_shutdown.store(true, std::memory_order_relaxed);
 
    if(m_monThread.joinable())
    {
@@ -138,7 +168,7 @@ void multiIndiManager::activate(bool force)
 {
    if(force)
    {
-      m_shutdown = true;
+      m_shutdown.store(true, std::memory_order_relaxed);
 
       if(m_monThread.joinable())
       {
@@ -150,7 +180,7 @@ void multiIndiManager::activate(bool force)
          {
           }
       }
-      m_shutdown = false;
+      m_shutdown.store(false, std::memory_order_relaxed);
    }
 
    if(m_monThread.joinable()) return; //Already running
@@ -174,8 +204,15 @@ void multiIndiManager::activate(bool force)
 inline
 int multiIndiManager::addSubscriber( multiIndiSubscriber * sub )
 {
+   std::lock_guard<std::mutex> lock(m_mutex);
    subscribers.insert(sub);
-   if(m_publisher)
+
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      QObject::connect(obj, &QObject::destroyed, [this, sub]() { this->unsubscribe(sub); });
+   }
+
+   if(m_publisher != nullptr)
    {
       m_publisher->addSubscriber(sub);
    }
@@ -184,32 +221,65 @@ int multiIndiManager::addSubscriber( multiIndiSubscriber * sub )
 }
 
 inline
+void multiIndiManager::unsubscribe( multiIndiSubscriber * sub )
+{
+   std::lock_guard<std::mutex> lock(m_mutex);
+   subscribers.erase(sub);
+   if(m_publisher != nullptr)
+   {
+      m_publisher->unsubscribe(sub);
+   }
+}
+
+inline
 void multiIndiManager::connectClient()
 {
-   while( !m_shutdown )
+   while( !m_shutdown.load(std::memory_order_relaxed) )
    {
-      if(m_publisher != nullptr) //Check to see if we're still connected
+      multiIndiPublisher * pub {nullptr};
+      std::vector<multiIndiSubscriber *> subs;
+      bool doDisconnect {false};
+      bool doConnect {false};
+
       {
-         if(m_publisher->getQuitProcess() || m_publisher->disconnect() || m_shutdown)
+         std::lock_guard<std::mutex> lock(m_mutex);
+         if(m_publisher != nullptr) //Check to see if we're still connected
          {
-            m_publisher->quitProcess();
-            m_publisher->deactivate();
-
-            for(auto it = subscribers.begin(); it != subscribers.end(); ++it)
+            if(m_publisher->getQuitProcess() || m_publisher->disconnect() || m_shutdown.load(std::memory_order_relaxed))
             {
-               (*it)->onDisconnect();
-               m_publisher->unsubscribe(*it);
+               pub = m_publisher;
+               m_publisher = nullptr;
+               subs.reserve(subscribers.size());
+               for(auto it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
+               doDisconnect = true;
             }
-
-            delete m_publisher;
-            m_publisher = nullptr;
-        }
+         }
+         else
+         {
+            doConnect = true;
+         }
       }
-      else //try to connect
+
+      if(doDisconnect)
       {
+         pub->quitProcess();
+         pub->deactivate();
+
+         for(auto * sub : subs)
+         {
+            _dispatchOnDisconnect(sub);
+            pub->unsubscribe(sub);
+         }
+
+         delete pub;
+      }
+
+      if(doConnect) //try to connect
+      {
+         multiIndiPublisher * candidate {nullptr};
          try
          {
-            m_publisher = new multiIndiPublisher(m_clientName, m_hostAddress, m_hostPort);
+            candidate = new multiIndiPublisher(m_clientName, m_hostAddress, m_hostPort);
          }
          catch(...)
          {
@@ -217,44 +287,62 @@ void multiIndiManager::connectClient()
             continue;
          }
 
-         m_publisher->activate();
+         candidate->activate();
 
          sleep(5);
 
          //Check connection
-         if(m_publisher->getQuitProcess()) //not connected
+         if(candidate->getQuitProcess() || m_shutdown.load(std::memory_order_relaxed)) //not connected
          {
-            m_publisher->deactivate();
-            delete m_publisher;
-            m_publisher = nullptr;
+            candidate->deactivate();
+            delete candidate;
 
          }
          else //connected
          {
-            for(auto it = subscribers.begin(); it != subscribers.end(); ++it)
             {
-               m_publisher->addSubscriber(*it);
+               std::lock_guard<std::mutex> lock(m_mutex);
+               m_publisher = candidate;
+               subs.reserve(subscribers.size());
+               for(auto it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
             }
-            m_publisher->onConnect();
+
+            for(auto * sub : subs)
+            {
+               candidate->addSubscriber(sub);
+            }
+            candidate->onConnect();
          }
       }
 
       sleep(1);
    }
 
-   if(m_publisher != nullptr) //Before exiting, disconnect.
+   multiIndiPublisher * pub {nullptr};
+   std::vector<multiIndiSubscriber *> subs;
    {
-      m_publisher->quitProcess();
-      m_publisher->deactivate();
-
-      for(auto it = subscribers.begin(); it != subscribers.end(); ++it)
+      std::lock_guard<std::mutex> lock(m_mutex);
+      if(m_publisher != nullptr) //Before exiting, disconnect.
       {
-         (*it)->onDisconnect();
-         m_publisher->unsubscribe(*it);
+         pub = m_publisher;
+         m_publisher = nullptr;
+         subs.reserve(subscribers.size());
+         for(auto it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
+      }
+   }
+
+   if(pub != nullptr)
+   {
+      pub->quitProcess();
+      pub->deactivate();
+
+      for(auto * sub : subs)
+      {
+         _dispatchOnDisconnect(sub);
+         pub->unsubscribe(sub);
       }
 
-      delete m_publisher;
-      m_publisher = nullptr;
+      delete pub;
    }
 }
 

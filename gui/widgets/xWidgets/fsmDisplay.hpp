@@ -1,6 +1,8 @@
 #ifndef fsmDisplay_hpp
 #define fsmDisplay_hpp
 
+#include <mutex>
+
 #include "xWidget.hpp"
 #include "statusLabel.hpp"
 
@@ -24,6 +26,7 @@ protected:
    bool m_valChanged {false};
 
    std::string m_value;
+   std::mutex m_stateMutex;
 
    std::string m_NOTHOMED {"NOTHOMED"};
    std::string m_HOMING {"HOMING"};
@@ -63,10 +66,14 @@ public:
 
 public slots:
 
+   void onConnectGUI();
+   void onDisconnectGUI();
    void updateGUI();
 
 signals:
 
+   void doOnConnect();
+   void doOnDisconnect();
    void doUpdateGUI();
 
 private:
@@ -79,9 +86,11 @@ fsmDisplay::fsmDisplay( QWidget * Parent,
 {
    ui.setupUi(this);
 
-   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()));
+   connect(this, SIGNAL(doOnConnect()), this, SLOT(onConnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doOnDisconnect()), this, SLOT(onDisconnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()), Qt::QueuedConnection);
 
-   onDisconnect();
+   onDisconnectGUI();
 }
 
 fsmDisplay::fsmDisplay( const std::string & device,
@@ -89,8 +98,10 @@ fsmDisplay::fsmDisplay( const std::string & device,
                         Qt::WindowFlags f) : xWidget(Parent, f), m_device{device}
 {
    ui.setupUi(this);
-   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()));
-   onDisconnect();
+   connect(this, SIGNAL(doOnConnect()), this, SLOT(onConnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doOnDisconnect()), this, SLOT(onDisconnectGUI()), Qt::QueuedConnection);
+   connect(this, SIGNAL(doUpdateGUI()), this, SLOT(updateGUI()), Qt::QueuedConnection);
+   onDisconnectGUI();
 }
 
 void fsmDisplay::device( const std::string & dev)
@@ -113,12 +124,27 @@ void fsmDisplay::subscribe()
 
 void fsmDisplay::onConnect()
 {
+   emit doOnConnect();
+}
+
+void fsmDisplay::onConnectGUI()
+{
+   std::lock_guard<std::mutex> lock(m_stateMutex);
    m_valChanged = true;
 }
 
 void fsmDisplay::onDisconnect()
 {
-   m_value = "---";
+   emit doOnDisconnect();
+}
+
+void fsmDisplay::onDisconnectGUI()
+{
+   {
+      std::lock_guard<std::mutex> lock(m_stateMutex);
+      m_value = "---";
+      m_valChanged = false;
+   }
    ui.fsm->setText("---");
 }
 
@@ -154,6 +180,7 @@ void fsmDisplay::handleSetProperty( const pcf::IndiProperty & ipRecv)
             value = m_OPERATING;
          }
 
+         std::lock_guard<std::mutex> lock(m_stateMutex);
          if(value != m_value) m_valChanged = true;
          m_value = value;
       }
@@ -185,18 +212,27 @@ void fsmDisplay::OPERATING( const std::string & s )
 
 void fsmDisplay::updateGUI()
 {
+   bool valChanged {false};
+   std::string valueStr;
+   {
+      std::lock_guard<std::mutex> lock(m_stateMutex);
+      valChanged = m_valChanged;
+      valueStr = m_value;
+   }
+
    if(isEnabled())
    {
-      if(m_valChanged)
+      if(valChanged)
       {
-         QString value(m_value.c_str()); //in future provide translatiosn for "RIP" "MODULATING", etc.
+         QString value(valueStr.c_str()); //in future provide translatiosn for "RIP" "MODULATING", etc.
          ui.fsm->setTextChanged(value);
+         std::lock_guard<std::mutex> lock(m_stateMutex);
          m_valChanged = false;
       }
    }
    else
    {
-      QString value(m_value.c_str()); //in future provide translatiosn for "RIP" "MODULATING", etc.
+      QString value(valueStr.c_str()); //in future provide translatiosn for "RIP" "MODULATING", etc.
       ui.fsm->setText(value);
    }
 

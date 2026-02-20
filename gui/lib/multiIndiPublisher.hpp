@@ -3,6 +3,11 @@
 
 #include <unordered_map>
 #include <set>
+#include <vector>
+#include <mutex>
+
+#include <QObject>
+#include <QTimer>
 
 #include "../../INDI/libcommon/IndiClient.hpp"
 
@@ -14,6 +19,53 @@
 #endif
 
 #define MULTI_INDI_PROTO_VERSION  "1.7"
+
+inline void _dispatchDefProperty( multiIndiSubscriber * sub, const pcf::IndiProperty & ipRecv )
+{
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      pcf::IndiProperty ipCopy = ipRecv;
+      QTimer::singleShot(0, obj, [sub, ipCopy]() { sub->handleDefProperty(ipCopy); });
+      return;
+   }
+
+   sub->handleDefProperty(ipRecv);
+}
+
+inline void _dispatchDelProperty( multiIndiSubscriber * sub, const pcf::IndiProperty & ipRecv )
+{
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      pcf::IndiProperty ipCopy = ipRecv;
+      QTimer::singleShot(0, obj, [sub, ipCopy]() { sub->handleDelProperty(ipCopy); });
+      return;
+   }
+
+   sub->handleDelProperty(ipRecv);
+}
+
+inline void _dispatchSetProperty( multiIndiSubscriber * sub, const pcf::IndiProperty & ipRecv )
+{
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      pcf::IndiProperty ipCopy = ipRecv;
+      QTimer::singleShot(0, obj, [sub, ipCopy]() { sub->handleSetProperty(ipCopy); });
+      return;
+   }
+
+   sub->handleSetProperty(ipRecv);
+}
+
+inline void _dispatchOnConnect( multiIndiSubscriber * sub )
+{
+   if(auto * obj = dynamic_cast<QObject *>(sub))
+   {
+      QTimer::singleShot(0, obj, [sub]() { sub->onConnect(); });
+      return;
+   }
+
+   sub->onConnect();
+}
 
 /// An INDI client which serves as a publisher for many subscribers.
 /** This allows many widgets to use a single INDI client connection from within
@@ -30,6 +82,7 @@ protected:
 
    std::string m_hostAddress;
    std::string m_hostPort;
+   std::recursive_mutex m_subMutex;
 
 public:
 
@@ -40,6 +93,27 @@ public:
                      );
 
    ~multiIndiPublisher() noexcept {};
+
+   virtual int addSubscriber( multiIndiSubscriber * sub )
+   {
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      return multiIndiSubscriber::addSubscriber(sub);
+   }
+
+   virtual void unsubscribe( multiIndiSubscriber * sub )
+   {
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      multiIndiSubscriber::unsubscribe(sub);
+   }
+
+   virtual void unsubscribe( multiIndiSubscriber * sub,
+                             const std::string & device,
+                             const std::string & propName
+                           )
+   {
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      multiIndiSubscriber::unsubscribe(sub, device, propName);
+   }
 
 
    /// Subscribes the given instance of multiIndiSubscriber for notifications on the given property.
@@ -81,7 +155,17 @@ public:
    /// Called once the parent is connected.
    virtual void onConnect()
    {
-      multiIndiSubscriber::onConnect();
+      std::vector<multiIndiSubscriber *> subs;
+      {
+         std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+         subs.reserve(subscribers.size());
+         for(subSetIteratorT it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
+      }
+
+      for(auto * sub : subs)
+      {
+         _dispatchOnConnect(sub);
+      }
    }
 
    virtual void sendNewProperty( const pcf::IndiProperty &ipSend)
@@ -111,9 +195,12 @@ int multiIndiPublisher::addSubscriberProperty( multiIndiSubscriber * sub,
                                                pcf::IndiProperty & ipSub
                                              )
 {
-   if(multiIndiSubscriber::addSubscriberProperty(sub, ipSub) != 0)
    {
-      return -1;
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      if(multiIndiSubscriber::addSubscriberProperty(sub, ipSub) != 0)
+      {
+         return -1;
+      }
    }
 
    //note: we have to send this every time b/c otherwise late subscribers won't get an update on subscribe
@@ -125,31 +212,51 @@ int multiIndiPublisher::addSubscriberProperty( multiIndiSubscriber * sub,
 inline
 void multiIndiPublisher::handleDefProperty( const pcf::IndiProperty &ipRecv )
 {
-   for(subSetIteratorT it = subscribers.begin(); it != subscribers.end(); ++it)
+   std::vector<multiIndiSubscriber *> subs;
    {
-      (*it)->handleDefProperty(ipRecv);
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      subs.reserve(subscribers.size());
+      for(subSetIteratorT it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
+   }
+
+   for(auto * sub : subs)
+   {
+      _dispatchDefProperty(sub, ipRecv);
    }
 }
 
 inline
 void multiIndiPublisher::handleDelProperty( const pcf::IndiProperty &ipRecv )
 {
-   for(subSetIteratorT it = subscribers.begin(); it != subscribers.end(); ++it)
+   std::vector<multiIndiSubscriber *> subs;
    {
-      (*it)->handleDelProperty(ipRecv);
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      subs.reserve(subscribers.size());
+      for(subSetIteratorT it = subscribers.begin(); it != subscribers.end(); ++it) subs.push_back(*it);
+   }
+
+   for(auto * sub : subs)
+   {
+      _dispatchDelProperty(sub, ipRecv);
    }
 }
 
 inline
 void multiIndiPublisher::handleSetProperty( const pcf::IndiProperty &ipRecv )
 {
-   std::pair< propMapIteratorT, propMapIteratorT> range = subscribedProperties.equal_range(ipRecv.createUniqueKey());
-
-   if(range.first == subscribedProperties.end()) return;
-
-   for(propMapIteratorT it = range.first; it != range.second; ++it)
+   std::vector<multiIndiSubscriber *> subs;
    {
-      it->second->handleSetProperty(ipRecv);
+      std::lock_guard<std::recursive_mutex> lock(m_subMutex);
+      std::pair< propMapIteratorT, propMapIteratorT> range = subscribedProperties.equal_range(ipRecv.createUniqueKey());
+
+      if(range.first == subscribedProperties.end()) return;
+
+      for(propMapIteratorT it = range.first; it != range.second; ++it) subs.push_back(it->second);
+   }
+
+   for(auto * sub : subs)
+   {
+      _dispatchSetProperty(sub, ipRecv);
    }
 }
 

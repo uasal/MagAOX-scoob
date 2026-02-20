@@ -3,6 +3,7 @@
 
 #include <iostream>
 
+#include <atomic>
 #include <unordered_map>
 #include <set>
 
@@ -39,7 +40,7 @@ protected:
 
    subSetT subscribers;
 
-   bool m_disconnect {false};
+   std::atomic_bool m_disconnect {false};
 
 public:
 
@@ -97,14 +98,12 @@ public:
 
    void setDisconnect()
    {
-      m_disconnect = true;
+      m_disconnect.store(true, std::memory_order_relaxed);
    }
 
    bool disconnect()
    {
-      bool disc = m_disconnect;
-      m_disconnect = false;
-      return disc;
+      return m_disconnect.exchange(false, std::memory_order_relaxed);
    }
 
    /// Callback for a `defProperty` message notifying us that the propery has changed.
