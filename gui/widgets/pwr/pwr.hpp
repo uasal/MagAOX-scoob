@@ -118,10 +118,6 @@ void pwr::subscribe()
 {
     for( size_t n = 0; n < m_devices.size(); ++n )
     {
-        QObject::connect(
-            m_devices[n], SIGNAL( chChange( pcf::IndiProperty & ) ), this, SLOT( chChange( pcf::IndiProperty & ) ) );
-        QObject::connect( m_devices[n], SIGNAL( loadChanged() ), this, SLOT( updateGauges() ) );
-
         m_parent->addSubscriberProperty( this, m_devices[n]->deviceName(), "load" );
         m_parent->addSubscriberProperty( this, m_devices[n]->deviceName(), "channelOutlets" );
         m_parent->addSubscriberProperty( this, m_devices[n]->deviceName(), "channelOnDelays" );
@@ -136,12 +132,6 @@ void pwr::subscribe()
 
     for( size_t n = 0; n < m_adminDevices.size(); ++n )
     {
-        QObject::connect( m_adminDevices[n],
-                          SIGNAL( chChange( pcf::IndiProperty & ) ),
-                          this,
-                          SLOT( chChange( pcf::IndiProperty & ) ) );
-        QObject::connect( m_adminDevices[n], SIGNAL( loadChanged() ), this, SLOT( updateGauges() ) );
-
         m_parent->addSubscriberProperty( this, m_adminDevices[n]->deviceName(), "load" );
         m_parent->addSubscriberProperty( this, m_adminDevices[n]->deviceName(), "channelOutlets" );
         m_parent->addSubscriberProperty( this, m_adminDevices[n]->deviceName(), "channelOnDelays" );
@@ -276,6 +266,11 @@ void pwr::loadConfig( mx::app::appConfigurator &config )
             m_devices.push_back( new pwrDevice( this ) );
             m_devices.back()->deviceName( sections[i] );
             m_devices.back()->setChannels( user );
+            QObject::connect( m_devices.back(),
+                              SIGNAL( chChange( pcf::IndiProperty & ) ),
+                              this,
+                              SLOT( chChange( pcf::IndiProperty & ) ) );
+            QObject::connect( m_devices.back(), SIGNAL( loadChanged() ), this, SLOT( updateGauges() ) );
         }
 
         if( admin.size() > 0 )
@@ -283,6 +278,11 @@ void pwr::loadConfig( mx::app::appConfigurator &config )
             m_adminDevices.push_back( new pwrDevice( this ) );
             m_adminDevices.back()->deviceName( sections[i] );
             m_adminDevices.back()->setChannels( admin );
+            QObject::connect( m_adminDevices.back(),
+                              SIGNAL( chChange( pcf::IndiProperty & ) ),
+                              this,
+                              SLOT( chChange( pcf::IndiProperty & ) ) );
+            QObject::connect( m_adminDevices.back(), SIGNAL( loadChanged() ), this, SLOT( updateGauges() ) );
         }
     }
 

@@ -187,8 +187,17 @@ inline int multiIndiPublisher::addSubscriberProperty( multiIndiSubscriber *sub, 
         }
     }
 
-    // note: we have to send this every time b/c otherwise late subscribers won't get an update on subscribe
-    sendGetProperties( ipSub );
+    // Request current value for late subscribers. For QObject-based subscribers,
+    // queue via their event loop instead of sending inline from connection thread.
+    if( auto *obj = dynamic_cast<QObject *>( sub ) )
+    {
+        pcf::IndiProperty ipReq = ipSub;
+        QTimer::singleShot( 0, obj, [sub, ipReq]() { sub->sendGetProperties( ipReq ); } );
+    }
+    else
+    {
+        sendGetProperties( ipSub );
+    }
 
     return 0;
 }
