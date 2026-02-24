@@ -1941,6 +1941,9 @@ int MagAOXApp<_useINDI>::execute() // virtual
         int nwaits = 0;
         while( m_powerState < 0 && !m_shutdown )
         {
+            // send a heartbeat
+            m_resurrectee->execute();
+
             sleep( 1 );
             if( m_powerState < 0 )
             {
@@ -1964,11 +1967,11 @@ int MagAOXApp<_useINDI>::execute() // virtual
             #endif // clang-format on
         }
 
-        if( m_powerState > 0 )
+        if( m_powerState > 0 && !m_shutdown )
         {
             state( stateCodes::POWERON );
         }
-        else
+        else if( !m_shutdown )
         {
             m_powerOnCounter = 0;
             state( stateCodes::POWEROFF );
@@ -2064,8 +2067,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
             #endif // clang-format on
         }
 
-        /** \todo Need a heartbeat update here.
-         */
+        // send a heartbeat
         m_resurrectee->execute();
 
         if( m_useINDI )

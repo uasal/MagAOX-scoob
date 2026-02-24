@@ -92,12 +92,10 @@ IndiConnection::~IndiConnection()
         //do nothing
     }
 
-    MutexLock::AutoLock autoOut( &m_mutOutput );
-    if(m_fdOutput >= 0 && m_fdOutput != STDOUT_FILENO)
+    if(m_fdOutput > 0 && m_fdOutput != STDOUT_FILENO)
     {
         ::close(m_fdOutput);
     }
-    m_fdOutput = -1;
 
 }
 
@@ -121,8 +119,8 @@ void IndiConnection::construct( const string &szName,
   // These are the two descriptors we will use to talk to the outside world.
   m_fdInput = STDIN_FILENO;
 
-  // We start with STDOUT.
-  m_fdOutput = STDOUT_FILENO;
+  //We start with STDOUT.
+  setOutputFd(STDOUT_FILENO);
 
   // setup the signal handler.
   //::signal( SIGHUP, IndiConnection::handleSignal );
@@ -386,27 +384,21 @@ void IndiConnection::sendXml( const string &szXml ) const
     return;
   }
 
-  const char * buf = szXml.c_str();
-  size_t remaining = szXml.size();
-
-  while(remaining > 0)
+  size_t sofar{0};
+  size_t target{szXml.length()};   // last character is usually \0
+  if (target == 0) { return; }     // do nothing if string length is 0
+  if (!szXml[target-1]) { --target; } // send final char if non-\0
+  while (sofar < target)
   {
-    ssize_t nwr = ::write(m_fdOutput, buf, remaining);
-    if(nwr > 0)
+    int writ;
+    writ = ::write(m_fdOutput, szXml.c_str()+sofar, target-sofar);
+    if (writ < 1)
     {
-      buf += nwr;
-      remaining -= static_cast<size_t>(nwr);
-      continue;
+      break;
     }
-
-    if(nwr < 0 && errno == EINTR)
-    {
-      continue;
-    }
-
-    break;
+    sofar += writ;
   }
-
+  return;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -446,18 +438,6 @@ void IndiConnection::setInputFd( const int &iFd )
 
 void IndiConnection::setOutputFd( const int &iFd )
 {
-    MutexLock::AutoLock autoOut( &m_mutOutput );
-
-    if(iFd == m_fdOutput)
-    {
-        return;
-    }
-
-    if(m_fdOutput >= 0 && m_fdOutput != STDOUT_FILENO)
-    {
-        ::close(m_fdOutput);
-    }
-
     m_fdOutput = iFd;
 }
 
