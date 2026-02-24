@@ -11,6 +11,7 @@ protected:
 
 public:
     std::set<std::string> m_subscribed;
+    std::mutex m_subscribedMutex;
 
 protected:
     dictionaryT *m_dict{nullptr};
@@ -41,8 +42,11 @@ public:
 
         std::string key = ipRecv.createUniqueKey();
 
-        if (m_subscribed.count(key) == 0)
-            return;
+        {
+            std::lock_guard<std::mutex> guard(m_subscribedMutex);
+            if (m_subscribed.count(key) == 0)
+                return;
+        }
 
         auto elIt = ipRecv.getElements().begin();
 
@@ -66,12 +70,23 @@ public:
                 val = ipRecv[elIt->second.getName()].get();
             }
 
-            (*m_dict)[elKey].setBlob(val.c_str(), val.size() + 1);
+            auto dit = m_dict->find(elKey);
+            if(dit == m_dict->end())
+            {
+                ++elIt;
+                continue;
+            }
+
+            dit->second.setBlob(val.c_str(), val.size() + 1);
 
             if(elKey == "tcsi.teldata.pa")
             {
                 m_northAngle = ipRecv[elIt->second.getName()].get<float>();
-                (*m_dict)["rtimv.north.angle"].setBlob(&m_northAngle, sizeof(float));
+                auto nit = m_dict->find("rtimv.north.angle");
+                if(nit != m_dict->end())
+                {
+                    nit->second.setBlob(&m_northAngle, sizeof(float));
+                }
             }
 
             ++elIt;
@@ -111,7 +126,12 @@ indiDictionary::indiDictionary() : rtimvDictionaryInterface()
 
 indiDictionary::~indiDictionary()
 {
+   m_connTimer.stop();
+   QObject::disconnect(&m_connTimer, SIGNAL(timeout()), this, SLOT(checkConnection()));
+
+   std::lock_guard<std::mutex> lock(m_clientMutex);
    if(m_client) delete m_client;
+   m_client = nullptr;
 }
 
 int indiDictionary::attachDictionary( dictionaryT * dict,
@@ -142,6 +162,7 @@ int indiDictionary::attachDictionary( dictionaryT * dict,
       if(m_dict)
       {
         (*m_dict)["tcsi.teldata.pa"].setBlob(nullptr, 0);
+        (*m_dict)["rtimv.north.angle"].setBlob(nullptr, 0);
       }
    }
 
@@ -193,8 +214,14 @@ void indiDictionary::checkConnection()
 
       std::string key = dev + "." + prop;
 
-      auto res = m_client->m_subscribed.insert(key);
-      if(res.second == true) //If we have inserted it, we snoop it
+      bool shouldSnoop = false;
+      {
+         std::lock_guard<std::mutex> guard(m_client->m_subscribedMutex);
+         auto res = m_client->m_subscribed.insert(key);
+         shouldSnoop = res.second;
+      }
+
+      if(shouldSnoop == true) //If we have inserted it, we snoop it
       {
          pcf::IndiProperty ipSend;
          ipSend.setDevice(dev);
