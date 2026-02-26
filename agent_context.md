@@ -79,6 +79,10 @@ Follow these code style and documentation rules exactly.
 16) Keep This File Current
   - Add new standing style/documentation instructions to `agent_context.md` as they are introduced.
 
+17) Commit Branch Discipline
+  - Do not commit directly to shared/integration branches (e.g. `dev`, `main`, `master`).
+  - Always create/switch to a feature branch that follows rule #12 before committing.
+
 When you finish:
 - Summarize what changed.
 - List affected files.
