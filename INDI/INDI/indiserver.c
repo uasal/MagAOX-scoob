@@ -678,29 +678,29 @@ openRemoteConnection (char host[], int port)
 	 */
 	sockopt = 1;
 	if (setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &sockopt, optlen) < 0)
-	    Bye ("setsockopt(SO_KEEPALIVE) on %s:%d: %s\n", strerror(errno));
+	    Bye ("setsockopt(SO_KEEPALIVE) on %s:%d: %s\n", host, port, strerror(errno));
 	sockopt = 0;
 	if (getsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &sockopt, &optlen) < 0)
-	    Bye ("getsockopt(SO_KEEPALIVE) on %s:%d: %s\n", strerror(errno));
+	    Bye ("getsockopt(SO_KEEPALIVE) on %s:%d: %s\n", host, port, strerror(errno));
 	if (!sockopt)
-	    Bye ("SO_KEEPALIVE for %s:%d not confirmed: %s\n", strerror(errno));
+	    Bye ("SO_KEEPALIVE for %s:%d not confirmed: %s\n", host, port, strerror(errno));
 
 #ifdef TCP_KEEPIDLE      // linux
 	sockopt = 5;	// number of keepalive probes before reporting failure
 	if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT, &sockopt, optlen) < 0)
-	    Bye ("setsockopt(TCP_KEEPCNT) on %s:%d: %s\n", strerror(errno));
+	    Bye ("setsockopt(TCP_KEEPCNT) on %s:%d: %s\n", host, port, strerror(errno));
 	sockopt = 10;	// seconds before first keepalive probe
 	if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &sockopt, optlen) < 0)
-	    Bye ("setsockopt(TCP_KEEPIDLE) on %s:%d: %s\n", strerror(errno));
+	    Bye ("setsockopt(TCP_KEEPIDLE) on %s:%d: %s\n", host, port, strerror(errno));
 	sockopt = 2;	// seconds between subsequent probes
 	if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &sockopt, optlen) < 0)
-	    Bye ("setsockopt(TCP_KEEPINTVL) on %s:%d: %s\n", strerror(errno));
+	    Bye ("setsockopt(TCP_KEEPINTVL) on %s:%d: %s\n", host, port, strerror(errno));
 #endif
 
 #ifdef TCP_KEEPALIVE      // macos
 	sockopt = 10;	// keep alive seconds
 	if (setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPALIVE, &sockopt, optlen) < 0)
-	    Bye ("setsockopt(TCP_KEEPCNT) on %s:%d: %s\n", strerror(errno));
+	    Bye ("setsockopt(TCP_KEEPCNT) on %s:%d: %s\n", host, port, strerror(errno));
 #endif
 
 	/* connect */
@@ -1433,14 +1433,24 @@ q2Drivers (char *dev, Msg *mp, char *roottag)
                         logMsg ("queue to", dp, NULL, sendmp);
 		    ql = pushMsg (dp, NULL, sendmp);
 		    if (ql > maxqsiz) {
+			int rfd = -1;
+
 			logMessage ("Driver %s: %d bytes behind in %d messages, restarting\n",
 							dp->name, ql, nFQ(dp->msgq));
 
-			/* close reader socket to force driverStdoutReader to set err */
-			close (dp->rfd);
+			/* close reader socket once to force driverStdoutReader to set err */
+			pthread_mutex_lock (&dp->q_lock);
+			if (dp->rfd >= 0) {
+			    rfd = dp->rfd;
+			    dp->rfd = -1;
+			}
+			pthread_mutex_unlock (&dp->q_lock);
+
+			if (rfd >= 0)
+			    close (rfd);
 
 			/* just blow away stderr reader, if we have one */
-			if (dp->pid != REMOTEDVR)
+			if (rfd >= 0 && dp->pid != REMOTEDVR)
 			    pthread_cancel (dp->stderr_thr);
 		    }
 
@@ -1479,14 +1489,24 @@ q2SnoopingDrivers (int isblob, char *dev, char *name, Msg *mp)
 		    /* ok: queue message to this driver -- beware it getting too far behind */
 		    ql = pushMsg (dp, NULL, mp);
 		    if (ql > maxqsiz) {
+			int rfd = -1;
+
 			logMessage ("Driver %s: %d bytes behind in %d messages, restarting\n",
 						    dp->name, ql, nFQ(dp->msgq));
 
-			/* close reader socket to force driverStdoutReader to set err */
-			close (dp->rfd);
+			/* close reader socket once to force driverStdoutReader to set err */
+			pthread_mutex_lock (&dp->q_lock);
+			if (dp->rfd >= 0) {
+			    rfd = dp->rfd;
+			    dp->rfd = -1;
+			}
+			pthread_mutex_unlock (&dp->q_lock);
+
+			if (rfd >= 0)
+			    close (rfd);
 
 			/* just blow away stderr reader, if we have one */
-			if (dp->pid != REMOTEDVR)
+			if (rfd >= 0 && dp->pid != REMOTEDVR)
 			    pthread_cancel (dp->stderr_thr);
 		    }
 		}
@@ -1583,11 +1603,23 @@ q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp)
                 logMsg ("queue to", NULL, cp, mp);
 	    ql = pushMsg (NULL, cp, mp);
 	    if (ql > maxqsiz) {
+		int s = -1;
+
 		logMessage ("Client %d: %d bytes behind in %d messages, shutting down\n",
 					cp->s, ql, nFQ(cp->msgq));
-		/* close socket to force clientReader to set err */
-		shutdown (cp->s, SHUT_RDWR);
-		close (cp->s);
+
+		/* close socket once to force clientReader to set err */
+		pthread_mutex_lock (&cp->q_lock);
+		if (cp->s >= 0) {
+		    s = cp->s;
+		    cp->s = -1;
+		}
+		pthread_mutex_unlock (&cp->q_lock);
+
+		if (s >= 0) {
+		    shutdown (s, SHUT_RDWR);
+		    close (s);
+		}
 	    }
 	}
 
