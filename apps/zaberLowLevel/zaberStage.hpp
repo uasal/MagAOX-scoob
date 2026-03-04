@@ -190,7 +190,7 @@ class zaberStage
     /**
      * \returns the current value of m_parked
      */
-    bool parked();
+    int parked();
 
     /// Get the current raw position, in counts
     /**
@@ -449,7 +449,7 @@ time_t zaberStage<parentT>::lastHomed()
 }
 
 template <class parentT>
-bool zaberStage<parentT>::parked()
+int zaberStage<parentT>::parked()
 {
     return m_parked;
 }

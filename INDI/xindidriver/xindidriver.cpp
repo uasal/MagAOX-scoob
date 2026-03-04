@@ -1,7 +1,6 @@
 
 #include <iostream>
 #include <string>
-#include <chrono>
 #include <cstring>
 
 #include <fcntl.h>
@@ -22,7 +21,7 @@
 #endif
 
 std::string myName;
-bool timeToDie;
+volatile sig_atomic_t timeToDie;
 
 #ifdef DEBUG
 #include <fstream>
@@ -53,6 +52,11 @@ int flushFIFO(const std::string & fileName)
    #endif
 
    fd = open( fileName.c_str(), O_RDONLY | O_NONBLOCK);
+   if(fd < 0)
+   {
+      std::cerr << " (" << XINDID_COMPILEDNAME << "): failed to open " << fileName << " for flush: " << std::strerror(errno) << "\n";
+      return -1;
+   }
 
    char flushBuff[1024];
 
@@ -63,22 +67,21 @@ int flushFIFO(const std::string & fileName)
    debug << __FILE__ << " " << __LINE__ << std::endl;
    #endif
 
-   // Create and clear out the FD set, set to watch the reader.
-   fd_set fdsRead;
-   FD_ZERO( &fdsRead );
-   FD_SET( fd, &fdsRead );
-
-   // Set the timeout on the select call.
-   timeval tv;
-
    #ifdef DEBUG
    debug << __FILE__ << " " << __LINE__ << std::endl;
    #endif
    std::cerr << "Starting flush of " << fileName << "\n";
 
 
-   while(rd > 0)
+   while(rd > 0 && !timeToDie)
    {
+      // Create and clear out the FD set, set to watch the reader.
+      fd_set fdsRead;
+      FD_ZERO( &fdsRead );
+      FD_SET( fd, &fdsRead );
+
+      // Set the timeout on the select call.
+      timeval tv;
       tv.tv_sec = 1;
       tv.tv_usec = 0;
 
@@ -89,13 +92,25 @@ int flushFIFO(const std::string & fileName)
       debug << nRetval << std::endl;
       #endif
 
-      if(nRetval != 0)
+      if(nRetval > 0)
       {
          rd = read(fd, flushBuff, sizeof(flushBuff));
-
-         totrd += rd;
+         if(rd > 0)
+         {
+            totrd += rd;
+         }
+         else if(rd < 0 && errno != EAGAIN && errno != EINTR)
+         {
+            std::cerr << " (" << XINDID_COMPILEDNAME << "): flush read error on " << fileName << ": " << std::strerror(errno) << "\n";
+            break;
+         }
       }
-      else rd = 0;
+      else if(nRetval == 0) rd = 0;
+      else if(errno != EINTR)
+      {
+         std::cerr << " (" << XINDID_COMPILEDNAME << "): flush select error on " << fileName << ": " << std::strerror(errno) << "\n";
+         break;
+      }
 
    }
 
@@ -104,6 +119,8 @@ int flushFIFO(const std::string & fileName)
    #endif
 
    std::cerr << "flushed " << totrd << " bytes from " << fileName << "\n";
+
+   close(fd);
 
    return 0;
 }
@@ -200,32 +217,9 @@ void * xoverThread( void * vdf /**< [in] pointer to a driverFIFO struct */)
       fdWrite = df->stdfd;
    }
 
-   auto chrono_base = std::chrono::system_clock::now();
-   int counter = 0;
-   std::chrono::duration<double> elapsed_seconds;
-
    //Now loop until told to stop.
    while(!timeToDie)
    {
-
-      elapsed_seconds = std::chrono::system_clock::now() - chrono_base;
-      if (elapsed_seconds.count() < 0.1)
-      { 
-         ++counter;
-      } 
-      else
-      { 
-         if (counter > 1000)
-         {
-	    struct timeval sleeptv;
-	    sleeptv.tv_sec = 0;
-	    sleeptv.tv_usec = 100000;
-	    select (0, NULL, NULL, NULL, &sleeptv);
-         }
-         counter = 0;
-         chrono_base = std::chrono::system_clock::now();
-      } 
-
       rdbuff[0] = 0;
 
       // Create and clear out the FD set, set to watch the reader.
@@ -265,8 +259,20 @@ void * xoverThread( void * vdf /**< [in] pointer to a driverFIFO struct */)
 
             if(timeToDie) break; //Woke up from a blocking read due to a signal
 
+            if(rd == 0)
+            {
+               std::cerr << " (" << XINDID_COMPILEDNAME << "): EOF on fd " << fdRead << ", exiting for restart.\n";
+               timeToDie = true;
+               break;
+            }
+
             if( rd < 0 && !timeToDie)
             {
+               if(errno == EINTR)
+               {
+                  continue;
+               }
+
                //An error on the read.  Report it, and go back around.
                std::cerr << " (" << XINDID_COMPILEDNAME << "): " << std::strerror( errno);
                std::cerr << " in " << __FILE__ << " at " << __LINE__ << "\n";
@@ -283,9 +289,19 @@ void * xoverThread( void * vdf /**< [in] pointer to a driverFIFO struct */)
 
                if( wr < 0 && !timeToDie)
                {
+                  if(errno == EINTR)
+                  {
+                     continue;
+                  }
+
                   //An error on write.  Report it and go back around.
                   std::cerr << " (" << XINDID_COMPILEDNAME << "): " << std::strerror( errno);
                   std::cerr << " in " << __FILE__ << " at " << __LINE__ << "\n";
+                  break;
+               }
+               else if(wr == 0)
+               {
+                  std::cerr << " (" << XINDID_COMPILEDNAME << "): write returned 0 on fd " << fdWrite << ".\n";
                   break;
                }
 
@@ -296,7 +312,7 @@ void * xoverThread( void * vdf /**< [in] pointer to a driverFIFO struct */)
       }
    }
 
-   close(df->fd);
+   if(df->fd >= 0) close(df->fd);
 
    return 0;
 }
