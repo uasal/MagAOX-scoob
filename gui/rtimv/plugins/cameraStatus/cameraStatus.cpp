@@ -23,6 +23,7 @@ int cameraStatus::attachOverlay( rtimvOverlayAccess & roa,
 
     if(m_deviceName == "")
     {
+        pluginLogInfo("not configured");
        m_enableable = false;
        disableOverlay();
        return 1; //Tell rtimv to unload me since not configured.
@@ -30,6 +31,8 @@ int cameraStatus::attachOverlay( rtimvOverlayAccess & roa,
 
     m_enableable = true;
     m_enabled = true;
+
+    pluginLogInfo(std::format("enabling for {}", m_deviceName));
 
     config.configUnused(m_filterDeviceNames, mx::app::iniFile::makeKey("camera", "filterDevices"));
 

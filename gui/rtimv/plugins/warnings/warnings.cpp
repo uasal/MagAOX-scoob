@@ -21,10 +21,13 @@ int warnings::attachOverlay( rtimvOverlayAccess & roa,
 
     if(m_deviceName == "")
     {
+        pluginLogInfo("not configured");
         m_enableable = false;
         disableOverlay();
         return 1; //Tell rtimv to unload me since not configured.
     }
+
+    pluginLogInfo(std::format("enabling for {}", m_deviceName));
 
     config.configUnused(m_cautionKeys, mx::app::iniFile::makeKey("rules", "cautions"));
     config.configUnused(m_warningKeys, mx::app::iniFile::makeKey("rules", "warnings"));

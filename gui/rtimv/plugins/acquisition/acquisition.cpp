@@ -20,10 +20,14 @@ int acquisition::attachOverlay( rtimvOverlayAccess &roa, mx::app::appConfigurato
 
     if( m_deviceName == "" )
     {
+        pluginLogInfo("not configured");
+
         m_enableable = false;
         disableOverlay();
         return 1; // Tell rtimv to unload me since not configured.
     }
+
+    pluginLogInfo(std::format("enabling for {}", m_deviceName));
 
     config.configUnused( m_cameraName, mx::app::iniFile::makeKey( "acquisition", "camera" ) );
     config.configUnused( m_circRad, mx::app::iniFile::makeKey( "acquisition", "radius" ) );
