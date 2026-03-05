@@ -920,6 +920,11 @@ void cursesINDI::keyPressed( int ch )
                }
                else continue;
             }
+            else if(nch == 3)
+            {
+               m_shutdown = true;
+               break;
+            }
 
             cursStat(1);
 
@@ -951,6 +956,7 @@ void cursesINDI::keyPressed( int ch )
             }
          }
          if(escape) break;
+         if(m_shutdown) break;
 
          //mutex scope
          {
@@ -963,6 +969,12 @@ void cursesINDI::keyPressed( int ch )
          nch = 0;
          while( (nch = wgetch(w_interactWin)) == ERR)
          {
+         }
+
+         if(nch == 3)
+         {
+            m_shutdown = true;
+            break;
          }
 
          if(nch == 'y')
@@ -1032,6 +1044,12 @@ void cursesINDI::keyPressed( int ch )
          {
          }
 
+         if(nch == 3)
+         {
+            m_shutdown = true;
+            break;
+         }
+
          if(nch == 'y')
          {
             pcf::IndiProperty ipSend(knownProps[it->second.propKey].getType());
@@ -1080,6 +1098,12 @@ void cursesINDI::keyPressed( int ch )
          int nch = 0;
          while( (nch = wgetch(w_interactWin)) == ERR)
          {
+         }
+
+         if(nch == 3)
+         {
+            m_shutdown = true;
+            break;
          }
 
          if(nch == 'y')
