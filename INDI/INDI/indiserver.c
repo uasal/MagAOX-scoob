@@ -123,6 +123,7 @@ typedef struct {
  */
 typedef struct {
     int active;				/* 1 when this record is in use */
+    int ischained;			/* 1 when client behaves as chained INDI server */
     Property *props;			/* malloced array of props we want */
     int nprops;				/* n entries in props[] */
     Property *blobs;			/* malloced array of BLOBs we want */
@@ -201,7 +202,8 @@ static int openRemoteConnection (char host[], int port);
 static void restartDvr (DvrInfo *dp);
 static void q2Drivers (char *dev, Msg *mp, char *roottag);
 static void q2SnoopingDrivers (int isblob, char *dev, char *name, Msg *mp);
-static void q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp);
+static void q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp,
+                       int srcIsRemote, char *roottag);
 static void addSnoopDevice (DvrInfo *dp, char *dev, char *name);;
 static Snoopee *findSnoopDevice (DvrInfo *dp, char *dev, char *name);
 static void addClDevice (ClInfo *cp, int isblob, char *dev, char *name);
@@ -917,12 +919,18 @@ clientReaderThread (void *vp)
 		    /* snag interested properties */
 		    addClDevice (cp, 0, dev, name);
 
+                    /* chained servers are identified by receiving set or def
+                     * traffic over a client socket.
+                     */
+                    if (!strncmp (roottag, "set", 3) || !strncmp (roottag, "def", 3))
+                        cp->ischained = 1;
+
 		    /* send message to driver(s) responsible for dev */
 		    q2Drivers (dev, cp->mp, roottag);
 
 		    /* echo new* commands back to other clients */
 		    if (!strncmp (roottag, "new", 3))
-			q2Clients (cp, isblob, dev, name, cp->mp);
+			q2Clients (cp, isblob, dev, name, cp->mp, 0, roottag);
 
 		  done:
 
@@ -1098,7 +1106,7 @@ driverStdoutReaderThread (void *vp)
 		    logDvrMsg (root, dev);
 
 		    /* send to interested clients */
-		    q2Clients (NULL, isblob, dev, name, dp->mp);
+		    q2Clients (NULL, isblob, dev, name, dp->mp, dp->pid == REMOTEDVR, roottag);
 
 		    /* send to snooping drivers */
 		    q2SnoopingDrivers (isblob, dev, name, dp->mp);
@@ -1561,7 +1569,8 @@ findSnoopDevice (DvrInfo *dp, char *dev, char *name)
  * if BLOB always honor current mode.
  */
 static void
-q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp)
+q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp,
+           int srcIsRemote, char *roottag)
 {
 	ClInfo *cp;
 	int i, ql;
@@ -1577,6 +1586,8 @@ q2Clients (ClInfo *notme, int isblob, char *dev, char *name, Msg *mp)
 		continue;
 	    if (findClDevice (cp, isblob, dev, name) < 0)
 		continue;
+            if (srcIsRemote && cp->ischained && roottag && !strncmp(roottag, "def", 3))
+                continue;
 
 	    /* ok: queue message to this client -- beware it getting too far behind */
             if (verbose > 2)
