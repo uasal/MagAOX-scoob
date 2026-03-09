@@ -148,12 +148,15 @@ int indiDictionary::attachDictionary( dictionaryT * dict,
 
    if(m_ipAddress == "" || m_port <= 0)
    {
+      pluginLogInfo("not configured");
+
       m_enabled = false;
       return 1;
    }
    else
    {
-      std::cerr << "INDI Dictionary: enabling for " << m_ipAddress << ":" << m_port << "\n";
+      pluginLogInfo(std::format("enabling for {}:{}", m_ipAddress, m_port));
+
       m_enabled = true;
       checkConnection();
       connect(&m_connTimer, SIGNAL(timeout()), this, SLOT(checkConnection()));
