@@ -289,10 +289,10 @@ scripts_to_install = \
 ifeq ($(MAGAOX_ROLE),RTC)
   scripts_to_install += cacao/RTC/cacao-startup
   scripts_to_install += cacao/RTC/cacao-shutdown
-  scripts_to_install += cacao/RTC/tweeter-vispyr-rootdir-scripts/pre-calib-apply
-  scripts_to_install += cacao/RTC/tweeter-vispyr-rootdir-scripts/post-calib-apply
-  scripts_to_install += cacao/RTC/woofer-vispyr-rootdir-scripts/pre-calib-apply
-  scripts_to_install += cacao/RTC/woofer-vispyr-rootdir-scripts/post-calib-apply
+  scripts_to_install += cacao/RTC/tweeter-vispyr-rootdir-scripts/tweeter-pre-calib-apply
+  scripts_to_install += cacao/RTC/tweeter-vispyr-rootdir-scripts/tweeter-post-calib-apply
+  scripts_to_install += cacao/RTC/woofer-vispyr-rootdir-scripts/woofer-pre-calib-apply
+  scripts_to_install += cacao/RTC/woofer-vispyr-rootdir-scripts/woofer-post-calib-apply
   scripts_to_install += cacao/hoblockleaks
 else ifeq ($(MAGAOX_ROLE),ICC)
   scripts_to_install += cacao/ICC/cacao-startup
