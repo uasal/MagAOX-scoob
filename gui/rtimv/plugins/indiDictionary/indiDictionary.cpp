@@ -1,30 +1,36 @@
+/** \file indiDictionary.cpp
+ * \brief Implements the rtimv INDI-backed dictionary plugin.
+ *
+ * \author Jared Males
+ */
+
 #include <set>
 
 #include "indiDictionary.hpp"
 
-
-class rtimvIndiClient: public pcf::IndiClient
+class rtimvIndiClient : public pcf::IndiClient
 {
-protected:
-    bool m_shutdown{false};
-    bool m_connectionLost{false};
+  protected:
+    bool m_shutdown{ false };
+    bool m_connectionLost{ false };
 
-public:
+  public:
     std::set<std::string> m_subscribed;
-    std::mutex m_subscribedMutex;
+    std::mutex            m_subscribedMutex;
 
-protected:
-    dictionaryT *m_dict{nullptr};
+  protected:
+    dictionaryT *m_dict{ nullptr };
 
-    float m_northAngle{0};
+    float m_northAngle{ 0 };
 
-public:
-    rtimvIndiClient(const std::string &szName,
-                    const std::string &szVersion,
-                    const std::string &szProtocolVersion,
-                    const std::string &ipAddress,
-                    const int port,
-                    dictionaryT *dict) : pcf::IndiClient(szName, szVersion, szProtocolVersion, ipAddress, port) //"127.0.0.1", 7624)
+  public:
+    rtimvIndiClient( const std::string &szName,
+                     const std::string &szVersion,
+                     const std::string &szProtocolVersion,
+                     const std::string &ipAddress,
+                     const int          port,
+                     dictionaryT       *dict )
+        : pcf::IndiClient( szName, szVersion, szProtocolVersion, ipAddress, port ) //"127.0.0.1", 7624)
     {
         m_dict = dict;
     }
@@ -35,32 +41,32 @@ public:
         deactivate();
     }
 
-    virtual void handleDefProperty(const pcf::IndiProperty &ipRecv)
+    virtual void handleDefProperty( const pcf::IndiProperty &ipRecv )
     {
-        if (m_dict == nullptr)
+        if( m_dict == nullptr )
             return;
 
         std::string key = ipRecv.createUniqueKey();
 
         {
-            std::lock_guard<std::mutex> guard(m_subscribedMutex);
-            if (m_subscribed.count(key) == 0)
+            std::lock_guard<std::mutex> guard( m_subscribedMutex );
+            if( m_subscribed.count( key ) == 0 )
                 return;
         }
 
         auto elIt = ipRecv.getElements().begin();
 
-        while(elIt != ipRecv.getElements().end())
+        while( elIt != ipRecv.getElements().end() )
         {
             std::string elKey = key + "." + elIt->second.getName();
 
             std::string val;
 
-            if(ipRecv.getType() == pcf::IndiProperty::Switch)
+            if( ipRecv.getType() == pcf::IndiProperty::Switch )
             {
-                if(ipRecv[elIt->second.getName()].getSwitchState() == pcf::IndiElement::On)
+                if( ipRecv[elIt->second.getName()].getSwitchState() == pcf::IndiElement::On )
                     val = "on";
-                else if(ipRecv[elIt->second.getName()].getSwitchState() == pcf::IndiElement::Off)
+                else if( ipRecv[elIt->second.getName()].getSwitchState() == pcf::IndiElement::Off )
                     val = "off";
                 else
                     val = "unk";
@@ -70,22 +76,17 @@ public:
                 val = ipRecv[elIt->second.getName()].get();
             }
 
-            auto dit = m_dict->find(elKey);
-            if(dit == m_dict->end())
-            {
-                ++elIt;
-                continue;
-            }
+            // Subscribed properties can expose dynamic elements. Keep those
+            // element keys populated so overlays can discover active presets.
+            ( *m_dict )[elKey].setBlob( val.c_str(), val.size() + 1 );
 
-            dit->second.setBlob(val.c_str(), val.size() + 1);
-
-            if(elKey == "tcsi.teldata.pa")
+            if( elKey == "tcsi.teldata.pa" )
             {
                 m_northAngle = ipRecv[elIt->second.getName()].get<float>();
-                auto nit = m_dict->find("rtimv.north.angle");
-                if(nit != m_dict->end())
+                auto nit     = m_dict->find( "rtimv.north.angle" );
+                if( nit != m_dict->end() )
                 {
-                    nit->second.setBlob(&m_northAngle, sizeof(float));
+                    nit->second.setBlob( &m_northAngle, sizeof( float ) );
                 }
             }
 
@@ -93,155 +94,155 @@ public:
         }
     }
 
-    virtual void handleDelProperty(const pcf::IndiProperty &ipRecv)
+    virtual void handleDelProperty( const pcf::IndiProperty &ipRecv )
     {
-        if(m_dict == nullptr)
+        if( m_dict == nullptr )
         {
             return;
         }
 
-        static_cast<void>(ipRecv);
+        static_cast<void>( ipRecv );
     }
 
-    virtual void handleMessage(const pcf::IndiProperty &ipRecv)
+    virtual void handleMessage( const pcf::IndiProperty &ipRecv )
     {
-        static_cast<void>(ipRecv);
+        static_cast<void>( ipRecv );
     }
 
-    virtual void handleSetProperty(const pcf::IndiProperty &ipRecv)
+    virtual void handleSetProperty( const pcf::IndiProperty &ipRecv )
     {
-        handleDefProperty(ipRecv);
+        handleDefProperty( ipRecv );
     }
 
     virtual void execute()
     {
-        processIndiRequests(false);
+        processIndiRequests( false );
     }
 };
 
 indiDictionary::indiDictionary() : rtimvDictionaryInterface()
 {
-
 }
 
 indiDictionary::~indiDictionary()
 {
-   m_connTimer.stop();
-   QObject::disconnect(&m_connTimer, SIGNAL(timeout()), this, SLOT(checkConnection()));
+    m_connTimer.stop();
+    QObject::disconnect( &m_connTimer, SIGNAL( timeout() ), this, SLOT( checkConnection() ) );
 
-   std::lock_guard<std::mutex> lock(m_clientMutex);
-   if(m_client) delete m_client;
-   m_client = nullptr;
+    std::lock_guard<std::mutex> lock( m_clientMutex );
+    if( m_client )
+        delete m_client;
+    m_client = nullptr;
 }
 
-int indiDictionary::attachDictionary( dictionaryT * dict,
-                                      mx::app::appConfigurator & config
-                                    )
+int indiDictionary::attachDictionary( dictionaryT *dict, mx::app::appConfigurator &config )
 {
-   m_dict = dict;
+    m_dict = dict;
 
-   config.configUnused(m_ipAddress, mx::app::iniFile::makeKey("indi", "ipAddress"));
+    config.configUnused( m_ipAddress, mx::app::iniFile::makeKey( "indi", "ipAddress" ) );
 
-   config.configUnused(m_port, mx::app::iniFile::makeKey("indi", "port"));
+    config.configUnused( m_port, mx::app::iniFile::makeKey( "indi", "port" ) );
 
-   config.configUnused(m_checkTimeout, mx::app::iniFile::makeKey("indi", "checkTimeout"));
+    config.configUnused( m_checkTimeout, mx::app::iniFile::makeKey( "indi", "checkTimeout" ) );
 
-   if(m_ipAddress == "" || m_port <= 0)
-   {
-      pluginLogInfo("not configured");
+    if( m_ipAddress == "" || m_port <= 0 )
+    {
+        pluginLogInfo( "not configured" );
 
-      m_enabled = false;
-      return 1;
-   }
-   else
-   {
-      pluginLogInfo(std::format("enabling for {}:{}", m_ipAddress, m_port));
+        m_enabled = false;
+        return 1;
+    }
+    else
+    {
+        pluginLogInfo( std::format( "enabling for {}:{}", m_ipAddress, m_port ) );
 
-      m_enabled = true;
-      checkConnection();
-      connect(&m_connTimer, SIGNAL(timeout()), this, SLOT(checkConnection()));
-      m_connTimer.start(m_checkTimeout);
+        m_enabled = true;
+        checkConnection();
+        connect( &m_connTimer, SIGNAL( timeout() ), this, SLOT( checkConnection() ) );
+        m_connTimer.start( m_checkTimeout );
 
-      if(m_dict)
-      {
-        (*m_dict)["tcsi.teldata.pa"].setBlob(nullptr, 0);
-        (*m_dict)["rtimv.north.angle"].setBlob(nullptr, 0);
-      }
-   }
+        if( m_dict )
+        {
+            ( *m_dict )["tcsi.teldata.pa"].setBlob( nullptr, 0 );
+            ( *m_dict )["rtimv.north.angle"].setBlob( nullptr, 0 );
+        }
+    }
 
-   return 0;
+    return 0;
 }
 
 void indiDictionary::checkConnection()
 {
-   if(!m_enabled) return;
+    if( !m_enabled )
+        return;
 
-   std::lock_guard<std::mutex> lock(m_clientMutex);
+    std::lock_guard<std::mutex> lock( m_clientMutex );
 
-   if(!m_client)
-   {
-      try
-      {
-         m_client = new rtimvIndiClient("rtimvIndiClient", "1.7", "1.7", m_ipAddress, m_port, m_dict);
-      }
-      catch(...)
-      {
-         //This means failed to connect, often b/c tunnel not open.  m_client will still be nullptr.
-         //just go on and try again
-         return;
-      }
+    if( !m_client )
+    {
+        try
+        {
+            m_client = new rtimvIndiClient( "rtimvIndiClient", "1.7", "1.7", m_ipAddress, m_port, m_dict );
+        }
+        catch( ... )
+        {
+            // This means failed to connect, often b/c tunnel not open.  m_client will still be nullptr.
+            // just go on and try again
+            return;
+        }
 
-      m_client->activate();
-   }
-   else if(m_client->getQuitProcess())
-   {
-      m_client->quitProcess();
-      m_client->deactivate();
-      delete m_client;
-      m_client = nullptr;
-      return;
-   }
+        m_client->activate();
+    }
+    else if( m_client->getQuitProcess() )
+    {
+        m_client->quitProcess();
+        m_client->deactivate();
+        delete m_client;
+        m_client = nullptr;
+        return;
+    }
 
-   if(!m_client) return;
+    if( !m_client )
+        return;
 
-   //Well if we're here we're connected, so now check if we're listening to our props
-   for(auto it=m_dict->begin(); it != m_dict->end(); ++it)
-   {
-      std::string elKey = it->first;
+    // Well if we're here we're connected, so now check if we're listening to our props
+    for( auto it = m_dict->begin(); it != m_dict->end(); ++it )
+    {
+        std::string elKey = it->first;
 
-      size_t np = elKey.find('.', 0);
-      std::string dev = elKey.substr(0, np);
+        size_t      np  = elKey.find( '.', 0 );
+        std::string dev = elKey.substr( 0, np );
 
-      size_t ap = elKey.find('.', np+1);
-      std::string prop = elKey.substr(np+1, ap-(np+1));
+        size_t      ap   = elKey.find( '.', np + 1 );
+        std::string prop = elKey.substr( np + 1, ap - ( np + 1 ) );
 
-      std::string key = dev + "." + prop;
+        std::string key = dev + "." + prop;
 
-      bool shouldSnoop = false;
-      {
-         std::lock_guard<std::mutex> guard(m_client->m_subscribedMutex);
-         auto res = m_client->m_subscribed.insert(key);
-         shouldSnoop = res.second;
-      }
+        bool shouldSnoop = false;
+        {
+            std::lock_guard<std::mutex> guard( m_client->m_subscribedMutex );
+            auto                        res = m_client->m_subscribed.insert( key );
+            shouldSnoop                     = res.second;
+        }
 
-      if(shouldSnoop == true) //If we have inserted it, we snoop it
-      {
-         pcf::IndiProperty ipSend;
-         ipSend.setDevice(dev);
-         ipSend.setName(prop);
-         m_client->sendGetProperties(ipSend);
-      }
-
-   }
-
+        if( shouldSnoop == true ) // If we have inserted it, we snoop it
+        {
+            pcf::IndiProperty ipSend;
+            ipSend.setDevice( dev );
+            ipSend.setName( prop );
+            m_client->sendGetProperties( ipSend );
+        }
+    }
 }
 
 std::vector<std::string> indiDictionary::info()
 {
     std::vector<std::string> vinfo;
-    vinfo.push_back("INDI dictionary: " + m_ipAddress + ":" + std::to_string(m_port));
-    if(m_client) vinfo[0] += " [connected]";
-    else vinfo[0] += " [not connected]";
+    vinfo.push_back( "INDI dictionary: " + m_ipAddress + ":" + std::to_string( m_port ) );
+    if( m_client )
+        vinfo[0] += " [connected]";
+    else
+        vinfo[0] += " [not connected]";
 
     return vinfo;
 }
