@@ -1869,7 +1869,9 @@ template <class derivedT>
 int stdCamera<derivedT>::onPowerOff()
 {
     if( !derived().m_indiDriver )
+    {
         return 0;
+    }
 
     if( derivedT::c_stdCamera_usesModes )
     {
