@@ -1,5 +1,6 @@
 /** \file dmCtrl.hpp
  * \brief Deformable mirror control widget for INDI-backed operations.
+ * \author Jared R. Males
  */
 
 #ifndef dmCtrl_hpp
@@ -15,6 +16,7 @@
 namespace xqt
 {
 
+/// Deformable mirror control widget backed by INDI properties.
 class dmCtrl : public xWidget
 {
     Q_OBJECT
@@ -122,7 +124,6 @@ class dmCtrl : public xWidget
 dmCtrl::dmCtrl( std::string &dmName, QWidget *Parent, Qt::WindowFlags f ) : xWidget( Parent, f ), m_dmName{ dmName }
 {
     ui.setupUi( this );
-    // ui.labelDMName->setText(m_dmName.c_str());
 
     setWindowTitle( QString( m_dmName.c_str() ) );
 
@@ -143,8 +144,6 @@ dmCtrl::dmCtrl( std::string &dmName, QWidget *Parent, Qt::WindowFlags f ) : xWid
     setXwFont( ui.buttonZeroTest );
     setXwFont( ui.comboSelectFlat );
     setXwFont( ui.comboSelectTest );
-
-    // setXwFont(ui.fsmState);
 
     setXwFont( ui.labelShmimName );
     setXwFont( ui.labelShmimName_value );
@@ -191,7 +190,6 @@ void dmCtrl::onConnectGUI()
 {
     m_connected = true;
 
-    // ui.labelDMName->setEnabled(true);
     ui.fsmState->setEnabled( true );
     ui.labelShmimName->setEnabled( true );
     ui.labelShmimName_value->setEnabled( true );
@@ -235,7 +233,6 @@ void dmCtrl::onDisconnectGUI()
         m_testOptions.clear();
     }
 
-    // ui.labelDMName->setEnabled(false);
     ui.fsmState->setEnabled( false );
     ui.labelShmimName->setEnabled( false );
     ui.labelShmimName_value->setEnabled( false );
@@ -406,12 +403,6 @@ void dmCtrl::updateGUI()
     if( !testName.empty() )
         ui.comboSelectTest->setCurrentText( testName.c_str() );
 
-    //    ui.buttonSetFlat->setEnabled(true);
-    //    ui.buttonZeroFlat->setEnabled(true);
-    //
-    //    ui.buttonSetTest->setEnabled(true);
-    //    ui.buttonZeroTest->setEnabled(true);
-    //
     if( appState != "NOTHOMED" && appState != "READY" && appState != "OPERATING" )
     {
         // Disable & zero all
