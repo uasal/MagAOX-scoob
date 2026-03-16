@@ -37,6 +37,9 @@ class dmCtrl : public xWidget
 
     std::mutex m_stateMutex; ///< Guards cached state copied into the GUI thread.
 
+    bool m_connected{ false }; ///< True once the widget has processed an INDI connect event.
+    bool m_inUpdate{ false };  ///< Prevents re-entrant queued GUI refresh work.
+
   public:
     /// Constructs the DM control widget.
     explicit dmCtrl( std::string    &dmName,                    /**< [in] INDI device name for the DM controller. */
@@ -176,8 +179,6 @@ void dmCtrl::subscribe()
     m_parent->addSubscriberProperty( this, m_dmName, "test" );
     m_parent->addSubscriberProperty( this, m_dmName, "test_shmim" );
     m_parent->addSubscriberProperty( this, m_dmName, "test_set" );
-    m_parent->addSubscriber( ui.fsmState );
-
     return;
 }
 
@@ -188,6 +189,8 @@ void dmCtrl::onConnect()
 
 void dmCtrl::onConnectGUI()
 {
+    m_connected = true;
+
     // ui.labelDMName->setEnabled(true);
     ui.fsmState->setEnabled( true );
     ui.labelShmimName->setEnabled( true );
@@ -205,6 +208,8 @@ void dmCtrl::onConnectGUI()
     ui.fsmState->onConnect();
 
     setWindowTitle( QString( m_dmName.c_str() ) );
+
+    emit doUpdateGUI();
 }
 
 void dmCtrl::onDisconnect()
@@ -214,6 +219,22 @@ void dmCtrl::onDisconnect()
 
 void dmCtrl::onDisconnectGUI()
 {
+    m_connected = false;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_stateMutex );
+        m_appState.clear();
+        m_shmimName.clear();
+        m_flatShmim.clear();
+        m_flatSet = false;
+        m_flatName.clear();
+        m_flatOptions.clear();
+        m_testShmim.clear();
+        m_testSet = false;
+        m_testName.clear();
+        m_testOptions.clear();
+    }
+
     // ui.labelDMName->setEnabled(false);
     ui.fsmState->setEnabled( false );
     ui.labelShmimName->setEnabled( false );
@@ -236,6 +257,12 @@ void dmCtrl::onDisconnectGUI()
 
     ui.comboSelectFlat->setEnabled( false );
     ui.comboSelectTest->setEnabled( false );
+
+    ui.labelShmimName_value->setText( "" );
+    ui.labelFlatShmim_value->setText( "" );
+    ui.labelTestShmim_value->setText( "" );
+    ui.comboSelectFlat->clear();
+    ui.comboSelectTest->clear();
 
     setWindowTitle( QString( m_dmName.c_str() ) + QString( " (disconnected)" ) );
 
@@ -261,6 +288,8 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty &ipRecv )
         {
             m_appState = ipRecv["state"].get<std::string>();
         }
+
+        ui.fsmState->handleSetProperty( ipRecv );
     }
     else if( ipRecv.getName() == "sm_shmimName" )
     {
@@ -331,6 +360,11 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty &ipRecv )
 
 void dmCtrl::updateGUI()
 {
+    if( m_inUpdate || !m_connected )
+        return;
+
+    m_inUpdate = true;
+
     std::string              appState;
     std::string              shmimName;
     std::string              flatShmim;
@@ -392,6 +426,7 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( false );
 
+        m_inUpdate = false;
         return;
     }
 
@@ -408,6 +443,7 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( false );
 
+        m_inUpdate = false;
         return;
     }
 
@@ -436,6 +472,8 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( true );
     }
+
+    m_inUpdate = false;
 
 } // updateGUI()
 
