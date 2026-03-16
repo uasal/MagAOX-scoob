@@ -1,10 +1,10 @@
 /** \file telem.cpp
-  * \brief The MagAO-X logger telemetery library
-  * \author Jared R. Males (jaredmales@gmail.com)
-  *
-  * \ingroup logger_types_files
-  *
-  */
+ * \brief The MagAO-X logger telemetery library
+ * \author Jared R. Males (jaredmales@gmail.com)
+ *
+ * \ingroup logger_types_files
+ *
+ */
 #include <flatlogs/flatlogs.hpp>
 #include "../generated/logTypes.hpp"
 
@@ -29,11 +29,13 @@ timespec telem_fsm::lastRecord = {0,0};
 timespec telem_fxngen::lastRecord = {0,0};
 timespec telem_loopgain::lastRecord = {0,0};
 timespec telem_observer::lastRecord = {0,0};
+timespec telem_offloading::lastRecord = {0,0};
 timespec telem_pi335::lastRecord = {0,0};
 timespec telem_pico::lastRecord = {0,0};
 timespec telem_position::lastRecord = {0,0};
 timespec telem_pokecenter::lastRecord = {0,0};
 timespec telem_pokeloop::lastRecord = {0,0};
+timespec telem_poltrack::lastRecord = {0,0};
 timespec telem_rhusb::lastRecord = {0,0};
 timespec telem_saving::lastRecord = {0,0};
 timespec telem_saving_state::lastRecord = {0,0};
@@ -52,5 +54,4 @@ timespec telem_zaber::lastRecord = {0,0};
 
 } //namespace logger
 } //namespace MagAOX
-
 

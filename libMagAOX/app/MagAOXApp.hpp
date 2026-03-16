@@ -44,10 +44,37 @@ using namespace mx::app;
 
 using namespace MagAOX::logger;
 
+// forward decl for test harnass friendship
+namespace libXWCTest
+{
+namespace appTest
+{
+namespace MagAOXAppTest
+{
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
+struct MagAOXApp_test;
+
+#ifdef XWCTEST_NAMESPACE
+}
+#endif
+} // namespace MagAOXAppTest
+} // namespace appTest
+} // namespace libXWCTest
+
 namespace MagAOX
 {
 namespace app
 {
+
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
 
 /** \addtogroup magaoxapp
  *
@@ -60,12 +87,20 @@ namespace app
  * The following figure illustrates the logic of the XWCApp finite state machine (FSM).
  *
  * \image html xwcapp_fsm.png "The XWCApp FSM. The blue sequence highlights the normal 'appLogic' loop."
-
  *
  *
+ * Many XWCApps can be connected across many computers.  Inter-process communication can be conducted with
+ * INDI or ISIO.
  *
+ * \image html xwcapps_connections.png "Connecting XWCApps across several machines, controlling various hardware" width=1200
+ *
+ * XWCApps are designed to be part of control loops. In the following diagram a camera at the focal plane of a coronagraph
+ * is used as the wavefront sensor.  An XWCApp reads out the images and publishes them to shared memory with ISIO.
+ * Loop process, which may themselves be XWCApps or, e.g., CACAO processes, perform loop calculations.
+ * Finally, the deformable mirror controller sends the resultant command to the hardware device.
+ *
+ * \image html xwcapp_loops.png "XWCApps controlling hardware in a control loop." width=1200
 */
-
 
 /// The base-class for XWCTk applications.
 /**
@@ -124,14 +159,22 @@ namespace app
 template <bool _useINDI = true>
 class MagAOXApp : public application
 {
-    friend class MagAOXApp_test;
+    // clang-format off
+    #ifdef XWCTEST_NAMESPACE
+    friend struct libXWCTest::appTest::MagAOXAppTest::XWCTEST_NAMESPACE::MagAOXApp_test;
+    #else
+    friend struct libXWCTest::appTest::MagAOXAppTest::MagAOXApp_test;
+    #endif
+    //clang-format on
 
   public:
+    typedef XWC_DEFAULT_VERBOSITY verboseT;
+
     /// The log manager type.
-    typedef logger::logManager<MagAOXApp<_useINDI>, logFileRaw> logManagerT;
+    typedef logger::logManager<MagAOXApp<_useINDI>, logFileRaw<verboseT>> logManagerT;
 
   protected:
-    std::string MagAOXPath; ///< The base path of the MagAO-X system.
+    std::string m_basePath; ///< The base path of the MagAO-X system.
 
     std::string m_configName; ///< The name of the configuration file (minus .conf).
 
@@ -141,9 +184,16 @@ class MagAOXApp : public application
 
     std::string m_calibDir; ///< The path to calibration files for MagAOX.
 
-    std::string sysPath; ///< The path to the system directory, for PID file, etc.
+    std::string m_sysPath; ///< The path to the system directory, for PID file, etc.
 
-    std::string secretsPath; ///< Path to the secrets directory, where passwords, etc, are stored.
+    std::string m_secretsPath; ///< Path to the secrets directory, where passwords, etc, are stored.
+
+    /// Path to the cpusets mount
+    /** The path to the cpusets mount is configured by the environment variable defined by MAGOX_env_cpuset
+     * in environment.hpp.  This environment variable is normally named "CGROUPS1_CPUSET_MOUNTPOINT".  If
+     * the environment variable is not set, the default defined by MAGAOX_cpusetPath in paths.hpp is used.
+     */
+    std::string m_cpusetPath{ MAGAOX_cpusetPath };
 
     unsigned long m_loopPause{ MAGAOX_default_loopPause }; /**< The time in nanoseconds to pause the main loop.
                                                                 The appLogic() function of the derived class is called
@@ -177,12 +227,6 @@ class MagAOXApp : public application
     );
 
     ~MagAOXApp() noexcept( true );
-
-    /// Get the value of the shutdown flag.
-    /**
-     * \returns the current value of m_shutdown
-     */
-    int shutdown();
 
     /// Set the paths for config files
     /** Replaces the mx::application defaults with the MagAO-X config system.
@@ -389,7 +433,9 @@ class MagAOXApp : public application
         void elevate()
         {
             if( m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidCalled();
             m_elevated = true;
@@ -398,7 +444,9 @@ class MagAOXApp : public application
         void restore()
         {
             if( !m_elevated )
+            {
                 return;
+            }
 
             m_app->setEuidReal();
             m_elevated = false;
@@ -467,14 +515,6 @@ class MagAOXApp : public application
 
     ///@} -- PID Locking
 
-    /** \name cpusets
-     * The path to the cpusets mount is configured by the environment varialbe defined by MAGOX_env_cpuset
-     * in environment.hpp.  This environment varialbe is normally named "CGROUPS1_CPUSET_MOUNTPOINT".  If
-     * the environment variable is not set, the default defined by MAGAOX_cpusetPath in paths.hpp is used.
-     * This is normally "/opt/MagAOX/cpuset/"
-     */
-
-    std::string m_cpusetPath{ MAGAOX_cpusetPath };
 
     /** \name Threads
      *
@@ -549,6 +589,18 @@ class MagAOXApp : public application
                 bool stateAlert = false          ///< [in] [optional] flag to set the alert state of the FSM property.
     );
 
+    /// Get the value of the state alert flag
+    /**
+     * \returns the current value of m_stateAlert
+     */
+    bool stateAlert();
+
+    /// Get the value of the git alert flag
+    /**
+     * \returns the current value of m_gitAlert
+     */
+    bool gitAlert();
+
     /// Updates and returns the value of m_stateLogged.  Will be 0 on first call after a state change, \>0 afterwards.
     /** This method exists to facilitate logging the reason for a state change once, but not
       * logging it on subsequent event loops.  Returns the current value upon entry, but updates
@@ -567,6 +619,7 @@ class MagAOXApp : public application
       * \returns current value of m_stateLogged, that is the value before it is incremented.
       */
     int stateLogged();
+
 
     ///@} --Application State
 
@@ -597,13 +650,20 @@ class MagAOXApp : public application
     /// Mutex for locking INDI communications.
     std::mutex m_indiMutex;
 
+    /// Mutex for locking INDI callback maps and per-entry callback state.
+    /** Lock ordering policy:
+      * 1) Prefer never holding both m_indiMutex and m_indiCallBackMutex at the same time.
+      * 2) If both are required in future code, always acquire m_indiMutex before m_indiCallBackMutex.
+      */
+    std::mutex m_indiCallBackMutex;
+
   protected:
     /// Structure to hold the call-back details for handling INDI communications.
     struct indiCallBack
     {
         pcf::IndiProperty *property{ 0 };                            ///< A pointer to an INDI property.
         int ( *callBack )( void *, const pcf::IndiProperty & ){ 0 }; /**< The function to call for a new or
-                                   set property.*/
+                                                                          set property.*/
 
         bool m_defReceived{ false }; /**< Flag indicating that a DefProperty has been received
                                           after a GetProperty.*/
@@ -1148,6 +1208,12 @@ class MagAOXApp : public application
      * @{
      */
 
+    /// Get the
+    /**
+     * \returns the value of m_ *
+     */
+    std::string basePath();
+
     /// Get the config name
     /**
      * \returns the current value of m_configName
@@ -1159,6 +1225,42 @@ class MagAOXApp : public application
      * \returns the current value of m_configDir
      */
     std::string configDir();
+
+    /// Get the config base file
+    /** \returns the value of m_confgBase
+     */
+    std::string configBase();
+
+    /// Get the calibration directory
+    /** \returns the value of m_calibDir
+     */
+    std::string calibDir();
+
+    /// Get the system path
+    /** \returns the value of m_sysPath
+     */
+    std::string sysPath();
+
+    /// Get the secrets path
+    /** \returns the value of m_secretsPath
+     */
+    std::string secretsPath();
+
+    /// Get the cpuset path
+    /** \returns the value of m_cpusetPath
+     */
+    std::string cpusetPath();
+
+    /// Get the loop pause time
+    /** \returns the value of m_loopPause
+     */
+    unsigned long loopPause();
+
+    /// Get the value of the shutdown flag.
+    /**
+     * \returns the current value of m_shutdown
+     */
+    int shutdown();
 
     /// Get the INDI input FIFO file name
     /**
@@ -1194,8 +1296,7 @@ MagAOXApp<_useINDI>::MagAOXApp( const std::string &git_sha1, const bool git_modi
 {
     if( m_self != nullptr )
     {
-        std::cerr << "Attempt to instantiate 2nd MagAOXApp.  Exiting immediately.\n";
-        exit( -1 );
+        throw std::logic_error("Attempt to instantiate 2nd MagAOXApp");
     }
 
     m_self = this;
@@ -1239,11 +1340,6 @@ MagAOXApp<_useINDI>::~MagAOXApp() noexcept( true )
     MagAOXApp<_useINDI>::m_self = nullptr;
 }
 
-template <bool _useINDI>
-int MagAOXApp<_useINDI>::shutdown()
-{
-    return m_shutdown;
-}
 
 template <bool _useINDI>
 void MagAOXApp<_useINDI>::setDefaults( int argc,
@@ -1254,42 +1350,53 @@ void MagAOXApp<_useINDI>::setDefaults( int argc,
     tmpstr = mx::sys::getEnv( MAGAOX_env_path );
     if( tmpstr != "" )
     {
-        MagAOXPath = tmpstr;
+        m_basePath = tmpstr;
     }
     else
     {
-        MagAOXPath = MAGAOX_path;
+        m_basePath = MAGAOX_path;
     }
 
-    // Set the config path relative to MagAOXPath
+    // Set the config path relative to m_basePath
     tmpstr = mx::sys::getEnv( MAGAOX_env_config );
     if( tmpstr == "" )
     {
         tmpstr = MAGAOX_configRelPath;
     }
-    m_configDir = MagAOXPath + "/" + tmpstr;
+    m_configDir = m_basePath + "/" + tmpstr;
     m_configPathGlobal = m_configDir + "/magaox.conf";
 
-    // Set the calib path relative to MagAOXPath
+    // Set the calib path relative to m_basePath
     tmpstr = mx::sys::getEnv( MAGAOX_env_calib );
     if( tmpstr == "" )
     {
         tmpstr = MAGAOX_calibRelPath;
     }
-    m_calibDir = MagAOXPath + "/" + tmpstr;
+    m_calibDir = m_basePath + "/" + tmpstr;
 
     // Setup default log path
-    tmpstr = MagAOXPath + "/" + MAGAOX_logRelPath;
-
-    m_log.logPath( tmpstr );
+    tmpstr = mx::sys::getEnv( MAGAOX_env_log );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_logRelPath;
+    }
+    m_log.logPath( m_basePath + "/" + tmpstr );
 
     // Setup default sys path
-    tmpstr = MagAOXPath + "/" + MAGAOX_sysRelPath;
-    sysPath = tmpstr;
+    tmpstr = mx::sys::getEnv( MAGAOX_env_sys );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_sysRelPath;
+    }
+    m_sysPath = m_basePath + "/" + tmpstr;
 
     // Setup default secrets path
-    tmpstr = MagAOXPath + "/" + MAGAOX_secretsRelPath;
-    secretsPath = tmpstr;
+    tmpstr = mx::sys::getEnv( MAGAOX_env_secrets );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_secretsRelPath;
+    }
+    m_secretsPath = m_basePath + "/" + tmpstr;
 
     // Setup default cpuset path
     tmpstr = mx::sys::getEnv( MAGAOX_env_cpuset );
@@ -1363,7 +1470,9 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                 "",
                 false,
                 "bool",
-                "Validate the configuration.  App will exit after loading the configuration, but before entering the event loop. Errors from configuratin processing will be shown. Always safe to run." );
+                "Validate the configuration.  App will exit after loading the configuration, but before "
+                "entering the event loop. Errors from configuration processing will be shown. "
+                "Always safe to run." );
 
     // App stuff
     config.add( "loopPause",
@@ -1377,7 +1486,8 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                 "The main loop pause time in ns" );
 
     config.add(
-        "ignore_git", "", "ignore-git", argType::True, "", "", false, "bool", "set to true to ignore git status to prevent the fsm_alert" );
+        "ignore_git", "", "ignore-git", argType::True, "", "", false, "bool", "set to true to ignore git "
+        "status to prevent the fsm_alert" );
 
     // Logger Stuff
     m_log.setupConfig( config );
@@ -1401,6 +1511,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "Device controlling power for this app's device (INDI name)." );
+
         config.add( "power.channel",
                     "",
                     "power.channel",
@@ -1410,6 +1521,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "Channel on device for this app's device (INDI name)." );
+
         config.add( "power.element",
                     "",
                     "power.element",
@@ -1419,6 +1531,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "INDI power state element name.  Default is \"state\", only need to specify if different." );
+
         config.add( "power.targetElement",
                     "",
                     "power.targetElement",
@@ -1428,6 +1541,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "string",
                     "INDI power target element name.  Default is \"target\", only need to specify if different." );
+
         config.add( "power.powerOnWait",
                     "",
                     "power.powerOnWait",
@@ -1437,6 +1551,7 @@ void MagAOXApp<_useINDI>::setupBasicConfig() // virtual
                     false,
                     "int",
                     "Time after power-on to wait before continuing [sec].  Default is 0 sec, max is 3600 sec." );
+
     }
 }
 
@@ -1477,8 +1592,12 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         {
             log<text_log>( "enabling power management: " + m_powerDevice + "." + m_powerChannel + "." + m_powerElement +
                            "/" + m_powerTargetElement );
+
             if( registerIndiPropertySet(
-                    m_indiP_powerChannel, m_powerDevice, m_powerChannel, INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
+                    m_indiP_powerChannel, 
+                    m_powerDevice, 
+                    m_powerChannel, 
+                    INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
                 0 )
             {
                 log<software_error>( { __FILE__, __LINE__, "failed to register set property" } );
@@ -1494,6 +1613,7 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
         if( m_powerOnWait > 3600 )
         {
             log<text_log>( "powerOnWait longer than 1 hour.  Setting to 0.", logPrio::LOG_ERROR );
+            m_powerOnWait = 0;
         }
     }
 }
@@ -1571,7 +1691,9 @@ int MagAOXApp<_useINDI>::execute() // virtual
 //----------------------------------------//
 //        Check user
 //----------------------------------------//
-#ifndef XWC_DISABLE_USER_CHECK
+    // clang-format off
+    #ifndef XWC_DISABLE_USER_CHECK
+
     struct stat logstat;
 
     if( stat( m_log.logPath().c_str(), &logstat ) < 0 )
@@ -1581,13 +1703,24 @@ int MagAOXApp<_useINDI>::execute() // virtual
         return -1;
     }
 
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_EXEC_WRONG_USER
+    logstat.st_uid = geteuid()+1; // LCOV_EXCL_LINE
+    #endif // clang-format on
+
     if( logstat.st_uid != geteuid() )
     {
         state( stateCodes::FAILURE );
         std::cerr << "\nCRITICAL: You are running this app as the wrong user.\n\n";
         return -1;
     }
-#endif
+
+#endif // clang-format on
+
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_EXEC_NORM
+    int testTimesThrough = 0; // LCOV_EXCL_LINE
+    #endif // clang-format on
 
     //----------------------------------------//
     //        Get the PID Lock
@@ -1608,6 +1741,11 @@ int MagAOXApp<_useINDI>::execute() // virtual
     /* ***************************** */
     m_log.logThreadStart(); // no return type
 
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_EXEC_LOG_START
+    m_log.logShutdown(true); // LCOV_EXCL_LINE
+    #endif // clang-format on
+
     // Give up to 2 secs to make sure log thread has time to get started and try to open a file.
     int w = 0;
     while( m_log.logThreadRunning() == false && w < 20 )
@@ -1624,7 +1762,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
         // We don't log this, because it won't be logged anyway.
         std::cerr << "\nCRITICAL: log thread not running.  Exiting.\n\n";
 
-        m_shutdown = 1; //just in case, though this should not have an effect yet.
+        m_shutdown = 1; // just in case, though this should not have an effect yet.
 
         if( unlockPID() < 0 )
         {
@@ -1645,7 +1783,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
 
             log<software_critical>( { __FILE__, __LINE__, "error from setSigTermHandler()" } );
 
-            m_shutdown = 1; //just in case, though this should not have an effect yet.
+            m_shutdown = 1; // just in case, though this should not have an effect yet.
 
             if( unlockPID() < 0 )
             {
@@ -1669,7 +1807,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
 
             log<software_critical>( { __FILE__, __LINE__, "error from appStartup()" } );
 
-            m_shutdown = 1; //just in case, though this should not have an effect yet.
+            m_shutdown = 1; // just in case, though this should not have an effect yet.
 
             if( unlockPID() < 0 )
             {
@@ -1689,7 +1827,7 @@ int MagAOXApp<_useINDI>::execute() // virtual
 
             log<software_critical>( { __FILE__, __LINE__, "INDI failed to start." } );
 
-            m_shutdown = 1; //have to set so that child event loops know to exit
+            m_shutdown = 1; // have to set so that child event loops know to exit
 
             // Have to call appShutdown since appStartup was called
             if( appShutdown() < 0 )
@@ -1716,15 +1854,23 @@ int MagAOXApp<_useINDI>::execute() // virtual
             if( m_powerState < 0 )
             {
                 if( !stateLogged() )
+                {
                     log<text_log>( "waiting for power state" );
+                }
             }
 
             ++nwaits;
             if( nwaits == 30 )
             {
-                log<text_log>( "stalled waiting for power state", logPrio::LOG_ERROR );
+                log<text_log>( "stalled waiting for power state", logPrio::LOG_CRITICAL );
                 state( stateCodes::ERROR );
+                m_shutdown = 1;
             }
+
+            // clang-format off
+            #ifdef XWCTEST_MAGAOXAPP_EXEC_NORM
+            m_powerState = 0; // LCOV_EXCL_LINE
+            #endif // clang-format on
         }
 
         if( m_powerState > 0 )
@@ -1754,7 +1900,28 @@ int MagAOXApp<_useINDI>::execute() // virtual
      */
     while( m_shutdown == 0 )
     {
-        // First check power state.
+        // clang-format off
+        #ifdef XWCTEST_MAGAOXAPP_EXEC_NORM
+             if(testTimesThrough > 1) // LCOV_EXCL_LINE
+             {                        // LCOV_EXCL_LINE
+                m_shutdown = 1;       // LCOV_EXCL_LINE
+             }                        // LCOV_EXCL_LINE
+        #endif // clang-format on
+
+        // Step 0: check if log thread is still running
+        if( m_log.logThreadRunning() == false )
+        {
+            state( stateCodes::FAILURE );
+
+            // Directly ouput the error b/c all other outputs are via the log thread
+            std::cerr << "\nCRITICAL: log thread not running.  Exiting.\n\n";
+
+            m_shutdown = 1;
+
+            break;
+        }
+
+        // Step 1: check power state.
         if( m_powerMgtEnabled )
         {
             if( state() == stateCodes::POWEROFF )
@@ -1799,6 +1966,11 @@ int MagAOXApp<_useINDI>::execute() // virtual
                 m_shutdown = 1;
                 continue;
             }
+
+            // clang-format off
+            #ifdef XWCTEST_MAGAOXAPP_EXEC_NORM
+                m_powerState = 1; // LCOV_EXCL_LINE
+            #endif // clang-format on
         }
 
         /** \todo Need a heartbeat update here.
@@ -1822,6 +1994,11 @@ int MagAOXApp<_useINDI>::execute() // virtual
         {
             std::this_thread::sleep_for( std::chrono::duration<unsigned long, std::nano>( m_loopPause ) );
         }
+
+        // clang-format off
+        #ifdef XWCTEST_MAGAOXAPP_EXEC_NORM
+             ++testTimesThrough; // LCOV_EXCL_LINE
+        #endif // clang-format on
     }
 
     if( appShutdown() < 0 )
@@ -1842,8 +2019,11 @@ int MagAOXApp<_useINDI>::execute() // virtual
         }
         catch( const std::exception &e )
         {
-            log<software_error>(
-                { __FILE__, __LINE__, std::string( "exception caught from sendDelProperty: " ) + e.what() } );
+            log<software_error>( { __FILE__,
+                                   __LINE__,
+                                   std::string( "exception caught from"
+                                                " sendDelProperty: " ) +
+                                       e.what() } );
         }
 
         m_indiDriver->quitProcess();
@@ -1872,7 +2052,7 @@ template <bool _useINDI>
 template <typename logT, int retval>
 int MagAOXApp<_useINDI>::log( logPrioT level )
 {
-    m_log.template log<logT>( level );
+    m_log.template log<logT>( typename logT::messageT(), level );
     return retval;
 }
 
@@ -1882,7 +2062,7 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
     if( logHeader::logLevel( b ) <= logPrio::LOG_NOTICE )
     {
         logStdFormat( std::cerr, b );
-        std::cerr << "\n";
+        std::cerr << '\n';
     }
 
     if( logHeader::logLevel( b ) < logPrio::LOG_ERROR )
@@ -1902,8 +2082,8 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
 
         // Set the INDI prop timespec to match the log entry
         timespecX ts = logHeader::timespec( b );
-        timeval tv;
-        tv.tv_sec = ts.time_s;
+        timeval   tv;
+        tv.tv_sec  = ts.time_s;
         tv.tv_usec = (long int)( ( (double)ts.time_ns ) / 1e3 );
 
         msg.setTimeStamp( pcf::TimeStamp( tv ) );
@@ -1914,15 +2094,14 @@ void MagAOXApp<_useINDI>::logMessage( bufferPtrT &b )
         }
         catch( const std::exception &e )
         {
-            log<software_error>(
-                { __FILE__, __LINE__, std::string( "exception caught from sendMessage: " ) + e.what() } );
+            log<software_error>( { std::string( "exception caught from sendMessage: " ) + e.what() } );
         }
     }
 }
 
 template <bool _useINDI>
 void MagAOXApp<_useINDI>::configLog( const std::string &name,
-                                     const int &code,
+                                     const int         &code,
                                      const std::string &value,
                                      const std::string &source )
 {
@@ -1932,11 +2111,33 @@ void MagAOXApp<_useINDI>::configLog( const std::string &name,
 template <bool _useINDI>
 int MagAOXApp<_useINDI>::setSigTermHandler()
 {
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_SIGTERMH_ERR
+        return -1;
+    #endif
+
+    #ifdef XWCTEST_MAGAOXAPP_SIGTERMH_SIGTERM
+        #undef SIGTERM
+        #define SIGTERM SIGKILL
+    #endif
+
+    #ifdef XWCTEST_MAGAOXAPP_SIGTERMH_SIGQUIT
+        #undef SIGQUIT
+        #define SIGQUIT SIGKILL
+    #endif
+
+    #ifdef XWCTEST_MAGAOXAPP_SIGTERMH_SIGINT
+        #undef SIGINT
+        #define SIGINT SIGKILL
+    #endif
+
+    // clang-format on
+
     struct sigaction act;
-    sigset_t set;
+    sigset_t         set;
 
     act.sa_sigaction = &MagAOXApp<_useINDI>::_handlerSigTerm;
-    act.sa_flags = SA_SIGINFO;
+    act.sa_flags     = SA_SIGINFO;
     sigemptyset( &set );
     act.sa_mask = set;
 
@@ -1985,9 +2186,9 @@ void MagAOXApp<_useINDI>::_handlerSigTerm( int signum, siginfo_t *siginf, void *
 }
 
 template <bool _useINDI>
-void MagAOXApp<_useINDI>::handlerSigTerm( int signum,
+void MagAOXApp<_useINDI>::handlerSigTerm( int        signum,
                                           siginfo_t *siginf __attribute__( ( unused ) ),
-                                          void *ucont __attribute__( ( unused ) ) )
+                                          void      *ucont __attribute__( ( unused ) ) )
 {
     m_shutdown = 1;
 
@@ -2024,13 +2225,12 @@ int MagAOXApp<_useINDI>::setEuidCalled()
     errno = 0;
     if( sys::th_seteuid( m_euidCalled ) < 0 )
     {
-        std::string logss = "Setting effective user id to euidCalled (";
-        logss += mx::ioutils::convertToString<int>( m_euidCalled );
-        logss += ") failed.  Errno says: ";
-        logss += strerror( errno );
-
-        log<software_error>( { __FILE__, __LINE__, errno, 0, logss } );
-
+        log<software_error>( { errno,
+                               std::format( "Setting effective user id to "
+                                            "euidCalled ({}) failed.  "
+                                            "Errno says: {}",
+                                            m_euidCalled,
+                                            strerror( errno ) ) } );
         return -1;
     }
 
@@ -2043,12 +2243,12 @@ int MagAOXApp<_useINDI>::setEuidReal()
     errno = 0;
     if( sys::th_seteuid( m_euidReal ) < 0 )
     {
-        std::string logss = "Setting effective user id to euidReal (";
-        logss += mx::ioutils::convertToString<int>( m_euidReal );
-        logss += ") failed.  Errno says: ";
-        logss += strerror( errno );
-
-        log<software_error>( { __FILE__, __LINE__, errno, 0, logss } );
+        log<software_error>( { errno,
+                               std::format( "Setting effective user id to "
+                                            "euidReal ({}) failed.  "
+                                            "Errno says: {}",
+                                            m_euidReal,
+                                            strerror( errno ) ) } );
 
         return -1;
     }
@@ -2061,7 +2261,7 @@ int MagAOXApp<_useINDI>::lockPID()
 {
     m_pid = getpid();
 
-    std::string statusDir = sysPath;
+    std::string statusDir = m_sysPath;
 
     // Get the maximum privileges available
     elevatedPrivileges elPriv( this );
@@ -2073,10 +2273,14 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create root of statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__,
+                                                 __LINE__,
+                                                 errno,
+                                                 0,
+                                                 "Failed to create root of statusDir (" + statusDir +
+                                                     ").  "
+                                                     "Errno says: " +
+                                                     strerror( errno ) } );
         }
     }
 
@@ -2092,10 +2296,14 @@ int MagAOXApp<_useINDI>::lockPID()
     {
         if( errno != EEXIST )
         {
-            std::stringstream logss;
-            logss << "Failed to create statusDir (" << statusDir << ").  Errno says: " << strerror( errno );
-            log<software_critical>( { __FILE__, __LINE__, errno, 0, logss.str() } );
-            return -1;
+            return log<software_critical, -1>( { __FILE__,
+                                                 __LINE__,
+                                                 errno,
+                                                 0,
+                                                 "Failed to create statusDir (" + statusDir +
+                                                     ").  "
+                                                     "Errno says: " +
+                                                     strerror( errno ) } );
         }
 
         // If here, then we need to check the pid file.
@@ -2115,19 +2323,20 @@ int MagAOXApp<_useINDI>::lockPID()
             procN << "/proc/" << testPid << "/cmdline";
 
             std::ifstream procIn;
-            std::string pidCmdLine;
+            std::string   pidCmdLine;
 
             try
             {
                 procIn.open( procN.str() );
                 if( procIn.good() )
+                {
                     procIn >> pidCmdLine;
+                }
                 procIn.close();
             }
             catch( ... )
             {
-                log<software_critical>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
-                return -1;
+                log<software_critical, -1>( { __FILE__, __LINE__, 0, 0, "exception caught testing /proc/pid" } );
             }
 
             // If pidCmdLine == "" at this point we just allow the rest of the
@@ -2139,19 +2348,24 @@ int MagAOXApp<_useINDI>::lockPID()
             // If invokedName found, then we check for configName.
             size_t configPos = std::string::npos;
             if( invokedPos != std::string::npos )
+            {
                 configPos = pidCmdLine.find( m_configName );
+            }
+
+            // clang-format off
+            #ifdef XWCTEST_MAGAOXAPP_PID_LOCKED
+            invokedPos = 0; // LCOV_EXCL_LINE
+            configPos = 0; // LCOV_EXCL_LINE
+            #endif
+            // clang-format on
 
             // Check if PID is already locked by this program+config combo:
             if( invokedPos != std::string::npos && configPos != std::string::npos )
             {
                 // This means that this app already exists for this config, and we need to die.
-                std::stringstream logss;
-                logss << "PID already locked (" << testPid << ").  Time to die.";
-                std::cerr << logss.str() << std::endl;
+                std::cerr << "PID already locked (" + std::to_string( testPid ) + ").  Time to die." << std::endl;
 
-                log<text_log>( logss.str(), logPrio::LOG_CRITICAL );
-
-                return -1;
+                return log<text_log, -1>( "PID already locked (" + std::to_string( testPid ) + ").  Time to die." );
             }
         }
         else
@@ -2165,34 +2379,30 @@ int MagAOXApp<_useINDI>::lockPID()
     std::ofstream pidOut;
     pidOut.open( pidFileName );
 
-    if( !pidOut.good() )
-    {
-        log<software_critical>( { __FILE__, __LINE__, errno, 0, "could not open pid file for writing." } );
-        // euidReal();
-        return -1;
-    }
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_PID_WRITE_FAIL
+    pidOut.close(); // LCOV_EXCL_LINE
+    #endif
+    // clang-format on
 
-    pidOut << m_pid;
+    if( !( pidOut << m_pid ) )
+    {
+        return log<software_critical, -1>( { __FILE__, __LINE__, errno, 0, "failed to write to pid file." } );
+    }
 
     pidOut.close();
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") locked.";
-    log<text_log>( logss.str() );
-
-    // Go back to regular privileges
-    /*if( euidReal() < 0 )
-    {
-       log<software_error>({__FILE__, __LINE__, 0, 0, "Seeting euid to real failed."});
-       return -1;
-    }*/
-
-    return 0;
+    return log<text_log, 0>( "PID (" + std::to_string( m_pid ) + ") locked." );
 }
 
 template <bool _useINDI>
 int MagAOXApp<_useINDI>::unlockPID()
 {
+    // clang-format off
+    #ifdef XWCTEST_MAGAOXAPP_PID_UNLOCK_ERR
+        return -1; // LCOV_EXCL_LINE
+    #endif //clang-format on
+
     { // scope for elPriv
 
         // Get the maximum privileges available
@@ -2206,11 +2416,8 @@ int MagAOXApp<_useINDI>::unlockPID()
         }
     }
 
-    std::stringstream logss;
-    logss << "PID (" << m_pid << ") unlocked.";
-    log<text_log>( logss.str() );
+    return log<text_log, 0>( "PID (" + std::to_string(m_pid) + ") unlocked." );
 
-    return 0;
 }
 
 template <bool _useINDI>
@@ -2419,6 +2626,18 @@ void MagAOXApp<_useINDI>::state( const stateCodes::stateCodeT &s, bool stateAler
 }
 
 template <bool _useINDI>
+bool MagAOXApp<_useINDI>::stateAlert()
+{
+    return m_stateAlert;
+}
+
+template <bool _useINDI>
+bool MagAOXApp<_useINDI>::gitAlert()
+{
+    return m_gitAlert;
+}
+
+template <bool _useINDI>
 int MagAOXApp<_useINDI>::stateLogged()
 {
     if( m_stateLogged > 0 )
@@ -2437,22 +2656,36 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::clearFSMAlert()
 {
     if( m_stateAlert == false )
+    {
         return 0;
+    }
+
     m_stateAlert = false;
+
     log<text_log>( "FSM alert cleared", logPrio::LOG_WARNING );
 
     pcf::IndiProperty::PropertyStateType stst = INDI_IDLE;
 
     if( m_state == stateCodes::READY )
+    {
         stst = INDI_OK;
+    }
     else if( m_state == stateCodes::OPERATING || m_state == stateCodes::HOMING || m_state == stateCodes::CONFIGURING )
+    {
         stst = INDI_BUSY;
+    }
     else if( m_state < stateCodes::NODEVICE )
+    {
         stst = INDI_ALERT;
+    }
     else if( m_state <= stateCodes::LOGGEDIN )
+    {
         stst = INDI_IDLE;
+    }
     else if( m_state == stateCodes::NOTHOMED || m_state == stateCodes::SHUTDOWN )
+    {
         stst = INDI_IDLE;
+    }
 
     updateIfChanged( m_indiP_state, "state", stateCodes::codeText( m_state ), stst );
 
@@ -2684,7 +2917,10 @@ int MagAOXApp<_useINDI>::createStandardIndiSelectionSw( pcf::IndiProperty &prop,
     for( size_t n = 0; n < elements.size(); ++n )
     {
         pcf::IndiElement elem = pcf::IndiElement( elements[n], pcf::IndiElement::Off );
-        elem.setLabel( elementLabels[n] );
+        if(elementLabels[n] != "")
+        {
+            elem.setLabel( elementLabels[n] );
+        }
         prop.add( elem );
     }
 
@@ -2716,18 +2952,22 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::registerIndiPropertyReadOnly( pcf::IndiProperty &prop )
 {
     if( !m_useINDI )
+    {
         return 0;
-
-    callBackInsertResult result =
-        m_indiNewCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &prop, nullptr } ) );
+    }
 
     try
     {
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+        callBackInsertResult result = m_indiNewCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &prop, nullptr } ) );
+
         if( !result.second )
         {
             return log<software_error, -1>(
                 { __FILE__, __LINE__, "failed to insert INDI property: " + prop.createUniqueKey() } );
         }
+
+        return 0;
     }
     catch( std::exception &e )
     {
@@ -2738,7 +2978,6 @@ int MagAOXApp<_useINDI>::registerIndiPropertyReadOnly( pcf::IndiProperty &prop )
         return log<software_error, -1>( { __FILE__, __LINE__, "Unknown exception caught." } );
     }
 
-    return 0;
 }
 
 template <bool _useINDI>
@@ -2749,23 +2988,28 @@ int MagAOXApp<_useINDI>::registerIndiPropertyReadOnly( pcf::IndiProperty &prop,
                                                        const pcf::IndiProperty::PropertyStateType &propState )
 {
     if( !m_useINDI )
+    {
         return 0;
-
-    prop = pcf::IndiProperty( propType );
-    prop.setDevice( m_configName );
-    prop.setName( propName );
-    prop.setPerm( propPerm );
-    prop.setState( propState );
-
-    callBackInsertResult result = m_indiNewCallBacks.insert( callBackValueType( propName, { &prop, nullptr } ) );
+    }
 
     try
     {
+        prop = pcf::IndiProperty( propType );
+        prop.setDevice( m_configName );
+        prop.setName( propName );
+        prop.setPerm( propPerm );
+        prop.setState( propState );
+
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+        callBackInsertResult result = m_indiNewCallBacks.insert( callBackValueType( propName, { &prop, nullptr } ) );
+
         if( !result.second )
         {
             return log<software_error, -1>(
                 { __FILE__, __LINE__, "failed to insert INDI property: " + prop.createUniqueKey() } );
         }
+
+        return 0;
     }
     catch( std::exception &e )
     {
@@ -2775,7 +3019,7 @@ int MagAOXApp<_useINDI>::registerIndiPropertyReadOnly( pcf::IndiProperty &prop,
     {
         return log<software_error, -1>( { __FILE__, __LINE__, "Unknown exception caught." } );
     }
-    return 0;
+
 }
 
 template <bool _useINDI>
@@ -2787,6 +3031,7 @@ int MagAOXApp<_useINDI>::registerIndiPropertyNew( pcf::IndiProperty &prop,
 
     try
     {
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
         callBackInsertResult result =
             m_indiNewCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &prop, callBack } ) );
 
@@ -2795,6 +3040,8 @@ int MagAOXApp<_useINDI>::registerIndiPropertyNew( pcf::IndiProperty &prop,
             return log<software_error, -1>(
                 { __FILE__, __LINE__, "failed to insert INDI property: " + prop.createUniqueKey() } );
         }
+
+        return 0;
     }
     catch( std::exception &e )
     {
@@ -2805,7 +3052,6 @@ int MagAOXApp<_useINDI>::registerIndiPropertyNew( pcf::IndiProperty &prop,
         return log<software_error, -1>( { __FILE__, __LINE__, "Unknown exception caught." } );
     }
 
-    return 0;
 }
 
 template <bool _useINDI>
@@ -2856,21 +3102,23 @@ int MagAOXApp<_useINDI>::registerIndiPropertySet( pcf::IndiProperty &prop,
                                                   int ( *callBack )( void *, const pcf::IndiProperty &ipRecv ) )
 {
     if( !m_useINDI )
+    {
         return 0;
-
-    prop = pcf::IndiProperty();
-    prop.setDevice( devName );
-    prop.setName( propName );
-
-    callBackInsertResult result =
-        m_indiSetCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &prop, callBack } ) );
+    }
 
     try
     {
+        prop = pcf::IndiProperty();
+        prop.setDevice( devName );
+        prop.setName( propName );
+
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+        callBackInsertResult result = m_indiSetCallBacks.insert( callBackValueType( prop.createUniqueKey(), { &prop, callBack } ) );
+
         if( !result.second )
         {
             return log<software_error, -1>(
-                { __FILE__, __LINE__, "failed to insert INDI property: " + prop.createUniqueKey() } );
+                { __FILE__, __LINE__, "failed to insert INDI property: " + prop.createUniqueKey() + ". Possible duplicate." } );
         }
     }
     catch( std::exception &e )
@@ -2889,10 +3137,12 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::createINDIFIFOS()
 {
     if( !m_useINDI )
+    {
         return 0;
+    }
 
     ///\todo make driver FIFO path full configurable.
-    std::string driverFIFOPath = MAGAOX_path;
+    std::string driverFIFOPath = m_basePath;
     driverFIFOPath += "/";
     driverFIFOPath += MAGAOX_driverFIFORelPath;
 
@@ -3009,41 +3259,67 @@ int MagAOXApp<_useINDI>::startINDI()
 template <bool _useINDI>
 void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
 {
-    // Unless forced by all, we only do anything if allDefs are not received yet
-    if( !all && m_allDefsReceived )
-        return;
-
-    callBackIterator it = m_indiSetCallBacks.begin();
-
+    std::vector<pcf::IndiProperty *> propsToGet;
     int nowFalse = 0;
-    while( it != m_indiSetCallBacks.end() )
-    {
-        if( all || it->second.m_defReceived == false )
-        {
-            if( it->second.property )
-            {
-                try
-                {
-                    m_indiDriver->sendGetProperties( *( it->second.property ) );
-                }
-                catch( const std::exception &e )
-                {
-                    log<software_error>( { __FILE__,
-                                           __LINE__,
-                                           "exception caught from sendGetProperties for " +
-                                               it->second.property->getName() + ": " + e.what() } );
-                }
-            }
 
-            it->second.m_defReceived = false;
-            ++nowFalse;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+
+        // Unless forced by all, we only do anything if allDefs are not received yet
+        if( !all && m_allDefsReceived )
+        {
+            return;
         }
-        ++it;
+
+        callBackIterator it = m_indiSetCallBacks.begin();
+
+        while( it != m_indiSetCallBacks.end() )
+        {
+            if( all || it->second.m_defReceived == false )
+            {
+                if( it->second.property )
+                {
+                    if(it->first != it->second.property->createUniqueKey())
+                    {
+                         std::cerr << it->first << " bad device\n";
+                         it->second.m_defReceived = true;
+                         ++it;
+                        continue;
+                    }
+
+                    propsToGet.push_back( it->second.property );
+                }
+
+                it->second.m_defReceived = false;
+                ++nowFalse;
+            }
+            ++it;
+        }
+
+        if( nowFalse != 0 )
+        {
+            m_allDefsReceived = false;
+        }
+
+        if( nowFalse == 0 )
+        {
+            m_allDefsReceived = true;
+        }
+    } //mutex scope
+
+    for( auto * prop : propsToGet )
+    {
+        try
+        {
+            m_indiDriver->sendGetProperties( *prop );
+        }
+        catch( const std::exception &e )
+        {
+            log<software_error>( { __FILE__,
+                                   __LINE__,
+                                   "exception caught from sendGetProperties for " + prop->getName() + ": " + e.what() } );
+        }
     }
-    if( nowFalse != 0 )
-        m_allDefsReceived = false;
-    if( nowFalse == 0 )
-        m_allDefsReceived = true;
 }
 
 template <bool _useINDI>
@@ -3056,9 +3332,14 @@ template <bool _useINDI>
 void MagAOXApp<_useINDI>::handleGetProperties( const pcf::IndiProperty &ipRecv )
 {
     if( !m_useINDI )
+    {
         return;
+    }
+
     if( m_indiDriver == nullptr )
+    {
         return;
+    }
 
     // Ignore if not our device
     if( ipRecv.hasValidDevice() && ipRecv.getDevice() != m_indiDriver->getName() )
@@ -3069,25 +3350,34 @@ void MagAOXApp<_useINDI>::handleGetProperties( const pcf::IndiProperty &ipRecv )
     // Send all properties if requested.
     if( !ipRecv.hasValidName() )
     {
-        callBackIterator it = m_indiNewCallBacks.begin();
+        std::vector<pcf::IndiProperty *> propsToSend;
 
-        while( it != m_indiNewCallBacks.end() )
-        {
-            if( it->second.property )
+        { //mutex scope
+            std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+            callBackIterator             it = m_indiNewCallBacks.begin();
+
+            while( it != m_indiNewCallBacks.end() )
             {
-                try
+                if( it->second.property )
                 {
-                    m_indiDriver->sendDefProperty( *( it->second.property ) );
+                    propsToSend.push_back( it->second.property );
                 }
-                catch( const std::exception &e )
-                {
-                    log<software_error>( { __FILE__,
-                                           __LINE__,
-                                           "exception caught from sendDefProperty for " +
-                                               it->second.property->getName() + ": " + e.what() } );
-                }
+                ++it;
             }
-            ++it;
+        } //mutex scope
+
+        for( auto * prop : propsToSend )
+        {
+            try
+            {
+                m_indiDriver->sendDefProperty( *prop );
+            }
+            catch( const std::exception &e )
+            {
+                log<software_error>( { __FILE__,
+                                       __LINE__,
+                                       "exception caught from sendDefProperty for " + prop->getName() + ": " + e.what() } );
+            }
         }
 
         // This is a possible INDI server restart, so we re-register for all notifications.
@@ -3096,26 +3386,30 @@ void MagAOXApp<_useINDI>::handleGetProperties( const pcf::IndiProperty &ipRecv )
         return;
     }
 
-    // Check if we actually have this.
-    if( m_indiNewCallBacks.count( ipRecv.createUniqueKey() ) == 0 )
+    pcf::IndiProperty * prop = nullptr;
     {
-        return;
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+        auto                        it = m_indiNewCallBacks.find( ipRecv.createUniqueKey() );
+        if( it == m_indiNewCallBacks.end() )
+        {
+            return;
+        }
+
+        prop = it->second.property;
     }
 
     // Otherwise send just the requested property, if property is not null
-    if( m_indiNewCallBacks[ipRecv.createUniqueKey()].property )
+    if( prop )
     {
         try
         {
-            m_indiDriver->sendDefProperty( *( m_indiNewCallBacks[ipRecv.createUniqueKey()].property ) );
+            m_indiDriver->sendDefProperty( *prop );
         }
         catch( const std::exception &e )
         {
             log<software_error>( { __FILE__,
                                    __LINE__,
-                                   "exception caught from sendDefProperty for " +
-                                       m_indiNewCallBacks[ipRecv.createUniqueKey()].property->getName() + ": " +
-                                       e.what() } );
+                                   "exception caught from sendDefProperty for " + prop->getName() + ": " + e.what() } );
         }
     }
     return;
@@ -3129,17 +3423,24 @@ void MagAOXApp<_useINDI>::handleNewProperty( const pcf::IndiProperty &ipRecv )
     if( m_indiDriver == nullptr )
         return;
 
-    // Check if this is a valid name for us.
-    if( m_indiNewCallBacks.count( ipRecv.createUniqueKey() ) == 0 )
+    int ( *callBack )( void *, const pcf::IndiProperty & ) = nullptr;
     {
-        log<software_debug>( { __FILE__, __LINE__, "invalid NewProperty request for " + ipRecv.createUniqueKey() } );
-        return;
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+        auto                        it = m_indiNewCallBacks.find( ipRecv.createUniqueKey() );
+        if( it == m_indiNewCallBacks.end() )
+        {
+            log<software_debug>( { __FILE__, __LINE__, "invalid NewProperty request for " + ipRecv.createUniqueKey() } );
+            return;
+        }
+
+        callBack = it->second.callBack;
     }
 
-    int ( *callBack )( void *, const pcf::IndiProperty & ) = m_indiNewCallBacks[ipRecv.createUniqueKey()].callBack;
-
     if( callBack )
+    {
         callBack( this, ipRecv );
+        return;
+    }
 
     log<software_debug>( { __FILE__, __LINE__, "NewProperty callback null for " + ipRecv.createUniqueKey() } );
 
@@ -3150,27 +3451,39 @@ template <bool _useINDI>
 void MagAOXApp<_useINDI>::handleSetProperty( const pcf::IndiProperty &ipRecv )
 {
     if( !m_useINDI )
+    {
         return;
+    }
+
     if( m_indiDriver == nullptr )
+    {
         return;
+    }
 
     std::string key = ipRecv.createUniqueKey();
+    int ( *callBack )( void *, const pcf::IndiProperty & ) = nullptr;
 
-    // Check if this is valid
-    if( m_indiSetCallBacks.count( key ) > 0 )
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
+
+        // Check if this is valid
+        auto it = m_indiSetCallBacks.find( key );
+        if( it != m_indiSetCallBacks.end() )
+        {
+            it->second.m_defReceived = true; // record that we got this Def/Set
+            callBack                 = it->second.callBack;
+
+            ///\todo log an error here because callBack should not be null
+        }
+        else
+        {
+            ///\todo log invalid SetProperty request.
+        }
+    } //mutex scope
+
+    if( callBack )
     {
-        m_indiSetCallBacks[key].m_defReceived = true; // record that we got this Def/Set
-
-        // And call the callback
-        int ( *callBack )( void *, const pcf::IndiProperty & ) = m_indiSetCallBacks[key].callBack;
-        if( callBack )
-            callBack( this, ipRecv );
-
-        ///\todo log an error here because callBack should not be null
-    }
-    else
-    {
-        ///\todo log invalid SetProperty request.
+        callBack( this, ipRecv );
     }
 
     return;
@@ -3184,10 +3497,14 @@ void MagAOXApp<_useINDI>::updateIfChanged( pcf::IndiProperty &p,
                                            pcf::IndiProperty::PropertyStateType ipState )
 {
     if( !_useINDI )
+    {
         return;
+    }
 
     if( !m_indiDriver )
+    {
         return;
+    }
 
     indi::updateIfChanged( p, el, newVal, m_indiDriver, ipState );
 }
@@ -3324,32 +3641,14 @@ int MagAOXApp<_useINDI>::indiTargetUpdate( pcf::IndiProperty &localProperty,
     return 0;
 }
 
-/// \todo move propType to an INDI utils file, and document.
-
-template <typename T>
-pcf::IndiProperty::Type propType()
-{
-    return pcf::IndiProperty::Unknown;
-}
-
-template <>
-pcf::IndiProperty::Type propType<char *>();
-
-template <>
-pcf::IndiProperty::Type propType<std::string>();
-
-template <>
-pcf::IndiProperty::Type propType<int>();
-
-template <>
-pcf::IndiProperty::Type propType<double>();
-
 template <bool _useINDI>
 template <typename T>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend, const std::string &el, const T &newVal )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3383,7 +3682,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::sendNewProperty( const pcf::IndiProperty &ipSend )
 {
     if( !_useINDI )
+    {
         return 0;
+    }
 
     if( !m_indiDriver )
     {
@@ -3450,15 +3751,15 @@ int MagAOXApp<_useINDI>::newCallBack_clearFSMAlert( const pcf::IndiProperty &ipR
         return log<software_error, -1>( { __FILE__, __LINE__, "wrong indi property received" } );
     }
 
-    if( !ipRecv.find( "request" ) )
-        return 0;
-
-    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    if( ipRecv.find( "request" ) )
     {
-        clearFSMAlert();
-        updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
-    }
+        if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+        {
+            clearFSMAlert();
+            updateSwitchIfChanged( m_indiP_clearFSMAlert, "request", pcf::IndiElement::Off, INDI_IDLE );
+        }
 
+    }
     return 0;
 }
 
@@ -3497,7 +3798,9 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerState()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerState;
 }
@@ -3506,14 +3809,15 @@ template <bool _useINDI>
 int MagAOXApp<_useINDI>::powerStateTarget()
 {
     if( !m_powerMgtEnabled )
+    {
         return 1;
+    }
 
     return m_powerTargetState;
 }
 
 template <bool _useINDI>
-INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
-( const pcf::IndiProperty &ipRecv )
+INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )( const pcf::IndiProperty &ipRecv )
 {
     std::string ps;
 
@@ -3557,6 +3861,12 @@ INDI_SETCALLBACK_DEFN( MagAOXApp<_useINDI>, m_indiP_powerChannel )
 }
 
 template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::basePath()
+{
+    return m_basePath;
+}
+
+template <bool _useINDI>
 std::string MagAOXApp<_useINDI>::configName()
 {
     return m_configName;
@@ -3566,6 +3876,48 @@ template <bool _useINDI>
 std::string MagAOXApp<_useINDI>::configDir()
 {
     return m_configDir;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::configBase()
+{
+    return m_configBase;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::calibDir()
+{
+    return m_calibDir;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::sysPath()
+{
+    return m_sysPath;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::secretsPath()
+{
+    return m_secretsPath;
+}
+
+template <bool _useINDI>
+std::string MagAOXApp<_useINDI>::cpusetPath()
+{
+    return m_cpusetPath;
+}
+
+template <bool _useINDI>
+unsigned long MagAOXApp<_useINDI>::loopPause()
+{
+    return m_loopPause;
+}
+
+template <bool _useINDI>
+int MagAOXApp<_useINDI>::shutdown()
+{
+    return m_shutdown;
 }
 
 template <bool _useINDI>
@@ -3585,6 +3937,11 @@ std::string MagAOXApp<_useINDI>::driverCtrlName()
 {
     return m_driverCtrlName;
 }
+
+#ifdef XWCTEST_NAMESPACE
+} //namespace XWCTEST_NAMESPACE
+#endif
+
 
 extern template class MagAOXApp<true>;
 extern template class MagAOXApp<false>;

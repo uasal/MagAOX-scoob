@@ -3,7 +3,7 @@
   * \author Jared R. Males (jaredmales@gmail.com)
   *
   * \ingroup logger_types_files
-  * 
+  *
   * History:
   * - 2018-09-06 created by JRM
   */
@@ -38,7 +38,7 @@ struct telem_stdcam : public flatbuffer_log
       ///Construct from components
       messageT( const std::string & mode,            ///<[in]
                 const float & xcen,                  ///<[in]
-                const float & ycen,                  ///<[in] 
+                const float & ycen,                  ///<[in]
                 const int & width,                   ///<[in]
                 const int & height,                  ///<[in]
                 const int & xbin,                    ///<[in]
@@ -57,9 +57,10 @@ struct telem_stdcam : public flatbuffer_log
                 const uint8_t & synchro,             ///<[in]
                 const float & vshift,                ///<[in]
                 const uint8_t & cropMode,            ///<[in]
-                const float & blacklevel             ///<[in]
+                const float & blacklevel,            ///<[in]
+                const std::string & readout_speed     ///<[in]
               )
-      {         
+      {
          auto _mode = builder.CreateString(mode);
          auto _roi = CreateROI(builder,xcen, ycen, width, height, xbin, ybin);
          
@@ -68,49 +69,15 @@ struct telem_stdcam : public flatbuffer_log
          
          auto _shutterStatusStr = builder.CreateString(shutterStatusSr);
          auto _shutter = CreateShutter(builder, _shutterStatusStr, shutterState);
-                  
-         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, vshift, cropMode, blacklevel);
-         builder.Finish(fp);
-      }
 
-      ///Construct from components, without vShift and cropMode for backwards compat.
-      messageT( const std::string & mode,            ///<[in]
-                const float & xcen,                  ///<[in]
-                const float & ycen,                  ///<[in] 
-                const int & width,                   ///<[in]
-                const int & height,                  ///<[in]
-                const int & xbin,                    ///<[in]
-                const int & ybin,                    ///<[in]
-                const float & exptime,               ///<[in]
-                const float & fps,                   ///<[in]
-                const float & emGain,                ///<[in]
-                const float & adcSpeed,              ///<[in]
-                const float & temp,                  ///<[in]
-                const float & setpt,                 ///<[in]
-                const uint8_t & status,              ///<[in]
-                const uint8_t & ontarget,            ///<[in]
-                const std::string & statusStr,       ///<[in]
-                const std::string & shutterStatusSr, ///<[in]
-                const int8_t & shutterState,         ///<[in]
-                const uint8_t & synchro,             ///<[in]
-                const float & blacklevel             ///<[in]
-              )
-      {         
-         auto _mode = builder.CreateString(mode);
-         auto _roi = CreateROI(builder,xcen, ycen, width, height, xbin, ybin);
-         
-         auto _statusStr = builder.CreateString(statusStr);
-         auto _tempCtrl = CreateTempCtrl(builder, temp, setpt, status, ontarget, _statusStr);
-         
-         auto _shutterStatusStr = builder.CreateString(shutterStatusSr);
-         auto _shutter = CreateShutter(builder, _shutterStatusStr, shutterState);
-                  
-         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, 0, -1, blacklevel);
+         auto _readoutSpeed = builder.CreateString(readout_speed);
+
+         auto fp = CreateTelem_stdcam_fb(builder, _mode, _roi, exptime, fps, emGain, adcSpeed, _tempCtrl, _shutter, synchro, vshift, cropMode, blacklevel, _readoutSpeed);
          builder.Finish(fp);
       }
 
    };
-                 
+
    static bool verify( flatlogs::bufferPtrT & logBuff,  ///< [in] Buffer containing the flatbuffer serialized message.
                        flatlogs::msgLenT len            ///< [in] length of msgBuffer.
                      )
@@ -129,14 +96,14 @@ struct telem_stdcam : public flatbuffer_log
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
 
       std::string msg = "[stdcam] ";
-      
+
       if(fbs->mode() != nullptr)
       {
          msg+= "mode: ";
          msg += fbs->mode()->c_str();
          msg += " ";
       }
-      
+
       if(fbs->roi() != nullptr)
       {
          msg += "ROI-x: ";
@@ -153,7 +120,7 @@ struct telem_stdcam : public flatbuffer_log
          msg += std::to_string(fbs->roi()->ybin());
          msg += " ";
       }
-      
+
       msg += "expt: ";
       msg += std::to_string(fbs->exptime());
       msg += " fps: ";
@@ -162,9 +129,9 @@ struct telem_stdcam : public flatbuffer_log
       msg += std::to_string(fbs->emGain());
       msg += " adc: ";
       msg += std::to_string(fbs->adcSpeed());
-      
+
       if(fbs->tempCtrl() != nullptr)
-      { 
+      {
          msg += " temp: ";
          msg += std::to_string(fbs->tempCtrl()->temp());
          msg += " setpt: ";
@@ -173,14 +140,14 @@ struct telem_stdcam : public flatbuffer_log
          msg += std::to_string(fbs->tempCtrl()->status());
          msg += " tempctr-ontgt: ";
          msg += std::to_string(fbs->tempCtrl()->ontarget());
-         
+
          if(fbs->tempCtrl()->statusStr())
          {
             msg += " tempctr-statstr: ";
             msg += fbs->tempCtrl()->statusStr()->c_str();
          }
       }
-         
+
       if(fbs->shutter() != nullptr)
       {
          if(fbs->shutter()->statusStr())
@@ -219,8 +186,17 @@ struct telem_stdcam : public flatbuffer_log
       msg += " bklv: ";
       msg += std::to_string(fbs->blacklevel());
 
+      if(fbs->readout_speed() != nullptr)
+      {
+         if(fbs->readout_speed()->size() > 0)
+         {
+            msg += " rospd: ";
+            msg += fbs->readout_speed()->c_str();
+         }
+      }
+
       return msg;
-   
+
    }
 
    static std::string mode( void * msgBuffer )
@@ -280,7 +256,7 @@ struct telem_stdcam : public flatbuffer_log
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
       return fbs->exptime();
    }
-   
+
    static float fps( void * msgBuffer )
    {
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
@@ -298,7 +274,7 @@ struct telem_stdcam : public flatbuffer_log
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
       return fbs->adcSpeed();
    }
-   
+
    static float temp( void * msgBuffer )
    {
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
@@ -331,7 +307,7 @@ struct telem_stdcam : public flatbuffer_log
    {
       auto fbs = GetTelem_stdcam_fb(msgBuffer);
       if(fbs->tempCtrl() != nullptr)
-      { 
+      {
          if(fbs->tempCtrl()->statusStr()) return fbs->tempCtrl()->statusStr()->c_str();
          else return "";
       }
@@ -389,11 +365,21 @@ struct telem_stdcam : public flatbuffer_log
       return fbs->blacklevel();
    }
 
+   static std::string readout_speed( void * msgBuffer )
+   {
+      auto fbs = GetTelem_stdcam_fb(msgBuffer);
+      if(fbs->readout_speed() != nullptr)
+      {
+         return std::string(fbs->readout_speed()->c_str());
+      }
+      else return "";
+   }
+
    /// Get the logMetaDetail for a member by name
    /**
-     * \returns the function pointer cast to void*
-     * \returns -1 for an unknown member
-     */ 
+     * \returns the a logMetaDetail filled in with the appropriate details
+     * \returns an empty logMetaDetail if member not recognized
+     */
    static logMetaDetail getAccessor( const std::string & member /**< [in] the name of the member */ )
    {
       if(member == "mode") return logMetaDetail({"MODE", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&mode)});
@@ -415,16 +401,17 @@ struct telem_stdcam : public flatbuffer_log
       else if(member == "shutterStatusStr") return logMetaDetail({"SHUTTER STATUS", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&shutterStatusStr)});
       else if(member == "shutterState") return logMetaDetail({"SHUTTER", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&shutterState)});
       else if(member == "synchro") return logMetaDetail({"SYNCHRO", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&synchro)});
-      else if(member == "vshift") return logMetaDetail({"VSHIFTSPD", logMeta::valTypes::Float, logMeta::metaTypes::State, reinterpret_cast<void*>(&vshift)});
-      else if(member == "cropMode") return logMetaDetail({"CROPMODE", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&cropMode)});
       else if(member == "blacklevel") return logMetaDetail({"BLACKLEVEL", logMeta::valTypes::Float, logMeta::metaTypes::State, reinterpret_cast<void*>(&blacklevel)});
+      else if(member == "vshift") return logMetaDetail({"VERT SHIFT SPEED", logMeta::valTypes::Float, logMeta::metaTypes::State, reinterpret_cast<void*>(&vshift)});
+      else if(member == "cropMode") return logMetaDetail({"CROP MODE", logMeta::valTypes::Bool, logMeta::metaTypes::State, reinterpret_cast<void*>(&cropMode)});
+      else if(member == "readout_speed") return logMetaDetail({"READOUT SPEED", logMeta::valTypes::String, logMeta::metaTypes::State, reinterpret_cast<void*>(&readout_speed)});
       else
       {
-         std::cerr << "No string member " << member << " in telem_stdcam\n";
+         std::cerr << "No member " << member << " in telem_stdcam\n";
          return logMetaDetail();
       }
    }
-      
+
 }; //telem_stdcam
 
 

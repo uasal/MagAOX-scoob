@@ -6,19 +6,20 @@
 #define pixaccess_h
 
 #include "ImageStruct.hpp"
+#include <iostream>
 
 ///Function to cast the data type to float.
 /** Accesses the imdata pointer at linear position idx, and then casts the result to float.
   *
   * \returns the value of the image at linear position idx cast to float
-  * 
+  *
   * \tparam dataT the type of the image data.
-  */ 
+  */
 template<typename returnT, typename dataT>
-returnT getPix( void *imdata, ///< [in] Pointer to the image data 
+returnT getPix( void *imdata, ///< [in] Pointer to the image data
                 size_t idx    ///< [in] Linear position of the pixel in the imdata
               )
-{ 
+{
    return (returnT) ((dataT*) imdata)[idx];
 }
 
@@ -30,7 +31,7 @@ returnT (*getPixPointer())(void*, size_t)
 }
 
 template<typename returnT>
-returnT (*getPixPointer(int imageStructDataT))(void*, size_t) 
+returnT (*getPixPointer(int imageStructDataT))(void*, size_t)
 {
    switch(imageStructDataT)
    {

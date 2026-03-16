@@ -239,7 +239,8 @@ int loadCameraConfig( cameraConfigMap &ccmap, ///< [out] the map in which to pla
  *             static constexpr bool c_stdCamera_usesROI = true; //or: false
  *         \endcode
  *
- *       - The default values of m_currentROI should be set before calling stdCamera::appStartup().
+ *       - The default values of m_full_x/y/w/h must be set before calling stdCamera::appStartup(). These
+ *         are configured by stdCamera::loadConfig(), but only if set in the config file.
  *
  *       - The derived class must implement:
  *         \code
@@ -1171,6 +1172,7 @@ int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     false,
                     "float",
                     "The default ROI x position." );
+
         config.add( "camera.default_y",
                     "",
                     "camera.default_y",
@@ -1180,6 +1182,7 @@ int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     false,
                     "float",
                     "The default ROI y position." );
+
         config.add( "camera.default_w",
                     "",
                     "camera.default_w",
@@ -1189,6 +1192,7 @@ int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     false,
                     "int",
                     "The default ROI width." );
+
         config.add( "camera.default_h",
                     "",
                     "camera.default_h",
@@ -1198,6 +1202,7 @@ int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     false,
                     "int",
                     "The default ROI height." );
+
         config.add( "camera.default_bin_x",
                     "",
                     "camera.default_bin_x",
@@ -1207,6 +1212,7 @@ int stdCamera<derivedT>::setupConfig( mx::app::appConfigurator &config )
                     false,
                     "int",
                     "The default ROI x binning." );
+
         config.add( "camera.default_bin_y",
                     "",
                     "camera.default_bin_y",
@@ -1261,12 +1267,83 @@ int stdCamera<derivedT>::loadConfig( mx::app::appConfigurator &config )
 
     if( derivedT::c_stdCamera_usesROI )
     {
+        config( m_full_x, "camera.full_x" );
+        config( m_full_y, "camera.full_y" );
+        config( m_full_w, "camera.full_w" );
+        config( m_full_h, "camera.full_h" );
+        config( m_full_bin_x, "camera.full_bin_x" );
+        config( m_full_bin_y, "camera.full_bin_y" );
+
+        if( m_full_x == 0 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI x (camera.full_x) not set" } );
+        }
+
+        if( m_full_y == 0 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI y (camera.full_y) not set" } );
+        }
+
+        if( m_full_w == 0 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI w (camera.full_w) not set" } );
+        }
+
+        if( m_full_h == 0 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI h (camera.full_h) not set" } );
+        }
+
+        if( m_full_bin_x < 1 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI bin-x (camera.full_bin_x) not set" } );
+        }
+
+        if( m_full_bin_y < 1 )
+        {
+            return derivedT::template log<software_critical, -1>(
+                { __FILE__, __LINE__, "full ROI bin-y (camera.full_bin_y) not set" } );
+        }
+
         config( m_default_x, "camera.default_x" );
         config( m_default_y, "camera.default_y" );
         config( m_default_w, "camera.default_w" );
         config( m_default_h, "camera.default_h" );
         config( m_default_bin_x, "camera.default_bin_x" );
         config( m_default_bin_y, "camera.default_bin_y" );
+
+        // If default is not setup properly, it defaults to full
+        if( m_default_x == 0 || m_default_y == 0 || m_default_w == 0 || m_default_h == 0 || m_default_bin_x < 1 ||
+            m_default_bin_y < 1 )
+        {
+            m_default_x     = m_full_x;
+            m_default_y     = m_full_y;
+            m_default_w     = m_full_w;
+            m_default_h     = m_full_h;
+            m_default_bin_x = m_default_bin_x;
+            m_default_bin_y = m_default_bin_y;
+        }
+
+        // now always start with current and next set to default
+
+        m_currentROI.x     = m_default_x;
+        m_currentROI.y     = m_default_y;
+        m_currentROI.w     = m_default_w;
+        m_currentROI.h     = m_default_h;
+        m_currentROI.bin_x = m_default_bin_x;
+        m_currentROI.bin_y = m_default_bin_y;
+
+        m_nextROI.x     = m_default_x;
+        m_nextROI.y     = m_default_y;
+        m_nextROI.w     = m_default_w;
+        m_nextROI.h     = m_default_h;
+        m_nextROI.bin_x = m_default_bin_x;
+        m_nextROI.bin_y = m_default_bin_y;
     }
 
     return 0;
@@ -1722,6 +1799,20 @@ int stdCamera<derivedT>::appLogic()
             {
                 derived().state( stateCodes::NOTCONNECTED );
 
+                m_currentROI.x     = m_default_x;
+                m_currentROI.y     = m_default_y;
+                m_currentROI.w     = m_default_w;
+                m_currentROI.h     = m_default_h;
+                m_currentROI.bin_x = m_default_bin_x;
+                m_currentROI.bin_y = m_default_bin_y;
+
+                m_nextROI.x     = m_default_x;
+                m_nextROI.y     = m_default_y;
+                m_nextROI.w     = m_default_w;
+                m_nextROI.h     = m_default_h;
+                m_nextROI.bin_x = m_default_bin_x;
+                m_nextROI.bin_y = m_default_bin_y;
+
                 // Set power-on defaults
                 derived().powerOnDefaults();
 
@@ -1831,7 +1922,9 @@ template <class derivedT>
 int stdCamera<derivedT>::onPowerOff()
 {
     if( !derived().m_indiDriver )
+    {
         return 0;
+    }
 
     if( derivedT::c_stdCamera_usesModes )
     {
@@ -1843,6 +1936,7 @@ int stdCamera<derivedT>::onPowerOff()
 
     if( derivedT::c_stdCamera_usesROI )
     {
+        // Blank these values
         indi::updateIfChanged( m_indiP_roi_x, "current", std::string( "" ), derived().m_indiDriver, INDI_IDLE );
         indi::updateIfChanged( m_indiP_roi_x, "target", std::string( "" ), derived().m_indiDriver, INDI_IDLE );
 
@@ -1860,6 +1954,21 @@ int stdCamera<derivedT>::onPowerOff()
 
         indi::updateIfChanged( m_indiP_roi_bin_y, "current", std::string( "" ), derived().m_indiDriver, INDI_IDLE );
         indi::updateIfChanged( m_indiP_roi_bin_y, "target", std::string( "" ), derived().m_indiDriver, INDI_IDLE );
+
+        // But we also set these to their defaults so that when we power up it's all good
+        m_currentROI.x     = m_default_x;
+        m_currentROI.y     = m_default_y;
+        m_currentROI.w     = m_default_w;
+        m_currentROI.h     = m_default_h;
+        m_currentROI.bin_x = m_default_bin_x;
+        m_currentROI.bin_y = m_default_bin_y;
+
+        m_nextROI.x     = m_default_x;
+        m_nextROI.y     = m_default_y;
+        m_nextROI.w     = m_default_w;
+        m_nextROI.h     = m_default_h;
+        m_nextROI.bin_x = m_default_bin_x;
+        m_nextROI.bin_y = m_default_bin_y;
     }
 
     // Shutters can be independent pieces of hardware . . .
@@ -3256,6 +3365,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
     static bool        last_synchro      = false;
     static float       last_vshiftSpeed  = -1;
     static bool        last_cropMode     = false;
+    static std::string last_readoutSpeed;
 
     if( force || m_modeName != last_mode || m_currentROI.x != last_roi.x || m_currentROI.y != last_roi.y ||
         m_currentROI.w != last_roi.w || m_currentROI.h != last_roi.h || m_currentROI.bin_x != last_roi.bin_x ||
@@ -3264,7 +3374,7 @@ int stdCamera<derivedT>::recordCamera( bool force )
         m_ccdTempSetpt != last_ccdTempSetpt || m_tempControlStatus != last_tempControlStatus ||
         m_tempControlOnTarget != last_tempControlOnTarget || m_tempControlStatusStr != last_tempControlStatusStr ||
         m_shutterStatus != last_shutterStatus || m_shutterState != last_shutterState || m_synchro != last_synchro ||
-        m_vshiftSpeed != last_vshiftSpeed || m_cropMode != last_cropMode )
+        m_vshiftSpeed != last_vshiftSpeed || m_cropMode != last_cropMode || m_readoutSpeedName != last_readoutSpeed)
     {
         derived().template telem<telem_stdcam>( { m_modeName,
                                                   m_currentROI.x,
@@ -3287,7 +3397,8 @@ int stdCamera<derivedT>::recordCamera( bool force )
                                                   (uint8_t)m_synchro,
                                                   m_vshiftSpeed,
                                                   (uint8_t)m_cropMode,
-                                                  m_blacklevel } );
+                                                  m_blacklevel,
+                                                  m_readoutSpeedName } );
 
         last_mode                 = m_modeName;
         last_roi                  = m_currentROI;
@@ -3306,60 +3417,60 @@ int stdCamera<derivedT>::recordCamera( bool force )
         last_synchro              = m_synchro;
         last_vshiftSpeed          = m_vshiftSpeed;
         last_cropMode             = m_cropMode;
+        last_readoutSpeed         = m_readoutSpeedName;
     }
 
     return 0;
 }
 
-
 /// Call stdCameraT::setupConfig with error checking for stdCamera
 /**
-  * \param cfig the application configurator
-  */
-#define STDCAMERA_SETUP_CONFIG( cfig )                                                   \
-    if(stdCameraT::setupConfig(cfig) < 0)                                                \
-    {                                                                                    \
-        log<software_error>({__FILE__, __LINE__, "Error from stdCameraT::setupConfig"}); \
-        m_shutdown = true;                                                               \
-        return;                                                                          \
+ * \param cfig the application configurator
+ */
+#define STDCAMERA_SETUP_CONFIG( cfig )                                                                                 \
+    if( stdCameraT::setupConfig( cfig ) < 0 )                                                                          \
+    {                                                                                                                  \
+        log<software_error>( { __FILE__, __LINE__, "Error from stdCameraT::setupConfig" } );                           \
+        m_shutdown = true;                                                                                             \
+        return;                                                                                                        \
     }
 
- /// Call stdCameraT::loadConfig with error checking for stdCamera
+/// Call stdCameraT::loadConfig with error checking for stdCamera
 /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-  * \param cfig the application configurator
-  */
-#define STDCAMERA_LOAD_CONFIG( cfig )                                                             \
-    if(stdCameraT::loadConfig(cfig) < 0)                                                          \
-    {                                                                                             \
-        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::loadConfig"}); \
+ * \param cfig the application configurator
+ */
+#define STDCAMERA_LOAD_CONFIG( cfig )                                                                                  \
+    if( stdCameraT::loadConfig( cfig ) < 0 )                                                                           \
+    {                                                                                                                  \
+        return log<software_error, -1>( { __FILE__, __LINE__, "Error from stdCameraT::loadConfig" } );                 \
     }
 
 /// Call stdCameraT::appStartup with error checking for stdCamera
-#define STDCAMERA_APP_STARTUP                                                                     \
-    if(stdCameraT::appStartup() < 0)                                                              \
-    {                                                                                             \
-        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appStartup"}); \
+#define STDCAMERA_APP_STARTUP                                                                                          \
+    if( stdCameraT::appStartup() < 0 )                                                                                 \
+    {                                                                                                                  \
+        return log<software_error, -1>( { __FILE__, __LINE__, "Error from stdCameraT::appStartup" } );                 \
     }
 
 /// Call stdCameraT::appLogic with error checking for stdCamera
-#define STDCAMERA_APP_LOGIC                                                                     \
-    if(stdCameraT::appLogic() < 0)                                                              \
-    {                                                                                           \
-        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appLogic"}); \
+#define STDCAMERA_APP_LOGIC                                                                                            \
+    if( stdCameraT::appLogic() < 0 )                                                                                   \
+    {                                                                                                                  \
+        return log<software_error, -1>( { __FILE__, __LINE__, "Error from stdCameraT::appLogic" } );                   \
     }
 
 /// Call stdCameraT::updateINDI with error checking for stdCamera
-#define STDCAMERA_UPDATE_INDI                                                                     \
-    if(stdCameraT::updateINDI() < 0)                                                              \
-    {                                                                                             \
-        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::updateINDI"}); \
+#define STDCAMERA_UPDATE_INDI                                                                                          \
+    if( stdCameraT::updateINDI() < 0 )                                                                                 \
+    {                                                                                                                  \
+        return log<software_error, -1>( { __FILE__, __LINE__, "Error from stdCameraT::updateINDI" } );                 \
     }
 
 /// Call stdCameraT::appShutdown with error checking for stdCamera
-#define STDCAMERA_APP_SHUTDOWN                                                                     \
-    if(stdCameraT::appShutdown() < 0)                                                              \
-    {                                                                                              \
-        return log<software_error,-1>({__FILE__, __LINE__, "Error from stdCameraT::appShutdown"}); \
+#define STDCAMERA_APP_SHUTDOWN                                                                                         \
+    if( stdCameraT::appShutdown() < 0 )                                                                                \
+    {                                                                                                                  \
+        return log<software_error, -1>( { __FILE__, __LINE__, "Error from stdCameraT::appShutdown" } );                \
     }
 
 } // namespace dev

@@ -5,25 +5,23 @@
   */
 #include "../../../tests/catch2/catch.hpp"
 
-#include "../template.hpp"
+#include "../bmcCtrl.hpp"
 
 using namespace MagAOX::app;
 
-namespace template_test 
+namespace template_test
 {
 
 SCENARIO( "xxxx", "[template]" )
 {
    GIVEN("xxxxx")
    {
-      int rv;
-
       WHEN("xxxx")
       {
-         rv = [some test];
+         int rv = 0;
 
          REQUIRE(rv == 0);
       }
    }
 }
-} //namespace template_test 
+} //namespace template_test

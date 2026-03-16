@@ -4,16 +4,16 @@
   * History:
   */
 #include "../../../tests/catch2/catch.hpp"
-#include "../../tests/testMacrosINDI.hpp"
+#include "../../../tests/testMacrosINDI.hpp"
 
 #include "../kcubeCtrl.hpp"
 
 using namespace MagAOX::app;
 
-namespace KCCTEST 
+namespace KCCTEST
 {
 
-class kcubeCtrl_test : public kcubeCtrl 
+class kcubeCtrl_test : public kcubeCtrl
 {
 
 public:
@@ -39,7 +39,7 @@ SCENARIO( "xxxx", "[kcubeCtrl]" )
 
       WHEN("xxxx")
       {
-         rv = [some test];
+         rv = [];
 
          REQUIRE(rv == 0);
       }

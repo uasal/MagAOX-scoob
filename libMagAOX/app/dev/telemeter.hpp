@@ -16,6 +16,12 @@ namespace app
 namespace dev
 {
 
+#ifdef XWCTEST_NAMESPACE
+namespace XWCTEST_NAMESPACE
+{
+#endif
+
+
 /// A device base class which saves telemetry.
 /**
   * CRTP class `derivedT` has the following requirements:
@@ -36,7 +42,7 @@ namespace dev
   *            return telemeterT::checkRecordTimes( telem_type1(), telem_type2(), ..., telem_typeN());
   *       }
   *   \endcode
-  *   where there is one constructor-call argument for each telemetry log type recorded by this device.  The resultant 
+  *   where there is one constructor-call argument for each telemetry log type recorded by this device.  The resultant
   *   objects are not used, rather the types are just used for variadic template resolution.
   *
   * - Must provide one overload of the following function for each telemetry type:
@@ -47,28 +53,30 @@ namespace dev
   *          return m_tel<telem_type1>( { message entered here } );
   *       }
   *   \endcode
-  *   You MUST NOT use the pointer argument, it is for type resolution only -- you 
-  *   should fill in the telemetry log message using internal values. Note that calls to this function should result 
+  *   You MUST NOT use the pointer argument, it is for type resolution only -- you
+  *   should fill in the telemetry log message using internal values. Note that calls to this function should result
   *   in a telemetry log entry every time -- it is called when the minimum interval has elapsed since the last entry.
   *
-  * - Must call this class's setupConfig(), loadConfig(), appStartup(), appLogic(), and appShutdown() 
-  *   in the corresponding function of `derivedT`, with error checking. 
+  * - Must call this class's setupConfig(), loadConfig(), appStartup(), appLogic(), and appShutdown()
+  *   in the corresponding function of `derivedT`, with error checking.
   *   For convenience the following macros are defined to provide error checking:
-  *   \code  
+  *   \code
   *       TELEMETER_SETUP_CONFIG( cfig )
   *       TELEMETER_LOAD_CONFIG( cfig )
   *       TELEMETER_APP_STARTUP
   *       TELEMETER_APP_LOGIC
   *       TELEMETER_APP_SHUTDOWN
   *   \endcode
-  * 
+  *
   * \ingroup appdev
   */
 template <class derivedT>
 struct telemeter
 {
+    typedef XWC_DEFAULT_VERBOSITY verboseT;
+
     /// The log manager type.
-    typedef logger::logManager<derivedT, logFileRaw> logManagerT;
+    typedef logger::logManager<derivedT, logFileRaw<verboseT>> logManagerT;
 
     logManagerT m_tel;
 
@@ -86,15 +94,15 @@ struct telemeter
     template <typename telT>
     int telem(const typename telT::messageT &msg /**< [in] the data to log */);
 
-    /// Make a telemetry recording, for an empty record
-    /** Wrapper for logManager::log, which updates telT::lastRecord.
+    // Make a telemetry recording, for an empty record
+    /* Wrapper for logManager::log, which updates telT::lastRecord.
      *
      * \tparam logT the log entry type
      * \tparam retval the value returned by this method.
      *
      */
-    template <typename telT>
-    int telem();
+    //template <typename telT>
+    //int telem(); I think this shouldn't be defined, because empty telem makes no sense.  Delete after 11/27/2025
 
     /// Setup an application configurator for the device section
     /**
@@ -194,6 +202,7 @@ int telemeter<derivedT>::telem(const typename telT::messageT &msg)
     return 0;
 }
 
+/* I think this shouldn't be defined.  Delete after 11/27/2025
 template <class derivedT>
 template <typename telT>
 int telemeter<derivedT>::telem()
@@ -205,7 +214,7 @@ int telemeter<derivedT>::telem()
     clock_gettime(CLOCK_REALTIME, &telT::lastRecord);
 
     return 0;
-}
+}*/
 
 template <class derivedT>
 int telemeter<derivedT>::setupConfig(mx::app::appConfigurator &config)
@@ -224,7 +233,13 @@ int telemeter<derivedT>::loadConfig(mx::app::appConfigurator &config)
 {
     m_tel.m_logLevel = logPrio::LOG_TELEM;
 
-    m_tel.logPath(std::string(derived().MagAOXPath) + "/" + MAGAOX_telRelPath);
+    // Setup default log path
+    std::string tmpstr = mx::sys::getEnv( MAGAOX_env_telem );
+    if( tmpstr == "" )
+    {
+        tmpstr = MAGAOX_telRelPath;
+    }
+    m_tel.logPath(std::string(derived().basePath()) + "/" + tmpstr);
 
     m_tel.logExt("bintel");
 
@@ -245,6 +260,12 @@ int telemeter<derivedT>::appStartup()
     //----------------------------------------//
 
     m_tel.logThreadStart();
+
+    // clang-format off
+    #ifdef XWCTEST_TELEMETER_LOGSTART
+    m_tel.logShutdown(true); // LCOV_EXCL_LINE
+    sleep(2); // LCOV_EXCL_LINE
+    #endif // clang-format on
 
     // Give up to 2 secs to make sure log thread has time to get started and try to open a file.
     int w = 0;
@@ -267,6 +288,18 @@ int telemeter<derivedT>::appStartup()
 template <class derivedT>
 int telemeter<derivedT>::appLogic()
 {
+    if( m_tel.logThreadRunning() == false )
+    {
+        derived().state( stateCodes::FAILURE );
+
+        // Directly ouput the error b/c all other outputs are via the log thread
+        std::cerr << "\nCRITICAL: telemetry thread not running.  Exiting.\n\n";
+
+        derived().m_shutdown = 1;
+
+        return -1;
+    }
+
     return derived().checkRecordTimes();
 }
 
@@ -309,7 +342,7 @@ int telemeter<derivedT>::checkRecordTimes(timespec &ts)
 
 /// Call telemeter::setupConfig with error checking
 /**
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define TELEMETER_SETUP_CONFIG( cfig )                                                   \
     if (telemeterT::setupConfig( cfig) < 0)                                              \
@@ -320,7 +353,7 @@ int telemeter<derivedT>::checkRecordTimes(timespec &ts)
 
 /// Call telemeter::loadConfig with error checking
 /** This must be inside a function that returns int, e.g. the standard loadConfigImpl.
-  * \param cfig the application configurator 
+  * \param cfig the application configurator
   */
 #define TELEMETER_LOAD_CONFIG( cfig )                                                              \
     if (telemeterT::loadConfig(cfig) < 0)                                                          \
@@ -348,6 +381,12 @@ int telemeter<derivedT>::checkRecordTimes(timespec &ts)
     {                                                                                    \
         log<software_error>({__FILE__, __LINE__, "error from telemeterT::appShutdown"}); \
     }
+
+
+#ifdef XWCTEST_NAMESPACE
+} // namespace XWCTEST_NAMESPACE
+#endif
+
 
 } // namespace dev
 } // namespace tty

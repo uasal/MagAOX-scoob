@@ -9,7 +9,7 @@
 
 using namespace MagAOX::app;
 
-namespace template_test 
+namespace template_test
 {
 
 SCENARIO( "xxxx", "[template]" )
@@ -20,10 +20,10 @@ SCENARIO( "xxxx", "[template]" )
 
       WHEN("xxxx")
       {
-         rv = [some test];
+         rv = 0;
 
          REQUIRE(rv == 0);
       }
    }
 }
-} //namespace template_test 
+} //namespace template_test

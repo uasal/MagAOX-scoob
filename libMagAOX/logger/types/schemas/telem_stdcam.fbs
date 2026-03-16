@@ -29,19 +29,19 @@ table Shutter
 table Telem_stdcam_fb
 {
    mode:string;
-   
+
    roi:ROI;
-   
+
    exptime:float;
-   
+
    fps:float;
-   
+
    emGain:float;
-   
+
    adcSpeed:float;
-   
+
    tempCtrl:TempCtrl;
-   
+
    shutter:Shutter;
 
    synchro:uint8;
@@ -51,6 +51,8 @@ table Telem_stdcam_fb
    cropMode:int8 = -1;
 
    blacklevel:float;
+
+   readout_speed:string;
 
 }
 
