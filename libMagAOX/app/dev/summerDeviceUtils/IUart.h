@@ -34,7 +34,7 @@ public:
 	virtual void purgeinput() = 0;
 	virtual bool isopen() const = 0;
 	
-	void puts(const char* s, const size_t len)
+	void puts(uint8_t const* s, const size_t len)
 	{
 		for (size_t i = 0; i < len; i++)
 		{

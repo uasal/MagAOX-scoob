@@ -33,7 +33,7 @@ namespace MagAOX
             {
             public:
 
-                linux_pinout_uart() : IUart(), ComFileDescriptor(-1), echo(false), autoreopen(false), Baud(0), RtsCts(false), OddParity(false) { }
+                linux_pinout_uart() : IUart(), ComFileDescriptor(-1), echo(false), autoreopen(true), Baud(0), RtsCts(false), OddParity(false) { }
                     
                 virtual ~linux_pinout_uart() { if (-1 != ComFileDescriptor) { close(ComFileDescriptor); } }
 
@@ -354,6 +354,15 @@ namespace MagAOX
                 {
                     if (-1 == ComFileDescriptor) {
                         // MagAOXAppT::log<text_log>("\nlinux_pinout_uart::dataready(): ioctl on uninitialized port; please open port!\n");
+                        
+                        if (autoreopen) 
+                        {
+                            // MagAOXAppT::log<text_log>("\nlinux_pinout_uart::autoreopen.\n");
+                            const_cast<linux_pinout_uart*>(this)->deinit();
+                            PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(Baud, Device, RtsCts, OddParity);
+                            const_cast<linux_pinout_uart*>(this)->init(pinoutConfig);
+                        }
+                        
                         return(false);
                     }
 
@@ -391,6 +400,14 @@ namespace MagAOX
                         {
                             // MagAOXAppT::log<software_error>({__FILE__, __LINE__, "\nlinux_pinout_uart::dataready(): select() returned -1\n"});
                             rtnval = 0;
+                            
+                            if (autoreopen) 
+                            {
+                                // MagAOXAppT::log<text_log>("\nlinux_pinout_uart::autoreopen.\n");
+                                const_cast<linux_pinout_uart*>(this)->deinit();
+                                PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(Baud, Device, RtsCts, OddParity);
+                                const_cast<linux_pinout_uart*>(this)->init(pinoutConfig);
+                            }
                         }
                         else if (status > 0)
                         {

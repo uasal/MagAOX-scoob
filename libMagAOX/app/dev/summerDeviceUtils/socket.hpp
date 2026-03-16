@@ -58,7 +58,7 @@ struct SocketBinaryUartCallbacks : public BinaryUartCallbacks
 	//~ virtual void EveryPacket(const IPacket& Packet, const size_t& PacketLen) { }
 
 	//We just wanna see if this is happening, not much to do about it
-	virtual void BufferOverflow(const size_t& BufferLen)
+	virtual void BufferOverflow(const uint8_t* Buffer, const size_t& BufferLen)
 	{
 		// std::ostringstream oss;
 		// oss << "SocketBinaryUartCallbacks: BufferOverflow(" << BufferLen << ")!";

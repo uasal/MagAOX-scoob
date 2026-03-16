@@ -40,11 +40,9 @@ struct CGraphPacketHeader
 
 	void* PayloadDataNonConst() { return(reinterpret_cast<void*>(&(this[1]))); }
 
-	// void formatf() const {
-	// 	std::ostringstream oss;
-	// 	oss << "CGraphPacketHeader: StartToken: 0x" << (long)PacketStartToken << ", PayloadType: " << (unsigned long)PayloadType << ", PayloadLen: " << (unsigned long)PayloadLen;
-	// 	MagAOXAppT::log<text_log>(oss.str());
-	// }
+	void formatf() const {
+		::printf("CGraphPacketHeader: StartToken: 0x%lX, PayloadType: %lu, PayloadLen: %lu", (long)PacketStartToken, (unsigned long)PayloadType, (unsigned long)PayloadLen);
+	}
 
 } __attribute__((__packed__));
 
@@ -65,42 +63,74 @@ struct CGraphPacketFooter
 class CGraphPacket: public IPacket
 {
 public:
-	CGraphPacket() { }
+	CGraphPacket() : debug(false) { }
 	virtual ~CGraphPacket() { }
 
-	virtual bool FindPacketStart(const uint8_t* Buffer, const size_t BufferLen, size_t& Offset) const
+	void Debug(bool dbg) override { debug = dbg; }
+	bool Debug() const override { return(debug); }
+
+	virtual bool FindPacketStartPos(const uint8_t* Buffer, const size_t BufferLen, size_t& Offset) const override
 	{
-		for (size_t i = 0; i < (BufferLen - sizeof(uint32_t)); i++) { if (CGraphMagikPacketStartToken == *((uint32_t*)&(Buffer[i]))) { Offset = i; return(true); } }
+		for (size_t i = 0; i < (BufferLen - sizeof(uint32_t)); i++) { if (CGraphMagikPacketStartToken == *((const uint32_t*)&(Buffer[i]))) { Offset = i; return(true); } }
 		return(false);
 	}
 
-	virtual bool FindPacketEnd(const uint8_t* Buffer, const size_t BufferLen, size_t& Offset) const
+	virtual bool FindPacketEndPos(const uint8_t* Buffer, const size_t BufferLen, size_t& Offset) const override
 	{
-		for (size_t i = 0; i <= (BufferLen - sizeof(uint32_t)); i++) { if (CGraphMagikPacketEndToken == *((uint32_t*)&(Buffer[i]))) { Offset = i; return(true); } }
+		size_t ii = (BufferLen - sizeof(uint32_t));
+		if (CGraphMagikPacketEndToken == *((const uint32_t*)&(Buffer[ii]))) { Offset = ii; return(true); }
 		return(false);
 	}
 
-	virtual size_t HeaderLen() const { return(sizeof(CGraphPacketHeader)); }
-	virtual size_t FooterLen() const { return(sizeof(CGraphPacketHeader)); }
-	virtual size_t PayloadOffset() const { return(sizeof(CGraphPacketHeader)); }
-	virtual size_t MaxPayloadLength() const { return(0xFFFFU); }
-	virtual uint64_t SerialNum() const { return(0); }
+	virtual bool FindPacketStartPos(const uint8_t* Buffer, const size_t BufferLen, const size_t SearchStartPos, size_t& Offset) const override
+	{
+		for (size_t i = SearchStartPos; i < (BufferLen - sizeof(uint32_t)); i++)
+		{
+			if (CGraphMagikPacketStartToken == *((const uint32_t*)&(Buffer[i])))
+			{
+				Offset = i;
+				return(true);
+			}
+		}
+		return(false);
+	}
 
-	virtual size_t PayloadLen(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const
+	virtual bool FindPacketEndPos(const uint8_t* Buffer, const size_t BufferLen, const size_t SearchStartPos, size_t& Offset) const override
+	{
+		for (size_t i = SearchStartPos; i <= (BufferLen - sizeof(uint32_t)); i++)
+		{
+			if (CGraphMagikPacketEndToken == *((const uint32_t*)&(Buffer[i])))
+			{
+				Offset = i;
+				return(true);
+			}
+		}
+		return(false);
+	}
+
+	virtual const size_t HeaderLen() const override { return(sizeof(CGraphPacketHeader)); }
+	virtual const size_t FooterLen() const override { return(sizeof(CGraphPacketFooter)); }
+	virtual const size_t EndTokenLen() const override { return(sizeof(CGraphPacketFooter::PacketEndToken)); }
+	virtual const size_t PayloadOffset() const override { return(sizeof(CGraphPacketHeader)); }
+	virtual const size_t MaxPayloadLength() const override { return(0xFFFFU); }
+	virtual bool IsBroadcastSerialNum(const uint8_t* Buffer, const size_t PacketStartPos, const size_t PacketEndPos) const override { return(false); }
+	virtual uint64_t SerialNum(const uint8_t* Buffer, const size_t PacketStartPos, const size_t PacketEndPos) const override { return(0); }
+
+	virtual size_t PayloadLen(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const override
 	{
 		if ((PacketStartPos + sizeof(CGraphPacketHeader)) > BufferCount) { return(0); }
 		const CGraphPacketHeader* Packet = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
 		return(Packet->PayloadLen);
 	}
 
-	virtual uint64_t PayloadType(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const
+	virtual uint64_t PayloadType(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const override
 	{
 		if ((PacketStartPos + sizeof(CGraphPacketHeader)) > BufferCount) { return(0); }
 		const CGraphPacketHeader* Packet = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
 		return(Packet->PayloadType);
 	}
 
-	virtual bool DoesPayloadTypeMatch(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const uint32_t CmdType) const
+	virtual bool DoesPayloadTypeMatch(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const size_t PacketEndPos, const uint32_t CmdType) const override
 	{
 		if ( ((PacketStartPos + sizeof(CGraphPacketHeader)) > BufferCount) ) { return(false); }
 		const CGraphPacketHeader* Packet = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
@@ -108,7 +138,7 @@ public:
 		return(false);
 	}
 
-	virtual bool IsValid(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos) const
+	virtual bool IsValid(const uint8_t* Buffer, const size_t BufferCount, const size_t PacketStartPos, const size_t PacketEndPos) const override
 	{
 		if ((PacketStartPos + sizeof(CGraphPacketHeader) + sizeof(CGraphPacketFooter)) > BufferCount) { return(false); }
 		const CGraphPacketHeader* Header = reinterpret_cast<const CGraphPacketHeader*>(&(Buffer[PacketStartPos]));
@@ -121,7 +151,7 @@ public:
 		return(true);
 	}
 
-	virtual size_t MakePacket(uint8_t* Buffer, const size_t BufferCount, const void* Payload, const uint16_t PayloadType, const size_t PayloadLen) const
+	virtual size_t MakePacket(uint8_t* Buffer, const size_t BufferCount, const void* Payload, const uint16_t PayloadType, const size_t PayloadLen) const override
 	{
 		if ( (NULL == Buffer) || ((NULL == Payload) && (0 != PayloadLen)) || (BufferCount < (sizeof(CGraphPacketHeader) + PayloadLen + sizeof(CGraphPacketFooter))) ) { return(0); }
 		CGraphPacketHeader Header;
@@ -135,6 +165,14 @@ public:
 		Footer->PacketEndToken = CGraphMagikPacketEndToken;
 		return(sizeof(CGraphPacketHeader) + PayloadLen + sizeof(CGraphPacketFooter));
 	}
+
+	virtual void formatf() const override
+	{
+		::printf("CGraphPacket(debug: %s)", debug ? "true" : "false");
+	}
+
+private:
+	bool debug;
 };
 
 
