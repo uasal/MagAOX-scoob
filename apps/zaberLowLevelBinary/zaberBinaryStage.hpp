@@ -644,6 +644,8 @@ int zaberBinaryStage<parentT>::getMaxPos( z_port port )
     }
 
     m_maxPos = value;
+    MagAOXAppT::log<text_log>( std::format( "zaberBinary {} max position read as {}", m_name, m_maxPos ),
+                               logPrio::LOG_DEBUG );
     return 0;
 }
 
@@ -683,23 +685,24 @@ int zaberBinaryStage<parentT>::updatePos( z_port port )
 
     m_homing = ( status == 1 );
 
-    if( status == 0 )
+    int32_t pos;
+    rv = queryCommand( pos, port, cmdReturnCurrentPosition, 0, cmdReturnCurrentPosition );
+    if( rv < 0 )
     {
-        int32_t pos;
-        rv = queryCommand( pos, port, cmdReturnCurrentPosition, 0, cmdReturnCurrentPosition );
-        if( rv < 0 )
-        {
-            return rv;
-        }
+        return rv;
+    }
 
-        m_rawPos = pos;
+    m_rawPos = pos;
+    MagAOXAppT::log<text_log>(
+        std::format( "zaberBinary {} status {} rawPos {} tgtPos {}", m_name, status, m_rawPos, m_tgtPos ),
+        logPrio::LOG_DEBUG );
 
-        if( m_homing == false && m_warnWR == false && m_tgtPos == 0 && m_rawPos == 0 && m_lastHomed.tv_sec == 0 )
+    if( status == 0 && m_homing == false && m_warnWR == false && m_tgtPos == 0 && m_rawPos == 0 &&
+        m_lastHomed.tv_sec == 0 )
+    {
+        if( clock_gettime( CLOCK_REALTIME, &m_lastHomed ) < 0 )
         {
-            if( clock_gettime( CLOCK_REALTIME, &m_lastHomed ) < 0 )
-            {
-                MagAOXAppT::log<software_error>( { errno, 0, "clock_gettime for last homed" } );
-            }
+            MagAOXAppT::log<software_error>( { errno, 0, "clock_gettime for last homed" } );
         }
     }
 
@@ -724,7 +727,7 @@ int zaberBinaryStage<parentT>::disableKnob( z_port port )
     }
 
     mode |= modeDisableAutoReply;
-    mode |= modeDisablePotentiomer;
+    mode &= ~modeDisablePotentiomer;
 
     rv = sendCommandNoReply( port, cmdSetDeviceMode, mode );
     if( rv < 0 )
@@ -739,11 +742,15 @@ int zaberBinaryStage<parentT>::disableKnob( z_port port )
         return rv;
     }
 
-    if( ( appliedMode & modeDisablePotentiomer ) == 0 || ( appliedMode & modeDisableAutoReply ) == 0 )
+    if( ( appliedMode & modeDisableAutoReply ) == 0 )
     {
         return MagAOXAppT::log<software_error, -1>(
             std::format( "device {} did not apply requested device mode {}", m_name, mode ) );
     }
+
+    MagAOXAppT::log<text_log>(
+        std::format( "zaberBinary {} device mode now {} (potentiometer enabled)", m_name, appliedMode ),
+        logPrio::LOG_DEBUG );
 
     return 0;
 }
@@ -840,6 +847,8 @@ int zaberBinaryStage<parentT>::moveAbs( z_port port, long rawPos )
 
     m_tgtPos = rawPos;
     m_homing = false;
+    MagAOXAppT::log<text_log>( std::format( "zaberBinary {} moveAbs target {} maxPos {}", m_name, rawPos, m_maxPos ),
+                               logPrio::LOG_DEBUG );
     return 0;
 }
 
