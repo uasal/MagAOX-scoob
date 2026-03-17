@@ -54,10 +54,12 @@ Follow these code style and documentation rules exactly.
   - In headers, prefer inline parameter documentation on declarations (`type name /**< ... */`) rather than separate `\param` lists, unless there is a specific reason to deviate.
 
 11) PR Prompt Attribution
-  - At the top of PR descriptions, include an explicit attribution line when work was performed with Codex.
-  - Preferred format:
-    - `This work was performed by GPT-5.3-Codex in response to the prompt: "...".`
-  - Include the primary user prompt verbatim (or a faithful condensed version if it is extremely long).
+- At the top of PR descriptions, include an explicit attribution line when work was performed with an AI agent.
+- Preferred format:
+  - `This work was performed by <current agent model name> in response to the prompt: "...".`
+- Substitute the actual model name used for the work instead of hardcoding a specific release name.
+- Include the primary user prompt verbatim (or a faithful condensed version if it is extremely long).
+- Provide the PR description in a copyable md text block
 
 12) Branch Naming (MagAOX)
   - Feature branches must be namespaced by the active username.
