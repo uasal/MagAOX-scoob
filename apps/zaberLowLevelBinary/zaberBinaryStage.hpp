@@ -726,10 +726,23 @@ int zaberBinaryStage<parentT>::disableKnob( z_port port )
     mode |= modeDisableAutoReply;
     mode |= modeDisablePotentiomer;
 
-    rv = queryCommand( mode, port, cmdSetDeviceMode, mode, cmdSetDeviceMode );
+    rv = sendCommandNoReply( port, cmdSetDeviceMode, mode );
     if( rv < 0 )
     {
         return rv;
+    }
+
+    int32_t appliedMode;
+    rv = getSetting( appliedMode, port, cmdSetDeviceMode );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    if( ( appliedMode & modeDisablePotentiomer ) == 0 || ( appliedMode & modeDisableAutoReply ) == 0 )
+    {
+        return MagAOXAppT::log<software_error, -1>(
+            std::format( "device {} did not apply requested device mode {}", m_name, mode ) );
     }
 
     return 0;
@@ -773,17 +786,13 @@ int zaberBinaryStage<parentT>::home( z_port port )
 template <class parentT>
 int zaberBinaryStage<parentT>::park( z_port port )
 {
-    int32_t response;
-    int     rv = queryCommand( response, port, cmdStoreCurrentPosition, parkPositionRegister, cmdStoreCurrentPosition );
+    int rv = sendCommandNoReply( port, cmdStoreCurrentPosition, parkPositionRegister );
     if( rv < 0 )
     {
         return rv;
     }
 
-    m_parked     = true;
-    m_parkPos    = m_rawPos;
-    m_hasParkPos = true;
-    return 0;
+    return recallParkPosition( port );
 }
 
 template <class parentT>
