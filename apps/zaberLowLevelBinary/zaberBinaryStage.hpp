@@ -35,6 +35,7 @@ class zaberBinaryStage
         cmdHome                  = 1,
         cmdRenumber              = 2,
         cmdStoreCurrentPosition  = 16,
+        cmdReturnStoredPosition  = 17,
         cmdMoveToStoredPosition  = 18,
         cmdMoveAbsolute          = 20,
         cmdMoveRelative          = 21,
@@ -56,6 +57,9 @@ class zaberBinaryStage
         modeDisablePotentiomer = ( 1 << 3 ),
         modeHomeStatus         = ( 1 << 7 )
     };
+
+    /// Stored-position register used to persist the MagAO-X parked position.
+    static constexpr int32_t parkPositionRegister = 0;
 
   protected:
     /// Parent application used for logging and power-state checks.
@@ -99,6 +103,9 @@ class zaberBinaryStage
 
     /// Emulated parked position in microsteps.
     long m_parkPos{ 0 };
+
+    /// Whether a parked position has been recovered from device non-volatile memory.
+    bool m_hasParkPos{ false };
 
     /// Last reported stage temperature. Firmware 5.35 does not expose this directly.
     float m_temp{ -999.0 };
@@ -272,6 +279,9 @@ class zaberBinaryStage
 
     /// Clear the parked bookkeeping state.
     int unpark( z_port port /**< [in] the port with which to communicate */ );
+
+    /// Recall the MagAO-X parked position from device non-volatile memory.
+    int recallParkPosition( z_port port /**< [in] the port with which to communicate */ );
 
     /// Move to a new absolute position.
     int moveAbs( z_port port, /**< [in] the port with which to communicate */
@@ -640,7 +650,11 @@ int zaberBinaryStage<parentT>::getMaxPos( z_port port )
 template <class parentT>
 int zaberBinaryStage<parentT>::getParked( z_port )
 {
-    if( m_parked && m_rawPos != m_parkPos )
+    if( m_hasParkPos && m_rawPos == m_parkPos )
+    {
+        m_parked = true;
+    }
+    else
     {
         m_parked = false;
     }
@@ -757,10 +771,18 @@ int zaberBinaryStage<parentT>::home( z_port port )
 }
 
 template <class parentT>
-int zaberBinaryStage<parentT>::park( z_port )
+int zaberBinaryStage<parentT>::park( z_port port )
 {
-    m_parked  = true;
-    m_parkPos = m_rawPos;
+    int32_t response;
+    int     rv = queryCommand( response, port, cmdStoreCurrentPosition, parkPositionRegister, cmdStoreCurrentPosition );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    m_parked     = true;
+    m_parkPos    = m_rawPos;
+    m_hasParkPos = true;
     return 0;
 }
 
@@ -768,6 +790,24 @@ template <class parentT>
 int zaberBinaryStage<parentT>::unpark( z_port )
 {
     m_parked = false;
+    return 0;
+}
+
+template <class parentT>
+int zaberBinaryStage<parentT>::recallParkPosition( z_port port )
+{
+    int32_t storedPosition;
+    int     rv =
+        queryCommand( storedPosition, port, cmdReturnStoredPosition, parkPositionRegister, cmdReturnStoredPosition );
+    if( rv < 0 )
+    {
+        m_hasParkPos = false;
+        return -1;
+    }
+
+    m_parkPos    = storedPosition;
+    m_hasParkPos = true;
+    m_parked     = ( m_rawPos == m_parkPos );
     return 0;
 }
 
@@ -927,6 +967,7 @@ int zaberBinaryStage<parentT>::readStateFile( std::ifstream &fin )
     m_tgtPos            = rawPos;
     m_parked            = parked;
     m_parkPos           = rawPos;
+    m_hasParkPos        = parked;
     m_maxPos            = maxPos;
     m_lastHomed.tv_sec  = lastHomed;
     m_lastHomed.tv_nsec = 0;

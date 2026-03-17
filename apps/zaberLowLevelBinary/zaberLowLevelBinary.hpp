@@ -653,11 +653,16 @@ int zaberLowLevelBinary::appLogic()
 
             updateIfChanged( m_indiP_max_pos, m_stages[i].name(), m_stages[i].maxPos() );
 
-            if( m_stages[i].unpark( m_port ) < 0 )
+            if( m_stages[i].updatePos( m_port ) < 0 )
             {
                 log<software_error>();
                 state( stateCodes::ERROR );
                 return 0;
+            }
+
+            if( m_stages[i].recallParkPosition( m_port ) < 0 )
+            {
+                log<text_log>( "No stored parked position found for " + m_stages[i].name(), logPrio::LOG_INFO );
             }
 
             if( m_stages[i].getWarnings( m_port ) < 0 )
