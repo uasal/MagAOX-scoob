@@ -1,6 +1,8 @@
 /** \file zaberLowLevelBinary_test.cpp
  * \brief Catch2 tests for the zaberLowLevelBinary app.
  * \author Jared R. Males (jaredmales@gmail.com)
+ *
+ * \ingroup zaberLowLevelBinary_files
  */
 
 extern "C"
@@ -21,6 +23,7 @@ namespace ZLLBTEST
 class zaberLowLevelBinary_test : public zaberLowLevelBinary
 {
   public:
+    /// Construct the test harness and set up INDI callback fixtures.
     zaberLowLevelBinary_test( const std::string &device )
     {
         m_configName = device;

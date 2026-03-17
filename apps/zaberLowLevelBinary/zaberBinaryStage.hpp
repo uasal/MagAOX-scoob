@@ -1,5 +1,6 @@
 /** \file zaberBinaryStage.hpp
  * \brief A class with details of a single binary-protocol Zaber stage.
+ * \author Jared R. Males (jaredmales@gmail.com)
  *
  * \ingroup zaberLowLevelBinary_files
  */
@@ -229,25 +230,45 @@ class zaberBinaryStage
     /// Get whether any warning-equivalent flag is set.
     bool warningState();
 
+    /// Get the driver-disabled warning flag.
     bool warnFD();
+    /// Get the FQ warning flag.
     bool warnFQ();
+    /// Get the FS warning flag.
     bool warnFS();
+    /// Get the FT warning flag.
     bool warnFT();
+    /// Get the FB warning flag.
     bool warnFB();
+    /// Get the FP warning flag.
     bool warnFP();
+    /// Get the FE warning flag.
     bool warnFE();
+    /// Get the WH warning flag.
     bool warnWH();
+    /// Get the WL warning flag.
     bool warnWL();
+    /// Get the WP warning flag.
     bool warnWP();
+    /// Get the WV warning flag.
     bool warnWV();
+    /// Get the WT warning flag.
     bool warnWT();
+    /// Get the WM warning flag.
     bool warnWM();
+    /// Get the WR warning flag.
     bool warnWR();
+    /// Get the NC warning flag.
     bool warnNC();
+    /// Get the NI warning flag.
     bool warnNI();
+    /// Get the ND warning flag.
     bool warnND();
+    /// Get the NU warning flag.
     bool warnNU();
+    /// Get the NJ warning flag.
     bool warnNJ();
+    /// Get the unknown-warning flag.
     bool warnUNK();
 
     /// Send a command and wait for the corresponding binary reply.

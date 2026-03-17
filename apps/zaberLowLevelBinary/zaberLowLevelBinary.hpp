@@ -1,5 +1,6 @@
 /** \file zaberLowLevelBinary.hpp
  * \brief The MagAO-X low-level binary-protocol Zaber controller.
+ * \author Jared R. Males (jaredmales@gmail.com)
  *
  * \ingroup zaberLowLevelBinary_files
  */
@@ -59,12 +60,16 @@ class zaberLowLevelBinary : public MagAOXAppT, public tty::usbDevice
      *
      * @{
      */
+    /// Whether to renumber the daisy chain during connect.
     bool m_renumberOnConnect{ true };
 
+    /// Maximum device address to probe while matching configured serial numbers.
     int m_maxDiscoveryAddress{ 16 };
 
+    /// Binary command timeout in milliseconds.
     int m_commandTimeout{ 250 };
 
+    /// Pause in milliseconds after renumbering before further commands are sent.
     int m_renumberPauseMs{ 750 };
 
     ///@}
@@ -73,12 +78,16 @@ class zaberLowLevelBinary : public MagAOXAppT, public tty::usbDevice
      *
      * @{
      */
+    /// Stage helpers in configuration order.
     std::vector<zaberBinaryStage<zaberLowLevelBinary>> m_stages;
 
+    /// Map from binary device address to configured stage index.
     std::unordered_map<int, size_t> m_stageAddress;
 
+    /// Map from configured serial number to configured stage index.
     std::unordered_map<std::string, size_t> m_stageSerial;
 
+    /// Map from configured stage name to configured stage index.
     std::unordered_map<std::string, size_t> m_stageName;
 
     ///@}
@@ -138,28 +147,40 @@ class zaberLowLevelBinary : public MagAOXAppT, public tty::usbDevice
      *
      * @{
      */
+    /// Current stage state reported per configured stage.
     pcf::IndiProperty m_indiP_curr_state;
 
+    /// Maximum raw position reported per configured stage.
     pcf::IndiProperty m_indiP_max_pos;
 
+    /// Parked-state bookkeeping reported per configured stage.
     pcf::IndiProperty m_indiP_parked;
 
+    /// Last-homed timestamps reported per configured stage.
     pcf::IndiProperty m_indiP_lastHomed;
 
+    /// Current raw position reported per configured stage.
     pcf::IndiProperty m_indiP_curr_pos;
 
+    /// Driver temperature reported per configured stage.
     pcf::IndiProperty m_indiP_temp;
 
+    /// Warning-state switch reported per configured stage.
     pcf::IndiProperty m_indiP_warn;
 
+    /// Requested target raw position per configured stage.
     pcf::IndiProperty m_indiP_tgt_pos;
 
+    /// Per-stage home requests.
     pcf::IndiProperty m_indiP_req_home;
 
+    /// Global request to home all configured stages.
     pcf::IndiProperty m_indiP_req_home_all;
 
+    /// Per-stage halt requests.
     pcf::IndiProperty m_indiP_req_halt;
 
+    /// Per-stage emergency-halt requests.
     pcf::IndiProperty m_indiP_req_ehalt;
 
     ///@}
