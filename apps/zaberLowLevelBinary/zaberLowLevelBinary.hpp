@@ -241,7 +241,6 @@ void zaberLowLevelBinary::loadConfig()
     config( m_maxDiscoveryAddress, "stages.maxDiscoveryAddress" );
     config( m_commandTimeout, "stages.commandTimeout" );
     config( m_renumberPauseMs, "stages.renumberPauseMs" );
-
     std::vector<std::string> sections;
     config.unusedSections( sections );
 
@@ -263,6 +262,10 @@ void zaberLowLevelBinary::loadConfig()
             std::string tmp = m_stages[idx].serial();
             config.configUnused( tmp, mx::app::iniFile::makeKey( sections[n], "serial" ) );
             m_stages[idx].serial( tmp );
+
+            int32_t targetSpeed = m_stages[idx].targetSpeed();
+            config.configUnused( targetSpeed, mx::app::iniFile::makeKey( sections[n], "targetSpeed" ) );
+            m_stages[idx].targetSpeed( targetSpeed );
 
             m_stageName.insert( { m_stages[idx].name(), idx } );
             m_stageSerial.insert( { m_stages[idx].serial(), idx } );
@@ -645,6 +648,13 @@ int zaberLowLevelBinary::appLogic()
             }
 
             if( m_stages[i].getMaxPos( m_port ) < 0 )
+            {
+                log<software_error>();
+                state( stateCodes::ERROR );
+                return 0;
+            }
+
+            if( m_stages[i].setTargetSpeed( m_port, m_stages[i].targetSpeed() ) < 0 )
             {
                 log<software_error>();
                 state( stateCodes::ERROR );

@@ -41,6 +41,7 @@ class zaberBinaryStage
         cmdMoveRelative          = 21,
         cmdStop                  = 23,
         cmdSetDeviceMode         = 40,
+        cmdSetTargetSpeed        = 42,
         cmdSetMaximumPosition    = 44,
         cmdSetCurrentPosition    = 45,
         cmdReturnFirmwareVersion = 51,
@@ -97,6 +98,9 @@ class zaberBinaryStage
 
     /// Last target position sent to the device in microsteps.
     long m_tgtPos{ 0 };
+
+    /// Configured target speed command value for this stage.
+    int32_t m_targetSpeed{ 1000 };
 
     /// Maximum position in microsteps.
     long m_maxPos{ -1 };
@@ -200,6 +204,12 @@ class zaberBinaryStage
     /// Get the maximum position.
     long maxPos();
 
+    /// Get the configured target speed.
+    int32_t targetSpeed();
+
+    /// Set the configured target speed.
+    int targetSpeed( const int32_t &speed /**< [in] the target speed command value */ );
+
     /// Get whether any warning-equivalent flag is set.
     bool warn();
 
@@ -264,6 +274,11 @@ class zaberBinaryStage
 
     /// Disable the manual knob and asynchronous command replies.
     int disableKnob( z_port port /**< [in] the port with which to communicate */ );
+
+    /// Set the target speed used for absolute and relative moves.
+    int setTargetSpeed( z_port  port, /**< [in] the port with which to communicate */
+                        int32_t speed /**< [in] the target speed command value */
+    );
 
     /// Stop the stage.
     int stop( z_port port /**< [in] the port with which to communicate */ );
@@ -401,6 +416,19 @@ template <class parentT>
 long zaberBinaryStage<parentT>::maxPos()
 {
     return m_maxPos;
+}
+
+template <class parentT>
+int32_t zaberBinaryStage<parentT>::targetSpeed()
+{
+    return m_targetSpeed;
+}
+
+template <class parentT>
+int zaberBinaryStage<parentT>::targetSpeed( const int32_t &speed )
+{
+    m_targetSpeed = speed;
+    return 0;
 }
 
 template <class parentT>
@@ -751,6 +779,34 @@ int zaberBinaryStage<parentT>::disableKnob( z_port port )
     MagAOXAppT::log<text_log>(
         std::format( "zaberBinary {} device mode now {} (potentiometer enabled)", m_name, appliedMode ),
         logPrio::LOG_DEBUG );
+
+    return 0;
+}
+
+template <class parentT>
+int zaberBinaryStage<parentT>::setTargetSpeed( z_port port, int32_t speed )
+{
+    int rv = sendCommandNoReply( port, cmdSetTargetSpeed, speed );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    int32_t appliedSpeed;
+    rv = getSetting( appliedSpeed, port, cmdSetTargetSpeed );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    MagAOXAppT::log<text_log>( std::format( "zaberBinary {} target speed configured to {}", m_name, appliedSpeed ),
+                               logPrio::LOG_DEBUG );
+
+    if( appliedSpeed != speed )
+    {
+        return MagAOXAppT::log<software_error, -1>(
+            std::format( "device {} reported target speed {} after requesting {}", m_name, appliedSpeed, speed ) );
+    }
 
     return 0;
 }
