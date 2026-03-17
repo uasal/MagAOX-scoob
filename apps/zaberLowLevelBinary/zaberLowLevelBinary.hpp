@@ -674,6 +674,12 @@ int zaberLowLevelBinary::appLogic()
             {
                 log<text_log>( "No stored parked position found for " + m_stages[i].name(), logPrio::LOG_INFO );
             }
+            else if( m_stages[i].restoreParkedState( m_port ) < 0 )
+            {
+                log<software_error>();
+                state( stateCodes::ERROR );
+                return 0;
+            }
 
             if( m_stages[i].getWarnings( m_port ) < 0 )
             {

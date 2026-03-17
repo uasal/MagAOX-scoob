@@ -40,6 +40,7 @@ class zaberBinaryStage
         cmdMoveAbsolute          = 20,
         cmdMoveRelative          = 21,
         cmdStop                  = 23,
+        cmdSetHoldCurrent        = 39,
         cmdSetDeviceMode         = 40,
         cmdSetTargetSpeed        = 42,
         cmdSetMaximumPosition    = 44,
@@ -110,6 +111,15 @@ class zaberBinaryStage
 
     /// Whether a parked position has been recovered from device non-volatile memory.
     bool m_hasParkPos{ false };
+
+    /// Whether a parked state file has been loaded from disk.
+    bool m_hasStateFile{ false };
+
+    /// Raw position loaded from the parked state file.
+    long m_stateFileRawPos{ 0 };
+
+    /// Parked flag loaded from the parked state file.
+    bool m_stateFileParked{ false };
 
     /// Last reported stage temperature. Firmware 5.35 does not expose this directly.
     float m_temp{ -999.0 };
@@ -280,6 +290,11 @@ class zaberBinaryStage
                         int32_t speed /**< [in] the target speed command value */
     );
 
+    /// Set the hold current used while the stage is idle.
+    int setHoldCurrent( z_port  port, /**< [in] the port with which to communicate */
+                        int32_t value /**< [in] the hold current command value */
+    );
+
     /// Stop the stage.
     int stop( z_port port /**< [in] the port with which to communicate */ );
 
@@ -297,6 +312,9 @@ class zaberBinaryStage
 
     /// Recall the MagAO-X parked position from device non-volatile memory.
     int recallParkPosition( z_port port /**< [in] the port with which to communicate */ );
+
+    /// Restore parked state after a power cycle if device and disk state agree.
+    int restoreParkedState( z_port port /**< [in] the port with which to communicate */ );
 
     /// Move to a new absolute position.
     int moveAbs( z_port port, /**< [in] the port with which to communicate */
@@ -800,6 +818,31 @@ int zaberBinaryStage<parentT>::setTargetSpeed( z_port port, int32_t speed )
 }
 
 template <class parentT>
+int zaberBinaryStage<parentT>::setHoldCurrent( z_port port, int32_t value )
+{
+    int rv = sendCommandNoReply( port, cmdSetHoldCurrent, value );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    int32_t appliedValue;
+    rv = getSetting( appliedValue, port, cmdSetHoldCurrent );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    if( appliedValue != value )
+    {
+        return MagAOXAppT::log<software_error, -1>(
+            std::format( "device {} reported hold current {} after requesting {}", m_name, appliedValue, value ) );
+    }
+
+    return 0;
+}
+
+template <class parentT>
 int zaberBinaryStage<parentT>::stop( z_port port )
 {
     int rv = sendCommandNoReply( port, cmdStop, 0 );
@@ -843,7 +886,19 @@ int zaberBinaryStage<parentT>::park( z_port port )
         return rv;
     }
 
-    return recallParkPosition( port );
+    rv = recallParkPosition( port );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    rv = setHoldCurrent( port, 0 );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    return 0;
 }
 
 template <class parentT>
@@ -868,6 +923,51 @@ int zaberBinaryStage<parentT>::recallParkPosition( z_port port )
     m_parkPos    = storedPosition;
     m_hasParkPos = true;
     m_parked     = ( m_rawPos == m_parkPos );
+    return 0;
+}
+
+template <class parentT>
+int zaberBinaryStage<parentT>::restoreParkedState( z_port port )
+{
+    if( !m_hasStateFile || !m_stateFileParked || !m_hasParkPos )
+    {
+        return 0;
+    }
+
+    if( m_stateFileRawPos != m_parkPos )
+    {
+        return MagAOXAppT::log<software_warning, 0>(
+            std::format( "parked state mismatch for {}: disk {} device {}", m_name, m_stateFileRawPos, m_parkPos ) );
+    }
+
+    int rv = setHoldCurrent( port, 0 );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    rv = sendCommandNoReply( port, cmdSetCurrentPosition, m_stateFileRawPos );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    int32_t restoredPos;
+    rv = queryCommand( restoredPos, port, cmdReturnCurrentPosition, 0, cmdReturnCurrentPosition );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+
+    if( restoredPos != m_stateFileRawPos )
+    {
+        return MagAOXAppT::log<software_error, -1>(
+            std::format( "device {} restored position {} but expected {}", m_name, restoredPos, m_stateFileRawPos ) );
+    }
+
+    m_rawPos = restoredPos;
+    m_tgtPos = restoredPos;
+    m_parked = true;
     return 0;
 }
 
@@ -1028,6 +1128,9 @@ int zaberBinaryStage<parentT>::readStateFile( std::ifstream &fin )
     m_parked            = parked;
     m_parkPos           = rawPos;
     m_hasParkPos        = parked;
+    m_hasStateFile      = true;
+    m_stateFileRawPos   = rawPos;
+    m_stateFileParked   = parked;
     m_maxPos            = maxPos;
     m_lastHomed.tv_sec  = lastHomed;
     m_lastHomed.tv_nsec = 0;
