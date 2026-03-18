@@ -89,7 +89,9 @@ apps_icc = \
 	corAlign \
 	adcCtrl \
 	picamCtrl \
-	pvcamCtrl
+	pvcamCtrl \
+	zaberLowLevelBinary
+
 pythonapps_icc = \
 	adcCtrl \
 	visxCtrl
