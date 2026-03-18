@@ -1,5 +1,6 @@
 /** \file dmCtrl.hpp
  * \brief Deformable mirror control widget for INDI-backed operations.
+ * \author Jared R. Males
  */
 
 #ifndef dmCtrl_hpp
@@ -15,6 +16,7 @@
 namespace xqt
 {
 
+/// Deformable mirror control widget backed by INDI properties.
 class dmCtrl : public xWidget
 {
     Q_OBJECT
@@ -36,6 +38,9 @@ class dmCtrl : public xWidget
     std::vector<std::string> m_testOptions;      ///< Available test options from INDI.
 
     std::mutex m_stateMutex; ///< Guards cached state copied into the GUI thread.
+
+    bool m_connected{ false }; ///< True once the widget has processed an INDI connect event.
+    bool m_inUpdate{ false };  ///< Prevents re-entrant queued GUI refresh work.
 
   public:
     /// Constructs the DM control widget.
@@ -119,7 +124,6 @@ class dmCtrl : public xWidget
 dmCtrl::dmCtrl( std::string &dmName, QWidget *Parent, Qt::WindowFlags f ) : xWidget( Parent, f ), m_dmName{ dmName }
 {
     ui.setupUi( this );
-    // ui.labelDMName->setText(m_dmName.c_str());
 
     setWindowTitle( QString( m_dmName.c_str() ) );
 
@@ -140,8 +144,6 @@ dmCtrl::dmCtrl( std::string &dmName, QWidget *Parent, Qt::WindowFlags f ) : xWid
     setXwFont( ui.buttonZeroTest );
     setXwFont( ui.comboSelectFlat );
     setXwFont( ui.comboSelectTest );
-
-    // setXwFont(ui.fsmState);
 
     setXwFont( ui.labelShmimName );
     setXwFont( ui.labelShmimName_value );
@@ -176,8 +178,6 @@ void dmCtrl::subscribe()
     m_parent->addSubscriberProperty( this, m_dmName, "test" );
     m_parent->addSubscriberProperty( this, m_dmName, "test_shmim" );
     m_parent->addSubscriberProperty( this, m_dmName, "test_set" );
-    m_parent->addSubscriber( ui.fsmState );
-
     return;
 }
 
@@ -188,7 +188,8 @@ void dmCtrl::onConnect()
 
 void dmCtrl::onConnectGUI()
 {
-    // ui.labelDMName->setEnabled(true);
+    m_connected = true;
+
     ui.fsmState->setEnabled( true );
     ui.labelShmimName->setEnabled( true );
     ui.labelShmimName_value->setEnabled( true );
@@ -205,6 +206,8 @@ void dmCtrl::onConnectGUI()
     ui.fsmState->onConnect();
 
     setWindowTitle( QString( m_dmName.c_str() ) );
+
+    emit doUpdateGUI();
 }
 
 void dmCtrl::onDisconnect()
@@ -214,7 +217,22 @@ void dmCtrl::onDisconnect()
 
 void dmCtrl::onDisconnectGUI()
 {
-    // ui.labelDMName->setEnabled(false);
+    m_connected = false;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_stateMutex );
+        m_appState.clear();
+        m_shmimName.clear();
+        m_flatShmim.clear();
+        m_flatSet = false;
+        m_flatName.clear();
+        m_flatOptions.clear();
+        m_testShmim.clear();
+        m_testSet = false;
+        m_testName.clear();
+        m_testOptions.clear();
+    }
+
     ui.fsmState->setEnabled( false );
     ui.labelShmimName->setEnabled( false );
     ui.labelShmimName_value->setEnabled( false );
@@ -236,6 +254,12 @@ void dmCtrl::onDisconnectGUI()
 
     ui.comboSelectFlat->setEnabled( false );
     ui.comboSelectTest->setEnabled( false );
+
+    ui.labelShmimName_value->setText( "" );
+    ui.labelFlatShmim_value->setText( "" );
+    ui.labelTestShmim_value->setText( "" );
+    ui.comboSelectFlat->clear();
+    ui.comboSelectTest->clear();
 
     setWindowTitle( QString( m_dmName.c_str() ) + QString( " (disconnected)" ) );
 
@@ -261,6 +285,8 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty &ipRecv )
         {
             m_appState = ipRecv["state"].get<std::string>();
         }
+
+        ui.fsmState->handleSetProperty( ipRecv );
     }
     else if( ipRecv.getName() == "sm_shmimName" )
     {
@@ -331,6 +357,11 @@ void dmCtrl::handleSetProperty( const pcf::IndiProperty &ipRecv )
 
 void dmCtrl::updateGUI()
 {
+    if( m_inUpdate || !m_connected )
+        return;
+
+    m_inUpdate = true;
+
     std::string              appState;
     std::string              shmimName;
     std::string              flatShmim;
@@ -372,12 +403,6 @@ void dmCtrl::updateGUI()
     if( !testName.empty() )
         ui.comboSelectTest->setCurrentText( testName.c_str() );
 
-    //    ui.buttonSetFlat->setEnabled(true);
-    //    ui.buttonZeroFlat->setEnabled(true);
-    //
-    //    ui.buttonSetTest->setEnabled(true);
-    //    ui.buttonZeroTest->setEnabled(true);
-    //
     if( appState != "NOTHOMED" && appState != "READY" && appState != "OPERATING" )
     {
         // Disable & zero all
@@ -392,6 +417,7 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( false );
 
+        m_inUpdate = false;
         return;
     }
 
@@ -408,6 +434,7 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( false );
 
+        m_inUpdate = false;
         return;
     }
 
@@ -436,6 +463,8 @@ void dmCtrl::updateGUI()
         ui.buttonSetTest->setEnabled( false );
         ui.buttonZeroTest->setEnabled( true );
     }
+
+    m_inUpdate = false;
 
 } // updateGUI()
 

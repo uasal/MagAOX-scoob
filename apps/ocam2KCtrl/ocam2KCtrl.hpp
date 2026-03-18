@@ -1440,9 +1440,6 @@ int ocam2KCtrl::loadImageIntoStream(void * dest)
 inline
 int ocam2KCtrl::reconfig()
 {
-   //lock mutex
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-
    int rv = edtCamera<ocam2KCtrl>::pdvReconfig();
    if(rv < 0) return rv;
    state(stateCodes::READY);

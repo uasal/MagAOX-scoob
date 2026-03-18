@@ -3369,7 +3369,6 @@ void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
                 {
                     if( it->first != it->second.property->createUniqueKey() )
                     {
-                        std::cerr << it->first << " bad device\n";
                         it->second.m_defReceived = true;
                         resetIndiSetPropertyRetry( it->second );
                         continue;
@@ -3390,7 +3389,6 @@ void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
                 {
                     if( it->first != it->second.property->createUniqueKey() )
                     {
-                        std::cerr << it->first << " bad device\n";
                         it->second.m_defReceived = true;
                         resetIndiSetPropertyRetry( it->second );
                         --unresolvedCount;
