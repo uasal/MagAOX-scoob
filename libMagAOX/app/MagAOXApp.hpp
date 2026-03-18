@@ -3371,6 +3371,7 @@ void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
                     {
                         it->second.m_defReceived = true;
                         resetIndiSetPropertyRetry( it->second );
+                         ++it;
                         continue;
                     }
 
