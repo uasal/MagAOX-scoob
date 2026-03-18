@@ -1623,9 +1623,9 @@ void MagAOXApp<_useINDI>::loadBasicConfig() // virtual
                            "/" + m_powerTargetElement );
 
             if( registerIndiPropertySet(
-                    m_indiP_powerChannel, 
-                    m_powerDevice, 
-                    m_powerChannel, 
+                    m_indiP_powerChannel,
+                    m_powerDevice,
+                    m_powerChannel,
                     INDI_SETCALLBACK( m_indiP_powerChannel ) ) <
                 0 )
             {
@@ -3345,8 +3345,10 @@ template <bool _useINDI>
 void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
 {
     std::vector<pcf::IndiProperty *> propsToGet;
-    auto                            now = std::chrono::steady_clock::now();
-    int                             unresolvedCount = 0;
+
+    auto now = std::chrono::steady_clock::now();
+
+    int unresolvedCount = 0;
 
     { //mutex scope
         std::lock_guard<std::mutex> lock( m_indiCallBackMutex );
