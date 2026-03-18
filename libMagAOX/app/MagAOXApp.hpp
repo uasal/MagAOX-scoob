@@ -3283,7 +3283,6 @@ void MagAOXApp<_useINDI>::sendGetPropertySetList( bool all )
                     {
                          std::cerr << it->first << " bad device\n";
                          it->second.m_defReceived = true;
-                         ++it;
                         continue;
                     }
 
