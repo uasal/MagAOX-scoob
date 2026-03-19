@@ -691,6 +691,8 @@ namespace MagAOX
 
       if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
       {
+        receive();
+
         if (telemeterT::appLogic() < 0)
         {
           log<software_error>({__FILE__, __LINE__});
@@ -903,9 +905,12 @@ namespace MagAOX
         val3 = ((float *)curr_src)[2];
       }
 
-      updateIfChanged(m_indiP_val1, "target", val1);
-      updateIfChanged(m_indiP_val2, "target", val2);
-      updateIfChanged(m_indiP_val3, "target", val3);
+      {
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+        updateIfChanged(m_indiP_val1, "target", val1);
+        updateIfChanged(m_indiP_val2, "target", val2);
+        updateIfChanged(m_indiP_val3, "target", val3);
+      }
 
       if (m_inputType == DACS)
       {
@@ -929,8 +934,6 @@ namespace MagAOX
       std::ostringstream oss;
       oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
       log<text_log>(oss.str());
-
-      std::unique_lock<std::mutex> lock(m_indiMutex);
 
       return setDacs(dacs);
     }
