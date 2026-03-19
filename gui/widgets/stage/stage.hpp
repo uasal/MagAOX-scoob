@@ -54,6 +54,8 @@ public:
 
    void handleDefProperty( const pcf::IndiProperty & ipRecv /**< [in] the property which has changed*/);
 
+   void handleDelProperty( const pcf::IndiProperty & ipRecv /**< [in] the property which has been deleted*/);
+
    void handleSetProperty( const pcf::IndiProperty & ipRecv /**< [in] the property which has changed*/);
 
    void clear_focus();
@@ -155,10 +157,21 @@ void stage::onConnect()
 
 void stage::onDisconnect()
 {
+   m_appState.clear();
+   m_presets.clear();
+   m_presetCurrent.clear();
+   m_presetTarget.clear();
+   m_setPoint.clear();
+   m_filterWheel = false;
+   m_maxPos = 100;
+   m_position = -1e30;
+   m_position_changed = false;
+
    setWindowTitle(QString(m_winTitle.c_str()) + QString(" (disconnected)"));
 
    ui.stageName->setEnabled(false);
    ui.fsmState->setEnabled(false);
+   ui.setPoint->clear();
    ui.setPoint->setEnabled(false);
    ui.setPointGo->setEnabled(false);
    ui.positionSlider->setEnabled(false);
@@ -180,6 +193,21 @@ void stage::onDisconnect()
 void stage::handleDefProperty( const pcf::IndiProperty & ipRecv)
 {
    return handleSetProperty(ipRecv);
+}
+
+void stage::handleDelProperty( const pcf::IndiProperty & ipRecv)
+{
+   if(ipRecv.getDevice() != m_stageName) return;
+
+   if(ipRecv.getName() == "fsm" ||
+      ipRecv.getName() == "maxpos" ||
+      ipRecv.getName() == "position" ||
+      ipRecv.getName() == "filter" ||
+      ipRecv.getName() == "presetName" ||
+      ipRecv.getName() == "filterName")
+   {
+      onDisconnect();
+   }
 }
 
 void stage::handleSetProperty( const pcf::IndiProperty & ipRecv)
