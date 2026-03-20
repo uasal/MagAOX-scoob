@@ -1,3 +1,9 @@
+/** \file warnings.cpp
+ * \brief Defines the warnings rtimv overlay plugin.
+ *
+ * \author Jared R. Males (jaredmales@gmail.com)
+ *
+ */
 
 #include "warnings.hpp"
 
