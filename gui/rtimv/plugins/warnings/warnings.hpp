@@ -12,15 +12,15 @@
 class warnings : public rtimvOverlayInterface
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "rtimv.overlayInterface/1.2")
-    Q_INTERFACES(rtimvOverlayInterface)
+    Q_PLUGIN_METADATA( IID "rtimv.overlayInterface/1.4" )
+    Q_INTERFACES( rtimvOverlayInterface )
 
-protected:
+  protected:
     rtimvOverlayAccess m_roa;
 
-    bool m_enabled{false};
+    bool m_enabled{ false };
 
-    bool m_enableable{false};
+    bool m_enableable{ false };
 
     std::string m_deviceName;
 
@@ -32,17 +32,24 @@ protected:
 
     char m_blob[512]; ///< Memory for copying rtimvDictionary blobs
 
-public:
+  public:
     warnings();
 
     virtual ~warnings();
 
-    virtual int attachOverlay(rtimvOverlayAccess &,
-                              mx::app::appConfigurator &config);
+    virtual int attachOverlay( rtimvOverlayAccess &, mx::app::appConfigurator &config );
 
     virtual int updateOverlay();
 
-    virtual void keyPressEvent(QKeyEvent *ke);
+    virtual void keyPressEvent( QKeyEvent *ke );
+
+    virtual bool hasTextOverlay();
+
+    virtual char textOverlayKey();
+
+    virtual std::string textOverlayTitle();
+
+    virtual std::string textOverlayText();
 
     virtual bool overlayEnabled();
 
@@ -50,13 +57,22 @@ public:
 
     virtual void disableOverlay();
 
-public:
+  public:
     virtual std::vector<std::string> info();
 
-signals:
+  protected:
+    bool keyOn( const std::string &key );
 
-    void warningLevel(rtimv::warningLevel lvl);
+    bool anyOn( const std::vector<std::string> &keys, const std::string &prefix );
 
+    void appendActive( std::string                    &text,
+                       const std::string              &heading,
+                       const std::vector<std::string> &keys,
+                       const std::string              &prefix );
+
+  signals:
+
+    void warningLevel( rtimv::warningLevel lvl );
 };
 
 #endif // warnings_hpp
