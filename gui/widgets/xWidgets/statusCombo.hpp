@@ -69,6 +69,8 @@ protected:
 
     virtual void handleDefProperty( const pcf::IndiProperty &ipRecv /**< [in] the property which has changed*/ );
 
+    virtual void handleDelProperty( const pcf::IndiProperty &ipRecv /**< [in] the property which has been deleted*/ );
+
     virtual void handleSetProperty( const pcf::IndiProperty &ipRecv /**< [in] the property which has changed*/ );
 
   public:
@@ -223,6 +225,13 @@ void statusCombo::onConnect()
 
 void statusCombo::onDisconnect()
 {
+    m_fsmState.clear();
+    m_value.clear();
+    m_showVal = false;
+    m_valChanged = false;
+
+    ui.status->clear();
+    ui.status->setPlaceholderText( "" );
     ui.status->setCurrentIndex( -1 );
 
     if( m_ctrlWidget )
@@ -234,6 +243,17 @@ void statusCombo::onDisconnect()
 void statusCombo::handleDefProperty( const pcf::IndiProperty &ipRecv )
 {
     return handleSetProperty( ipRecv );
+}
+
+void statusCombo::handleDelProperty( const pcf::IndiProperty &ipRecv )
+{
+    if( ipRecv.getDevice() != m_device )
+        return;
+
+    if( ipRecv.getName() == "fsm" || ipRecv.getName() == m_property )
+    {
+        onDisconnect();
+    }
 }
 
 void statusCombo::handleSetProperty( const pcf::IndiProperty &ipRecv )

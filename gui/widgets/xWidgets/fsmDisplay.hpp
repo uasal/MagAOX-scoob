@@ -68,6 +68,9 @@ class fsmDisplay : public xWidget
     /// Handles defProperty notifications.
     virtual void handleDefProperty( const pcf::IndiProperty &ipRecv /**< [in] Property which has changed. */ );
 
+    /// Handles delProperty notifications.
+    virtual void handleDelProperty( const pcf::IndiProperty &ipRecv /**< [in] Property which has been deleted. */ );
+
     /// Handles setProperty notifications.
     virtual void handleSetProperty( const pcf::IndiProperty &ipRecv /**< [in] Property which has changed. */ );
 
@@ -177,6 +180,17 @@ void fsmDisplay::onDisconnectGUI()
 void fsmDisplay::handleDefProperty( const pcf::IndiProperty &ipRecv )
 {
     return handleSetProperty( ipRecv );
+}
+
+void fsmDisplay::handleDelProperty( const pcf::IndiProperty &ipRecv )
+{
+    if( ipRecv.getDevice() != m_device )
+        return;
+
+    if( ipRecv.getName() == m_property )
+    {
+        onDisconnect();
+    }
 }
 
 void fsmDisplay::handleSetProperty( const pcf::IndiProperty &ipRecv )

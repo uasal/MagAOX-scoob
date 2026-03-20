@@ -64,6 +64,9 @@ class dmCtrl : public xWidget
     /// Handles defProperty notifications.
     void handleDefProperty( const pcf::IndiProperty &ipRecv /**< [in] Property that has changed. */ );
 
+    /// Handles delProperty notifications.
+    void handleDelProperty( const pcf::IndiProperty &ipRecv /**< [in] Property that has been deleted. */ );
+
     /// Handles setProperty notifications.
     void handleSetProperty( const pcf::IndiProperty &ipRecv /**< [in] Property that has changed. */ );
 
@@ -269,6 +272,21 @@ void dmCtrl::onDisconnectGUI()
 void dmCtrl::handleDefProperty( const pcf::IndiProperty &ipRecv )
 {
     return handleSetProperty( ipRecv );
+}
+
+void dmCtrl::handleDelProperty( const pcf::IndiProperty &ipRecv )
+{
+    if( ipRecv.getDevice() != m_dmName )
+    {
+        return;
+    }
+
+    if( ipRecv.getName() == "fsm" || ipRecv.getName() == "sm_shmimName" || ipRecv.getName() == "flat" ||
+        ipRecv.getName() == "flat_shmim" || ipRecv.getName() == "flat_set" || ipRecv.getName() == "test" ||
+        ipRecv.getName() == "test_shmim" || ipRecv.getName() == "test_set" )
+    {
+        emit doOnDisconnect();
+    }
 }
 
 void dmCtrl::handleSetProperty( const pcf::IndiProperty &ipRecv )
