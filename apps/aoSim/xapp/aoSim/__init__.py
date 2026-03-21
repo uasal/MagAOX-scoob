@@ -52,6 +52,7 @@ class aoSimConfig(BaseConfig):
     """
     num_modes : int = xconf.field(default=2, help="Number of modes to simulate in the AO system.")
     lag : int = xconf.field(default=1, help="Lag in timesteps for DM command updates.")
+    noise : float = xconf.field(default=0.0, help="Amplitude of noise to add to the wavefront sensor measurements.")
 
 class aoSim(XDevice):
     """Adaptive Optics System Simulator.
@@ -69,7 +70,6 @@ class aoSim(XDevice):
 
         self._nmodes = self.config.num_modes
 
-        # Make this configurable in the future
         create_if_not_exist_shmim('aoSim_dm', [self._nmodes, 1], dtype=np.float32)
         self._dm = Image('aoSim_dm')
 
@@ -87,6 +87,8 @@ class aoSim(XDevice):
         self._lag = self.config.lag
         self._dm_command_history = np.zeros((self._lag + 1, self._nmodes, 1), dtype=np.float32)
 
+        # Update the dm first so that the current shape in the shared memory is correct
+        #  before the first WFS update, which relies on the current DM state.
         self.update_dm()
 
         self.log.info(f'aoSim app is fully setup.')
@@ -101,7 +103,8 @@ class aoSim(XDevice):
     def update_wfs(self):
         """Update the wavefront sensor measurement in shared memory.
         """
-        self.err = self._current_disturbance + self._current_dm_state
+        self.err = self._current_disturbance + self._current_dm_state 
+        self.err += self.config.noise * np.random.randn(self._nmodes, 1).astype(np.float32)
         self._wfs.write(self.err)
 
     def update_disturbance(self):
