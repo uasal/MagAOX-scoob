@@ -1363,32 +1363,26 @@ float ocam2KCtrl::fps()
 inline
 int ocam2KCtrl::startAcquisition()
 {
-   { //mutex scope
-      std::lock_guard<std::recursive_mutex> guard(m_cameraMutex);
-      m_lastImageNumber = -1;
-      return edtCamera<ocam2KCtrl>::pdvStartAcquisition();
-   }
+   m_lastImageNumber = -1;
+   return edtCamera<ocam2KCtrl>::pdvStartAcquisition();
 
 }
 
 inline
 int ocam2KCtrl::acquireAndCheckValid()
 {
-   { //mutex scope
-      std::lock_guard<std::recursive_mutex> guard(m_cameraMutex);
-      edtCamera<ocam2KCtrl>::pdvAcquire( m_currImageTimestamp );
+   edtCamera<ocam2KCtrl>::pdvAcquire( m_currImageTimestamp );
 
-      /* Removed all pdv timeout and overrun checking, since we can rely on frame number from the camera
-         to detect missed and corrupted frames.
+   /* Removed all pdv timeout and overrun checking, since we can rely on frame number from the camera
+      to detect missed and corrupted frames.
 
-         See ef0dd24 for last version with full checks in it.
-      */
+      See ef0dd24 for last version with full checks in it.
+   */
 
-      //Get the image number to see if this is valid.
-      //This is how it is in the ocam2_sdk:
-      unsigned currImageNumber = (reinterpret_cast<int *>(m_image_p))[OCAM2_IMAGE_NB_OFFSET/4]; /* int offset */
-      m_currImageNumber = currImageNumber;
-   }
+   //Get the image number to see if this is valid.
+   //This is how it is in the ocam2_sdk:
+   unsigned currImageNumber = (reinterpret_cast<int *>(m_image_p))[OCAM2_IMAGE_NB_OFFSET/4]; /* int offset */
+   m_currImageNumber = currImageNumber;
 
    //For the first loop after a restart
    if( m_lastImageNumber == -1 )
@@ -1445,37 +1439,33 @@ int ocam2KCtrl::loadImageIntoStream(void * dest)
 {
     unsigned currImageNumber = 0;
 
-    { //mutex scope
-        std::lock_guard<std::recursive_mutex> guard(m_cameraMutex);
-        if(!m_digitalBin)
-        {
-            ocam2_descramble(m_ocam2_id, &currImageNumber, reinterpret_cast<int16_t *>(dest), reinterpret_cast<int16_t *>(m_image_p));
-            //memcpy(dest, m_image_p, 120*120*2); //This is about 10 usec faster -- but we have to descramble.
-        }
-        else
-        {
-            ocam2_descramble(m_ocam2_id, &currImageNumber, m_digitalBinWork.data(), reinterpret_cast<int16_t *>(m_image_p));
+    if(!m_digitalBin)
+    {
+        ocam2_descramble(m_ocam2_id, &currImageNumber, reinterpret_cast<int16_t *>(dest), reinterpret_cast<int16_t *>(m_image_p));
+        //memcpy(dest, m_image_p, 120*120*2); //This is about 10 usec faster -- but we have to descramble.
+    }
+    else
+    {
+        ocam2_descramble(m_ocam2_id, &currImageNumber, m_digitalBinWork.data(), reinterpret_cast<int16_t *>(m_image_p));
 
-            mx::improc::eigenMap<int16_t> destMap( reinterpret_cast<int16_t*>(dest), m_width, m_height);
+        mx::improc::eigenMap<int16_t> destMap( reinterpret_cast<int16_t*>(dest), m_width, m_height);
 
-            if(m_digitalBinX > 1)
+        if(m_digitalBinX > 1)
+        {
+            for(int cc = 0; cc < destMap.cols(); ++cc)
             {
-                for(int cc = 0; cc < destMap.cols(); ++cc)
+                for(int rr = 0; rr < destMap.rows(); ++rr)
                 {
-                    for(int rr = 0; rr < destMap.rows(); ++rr)
-                    {
-                        destMap(rr,cc)  = m_digitalBinWork(rr*m_digitalBinX + 0, cc);
+                    destMap(rr,cc)  = m_digitalBinWork(rr*m_digitalBinX + 0, cc);
 
-                        for(unsigned b = 1; b < m_digitalBinX; ++b)
-                        {
-                            destMap(rr,cc)  = m_digitalBinWork(rr*m_digitalBinX + b,cc);
-                        }
+                    for(unsigned b = 1; b < m_digitalBinX; ++b)
+                    {
+                        destMap(rr,cc)  = m_digitalBinWork(rr*m_digitalBinX + b,cc);
                     }
                 }
             }
         }
     }
-
 
    return 0;
 }
