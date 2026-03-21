@@ -29,20 +29,15 @@ def create_if_not_exist_shmim(name, shape, dtype=np.float32):
     """
     img = ImageStreamIOWrap.Image()
     
-    do_make=False
     # Check if the shmim exists
     if img.open(name) == 40:
-        do_make = True
+        img.create(name, np.zeros(shape, dtype=dtype))
     else:
         # the shmim opened successfully, check if it has the right shape and dtype, if not destroy and recreate
         if not (img.md.size[0] == shape[0] and img.md.size[1] == shape[1] and img.md.datatype == (ImageStreamIOWrap.ImageStreamIODataType.FLOAT if dtype == np.float32 else ImageStreamIOWrap.ImageStreamIODataType.DOUBLE)):
             img.destroy()
-            do_make = True
+            img.create(name, np.zeros(shape, dtype=dtype))
 
-    # Remake the shmim if it doesn't exist or if the existing one has the wrong shape/dtype
-    if do_make:
-        img.create(name, np.zeros(shape, dtype=dtype))
-    
     # Close the connection to the shmim.
     img.close()
 
