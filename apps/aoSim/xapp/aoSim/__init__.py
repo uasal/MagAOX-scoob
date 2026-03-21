@@ -87,6 +87,7 @@ class aoSim(XDevice):
         self._lag = self.config.lag
         self._dm_command_history = np.zeros((self._lag + 1, self._nmodes, 1), dtype=np.float32)
 
+        self._noise = self.config.noise
         # Update the dm first so that the current shape in the shared memory is correct
         #  before the first WFS update, which relies on the current DM state.
         self.update_dm()
@@ -98,13 +99,13 @@ class aoSim(XDevice):
         """
         self._current_dm_state = self._dm_command_history[0]
         self._dm_command_history = np.roll(self._dm_command_history, shift=-1, axis=0)
-        self._dm_command_history[-1,:,0] = self._dm.get_data(wait=False)
+        self._dm_command_history[-1] = self._dm.get_data(wait=False)
         
     def update_wfs(self):
         """Update the wavefront sensor measurement in shared memory.
         """
         self.err = self._current_disturbance + self._current_dm_state 
-        self.err += self.config.noise * np.random.randn(self._nmodes, 1).astype(np.float32)
+        self.err += self._noise * np.random.randn(self._nmodes, 1).astype(np.float32)
         self._wfs.write(self.err)
 
     def update_disturbance(self):

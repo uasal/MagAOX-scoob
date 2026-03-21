@@ -1,6 +1,14 @@
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 
-from apps.aoSim.xapp.aoSim import aoSim, aoSimConfig
+# Ensure tests run from apps/aoSim as requested
+repo_root = Path(__file__).resolve().parents[2]  # apps/aoSim/test -> apps/aoSim -> apps
+sys.path.insert(0, str(repo_root / "aoSim"))
+
+from xapp.aoSim import aoSim, aoSimConfig
 
 
 class DummyImage:
@@ -20,6 +28,7 @@ class DummyImage:
 def make_fake_aosim():
     sim = object.__new__(aoSim)
     sim._nmodes = 2
+    sim._noise = 0.0
     sim._t = np.array([0.0], dtype=np.float32)
     sim._dt = np.array([0.01], dtype=np.float32)
     sim._current_disturbance = np.zeros((2, 1), dtype=np.float32)
