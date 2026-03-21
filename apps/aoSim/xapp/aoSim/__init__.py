@@ -1,19 +1,11 @@
 import logging
-from enum import Enum
-import time
 import numpy as np
-import hcipy as hp
 
 import ImageStreamIOWrap
 import xconf
 
 from magaox.indi.device import XDevice, BaseConfig
 from magaox.shmim import Image
-from magaox.constants import StateCodes
-from magaox.state_manager import XStateMachine
-
-from purepyindi2 import device, properties, constants
-from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 
 def create_if_not_exist_shmim(name, shape, dtype=np.float32):
     """Create or verify a shared memory image (shmim) with the specified parameters.
