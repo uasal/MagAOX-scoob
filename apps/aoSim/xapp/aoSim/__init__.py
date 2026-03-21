@@ -1,20 +1,3 @@
-"""
-aoSim Application Module
-
-This module implements a simulated adaptive optics (AO) system for testing and development purposes.
-The aoSim application simulates:
-- Deformable mirror (DM) states and commands
-- Wavefront sensor (WFS) measurements
-- AO loop disturbances
-
-The application manages shared memory images for inter-process communication with other MagAOX 
-components and provides a configurable simulation loop for AO system dynamics.
-
-Attributes:
-    aoSimConfig: Configuration class defining AO simulation parameters
-    aoSim: Main application class implementing the AO simulator device
-"""
-
 import logging
 from enum import Enum
 import time
@@ -40,7 +23,7 @@ def create_if_not_exist_shmim(name, shape, dtype=np.float32):
     parameters, it is destroyed and recreated.
     
     Args:
-        name (str): The name/key of the shared memory image to create or access.
+        name (str): The name of the shared memory image to create or access.
         shape (tuple): The desired shape of the array as (height, width).
         dtype (type, optional): The numpy data type for the array. 
             Defaults to np.float32 (FLOAT). Can also be np.float64 (DOUBLE).
@@ -74,13 +57,6 @@ def create_if_not_exist_shmim(name, shape, dtype=np.float32):
 @xconf.config
 class aoSimConfig(BaseConfig):
     """Configuration for the aoSim application.
-    
-    Defines the configurable parameters for the AO simulator, including the number
-    of deformable mirror modes to simulate in the AO system.
-    
-    Attributes:
-        num_modes (int): Number of modes to simulate in the AO system. 
-            Default: 2. Controls the dimensionality of DM commands and WFS measurements.
     """
     num_modes : int = xconf.field(default=2, help="Number of modes to simulate in the AO system.")
     lag : int = xconf.field(default=1, help="Lag in timesteps for DM command updates.")
@@ -88,24 +64,7 @@ class aoSimConfig(BaseConfig):
 class aoSim(XDevice):
     """Adaptive Optics System Simulator.
     
-    The aoSim application provides a simulated AO system for testing and development.
-    It manages three shared memory images for inter-process communication:
-    - aoSim_dm: Deformable mirror state (command history)
-    - aoSim_wfs: Wavefront sensor measurements (AO loop error signal)
-    - aoSim_disturbance: Atmospheric/system disturbances
-    
-    The simulator runs a control loop that:
-    1. Updates DM state from commanded values
-    2. Applies disturbances (currently sinusoidal)
-    3. Computes WFS error as the sum of DM state and disturbance
-    4. Updates shared memory images for other processes
-    
-    Attributes:
-        config (aoSimConfig): Configuration object with num_modes parameter.
-        
-    Example:
-        The simulator can be run in a loop to generate realistic AO dynamics for
-        testing higher-level control algorithms and optimization routines.
+    The aoSim application provides a simulated modal AO system for testing and development.
     """
     config : aoSimConfig
 
@@ -114,7 +73,6 @@ class aoSim(XDevice):
         
         Sets up shared memory images for DM, WFS, and disturbance, initializes
         simulation state variables, and configures the control loop parameters.
-        This method is called during application initialization.
         """
 
         self._nmodes = self.config.num_modes
@@ -143,10 +101,6 @@ class aoSim(XDevice):
 
     def update_dm(self):
         """Update the deformable mirror state from its command history.
-        
-        Applies commanded DM values with a fixed lag to simulate
-        realistic actuator response delays. Updates the DM command history buffer by
-        rolling it and reading the latest commanded value from the shared memory image.
         """
         self._current_dm_state = self._dm_command_history[0]
         self._dm_command_history = np.roll(self._dm_command_history, shift=-1, axis=0)
@@ -154,10 +108,6 @@ class aoSim(XDevice):
         
     def update_wfs(self):
         """Update the wavefront sensor measurement in shared memory.
-        
-        Computes the WFS error as the sum of the current DM state and atmospheric
-        disturbance, representing the closed-loop residual that the AO system should
-        correct. Updates the aoSim_wfs shared memory image with the new measurement.
         """
         self.err = self._current_disturbance + self._current_dm_state
         self._wfs.write(self.err)
@@ -170,15 +120,6 @@ class aoSim(XDevice):
 
     def loop(self):
         """Execute one iteration of the AO simulation loop.
-        
-        Performs the following steps in sequence:
-        1. Update DM state from commanded values (with lag)
-        2. Generate atmospheric disturbance for this timestep
-        3. Compute and update WFS measurement
-        4. Log simulation state and advance time
-        
-        This method is called repeatedly by the main application event loop to generate
-        realistic AO system dynamics.
         """
         self.update_dm()
         self.update_disturbance()
