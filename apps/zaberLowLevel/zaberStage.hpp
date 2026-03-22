@@ -55,6 +55,10 @@ class zaberStage
 
     float m_temp{ -999 }; ///< The driver temperature, in C.
 
+    bool m_ledEnabled{ false };
+
+    bool m_knobEnabled{ false };
+
     bool m_warn{ false };
 
     bool m_warnFD{ false };
@@ -309,8 +313,11 @@ class zaberStage
     /// Update the stage temperature
     int updateTemp( z_port port /**< [in] the port with which to communicate */ );
 
-    /// Disable the knob
-    int disableKnob( z_port port );
+    /// Enable/Disable the knob
+    int enableKnob( z_port port, bool enable );
+
+    // Enable/disable LED
+    int enableLED( z_port port, bool enable );
 
     /// Stop the stage
     int stop( z_port port );
@@ -898,7 +905,7 @@ int zaberStage<parentT>::sendCommand( z_port port, const std::string &command )
 }
 
 template <class parentT>
-int zaberStage<parentT>::disableKnob( z_port port )
+int zaberStage<parentT>::enableKnob( z_port port, bool enable )
 {
     int rv = sendCommand( port, "set knob.enable 0" );
 

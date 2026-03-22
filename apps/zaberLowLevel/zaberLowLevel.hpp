@@ -129,6 +129,7 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
     /// Command a stage to safely immediately halt.
     pcf::IndiProperty m_indiP_req_ehalt;
 
+
   public:
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_tgt_pos );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_home );
@@ -593,7 +594,7 @@ int zaberLowLevel::appLogic()
 
             std::lock_guard<std::mutex> guard( m_indiMutex ); // Inside loop so INDI requests can steal it
 
-            m_stages[i].disableKnob( m_port ); // Always disable the knob on startup
+            m_stages[i].enableKnob( m_port, false ); // Always disable the knob on startup
 
             m_stages[i].getMaxPos( m_port );
 

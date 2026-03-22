@@ -304,7 +304,7 @@ class zaberBinaryStage
     int updateTemp( z_port port /**< [in] the port with which to communicate */ );
 
     /// Disable the manual knob and asynchronous command replies.
-    int disableKnob( z_port port /**< [in] the port with which to communicate */ );
+    int enableKnob( z_port port, bool enable /**< [in] the port with which to communicate */ );
 
     /// Set the target speed used for absolute and relative moves.
     int setTargetSpeed( z_port  port, /**< [in] the port with which to communicate */
@@ -779,7 +779,7 @@ int zaberBinaryStage<parentT>::updateTemp( z_port )
 }
 
 template <class parentT>
-int zaberBinaryStage<parentT>::disableKnob( z_port port )
+int zaberBinaryStage<parentT>::enableKnob( z_port port, bool enable )
 {
     int32_t mode;
     int     rv = getSetting( mode, port, cmdSetDeviceMode );

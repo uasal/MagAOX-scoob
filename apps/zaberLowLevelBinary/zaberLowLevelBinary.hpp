@@ -661,7 +661,7 @@ int zaberLowLevelBinary::appLogic()
 
             std::lock_guard<std::mutex> guard( m_indiMutex );
 
-            if( m_stages[i].disableKnob( m_port ) < 0 )
+            if( m_stages[i].enableKnob( m_port, false ) < 0 )
             {
                 log<software_error>();
                 state( stateCodes::ERROR );
