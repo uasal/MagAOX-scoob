@@ -55,10 +55,6 @@ class zaberStage
 
     float m_temp{ -999 }; ///< The driver temperature, in C.
 
-    bool m_ledEnabled{ false };
-
-    bool m_knobEnabled{ false };
-
     bool m_warn{ false };
 
     bool m_warnFD{ false };
@@ -907,7 +903,25 @@ int zaberStage<parentT>::sendCommand( z_port port, const std::string &command )
 template <class parentT>
 int zaberStage<parentT>::enableKnob( z_port port, bool enable )
 {
-    int rv = sendCommand( port, "set knob.enable 0" );
+    int rv = sendCommand( port, "set knob.enable " + enable ? "1" : "0" );
+
+    if( rv < 0 )
+    {
+        if( m_parent->powerState() != 1 || m_parent->powerStateTarget() != 1 )
+        {
+            return -1; // don't log, but propagate error
+        }
+
+        return MagAOXAppT::log<software_error, -1>();
+    }
+
+    return 0;
+}
+
+template <class parentT>
+int zaberStage<parentT>::enableLED( z_port port, bool enable )
+{
+    int rv = sendCommand( port, "set system.led.enable " + enable ? "1" : "0" );
 
     if( rv < 0 )
     {

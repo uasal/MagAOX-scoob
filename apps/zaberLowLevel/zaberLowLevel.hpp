@@ -129,6 +129,12 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
     /// Command a stage to safely immediately halt.
     pcf::IndiProperty m_indiP_req_ehalt;
 
+    /// Enable or disable a stages potentiometer
+    pcf::IndiProperty m_indiP_knob_enable;
+
+    /// Enable or disable a stages LED
+    pcf::IndiProperty m_indiP_led_enable;
+
 
   public:
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_tgt_pos );
@@ -136,6 +142,8 @@ class zaberLowLevel : public MagAOXAppT, public tty::usbDevice
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_home_all );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_halt );
     INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_req_ehalt );
+    INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_knob_enable );
+    INDI_NEWCALLBACK_DECL( zaberLowLevel, m_indiP_led_enable );
 };
 
 zaberLowLevel::zaberLowLevel() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
@@ -250,26 +258,6 @@ int zaberLowLevel::connect()
 
     char buffer[256];
 
-    //===== Make sure LEDs are disabled
-    std::string led_off = "/ set system.led.enable 0";
-    int         nwr = za_send( m_port, led_off.c_str(), led_off.size() );
-    if( nwr == Z_ERROR_SYSTEM_ERROR )
-    {
-        log<text_log>( "Error sending led off query to stages", logPrio::LOG_ERROR );
-        state( stateCodes::ERROR );
-        return ZC_ERROR;
-    }
-
-    //===== Drain the result
-    rv = za_drain( m_port );
-
-    if( rv != Z_SUCCESS )
-    {
-        log<software_error>( { rv, "error from za_drain" } );
-        state( stateCodes::ERROR );
-        return ZC_ERROR;
-    }
-    
     //===== First renumber so they are unique.
     std::string renum = "/ renumber";
                 nwr   = za_send( m_port, renum.c_str(), renum.size() );
@@ -420,6 +408,10 @@ int zaberLowLevel::appStartup()
     REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Switch );
     m_indiP_req_ehalt.setRule( pcf::IndiProperty::AtMostOne );
 
+    REG_INDI_NEWPROP( m_indiP_knob_enable, "knob_enable", pcf::IndiProperty::Toggle );
+
+    REG_INDI_NEWPROP( m_indiP_led_enable, "led_enable", pcf::IndiProperty::Toggle );
+
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         m_indiP_curr_state.add( pcf::IndiElement( m_stages[n].name() ) );
@@ -448,6 +440,12 @@ int zaberLowLevel::appStartup()
 
         m_indiP_req_ehalt.add( pcf::IndiElement( m_stages[n].name() ) );
         m_indiP_req_ehalt[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
+
+        m_indiP_knob_enable.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_knob_enable[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
+
+        m_indiP_led_enable.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_led_enable[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
 
         // Now load last state from disk
         std::ifstream posIn;
@@ -1036,7 +1034,7 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_halt )( const pcf::IndiPropert
 
     if( !found || stageno == std::numeric_limits<size_t>::max() )
     {
-        return log<software_error, -1>( "no valid stage specified in req_home, rejecting request" );
+        return log<software_error, -1>( "no valid stage specified in req_halt, rejecting request" );
     }
 
     if( ipRecv[m_stages[stageno].name()].getSwitchState() != pcf::IndiElement::On )
@@ -1086,6 +1084,107 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_req_ehalt )( const pcf::IndiProper
             }
         }
     }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_knob_enable )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_knob_enable, ipRecv );
+
+    // Make sure only one request is sent to avoid racing
+    size_t stageno = std::numeric_limits<size_t>::max();
+
+    bool found = false;
+
+    for( size_t n = 0; n < m_stages.size(); ++n )
+    {
+        if( ipRecv.find( m_stages[n].name() ) )
+        {
+            if( found )
+            {
+                return log<software_error, -1>( "more than one stage specified in req_halt, rejecting request" );
+            }
+
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                return log<software_error, -1>( std::format( "stage {} with with "
+                                                             "s/n {} not present",
+                                                             m_stages[n].name(),
+                                                             m_stages[n].serial() ) );
+            }
+
+            stageno = n;
+            found   = true;
+        }
+    }
+
+    if( !found || stageno == std::numeric_limits<size_t>::max() )
+    {
+        return log<software_error, -1>( "no valid stage specified in req_knob, rejecting request" );
+    }
+    
+    bool enable_knob = ipRecv[m_stages[stageno].name()].getSwitchState() == pcf::IndiElement::On;
+    
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( m_stages[stageno].enableKnob(m_port, enable_knob) < 0 )
+    {
+        return log<software_error, -1>( std::format( "error from enable knob for {}", m_stages[stageno].name() ) );
+    }
+
+    updateSwitchIfChanged(m_indiP_knob_enable, m_stages[stageno].name(), enable_knob ? pcf::IndiElement::On : pcf::IndiElement::Off);
+
+    return 0;
+}
+
+
+INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_led_enable )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_led_enable, ipRecv );
+
+    // Make sure only one request is sent to avoid racing
+    size_t stageno = std::numeric_limits<size_t>::max();
+
+    bool found = false;
+
+    for( size_t n = 0; n < m_stages.size(); ++n )
+    {
+        if( ipRecv.find( m_stages[n].name() ) )
+        {
+            if( found )
+            {
+                return log<software_error, -1>( "more than one stage specified in req_halt, rejecting request" );
+            }
+
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                return log<software_error, -1>( std::format( "stage {} with with "
+                                                             "s/n {} not present",
+                                                             m_stages[n].name(),
+                                                             m_stages[n].serial() ) );
+            }
+
+            stageno = n;
+            found   = true;
+        }
+    }
+
+    if( !found || stageno == std::numeric_limits<size_t>::max() )
+    {
+        return log<software_error, -1>( "no valid stage specified in req_led, rejecting request" );
+    }
+    
+    bool enable_led = ipRecv[m_stages[stageno].name()].getSwitchState() == pcf::IndiElement::On;
+    
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( m_stages[stageno].enableLED(m_port, enable_led) < 0 )
+    {
+        return log<software_error, -1>( std::format( "error from enable led for {}", m_stages[stageno].name() ) );
+    }
+
+    updateSwitchIfChanged(m_indiP_led_enable, m_stages[stageno].name(), enable_led ? pcf::IndiElement::On : pcf::IndiElement::Off);
 
     return 0;
 }
