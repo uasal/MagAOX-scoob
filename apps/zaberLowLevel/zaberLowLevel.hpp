@@ -249,9 +249,19 @@ int zaberLowLevel::connect()
 
     char buffer[256];
 
+    //===== Make sure LEDs are disabled
+    std::string led_off = "/ set system.led.enable 0";
+    int         nwr = za_send( m_port, led_off.c_str(), led_off.size() );
+    if( nwr == Z_ERROR_SYSTEM_ERROR )
+    {
+        log<text_log>( "Error sending led off query to stages", logPrio::LOG_ERROR );
+        state( stateCodes::ERROR );
+        return ZC_ERROR;
+    }
+
     //===== First renumber so they are unique.
     std::string renum = "/ renumber";
-    int         nwr   = za_send( m_port, renum.c_str(), renum.size() );
+                nwr   = za_send( m_port, renum.c_str(), renum.size() );
 
     if( nwr == Z_ERROR_SYSTEM_ERROR )
     {
