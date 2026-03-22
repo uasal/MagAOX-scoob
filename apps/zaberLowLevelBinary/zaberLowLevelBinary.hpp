@@ -183,6 +183,9 @@ class zaberLowLevelBinary : public MagAOXAppT, public tty::usbDevice
     /// Per-stage emergency-halt requests.
     pcf::IndiProperty m_indiP_req_ehalt;
 
+    /// Enable or disable a stages potentiometer
+    pcf::IndiProperty m_indiP_knob_enable;
+
     ///@}
 
   public:
@@ -195,6 +198,7 @@ class zaberLowLevelBinary : public MagAOXAppT, public tty::usbDevice
     INDI_NEWCALLBACK_DECL( zaberLowLevelBinary, m_indiP_req_home_all );
     INDI_NEWCALLBACK_DECL( zaberLowLevelBinary, m_indiP_req_halt );
     INDI_NEWCALLBACK_DECL( zaberLowLevelBinary, m_indiP_req_ehalt );
+    INDI_NEWCALLBACK_DECL( zaberLowLevelBinary, m_indiP_knob_enable );
     ///@}
 };
 
@@ -504,6 +508,11 @@ int zaberLowLevelBinary::appStartup()
     REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Switch );
     m_indiP_req_ehalt.setRule( pcf::IndiProperty::AtMostOne );
 
+    REG_INDI_NEWPROP( m_indiP_knob_enable, "knob_enable", pcf::IndiProperty::Switch );
+    m_indiP_knob_enable.setPerm( pcf::IndiProperty::ReadWrite );
+    m_indiP_knob_enable.setState( pcf::IndiProperty::Idle );
+    m_indiP_knob_enable.setRule( pcf::IndiProperty::AtMostOne );
+
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
         m_indiP_curr_state.add( pcf::IndiElement( m_stages[n].name() ) );
@@ -529,6 +538,9 @@ int zaberLowLevelBinary::appStartup()
 
         m_indiP_req_ehalt.add( pcf::IndiElement( m_stages[n].name() ) );
         m_indiP_req_ehalt[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
+
+        m_indiP_knob_enable.add( pcf::IndiElement( m_stages[n].name() ) );
+        m_indiP_knob_enable[m_stages[n].name()].setSwitchState( pcf::IndiElement::Off );
 
         std::ifstream posIn;
         posIn.open( std::format( "{}/{}/{}", m_sysPath, m_configName, m_stages[n].name() ) );
@@ -1120,6 +1132,56 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevelBinary, m_indiP_req_ehalt )( const pcf::Indi
             }
         }
     }
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( zaberLowLevelBinary, m_indiP_knob_enable )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_knob_enable, ipRecv );
+
+    // Make sure only one request is sent to avoid racing
+    size_t stageno = std::numeric_limits<size_t>::max();
+
+    bool found = false;
+
+    for( size_t n = 0; n < m_stages.size(); ++n )
+    {
+        if( ipRecv.find( m_stages[n].name() ) )
+        {
+            if( found )
+            {
+                return log<software_error, -1>( "more than one stage specified in req_halt, rejecting request" );
+            }
+
+            if( m_stages[n].deviceAddress() < 1 )
+            {
+                return log<software_error, -1>( std::format( "stage {} with with "
+                                                             "s/n {} not present",
+                                                             m_stages[n].name(),
+                                                             m_stages[n].serial() ) );
+            }
+
+            stageno = n;
+            found   = true;
+        }
+    }
+
+    if( !found || stageno == std::numeric_limits<size_t>::max() )
+    {
+        return log<software_error, -1>( "no valid stage specified in req_knob, rejecting request" );
+    }
+    
+    bool enable_knob = ipRecv[m_stages[stageno].name()].getSwitchState() == pcf::IndiElement::On;
+    
+    std::lock_guard<std::mutex> guard( m_indiMutex );
+
+    if( m_stages[stageno].enableKnob(m_port, enable_knob) < 0 )
+    {
+        return log<software_error, -1>( std::format( "error from enable knob for {}", m_stages[stageno].name() ) );
+    }
+
+    updateSwitchIfChanged(m_indiP_knob_enable, m_stages[stageno].name(), enable_knob ? pcf::IndiElement::On : pcf::IndiElement::Off);
 
     return 0;
 }
