@@ -56,9 +56,10 @@ class zaberBinaryStage
     /// Device-mode bits used by the implementation.
     enum modeBits : int32_t
     {
-        modeDisableAutoReply   = ( 1 << 0 ),
+        modeDisableAutoReply     = ( 1 << 0 ),
+        modeEnablePotentiometer  = ( 0 << 3 ),
         modeDisablePotentiometer = ( 1 << 3 ),
-        modeHomeStatus         = ( 1 << 7 )
+        modeHomeStatus           = ( 1 << 7 )
     };
 
     /// Stored-position register used to persist the MagAO-X parked position.
