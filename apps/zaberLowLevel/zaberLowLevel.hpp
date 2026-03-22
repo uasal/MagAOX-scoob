@@ -260,7 +260,7 @@ int zaberLowLevel::connect()
 
     //===== First renumber so they are unique.
     std::string renum = "/ renumber";
-                nwr   = za_send( m_port, renum.c_str(), renum.size() );
+    int         nwr   = za_send( m_port, renum.c_str(), renum.size() );
 
     if( nwr == Z_ERROR_SYSTEM_ERROR )
     {
@@ -408,9 +408,15 @@ int zaberLowLevel::appStartup()
     REG_INDI_NEWPROP( m_indiP_req_ehalt, "req_ehalt", pcf::IndiProperty::Switch );
     m_indiP_req_ehalt.setRule( pcf::IndiProperty::AtMostOne );
 
-    REG_INDI_NEWPROP( m_indiP_knob_enable, "knob_enable", pcf::IndiProperty::Toggle );
+    REG_INDI_NEWPROP( m_indiP_knob_enable, "knob_enable", pcf::IndiProperty::Switch );
+    m_indiP_knob_enable.setPerm( pcf::IndiProperty::ReadWrite );
+    m_indiP_knob_enable.setState( pcf::IndiProperty::Idle );
+    m_indiP_knob_enable.setRule( pcf::IndiProperty::AtMostOne );
 
-    REG_INDI_NEWPROP( m_indiP_led_enable, "led_enable", pcf::IndiProperty::Toggle );
+    REG_INDI_NEWPROP( m_indiP_led_enable, "led_enable", pcf::IndiProperty::Switch );
+    m_indiP_led_enable.setPerm( pcf::IndiProperty::ReadWrite );
+    m_indiP_led_enable.setState( pcf::IndiProperty::Idle );
+    m_indiP_led_enable.setRule( pcf::IndiProperty::AtMostOne );
 
     for( size_t n = 0; n < m_stages.size(); ++n )
     {
