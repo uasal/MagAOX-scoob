@@ -594,6 +594,8 @@ int zaberLowLevel::appLogic()
 
             m_stages[i].enableKnob( m_port, false ); // Always disable the knob on startup
 
+            m_stages[i].enableLED( m_port, false ); // Always disable the LEDs on startup
+
             m_stages[i].getMaxPos( m_port );
 
             updateIfChanged( m_indiP_max_pos, m_stages[i].name(), m_stages[i].maxPos() );
