@@ -259,6 +259,16 @@ int zaberLowLevel::connect()
         return ZC_ERROR;
     }
 
+    //===== Drain the result
+    rv = za_drain( m_port );
+
+    if( rv != Z_SUCCESS )
+    {
+        log<software_error>( { rv, "error from za_drain" } );
+        state( stateCodes::ERROR );
+        return ZC_ERROR;
+    }
+    
     //===== First renumber so they are unique.
     std::string renum = "/ renumber";
                 nwr   = za_send( m_port, renum.c_str(), renum.size() );
