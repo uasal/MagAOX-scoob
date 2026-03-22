@@ -4,6 +4,8 @@ import numpy as np
 import ImageStreamIOWrap
 import xconf
 
+from purepyindi2 import device, properties, constants
+from purepyindi2.messages import DefNumber, DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
 from magaox.shmim import Image
 
@@ -48,6 +50,7 @@ class aoSimConfig(BaseConfig):
     num_modes : int = xconf.field(default=2, help="Number of modes to simulate in the AO system.")
     lag : int = xconf.field(default=1, help="Lag in timesteps for DM command updates.")
     noise : float = xconf.field(default=0.0, help="Amplitude of noise to add to the wavefront sensor measurements.")
+    frequency : float = xconf.field(default=0.5, help="Frequency in Hz at which the AO simulation loop runs.")
 
 class aoSim(XDevice):
     """Adaptive Optics System Simulator.
@@ -83,11 +86,38 @@ class aoSim(XDevice):
         self._dm_command_history = np.zeros((self._lag + 1, self._nmodes, 1), dtype=np.float32)
 
         self._noise = self.config.noise
+        self._frequency = self.config.frequency
         # Update the dm first so that the current shape in the shared memory is correct
         #  before the first WFS update, which relies on the current DM state.
         self.update_dm()
 
+        sv = properties.SwitchVector(
+            name='reset',
+            rule=constants.SwitchRule.ONE_OF_MANY,
+            perm=constants.PropertyPerm.READ_WRITE,
+        )
+        sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.OFF))
+        self.add_property(sv, callback=self.handle_reset)
+
         self.log.info(f'aoSim app is fully setup.')
+
+    def handle_reset(self, existing_property, new_message):
+        if 'toggle' in new_message and new_message['toggle'] == constants.SwitchState.ON:
+            self._t = np.array([0], dtype=np.float32)
+            
+            self._current_disturbance = np.zeros((self._nmodes, 1), dtype=np.float32)
+            self._current_dm_state = np.zeros((self._nmodes, 1), dtype=np.float32)
+            self._dm_command_history = np.zeros((self._lag + 1, self._nmodes, 1), dtype=np.float32)
+
+            self._wfs.write(np.zeros((self._nmodes, 1), dtype=np.float32))
+            self._disturbance.write(np.zeros((self._nmodes, 1), dtype=np.float32))
+            self._dm.write(np.zeros((self._nmodes, 1), dtype=np.float32))
+
+            self.update_dm()
+
+            existing_property['toggle'] = constants.SwitchState.OFF
+            self.update_property(existing_property)
+            self.log.info('AO simulation state has been reset.')
 
     def update_dm(self):
         """Update the deformable mirror state from its command history.
@@ -106,7 +136,7 @@ class aoSim(XDevice):
     def update_disturbance(self):
         """Update the atmospheric/system disturbance for this timestep.
         """
-        self._current_disturbance = 0.1 * np.sin(2 * np.pi * 0.5 * self._t) * np.ones((self._nmodes, 1), dtype=np.float32)
+        self._current_disturbance = 0.1 * np.sin(2 * np.pi * self._frequency * self._t) * np.ones((self._nmodes, 1), dtype=np.float32)
         self._disturbance.write(self._current_disturbance)
 
     def loop(self):
