@@ -57,7 +57,6 @@ class zaberBinaryStage
     enum modeBits : int32_t
     {
         modeDisableAutoReply     = ( 1 << 0 ),
-        modeEnablePotentiometer  = ( 0 << 3 ),
         modeDisablePotentiometer = ( 1 << 3 ),
         modeHomeStatus           = ( 1 << 7 )
     };
@@ -790,15 +789,15 @@ int zaberBinaryStage<parentT>::enableKnob( z_port port, bool enable )
     }
 
     mode |= modeDisableAutoReply;
-
-    int32_t desiredMode = enable ? modeEnablePotentiometer : modeDisablePotentiometer;
-    mode |= desiredMode;
+    if (enable) mode &= ~modeDisablePotentiometer;  // clear the bit to enable
+    else mode |= modeDisablePotentiometer;   // set the bit to disable
 
     rv = sendCommandNoReply( port, cmdSetDeviceMode, mode );
     if( rv < 0 )
     {
         return rv;
     }
+
 
     int32_t appliedMode;
     rv = getSetting( appliedMode, port, cmdSetDeviceMode );
@@ -807,10 +806,14 @@ int zaberBinaryStage<parentT>::enableKnob( z_port port, bool enable )
         return rv;
     }
 
-    if( ( appliedMode & desiredMode ) == 0 || ( appliedMode & modeDisableAutoReply ) == 0 )
+    bool knobOk = enable
+        ? !(appliedMode & modeDisablePotentiometer)   // bit should be 0
+        :  (appliedMode & modeDisablePotentiometer);  // bit should be 1
+
+    if (!knobOk || !(appliedMode & modeDisableAutoReply))
     {
         return MagAOXAppT::log<software_error, -1>(
-            std::format( "device {} did not apply requested device mode {}", m_name, mode ) );
+            std::format("device {} did not apply requested device mode {}, got {}", m_name, mode, appliedMode));
     }
 
     return 0;
