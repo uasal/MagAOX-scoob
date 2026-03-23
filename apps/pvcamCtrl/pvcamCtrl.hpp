@@ -107,6 +107,9 @@ class pvcamCtrl : public MagAOXApp<true>,
     static constexpr bool c_stdCamera_vShiftSpeed =
         false; ///< app:dev config to tell stdCamera not to expose vertical shift speed control
 
+    static constexpr bool c_stdCamera_fanSpeed =
+        true; ///< app::dev config to tell stdCamera to expose fan-speed control
+
     static constexpr bool c_stdCamera_emGain =
         false; ///< app::dev config to tell stdCamera not to expose EM gain controls
 
@@ -255,6 +258,9 @@ class pvcamCtrl : public MagAOXApp<true>,
     int setTempSetPt();
     int setReadoutSpeed();
     int setVShiftSpeed();
+    /// Set the fan speed according to the configured stdCamera target.
+    int setFanSpeed();
+
     int setEMGain();
     int setExpTime();
     int setFPS();
@@ -319,7 +325,7 @@ pvcamCtrl::pvcamCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 
     m_default_x     = 1599.5;
     m_default_y     = 1599.5;
-    m_default_w     = 512; //we make this smaller by default
+    m_default_w     = 512; // we make this smaller by default
     m_default_h     = 512;
     m_default_bin_x = 1;
     m_default_bin_y = 1;
@@ -329,13 +335,18 @@ pvcamCtrl::pvcamCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
     m_full_w = 3200;
     m_full_h = 3200;
 
-
     m_defaultReadoutSpeed    = "dynamic_range";
     m_readoutSpeedNames      = { "sensitivity", "speed", "dynamic_range", "sub_electron" };
     m_readoutSpeedNameLabels = { "Sensitivity", "Speed", "Dynamic Range", "Sub-Electron" };
 
+    m_defaultFanSpeed    = "high";
+    m_fanSpeedNames      = { "high", "medium", "low", "off" };
+    m_fanSpeedNameLabels = { "High", "Medium", "Low", "Off" };
+
     m_readoutSpeedName    = m_defaultReadoutSpeed;
     m_readoutSpeedNameSet = m_defaultReadoutSpeed;
+    m_fanSpeedName        = m_defaultFanSpeed;
+    m_fanSpeedNameSet     = m_defaultFanSpeed;
 
     return;
 }
@@ -555,6 +566,17 @@ int pvcamCtrl::powerOnDefaults()
     m_readoutSpeedName    = m_defaultReadoutSpeed;
     m_readoutSpeedNameSet = m_defaultReadoutSpeed;
 
+    if( m_fanSpeedControlEnabled )
+    {
+        m_fanSpeedName    = m_defaultFanSpeed;
+        m_fanSpeedNameSet = m_defaultFanSpeed;
+    }
+    else
+    {
+        m_fanSpeedName.clear();
+        m_fanSpeedNameSet.clear();
+    }
+
     return 0;
 }
 
@@ -577,6 +599,43 @@ int pvcamCtrl::setReadoutSpeed()
 
 int pvcamCtrl::setVShiftSpeed()
 {
+    return 0;
+}
+
+int pvcamCtrl::setFanSpeed()
+{
+    int32 fanSpeed = FAN_SPEED_HIGH;
+
+    if( m_fanSpeedNameSet == "high" )
+    {
+        fanSpeed = FAN_SPEED_HIGH;
+    }
+    else if( m_fanSpeedNameSet == "medium" )
+    {
+        fanSpeed = FAN_SPEED_MEDIUM;
+    }
+    else if( m_fanSpeedNameSet == "low" )
+    {
+        fanSpeed = FAN_SPEED_LOW;
+    }
+    else if( m_fanSpeedNameSet == "off" )
+    {
+        fanSpeed = FAN_SPEED_OFF;
+    }
+    else
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "invalid fan-speed target: " + m_fanSpeedNameSet } );
+    }
+
+    if( pl_set_param( m_handle, PARAM_FAN_SPEED_SETPOINT, static_cast<void *>( &fanSpeed ) ) == false )
+    {
+        log_pvcam_software_error( "pl_set_param", "PARAM_FAN_SPEED_SETPOINT" );
+        return -1;
+    }
+
+    m_fanSpeedName = m_fanSpeedNameSet;
+    recordCamera( true );
+
     return 0;
 }
 
@@ -1116,6 +1175,11 @@ int pvcamCtrl::connect()
         }
 
         fillSpeedTable();
+
+        if( m_fanSpeedControlEnabled && setFanSpeed() < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__, "could not set fan speed" } );
+        }
     }
     else
     {
