@@ -66,11 +66,13 @@ class w2tcsOffloader : public MagAOXApp<true>,
 
     std::string m_wMaskPath; ///< Filesystem path to the mask used for coefficient projection.
 
-    std::vector<std::string> m_elNames; ///< INDI element names corresponding to the coefficient vector, formatted as `00` through `99`.
+    std::vector<std::string>
+        m_elNames; ///< INDI element names corresponding to the coefficient vector, formatted as `00` through `99`.
 
     std::vector<realT> m_zCoeffs; ///< Current coefficient vector sent to INDI and telemetry.
 
-    unsigned m_nModes{ 5 }; ///< Number of low-order modes to retain when offloading, clamped to the loaded cube size at startup.
+    unsigned m_nModes{
+        5 }; ///< Number of low-order modes to retain when offloading, clamped to the loaded cube size at startup.
 
     float m_norm{ 1.0 }; ///< Mask normalization applied to each coefficient measurement.
 
