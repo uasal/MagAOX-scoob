@@ -1603,7 +1603,7 @@ inline int tcsInterface::getTelTime()
     if( pdat.size() != 3 )
     {
         state( stateCodes::ERROR );
-        log<text_log>( "Error getting telescope position (datetime): TCS response wrong size, returned " +
+        log<text_log>( "Error getting telescope time (datetime): TCS response wrong size, returned " +
                            std::to_string( pdat.size() ) + " values",
                        logPrio::LOG_WARNING );
         return -1;
