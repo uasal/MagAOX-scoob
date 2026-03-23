@@ -640,7 +640,11 @@ int pvcamCtrl::setFanSpeed()
     if( m_fanSpeedName != priorFanSpeed )
     {
         log<text_log>( "fan speed changed from '" + priorFanSpeed + "' to '" + m_fanSpeedName + "'",
-                       logPrio::LOG_INFO );
+                       logPrio::LOG_NOTICE );
+    }
+    else
+    {
+        log<text_log>( "fan speed set to '" + m_fanSpeedName + "'", logPrio::LOG_NOTICE );
     }
 
     recordCamera( true );
