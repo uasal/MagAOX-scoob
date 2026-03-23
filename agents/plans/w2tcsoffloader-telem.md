@@ -50,6 +50,9 @@ Plan
    - Explicitly zero coefficients at indices `>= m_nModes` so telemetry reflects the same effective command state sent to TCS.
    - Continue updating `m_indiP_zCoeffs` from the same `m_zCoeffs` values so INDI and telemetry remain consistent.
    - After updating the coefficients, call `recordZCoeffs()` so changes are logged promptly instead of waiting only for the max telemeter interval.
+   - During startup after loading the mode cube:
+     - clamp configured `m_nModes` to the number of available modes in the FITS cube
+     - fail with a `LOG_CRITICAL` `text_log` and shutdown if the available mode count exceeds what can be represented by the two-digit INDI element naming scheme (`00` through `99`)
 
 5. Wire the app lifecycle to the telemeter base class.
    - `setupConfig()`
@@ -107,3 +110,4 @@ Notes / Expected Design Decisions
 - Scope:
   - this plan assumes no change to the offload math itself
   - the work is limited to exposing the already computed coefficient vector through telemetry
+  - startup validation now also includes guarding the configured/available mode counts so the INDI naming scheme remains valid

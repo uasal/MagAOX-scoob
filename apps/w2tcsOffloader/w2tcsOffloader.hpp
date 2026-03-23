@@ -7,6 +7,7 @@
 #ifndef w2tcsOffloader_hpp
 #define w2tcsOffloader_hpp
 
+#include <format>
 #include <limits>
 
 #include <mx/improc/eigenCube.hpp>
@@ -222,6 +223,19 @@ inline int w2tcsOffloader::appStartup()
     m_zCoeffs.resize( m_wZModes.planes(), 0 );
     m_lastZCoeffs.resize( m_zCoeffs.size(), std::numeric_limits<realT>::max() );
 
+    if( m_nModes > m_zCoeffs.size() )
+    {
+        m_nModes = m_zCoeffs.size();
+    }
+
+    if( m_zCoeffs.size() > 100 )
+    {
+        m_shutdown = true;
+        return log<text_log, -1>( "w2tcsOffloader supports at most 100 offload modes because INDI element names are "
+                                  "formatted with two digits.",
+                                  logPrio::LOG_CRITICAL );
+    }
+
     errc = ff.read( m_wMask, m_wMaskPath );
     if( errc != mx::error_t::noerror )
     {
@@ -241,7 +255,7 @@ inline int w2tcsOffloader::appStartup()
     m_elNames.resize( m_zCoeffs.size() );
     for( size_t n = 0; n < m_zCoeffs.size(); ++n )
     {
-        m_elNames[n] = mx::ioutils::convertToString<size_t, 2, '0'>( n );
+        m_elNames[n] = std::format( "{:02}", n );
 
         indi::addNumberElement<realT>( m_indiP_zCoeffs,
                                        m_elNames[n],
