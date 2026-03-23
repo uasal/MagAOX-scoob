@@ -66,11 +66,11 @@ class w2tcsOffloader : public MagAOXApp<true>,
 
     std::string m_wMaskPath; ///< Filesystem path to the mask used for coefficient projection.
 
-    std::vector<std::string> m_elNames; ///< INDI element names corresponding to the coefficient vector.
+    std::vector<std::string> m_elNames; ///< INDI element names corresponding to the coefficient vector, formatted as `00` through `99`.
 
     std::vector<realT> m_zCoeffs; ///< Current coefficient vector sent to INDI and telemetry.
 
-    unsigned m_nModes{ 5 }; ///< Number of low-order modes to retain when offloading.
+    unsigned m_nModes{ 5 }; ///< Number of low-order modes to retain when offloading, clamped to the loaded cube size at startup.
 
     float m_norm{ 1.0 }; ///< Mask normalization applied to each coefficient measurement.
 
@@ -109,7 +109,7 @@ class w2tcsOffloader : public MagAOXApp<true>,
     /// Load the application configuration.
     virtual void loadConfig();
 
-    /// Start the application.
+    /// Start the application and validate the loaded mode cube against the configured mode count.
     virtual int appStartup();
 
     /// Implementation of the FSM for w2tcsOffloader.
@@ -125,7 +125,7 @@ class w2tcsOffloader : public MagAOXApp<true>,
     /// Allocate image buffers for a new shared-memory image stream.
     int allocate( const dev::shmimT &dummy /**< [in] tag to differentiate shmimMonitor parents.*/ );
 
-    /// Process a new woofer image and update offload outputs.
+    /// Process a new woofer image and update offload outputs using the currently allowed mode count.
     int processImage( void              *curr_src, ///< [in] pointer to start of current frame.
                       const dev::shmimT &dummy     ///< [in] tag to differentiate shmimMonitor parents.
     );

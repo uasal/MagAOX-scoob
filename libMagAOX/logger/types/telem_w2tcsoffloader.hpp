@@ -15,7 +15,7 @@ namespace MagAOX
 namespace logger
 {
 
-/// Log entry recording the woofer-to-TCS Zernike coefficients.
+/// Log entry recording the woofer-to-TCS Zernike coefficient vector.
 /** \ingroup logger_types
  */
 struct telem_w2tcsoffloader : public flatbuffer_log
