@@ -559,6 +559,7 @@ int zaberLowLevelBinary::appStartup()
         m_indiP_parked[m_stages[n].name()].set( m_stages[n].parked() );
         m_indiP_lastHomed[m_stages[n].name()].set( m_stages[n].lastHomed() );
         m_indiP_max_pos[m_stages[n].name()].set( m_stages[n].maxPos() );
+        m_indiP_knob_enable[m_stages[n].name()].set( m_stages[n].knobEnabled() );
     }
 
     return 0;
@@ -751,10 +752,23 @@ int zaberLowLevelBinary::appLogic()
                 return 0;
             }
 
+            if( m_stages[i].getKnob( m_port ) < 0 )
+            {
+                log<software_error>();
+                state( stateCodes::ERROR );
+                return 0;
+            }
+
             updateIfChanged( m_indiP_parked, m_stages[i].name(), m_stages[i].parked() );
             updateIfChanged( m_indiP_lastHomed, m_stages[i].name(), m_stages[i].lastHomed() );
             updateIfChanged( m_indiP_curr_pos, m_stages[i].name(), m_stages[i].rawPos() );
             updateIfChanged( m_indiP_tgt_pos, m_stages[i].name(), m_stages[i].tgtPos() );
+
+            updateSwitchIfChanged( 
+                m_indiP_knob_enable, 
+                m_stages[i].name(), 
+                m_stages[i].knobEnabled() ? pcf::IndiElement::On : pcf::IndiElement::Off 
+            );
 
             if( m_stages[i].deviceStatus() == 'B' )
             {
@@ -1180,8 +1194,6 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevelBinary, m_indiP_knob_enable )( const pcf::In
     {
         return log<software_error, -1>( std::format( "error from enable knob for {}", m_stages[stageno].name() ) );
     }
-
-    updateSwitchIfChanged(m_indiP_knob_enable, m_stages[stageno].name(), enable_knob ? pcf::IndiElement::On : pcf::IndiElement::Off);
 
     return 0;
 }

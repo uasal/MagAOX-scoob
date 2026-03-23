@@ -125,6 +125,9 @@ class zaberBinaryStage
     /// Last reported stage temperature. Firmware 5.35 does not expose this directly.
     float m_temp{ -999.0 };
 
+    /// whether potentiometer knob is enabled
+    bool m_knobEnabled{ false };
+
     /// Whether any warning-equivalent condition is active.
     bool m_warn{ false };
 
@@ -205,6 +208,9 @@ class zaberBinaryStage
 
     /// Get the parked state.
     int parked();
+
+    /// Get the knob state.
+    bool knobEnabled();
 
     /// Get the current raw position.
     long rawPos();
@@ -296,6 +302,9 @@ class zaberBinaryStage
 
     /// Get the parked state for MagAO-X compatibility.
     int getParked( z_port port /**< [in] the port with which to communicate */ );
+
+    /// Get the knob enabled status
+    int getKnob( z_port port  /**< [in] the port with which to communicate */ );
 
     /// Update the current position and derived motion state.
     int updatePos( z_port port /**< [in] the port with which to communicate */ );
@@ -437,6 +446,12 @@ template <class parentT>
 int zaberBinaryStage<parentT>::parked()
 {
     return m_parked;
+}
+
+template <class parentT>
+bool zaberBinaryStage<parentT>::knobEnabled()
+{
+    return m_knobEnabled;
 }
 
 template <class parentT>
@@ -726,6 +741,20 @@ int zaberBinaryStage<parentT>::getParked( z_port )
         m_parked = false;
     }
 
+    return 0;
+}
+
+template <class parentT>
+int zaberBinaryStage<parentT>::getKnob( z_port port)
+{
+    int32_t value;
+    int     rv = getSetting( value, port, cmdSetDeviceMode );
+    if( rv < 0 )
+    {
+        return rv;
+    }
+    m_knobEnabled = !(value & modeDisablePotentiometer);
+    
     return 0;
 }
 
