@@ -650,6 +650,12 @@ int zaberLowLevel::appLogic()
 
             std::lock_guard<std::mutex> guard( m_indiMutex ); // Inside loop so INDI requests can steal it
 
+            m_stages[i].getKnob( m_port );
+            updateSwitchIfChanged( m_indiP_knob_enable, m_stages[i].name(),  (m_stages[i].knobEnabled() ? pcf::IndiElement::On : pcf::IndiElement::Off) );
+            
+            m_stages[i].getLED( m_port );
+            updateSwitchIfChanged( m_indiP_led_enable, m_stages[i].name(),  (m_stages[i].ledEnabled() ? pcf::IndiElement::On : pcf::IndiElement::Off) );
+
             m_stages[i].getParked( m_port );
 
             updateIfChanged( m_indiP_parked, m_stages[i].name(), m_stages[i].parked() );
@@ -1141,8 +1147,6 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_knob_enable )( const pcf::IndiProp
         return log<software_error, -1>( std::format( "error from enable knob for {}", m_stages[stageno].name() ) );
     }
 
-    updateSwitchIfChanged(m_indiP_knob_enable, m_stages[stageno].name(), enable_knob ? pcf::IndiElement::On : pcf::IndiElement::Off);
-
     return 0;
 }
 
@@ -1191,8 +1195,6 @@ INDI_NEWCALLBACK_DEFN( zaberLowLevel, m_indiP_led_enable )( const pcf::IndiPrope
     {
         return log<software_error, -1>( std::format( "error from enable led for {}", m_stages[stageno].name() ) );
     }
-
-    updateSwitchIfChanged(m_indiP_led_enable, m_stages[stageno].name(), enable_led ? pcf::IndiElement::On : pcf::IndiElement::Off);
 
     return 0;
 }
