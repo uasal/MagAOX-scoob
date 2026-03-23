@@ -472,6 +472,9 @@ int zaberLowLevel::appStartup()
         m_indiP_parked[m_stages[n].name()].set( m_stages[n].parked() );
         m_indiP_lastHomed[m_stages[n].name()].set( m_stages[n].lastHomed() );
         m_indiP_max_pos[m_stages[n].name()].set( m_stages[n].maxPos() );
+        m_indiP_knob_enable[m_stages[n].name()].set( m_stages[n].knobEnabled() ? pcf::IndiElement::On : pcf::IndiElement::Off );
+        m_indiP_led_enable[m_stages[n].name()].set( m_stages[n].ledEnabled() ? pcf::IndiElement::On : pcf::IndiElement::Off );
+
     }
 
     return 0;
