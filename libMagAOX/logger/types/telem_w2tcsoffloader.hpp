@@ -74,6 +74,7 @@ struct telem_w2tcsoffloader : public flatbuffer_log
         return msg;
     }
 
+    /// Recover the coefficient vector from a serialized message.
     static std::vector<float> coeffs( void *msgBuffer )
     {
         std::vector<float> coeffVec;

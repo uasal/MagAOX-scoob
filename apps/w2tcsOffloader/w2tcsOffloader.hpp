@@ -1,5 +1,5 @@
 /** \file w2tcsOffloader.hpp
- * \brief The MagAO-X Woofer To Telescope Control System (TCS) offloading manager
+ * \brief The MagAO-X Woofer To Telescope Control System (TCS) offloading manager.
  *
  * \ingroup app_files
  */
@@ -88,10 +88,10 @@ class w2tcsOffloader : public MagAOXApp<true>,
                                       ///@}
 
   public:
-    /// Default c'tor.
+    /// Default constructor.
     w2tcsOffloader();
 
-    /// D'tor, declared and defined for noexcept.
+    /// Destructor, declared and defined for noexcept.
     ~w2tcsOffloader() noexcept
     {
     }
@@ -108,7 +108,7 @@ class w2tcsOffloader : public MagAOXApp<true>,
     /// Load the application configuration.
     virtual void loadConfig();
 
-    /// Startup function.
+    /// Start the application.
     virtual int appStartup();
 
     /// Implementation of the FSM for w2tcsOffloader.
@@ -118,7 +118,7 @@ class w2tcsOffloader : public MagAOXApp<true>,
      */
     virtual int appLogic();
 
-    /// Shutdown the app.
+    /// Shut down the application.
     virtual int appShutdown();
 
     /// Allocate image buffers for a new shared-memory image stream.
@@ -132,13 +132,13 @@ class w2tcsOffloader : public MagAOXApp<true>,
     /** \name Telemeter Interface
      * @{
      */
-    /// Check whether a telemetry record is due.
+    /// Check whether the telemetry max-interval requires a record.
     int checkRecordTimes();
 
-    /// Record the current coefficient vector for telemetry.
+    /// Record the current coefficient vector for telemetry when requested by the telemeter.
     int recordTelem( const logger::telem_w2tcsoffloader * /**< [in] telemetry tag used for overload resolution */ );
 
-    /// Record the current coefficient vector when changed or when forced.
+    /// Record the current coefficient vector when it changes or when forced.
     int recordZCoeffs( bool force = false /**< [in] set true to record even if unchanged */ );
     ///@}
 
