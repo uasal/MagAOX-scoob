@@ -604,6 +604,8 @@ int pvcamCtrl::setVShiftSpeed()
 
 int pvcamCtrl::setFanSpeed()
 {
+    std::string priorFanSpeed = m_fanSpeedName;
+
     int32 fanSpeed = FAN_SPEED_HIGH;
 
     if( m_fanSpeedNameSet == "high" )
@@ -634,6 +636,13 @@ int pvcamCtrl::setFanSpeed()
     }
 
     m_fanSpeedName = m_fanSpeedNameSet;
+
+    if( m_fanSpeedName != priorFanSpeed )
+    {
+        log<text_log>( "fan speed changed from '" + priorFanSpeed + "' to '" + m_fanSpeedName + "'",
+                       logPrio::LOG_INFO );
+    }
+
     recordCamera( true );
 
     return 0;
