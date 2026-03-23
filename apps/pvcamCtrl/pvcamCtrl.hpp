@@ -296,6 +296,10 @@ class pvcamCtrl : public MagAOXApp<true>,
 
     void dumpEnum( uns32 paramID, const std::string &paramMnem );
 
+    /// Get the current fan speed from the camera.
+    int getFanSpeed();
+
+    /// Get the current detector temperature and set point from the camera.
     int getTemp();
 
     static void st_endOfFrameCallback( FRAME_INFO *finfo, void *pvcamCtrlInst );
@@ -507,6 +511,14 @@ int pvcamCtrl::appLogic()
     if( state() == stateCodes::READY || state() == stateCodes::OPERATING )
     {
         if( getTemp() != 0 )
+        {
+            if( powerState() != 1 || powerStateTarget() != 1 )
+                return 0;
+            log<software_error>( { __FILE__, __LINE__ } );
+            return 0;
+        }
+
+        if( m_fanSpeedControlEnabled && getFanSpeed() != 0 )
         {
             if( powerState() != 1 || powerStateTarget() != 1 )
                 return 0;
@@ -1189,6 +1201,11 @@ int pvcamCtrl::connect()
 
         fillSpeedTable();
 
+        if( m_fanSpeedControlEnabled && getFanSpeed() < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__, "could not get fan speed" } );
+        }
+
         if( m_fanSpeedControlEnabled && setFanSpeed() < 0 )
         {
             return log<software_error, -1>( { __FILE__, __LINE__, "could not set fan speed" } );
@@ -1459,6 +1476,64 @@ int pvcamCtrl::getTemp()
         m_tempControlStatus    = true;
         m_tempControlOnTarget  = true;
         m_tempControlStatusStr = "LOCKED";
+    }
+
+    return 0;
+}
+
+int pvcamCtrl::getFanSpeed()
+{
+    if( state() == stateCodes::OPERATING || !m_fanSpeedControlEnabled )
+    {
+        return 0;
+    }
+
+    rs_bool isAvailable;
+    if( !pl_get_param( m_handle, PARAM_FAN_SPEED_SETPOINT, ATTR_AVAIL, static_cast<void *>( &isAvailable ) ) )
+    {
+        if( powerState() != 1 || powerStateTarget() != 1 )
+            return 0;
+        log_pvcam_software_error( "pl_get_param", "PARAM_FAN_SPEED_SETPOINT ATTR_AVAIL" );
+        state( stateCodes::ERROR );
+        return -1;
+    }
+
+    if( !isAvailable )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "PARAM_FAN_SPEED_SETPOINT not available while fan control is enabled" } );
+    }
+
+    int32 fanSpeed;
+    if( !pl_get_param( m_handle, PARAM_FAN_SPEED_SETPOINT, ATTR_CURRENT, static_cast<void *>( &fanSpeed ) ) )
+    {
+        if( powerState() != 1 || powerStateTarget() != 1 )
+            return 0;
+        log_pvcam_software_error( "pl_get_param", "PARAM_FAN_SPEED_SETPOINT ATTR_CURRENT" );
+        state( stateCodes::ERROR );
+        return -1;
+    }
+
+    if( fanSpeed == FAN_SPEED_HIGH )
+    {
+        m_fanSpeedName = "high";
+    }
+    else if( fanSpeed == FAN_SPEED_MEDIUM )
+    {
+        m_fanSpeedName = "medium";
+    }
+    else if( fanSpeed == FAN_SPEED_LOW )
+    {
+        m_fanSpeedName = "low";
+    }
+    else if( fanSpeed == FAN_SPEED_OFF )
+    {
+        m_fanSpeedName = "off";
+    }
+    else
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "unknown PVCAM fan-speed value: " + std::to_string( fanSpeed ) } );
     }
 
     return 0;
