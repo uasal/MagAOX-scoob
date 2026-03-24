@@ -298,6 +298,11 @@ struct BinaryUart
 	return Processed;
     }
 
+	virtual void TxBinaryPacket(const uint16_t PayloadType, const void* PayloadData, const size_t PayloadLen) const
+	{
+		TxBinaryPacket(PayloadType, SerialNum, PayloadData, PayloadLen);
+	}
+
 	virtual void TxBinaryPacket(const uint16_t PayloadType, const uint32_t SerialNumber, const void* PayloadData, const size_t PayloadLen) const
 	{
 		uint8_t TxBuffer[TxBufferLenBytes];
