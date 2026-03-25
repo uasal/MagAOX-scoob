@@ -836,8 +836,27 @@ inline void tcsInterface::loadConfig()
 
 inline int tcsInterface::appStartup()
 {
+    bool  labMode;
+    float offlTTAvgInt;
+    float offlTTGain;
+    float offlTTThresh;
+    float offlFAvgInt;
+    float offlFGain;
+    float offlFThresh;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        labMode      = m_labMode;
+        offlTTAvgInt = m_offlTT_avgInt;
+        offlTTGain   = m_offlTT_gain;
+        offlTTThresh = m_offlTT_thresh;
+        offlFAvgInt  = m_offlF_avgInt;
+        offlFGain    = m_offlF_gain;
+        offlFThresh  = m_offlF_thresh;
+    }
+
     CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_labMode, "labMode" );
-    if( m_labMode )
+    if( labMode )
     {
         m_indiP_labMode["toggle"].setSwitchState( pcf::IndiElement::On );
         log<text_log>( "lab mode ON", logPrio::LOG_NOTICE );
@@ -1141,8 +1160,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlTTavgInt, "offlTT_avgInt", 0, 3600, 1, "%d" );
-    m_indiP_offlTTavgInt["current"].set( m_offlTT_avgInt );
-    m_indiP_offlTTavgInt["target"].set( m_offlTT_avgInt );
+    m_indiP_offlTTavgInt["current"].set( offlTTAvgInt );
+    m_indiP_offlTTavgInt["target"].set( offlTTAvgInt );
     if( registerIndiPropertyNew( m_indiP_offlTTavgInt, st_newCallBack_m_indiP_offlTTavgInt ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -1150,8 +1169,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlTTgain, "offlTT_gain", 0.0, 1.0, 0.0, "%0.2f" );
-    m_indiP_offlTTgain["current"].set( m_offlTT_gain );
-    m_indiP_offlTTgain["target"].set( m_offlTT_gain );
+    m_indiP_offlTTgain["current"].set( offlTTGain );
+    m_indiP_offlTTgain["target"].set( offlTTGain );
     if( registerIndiPropertyNew( m_indiP_offlTTgain, st_newCallBack_m_indiP_offlTTgain ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -1159,8 +1178,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlTTthresh, "offlTT_thresh", 0.0, 1.0, 0.0, "%0.2f" );
-    m_indiP_offlTTthresh["current"].set( m_offlTT_thresh );
-    m_indiP_offlTTthresh["target"].set( m_offlTT_thresh );
+    m_indiP_offlTTthresh["current"].set( offlTTThresh );
+    m_indiP_offlTTthresh["target"].set( offlTTThresh );
     if( registerIndiPropertyNew( m_indiP_offlTTthresh, st_newCallBack_m_indiP_offlTTthresh ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -1182,8 +1201,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlFavgInt, "offlF_avgInt", 0, 3600, 1, "%d" );
-    m_indiP_offlFavgInt["current"].set( m_offlF_avgInt );
-    m_indiP_offlFavgInt["target"].set( m_offlF_avgInt );
+    m_indiP_offlFavgInt["current"].set( offlFAvgInt );
+    m_indiP_offlFavgInt["target"].set( offlFAvgInt );
     if( registerIndiPropertyNew( m_indiP_offlFavgInt, st_newCallBack_m_indiP_offlFavgInt ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -1191,8 +1210,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlFgain, "offlF_gain", 0.0, 1.0, 0.0, "%0.2f" );
-    m_indiP_offlFgain["current"].set( m_offlF_gain );
-    m_indiP_offlFgain["target"].set( m_offlF_gain );
+    m_indiP_offlFgain["current"].set( offlFGain );
+    m_indiP_offlFgain["target"].set( offlFGain );
     if( registerIndiPropertyNew( m_indiP_offlFgain, st_newCallBack_m_indiP_offlFgain ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -1200,8 +1219,8 @@ inline int tcsInterface::appStartup()
     }
 
     createStandardIndiNumber( m_indiP_offlFthresh, "offlF_thresh", 0.0, 1.0, 0.0, "%0.2f" );
-    m_indiP_offlFthresh["current"].set( m_offlF_thresh );
-    m_indiP_offlFthresh["target"].set( m_offlF_thresh );
+    m_indiP_offlFthresh["current"].set( offlFThresh );
+    m_indiP_offlFthresh["target"].set( offlFThresh );
     if( registerIndiPropertyNew( m_indiP_offlFthresh, st_newCallBack_m_indiP_offlFthresh ) < 0 )
     {
         log<software_error>( { __FILE__, __LINE__ } );
@@ -2523,9 +2542,34 @@ inline int tcsInterface::updateINDI()
 
     //--- Offloading ---//
 
+    bool  offlTTDump;
+    bool  offlTTEnabled;
+    float offlTTAvgInt;
+    float offlTTGain;
+    float offlTTThresh;
+    bool  offlFDump;
+    bool  offlFEnabled;
+    float offlFAvgInt;
+    float offlFGain;
+    float offlFThresh;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        offlTTDump    = m_offlTT_dump;
+        offlTTEnabled = m_offlTT_enabled;
+        offlTTAvgInt  = m_offlTT_avgInt;
+        offlTTGain    = m_offlTT_gain;
+        offlTTThresh  = m_offlTT_thresh;
+        offlFDump     = m_offlF_dump;
+        offlFEnabled  = m_offlF_enabled;
+        offlFAvgInt   = m_offlF_avgInt;
+        offlFGain     = m_offlF_gain;
+        offlFThresh   = m_offlF_thresh;
+    }
+
     try
     {
-        if( m_offlTT_dump )
+        if( offlTTDump )
         {
             updateSwitchIfChanged( m_indiP_offlTTdump, "request", pcf::IndiElement::On, INDI_OK );
         }
@@ -2534,7 +2578,7 @@ inline int tcsInterface::updateINDI()
             updateSwitchIfChanged( m_indiP_offlTTdump, "request", pcf::IndiElement::Off, INDI_IDLE );
         }
 
-        if( m_offlTT_enabled )
+        if( offlTTEnabled )
         {
             updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK );
         }
@@ -2543,9 +2587,9 @@ inline int tcsInterface::updateINDI()
             updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
         }
 
-        updateIfChanged( m_indiP_offlTTavgInt, "current", m_offlTT_avgInt );
-        updateIfChanged( m_indiP_offlTTgain, "current", m_offlTT_gain );
-        updateIfChanged( m_indiP_offlTTthresh, "current", m_offlTT_thresh );
+        updateIfChanged( m_indiP_offlTTavgInt, "current", offlTTAvgInt );
+        updateIfChanged( m_indiP_offlTTgain, "current", offlTTGain );
+        updateIfChanged( m_indiP_offlTTthresh, "current", offlTTThresh );
     }
     catch( ... )
     {
@@ -2555,7 +2599,7 @@ inline int tcsInterface::updateINDI()
 
     try
     {
-        if( m_offlF_dump )
+        if( offlFDump )
         {
             updateSwitchIfChanged( m_indiP_offlFdump, "request", pcf::IndiElement::On, INDI_OK );
         }
@@ -2564,7 +2608,7 @@ inline int tcsInterface::updateINDI()
             updateSwitchIfChanged( m_indiP_offlFdump, "request", pcf::IndiElement::Off, INDI_IDLE );
         }
 
-        if( m_offlF_enabled )
+        if( offlFEnabled )
         {
             updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK );
         }
@@ -2573,9 +2617,9 @@ inline int tcsInterface::updateINDI()
             updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
         }
 
-        updateIfChanged( m_indiP_offlFavgInt, "current", m_offlF_avgInt );
-        updateIfChanged( m_indiP_offlFgain, "current", m_offlF_gain );
-        updateIfChanged( m_indiP_offlFthresh, "current", m_offlF_thresh );
+        updateIfChanged( m_indiP_offlFavgInt, "current", offlFAvgInt );
+        updateIfChanged( m_indiP_offlFgain, "current", offlFGain );
+        updateIfChanged( m_indiP_offlFthresh, "current", offlFThresh );
     }
     catch( ... )
     {
