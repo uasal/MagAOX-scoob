@@ -3076,7 +3076,7 @@ void tcsInterface::offloadThreadExec()
             avg_TT_1 /= navg;
 
             ++sincelast_TT;
-            if( sincelast_TT > m_offlTT_avgInt )
+            if( sincelast_TT >= m_offlTT_avgInt )
             {
                 doTToffload( avg_TT_0, avg_TT_1 );
                 sincelast_TT = 0;
@@ -3106,7 +3106,7 @@ void tcsInterface::offloadThreadExec()
             avg_F_0 /= navg;
 
             ++sincelast_F;
-            if( sincelast_F > m_offlF_avgInt )
+            if( sincelast_F >= m_offlF_avgInt )
             {
                 doFoffload( avg_F_0 );
                 sincelast_F = 0;
