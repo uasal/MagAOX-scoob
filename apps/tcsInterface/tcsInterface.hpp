@@ -3024,6 +3024,8 @@ void tcsInterface::offloadThreadExec()
                 m_lastRequest    = std::numeric_limits<size_t>::max();
                 m_nRequests      = 0;
                 m_last_nRequests = 0;
+                sincelast_TT     = 0;
+                sincelast_F      = 0;
             }
             sleep( 1 );
             last_loopState = m_loopState;
@@ -3033,6 +3035,11 @@ void tcsInterface::offloadThreadExec()
         // Check if loop paused
         if( m_loopState == 1 )
         {
+            if( m_loopState != last_loopState )
+            {
+                sincelast_TT = 0;
+                sincelast_F  = 0;
+            }
             sleep( 1 );
             last_loopState = m_loopState;
             continue;
@@ -3040,7 +3047,7 @@ void tcsInterface::offloadThreadExec()
 
         // Ok loop closed
 
-        if( m_firstRequest == m_lastRequest )
+        if( m_nRequests == 0 )
             continue; // this really should mutexed instead
 
         // If we got a new offload request, process it
