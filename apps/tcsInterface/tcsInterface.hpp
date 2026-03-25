@@ -52,6 +52,7 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
      * @{
      */
 
+    /// Tracks whether the app is operating in lab mode rather than on-sky mode.
     bool m_labMode{ true };
 
     pcf::IndiProperty m_indiP_labMode;
@@ -228,31 +229,62 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
     /** \name Telemeter Interface
      * @{
      */
+    /// Check whether any telemetry records are due.
     int checkRecordTimes();
 
+    /// Record telescope-position telemetry on a forced telemeter update.
     int recordTelem( const telem_telpos * );
 
+    /// Record telescope-status telemetry on a forced telemeter update.
     int recordTelem( const telem_teldata * );
 
+    /// Record vane-position telemetry on a forced telemeter update.
     int recordTelem( const telem_telvane * );
 
+    /// Record telescope-environment telemetry on a forced telemeter update.
     int recordTelem( const telem_telenv * );
 
+    /// Record catalog telemetry on a forced telemeter update.
     int recordTelem( const telem_telcat * );
 
+    /// Record seeing telemetry on a forced telemeter update.
     int recordTelem( const telem_telsee * );
 
+    /// Record tip/tilt offload-control telemetry on a forced telemeter update.
+    int recordTelem( const telem_tcsi_tiptilt * );
+
+    /// Record focus offload-control telemetry on a forced telemeter update.
+    int recordTelem( const telem_tcsi_focus * );
+
+    /// Record lab-mode telemetry on a forced telemeter update.
+    int recordTelem( const telem_tcsi_labmode * );
+
+    /// Record telescope-position telemetry when values change.
     int recordTelPos( bool force = false );
 
+    /// Record telescope-status telemetry when values change.
     int recordTelData( bool force = false );
 
+    /// Record vane-position telemetry when values change.
     int recordTelVane( bool force = false );
 
+    /// Record telescope-environment telemetry when values change.
     int recordTelEnv( bool force = false );
 
+    /// Record catalog telemetry when values change.
     int recordTelCat( bool force = false );
 
+    /// Record seeing telemetry when values change.
     int recordTelSee( bool force = false );
+
+    /// Record tip/tilt offload-control telemetry when values change.
+    int recordTcsiTipTilt( bool force = false );
+
+    /// Record focus offload-control telemetry when values change.
+    int recordTcsiFocus( bool force = false );
+
+    /// Record lab-mode telemetry when values change.
+    int recordTcsiLabMode( bool force = false );
 
     ///@}
 
@@ -348,10 +380,14 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
     float m_offlTT_C_10{ 0 };
     float m_offlTT_C_11{ -0.25 };
 
-    bool  m_offlTT_enabled{ false };
-    bool  m_offlTT_dump{ false };
+    /// Tracks whether tip/tilt offloading is currently enabled.
+    bool m_offlTT_enabled{ false };
+    bool m_offlTT_dump{ false };
+    /// The number of recent requests included in each tip/tilt offload average.
     float m_offlTT_avgInt{ 1.0 };
+    /// The operator-set gain applied to tip/tilt offload requests.
     float m_offlTT_gain{ 0.1 };
+    /// The deadband threshold applied to tip/tilt offload requests.
     float m_offlTT_thresh{ 0.1 };
 
     pcf::IndiProperty m_indiP_offlTTenable;
@@ -372,10 +408,14 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
     // The Focus control constant
     float m_offlCFocus_00{ 1 };
 
-    bool  m_offlF_enabled{ false };
-    bool  m_offlF_dump{ false };
+    /// Tracks whether focus offloading is currently enabled.
+    bool m_offlF_enabled{ false };
+    bool m_offlF_dump{ false };
+    /// The number of recent requests included in each focus offload average.
     float m_offlF_avgInt{ 1.0 };
+    /// The operator-set gain applied to focus offload requests.
     float m_offlF_gain{ 0.1 };
+    /// The deadband threshold applied to focus offload requests.
     float m_offlF_thresh{ 0.1 };
 
     pcf::IndiProperty m_indiP_offlFenable;
@@ -1183,6 +1223,10 @@ inline int tcsInterface::appStartup()
 
     // Register to receive the coeff updates from Kyle
     REG_INDI_SETPROP( m_indiP_offloadCoeffs, "w2tcsOffloader", "zCoeffs" );
+
+    recordTcsiTipTilt( true );
+    recordTcsiFocus( true );
+    recordTcsiLabMode( true );
 
     state( stateCodes::NOTCONNECTED );
 
@@ -2536,8 +2580,15 @@ inline int tcsInterface::updateINDI()
 
 inline int tcsInterface::checkRecordTimes()
 {
-    return telemeter<tcsInterface>::checkRecordTimes(
-        telem_telpos(), telem_teldata(), telem_telvane(), telem_telenv(), telem_telcat(), telem_telsee() );
+    return telemeter<tcsInterface>::checkRecordTimes( telem_telpos(),
+                                                      telem_teldata(),
+                                                      telem_telvane(),
+                                                      telem_telenv(),
+                                                      telem_telcat(),
+                                                      telem_telsee(),
+                                                      telem_tcsi_tiptilt(),
+                                                      telem_tcsi_focus(),
+                                                      telem_tcsi_labmode() );
 }
 
 inline int tcsInterface::recordTelem( const telem_telpos * )
@@ -2573,6 +2624,24 @@ inline int tcsInterface::recordTelem( const telem_telcat * )
 inline int tcsInterface::recordTelem( const telem_telsee * )
 {
     recordTelSee( true );
+    return 0;
+}
+
+inline int tcsInterface::recordTelem( const telem_tcsi_tiptilt * )
+{
+    recordTcsiTipTilt( true );
+    return 0;
+}
+
+inline int tcsInterface::recordTelem( const telem_tcsi_focus * )
+{
+    recordTcsiFocus( true );
+    return 0;
+}
+
+inline int tcsInterface::recordTelem( const telem_tcsi_labmode * )
+{
+    recordTcsiLabMode( true );
     return 0;
 }
 
@@ -2784,6 +2853,62 @@ inline int tcsInterface::recordTelSee( bool force )
 
         last_mag2_time      = m_mag2_time;
         last_mag2_fwhm_corr = m_mag2_fwhm_corr;
+    }
+
+    return 0;
+}
+
+inline int tcsInterface::recordTcsiTipTilt( bool force )
+{
+    static bool  lastEnabled = !m_offlTT_enabled;
+    static float lastAvgInt  = std::numeric_limits<float>::quiet_NaN();
+    static float lastGain    = std::numeric_limits<float>::quiet_NaN();
+    static float lastThresh  = std::numeric_limits<float>::quiet_NaN();
+
+    if( force || lastEnabled != m_offlTT_enabled || lastAvgInt != m_offlTT_avgInt || lastGain != m_offlTT_gain ||
+        lastThresh != m_offlTT_thresh )
+    {
+        telem<telem_tcsi_tiptilt>( { m_offlTT_enabled, m_offlTT_avgInt, m_offlTT_gain, m_offlTT_thresh } );
+
+        lastEnabled = m_offlTT_enabled;
+        lastAvgInt  = m_offlTT_avgInt;
+        lastGain    = m_offlTT_gain;
+        lastThresh  = m_offlTT_thresh;
+    }
+
+    return 0;
+}
+
+inline int tcsInterface::recordTcsiFocus( bool force )
+{
+    static bool  lastEnabled = !m_offlF_enabled;
+    static float lastAvgInt  = std::numeric_limits<float>::quiet_NaN();
+    static float lastGain    = std::numeric_limits<float>::quiet_NaN();
+    static float lastThresh  = std::numeric_limits<float>::quiet_NaN();
+
+    if( force || lastEnabled != m_offlF_enabled || lastAvgInt != m_offlF_avgInt || lastGain != m_offlF_gain ||
+        lastThresh != m_offlF_thresh )
+    {
+        telem<telem_tcsi_focus>( { m_offlF_enabled, m_offlF_avgInt, m_offlF_gain, m_offlF_thresh } );
+
+        lastEnabled = m_offlF_enabled;
+        lastAvgInt  = m_offlF_avgInt;
+        lastGain    = m_offlF_gain;
+        lastThresh  = m_offlF_thresh;
+    }
+
+    return 0;
+}
+
+inline int tcsInterface::recordTcsiLabMode( bool force )
+{
+    static bool lastLabMode = !m_labMode;
+
+    if( force || lastLabMode != m_labMode )
+    {
+        telem<telem_tcsi_labmode>( { m_labMode } );
+
+        lastLabMode = m_labMode;
     }
 
     return 0;
@@ -3144,6 +3269,8 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_labMode )( const pcf::IndiProperty 
         updateSwitchIfChanged( m_indiP_labMode, "toggle", pcf::IndiElement::Off, INDI_OK );
     }
 
+    recordTcsiLabMode();
+
     return 0;
 }
 
@@ -3276,12 +3403,14 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTenable )( const pcf::IndiProp
         updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK );
 
         m_offlTT_enabled = true;
+        recordTcsiTipTilt();
     }
     else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlTT_enabled == true )
     {
         updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
 
         m_offlTT_enabled = false;
+        recordTcsiTipTilt();
     }
 
     return 0;
@@ -3317,6 +3446,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTavgInt )( const pcf::IndiProp
     }
 
     m_offlTT_avgInt = target;
+    recordTcsiTipTilt();
 
     return 0;
 }
@@ -3334,6 +3464,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTgain )( const pcf::IndiProper
     }
 
     m_offlTT_gain = target;
+    recordTcsiTipTilt();
 
     return 0;
 }
@@ -3351,6 +3482,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTthresh )( const pcf::IndiProp
     }
 
     m_offlTT_thresh = target;
+    recordTcsiTipTilt();
 
     return 0;
 }
@@ -3367,12 +3499,14 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFenable )( const pcf::IndiPrope
         updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK );
 
         m_offlF_enabled = true;
+        recordTcsiFocus();
     }
     else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlF_enabled == true )
     {
         updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
 
         m_offlF_enabled = false;
+        recordTcsiFocus();
     }
 
     return 0;
@@ -3408,6 +3542,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFavgInt )( const pcf::IndiPrope
     }
 
     m_offlF_avgInt = target;
+    recordTcsiFocus();
 
     return 0;
 }
@@ -3425,6 +3560,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFgain )( const pcf::IndiPropert
     }
 
     m_offlF_gain = target;
+    recordTcsiFocus();
 
     return 0;
 }
@@ -3444,6 +3580,7 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFthresh )( const pcf::IndiPrope
     }
 
     m_offlF_thresh = target;
+    recordTcsiFocus();
 
     return 0;
 }
