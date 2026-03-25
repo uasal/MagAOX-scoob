@@ -362,6 +362,9 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
 
     INDI_SETCALLBACK_DECL( tcsInterface, m_indiP_offloadCoeffs );
 
+    /// Protects the offload request ring and its queue-state indices across producer and consumer threads.
+    std::mutex m_offloadMutex;
+
     std::vector<std::vector<float>> m_offloadRequests;
     size_t                          m_firstRequest{ 0 };
     size_t                          m_lastRequest{ std::numeric_limits<size_t>::max() };
@@ -3020,12 +3023,15 @@ void tcsInterface::offloadThreadExec()
             // If this is new, then reset the averaging buffer
             if( m_loopState != last_loopState )
             {
-                m_firstRequest   = 0;
-                m_lastRequest    = std::numeric_limits<size_t>::max();
-                m_nRequests      = 0;
-                m_last_nRequests = 0;
-                sincelast_TT     = 0;
-                sincelast_F      = 0;
+                { // mutex scope
+                    std::lock_guard<std::mutex> lock( m_offloadMutex );
+                    m_firstRequest   = 0;
+                    m_lastRequest    = std::numeric_limits<size_t>::max();
+                    m_nRequests      = 0;
+                    m_last_nRequests = 0;
+                }
+                sincelast_TT = 0;
+                sincelast_F  = 0;
             }
             sleep( 1 );
             last_loopState = m_loopState;
@@ -3047,40 +3053,73 @@ void tcsInterface::offloadThreadExec()
 
         // Ok loop closed
 
-        if( m_nRequests == 0 )
-            continue; // this really should mutexed instead
+        bool haveNewRequests = false;
+
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadMutex );
+            haveNewRequests = ( m_nRequests > 0 && m_last_nRequests != m_nRequests );
+        }
 
         // If we got a new offload request, process it
-        if( m_last_nRequests != m_nRequests )
+        if( haveNewRequests )
         {
             // std::cerr << m_firstRequest << " " << m_lastRequest << " " << m_nRequests << std::endl;
 
             ///\todo offloading: These sections ought to be separate functions for clarity
-            /* --- TT --- */
-            avg_TT_0 = 0;
-            avg_TT_1 = 0;
+            { // mutex scope
+                std::lock_guard<std::mutex> lock( m_offloadMutex );
 
-            int navg = 0;
+                /* --- TT --- */
+                avg_TT_0 = 0;
+                avg_TT_1 = 0;
 
-            size_t i = m_lastRequest;
+                int navg = 0;
 
-            for( size_t n = 0; n < m_offlTT_avgInt; ++n )
-            {
-                avg_TT_0 += m_offloadRequests[0][i];
-                avg_TT_1 += m_offloadRequests[1][i];
-                ++navg;
+                size_t i = m_lastRequest;
 
-                if( i == m_firstRequest )
-                    break;
+                for( size_t n = 0; n < m_offlTT_avgInt; ++n )
+                {
+                    avg_TT_0 += m_offloadRequests[0][i];
+                    avg_TT_1 += m_offloadRequests[1][i];
+                    ++navg;
 
-                if( i == 0 )
-                    i = m_offloadRequests[0].size() - 1;
-                else
-                    --i;
+                    if( i == m_firstRequest )
+                        break;
+
+                    if( i == 0 )
+                        i = m_offloadRequests[0].size() - 1;
+                    else
+                        --i;
+                }
+
+                avg_TT_0 /= navg;
+                avg_TT_1 /= navg;
+
+                /* --- Focus --- */
+                avg_F_0 = 0;
+
+                navg = 0;
+
+                i = m_lastRequest;
+
+                for( size_t n = 0; n < m_offlF_avgInt; ++n )
+                {
+                    avg_F_0 += m_offloadRequests[2][i];
+                    ++navg;
+
+                    if( i == m_firstRequest )
+                        break;
+
+                    if( i == 0 )
+                        i = m_offloadRequests[0].size() - 1;
+                    else
+                        --i;
+                }
+
+                avg_F_0 /= navg;
+
+                m_last_nRequests = m_nRequests;
             }
-
-            avg_TT_0 /= navg;
-            avg_TT_1 /= navg;
 
             ++sincelast_TT;
             if( sincelast_TT >= m_offlTT_avgInt )
@@ -3089,37 +3128,12 @@ void tcsInterface::offloadThreadExec()
                 sincelast_TT = 0;
             }
 
-            /* --- Focus --- */
-            avg_F_0 = 0;
-
-            navg = 0;
-
-            i = m_lastRequest;
-
-            for( size_t n = 0; n < m_offlF_avgInt; ++n )
-            {
-                avg_F_0 += m_offloadRequests[2][i];
-                ++navg;
-
-                if( i == m_firstRequest )
-                    break;
-
-                if( i == 0 )
-                    i = m_offloadRequests[0].size() - 1;
-                else
-                    --i;
-            }
-
-            avg_F_0 /= navg;
-
             ++sincelast_F;
             if( sincelast_F >= m_offlF_avgInt )
             {
                 doFoffload( avg_F_0 );
                 sincelast_F = 0;
             }
-
-            m_last_nRequests = m_nRequests;
         }
         last_loopState = m_loopState;
 
@@ -3350,45 +3364,49 @@ INDI_SETCALLBACK_DEFN( tcsInterface, m_indiP_offloadCoeffs )( const pcf::IndiPro
     if( m_loopState != 2 )
         return 0;
 
-    size_t nextReq = m_lastRequest + 1;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadMutex );
 
-    if( nextReq >= m_offloadRequests[0].size() )
-        nextReq = 0;
+        size_t nextReq = m_lastRequest + 1;
 
-    // Tip-Tilt
-    float tt0 = ipRecv["00"].get<float>();
-    float tt1 = ipRecv["01"].get<float>();
+        if( nextReq >= m_offloadRequests[0].size() )
+            nextReq = 0;
 
-    if( m_labMode )
-    {
-        m_offloadRequests[0][nextReq] = m_lab_offlTT_C_00 * tt0 + m_lab_offlTT_C_01 * tt1;
-        m_offloadRequests[1][nextReq] = m_lab_offlTT_C_10 * tt0 + m_lab_offlTT_C_11 * tt1;
+        // Tip-Tilt
+        float tt0 = ipRecv["00"].get<float>();
+        float tt1 = ipRecv["01"].get<float>();
+
+        if( m_labMode )
+        {
+            m_offloadRequests[0][nextReq] = m_lab_offlTT_C_00 * tt0 + m_lab_offlTT_C_01 * tt1;
+            m_offloadRequests[1][nextReq] = m_lab_offlTT_C_10 * tt0 + m_lab_offlTT_C_11 * tt1;
+        }
+        else
+        {
+            m_offloadRequests[0][nextReq] = m_offlTT_C_00 * tt0 + m_offlTT_C_01 * tt1;
+            m_offloadRequests[1][nextReq] = m_offlTT_C_10 * tt0 + m_offlTT_C_11 * tt1;
+        }
+
+        // Focus
+        float f0 = ipRecv["02"].get<float>();
+
+        m_offloadRequests[2][nextReq] = m_offlCFocus_00 * f0;
+
+        // Coma
+        float c0 = ipRecv["03"].get<float>();
+        float c1 = ipRecv["04"].get<float>();
+
+        m_offloadRequests[3][nextReq] = m_offlCComa_00 * c0 + m_offlCComa_01 * c1;
+        m_offloadRequests[4][nextReq] = m_offlCComa_10 * c0 + m_offlCComa_11 * c1;
+
+        // Now update circ buffer
+        m_lastRequest = nextReq;
+        ++m_nRequests;
+        if( m_nRequests > m_offloadRequests[0].size() )
+            ++m_firstRequest;
+        if( m_firstRequest >= m_offloadRequests[0].size() )
+            m_firstRequest = 0;
     }
-    else
-    {
-        m_offloadRequests[0][nextReq] = m_offlTT_C_00 * tt0 + m_offlTT_C_01 * tt1;
-        m_offloadRequests[1][nextReq] = m_offlTT_C_10 * tt0 + m_offlTT_C_11 * tt1;
-    }
-
-    // Focus
-    float f0 = ipRecv["02"].get<float>();
-
-    m_offloadRequests[2][nextReq] = m_offlCFocus_00 * f0;
-
-    // Coma
-    float c0 = ipRecv["03"].get<float>();
-    float c1 = ipRecv["04"].get<float>();
-
-    m_offloadRequests[3][nextReq] = m_offlCComa_00 * c0 + m_offlCComa_01 * c1;
-    m_offloadRequests[4][nextReq] = m_offlCComa_10 * c0 + m_offlCComa_11 * c1;
-
-    // Now update circ buffer
-    m_lastRequest = nextReq;
-    ++m_nRequests;
-    if( m_nRequests > m_offloadRequests[0].size() )
-        ++m_firstRequest;
-    if( m_firstRequest >= m_offloadRequests[0].size() )
-        m_firstRequest = 0;
     return 0;
 }
 
