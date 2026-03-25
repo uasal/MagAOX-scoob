@@ -7,6 +7,7 @@
 #ifndef tcsInterface_hpp
 #define tcsInterface_hpp
 
+#include <atomic>
 #include <cmath>
 #include <iostream>
 
@@ -288,7 +289,8 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
 
     ///@}
 
-    int               m_loopState{ 0 };
+    /// Tracks the current loop state shared between the INDI callback and the offload thread.
+    std::atomic<int>  m_loopState{ 0 };
     pcf::IndiProperty m_indiP_loopState; ///< Property used to report the loop state
 
     INDI_SETCALLBACK_DECL( tcsInterface, m_indiP_loopState );
@@ -3017,11 +3019,13 @@ void tcsInterface::offloadThreadExec()
 
     while( shutdown() == 0 )
     {
+        int loopState = m_loopState.load();
+
         // Check if loop open
-        if( m_loopState == 0 )
+        if( loopState == 0 )
         {
             // If this is new, then reset the averaging buffer
-            if( m_loopState != last_loopState )
+            if( loopState != last_loopState )
             {
                 { // mutex scope
                     std::lock_guard<std::mutex> lock( m_offloadMutex );
@@ -3034,20 +3038,20 @@ void tcsInterface::offloadThreadExec()
                 sincelast_F  = 0;
             }
             sleep( 1 );
-            last_loopState = m_loopState;
+            last_loopState = loopState;
             continue;
         }
 
         // Check if loop paused
-        if( m_loopState == 1 )
+        if( loopState == 1 )
         {
-            if( m_loopState != last_loopState )
+            if( loopState != last_loopState )
             {
                 sincelast_TT = 0;
                 sincelast_F  = 0;
             }
             sleep( 1 );
-            last_loopState = m_loopState;
+            last_loopState = loopState;
             continue;
         }
 
@@ -3135,7 +3139,7 @@ void tcsInterface::offloadThreadExec()
                 sincelast_F = 0;
             }
         }
-        last_loopState = m_loopState;
+        last_loopState = loopState;
 
         sleep( 1 );
     }
@@ -3347,11 +3351,11 @@ INDI_SETCALLBACK_DEFN( tcsInterface, m_indiP_loopState )( const pcf::IndiPropert
 
     if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
     {
-        m_loopState = 2;
+        m_loopState.store( 2 );
     }
     else
     {
-        m_loopState = 0;
+        m_loopState.store( 0 );
     }
 
     return 0;
@@ -3361,7 +3365,7 @@ INDI_SETCALLBACK_DEFN( tcsInterface, m_indiP_offloadCoeffs )( const pcf::IndiPro
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_offloadCoeffs, ipRecv );
 
-    if( m_loopState != 2 )
+    if( m_loopState.load() != 2 )
         return 0;
 
     { // mutex scope
