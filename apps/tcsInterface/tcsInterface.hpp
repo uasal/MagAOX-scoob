@@ -364,6 +364,9 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
 
     INDI_SETCALLBACK_DECL( tcsInterface, m_indiP_offloadCoeffs );
 
+    /// Protects shared offload control parameters accessed by callbacks and the offload thread.
+    std::mutex m_offloadCtrlMutex;
+
     /// Protects the offload request ring and its queue-state indices across producer and consumer threads.
     std::mutex m_offloadMutex;
 
@@ -2865,20 +2868,32 @@ inline int tcsInterface::recordTelSee( bool force )
 
 inline int tcsInterface::recordTcsiTipTilt( bool force )
 {
-    static bool  lastEnabled = !m_offlTT_enabled;
+    bool  enabled;
+    float avgInt;
+    float gain;
+    float thresh;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        enabled = m_offlTT_enabled;
+        avgInt  = m_offlTT_avgInt;
+        gain    = m_offlTT_gain;
+        thresh  = m_offlTT_thresh;
+    }
+
+    static bool  lastEnabled = !enabled;
     static float lastAvgInt  = std::numeric_limits<float>::quiet_NaN();
     static float lastGain    = std::numeric_limits<float>::quiet_NaN();
     static float lastThresh  = std::numeric_limits<float>::quiet_NaN();
 
-    if( force || lastEnabled != m_offlTT_enabled || lastAvgInt != m_offlTT_avgInt || lastGain != m_offlTT_gain ||
-        lastThresh != m_offlTT_thresh )
+    if( force || lastEnabled != enabled || lastAvgInt != avgInt || lastGain != gain || lastThresh != thresh )
     {
-        telem<telem_tcsi_tiptilt>( { m_offlTT_enabled, m_offlTT_avgInt, m_offlTT_gain, m_offlTT_thresh } );
+        telem<telem_tcsi_tiptilt>( { enabled, avgInt, gain, thresh } );
 
-        lastEnabled = m_offlTT_enabled;
-        lastAvgInt  = m_offlTT_avgInt;
-        lastGain    = m_offlTT_gain;
-        lastThresh  = m_offlTT_thresh;
+        lastEnabled = enabled;
+        lastAvgInt  = avgInt;
+        lastGain    = gain;
+        lastThresh  = thresh;
     }
 
     return 0;
@@ -2886,20 +2901,32 @@ inline int tcsInterface::recordTcsiTipTilt( bool force )
 
 inline int tcsInterface::recordTcsiFocus( bool force )
 {
-    static bool  lastEnabled = !m_offlF_enabled;
+    bool  enabled;
+    float avgInt;
+    float gain;
+    float thresh;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        enabled = m_offlF_enabled;
+        avgInt  = m_offlF_avgInt;
+        gain    = m_offlF_gain;
+        thresh  = m_offlF_thresh;
+    }
+
+    static bool  lastEnabled = !enabled;
     static float lastAvgInt  = std::numeric_limits<float>::quiet_NaN();
     static float lastGain    = std::numeric_limits<float>::quiet_NaN();
     static float lastThresh  = std::numeric_limits<float>::quiet_NaN();
 
-    if( force || lastEnabled != m_offlF_enabled || lastAvgInt != m_offlF_avgInt || lastGain != m_offlF_gain ||
-        lastThresh != m_offlF_thresh )
+    if( force || lastEnabled != enabled || lastAvgInt != avgInt || lastGain != gain || lastThresh != thresh )
     {
-        telem<telem_tcsi_focus>( { m_offlF_enabled, m_offlF_avgInt, m_offlF_gain, m_offlF_thresh } );
+        telem<telem_tcsi_focus>( { enabled, avgInt, gain, thresh } );
 
-        lastEnabled = m_offlF_enabled;
-        lastAvgInt  = m_offlF_avgInt;
-        lastGain    = m_offlF_gain;
-        lastThresh  = m_offlF_thresh;
+        lastEnabled = enabled;
+        lastAvgInt  = avgInt;
+        lastGain    = gain;
+        lastThresh  = thresh;
     }
 
     return 0;
@@ -2907,13 +2934,20 @@ inline int tcsInterface::recordTcsiFocus( bool force )
 
 inline int tcsInterface::recordTcsiLabMode( bool force )
 {
-    static bool lastLabMode = !m_labMode;
+    bool labMode;
 
-    if( force || lastLabMode != m_labMode )
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        labMode = m_labMode;
+    }
+
+    static bool lastLabMode = !labMode;
+
+    if( force || lastLabMode != labMode )
     {
-        telem<telem_tcsi_labmode>( { m_labMode } );
+        telem<telem_tcsi_labmode>( { labMode } );
 
-        lastLabMode = m_labMode;
+        lastLabMode = labMode;
     }
 
     return 0;
@@ -3019,7 +3053,15 @@ void tcsInterface::offloadThreadExec()
 
     while( shutdown() == 0 )
     {
-        int loopState = m_loopState.load();
+        int   loopState = m_loopState.load();
+        float offlTTAvgInt;
+        float offlFAvgInt;
+
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            offlTTAvgInt = m_offlTT_avgInt;
+            offlFAvgInt  = m_offlF_avgInt;
+        }
 
         // Check if loop open
         if( loopState == 0 )
@@ -3081,7 +3123,7 @@ void tcsInterface::offloadThreadExec()
 
                 size_t i = m_lastRequest;
 
-                for( size_t n = 0; n < m_offlTT_avgInt; ++n )
+                for( size_t n = 0; n < offlTTAvgInt; ++n )
                 {
                     avg_TT_0 += m_offloadRequests[0][i];
                     avg_TT_1 += m_offloadRequests[1][i];
@@ -3106,7 +3148,7 @@ void tcsInterface::offloadThreadExec()
 
                 i = m_lastRequest;
 
-                for( size_t n = 0; n < m_offlF_avgInt; ++n )
+                for( size_t n = 0; n < offlFAvgInt; ++n )
                 {
                     avg_F_0 += m_offloadRequests[2][i];
                     ++navg;
@@ -3126,14 +3168,14 @@ void tcsInterface::offloadThreadExec()
             }
 
             ++sincelast_TT;
-            if( sincelast_TT >= m_offlTT_avgInt )
+            if( sincelast_TT >= offlTTAvgInt )
             {
                 doTToffload( avg_TT_0, avg_TT_1 );
                 sincelast_TT = 0;
             }
 
             ++sincelast_F;
-            if( sincelast_F >= m_offlF_avgInt )
+            if( sincelast_F >= offlFAvgInt )
             {
                 doFoffload( avg_F_0 );
                 sincelast_F = 0;
@@ -3149,32 +3191,50 @@ void tcsInterface::offloadThreadExec()
 
 int tcsInterface::doTToffload( float tt_0, float tt_1 )
 {
-    if( m_offlTT_dump )
+    bool  offlTTDump;
+    float offlTTGain;
+    float offlTTThresh;
+    bool  offlTTEnabled;
+    bool  labMode;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        offlTTDump    = m_offlTT_dump;
+        offlTTGain    = m_offlTT_gain;
+        offlTTThresh  = m_offlTT_thresh;
+        offlTTEnabled = m_offlTT_enabled;
+        labMode       = m_labMode;
+    }
+
+    if( offlTTDump )
     {
         log<text_log>( "[OFFL] TT dumping: " + std::to_string( tt_0 ) + " " + std::to_string( tt_1 ) );
         sendTToffload( tt_0, tt_1 );
-        m_offlTT_dump = false;
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            m_offlTT_dump = false;
+        }
     }
     else
     {
-        tt_0 *= m_offlTT_gain;
-        tt_1 *= m_offlTT_gain;
+        tt_0 *= offlTTGain;
+        tt_1 *= offlTTGain;
 
-        if( fabs( tt_0 ) < m_offlTT_thresh )
+        if( fabs( tt_0 ) < offlTTThresh )
             tt_0 = 0;
-        if( fabs( tt_1 ) < m_offlTT_thresh )
+        if( fabs( tt_1 ) < offlTTThresh )
             tt_1 = 0;
 
         if( tt_0 == 0 && tt_1 == 0 )
         {
             // Do nothing
         }
-        else if( m_offlTT_enabled )
+        else if( offlTTEnabled )
         {
             log<text_log>( "[OFFL] TT offloading: " + std::to_string( tt_0 ) + " " + std::to_string( tt_1 ) );
             sendTToffload( tt_0, tt_1 );
         }
-        else if( !m_labMode )
+        else if( !labMode )
         {
             log<text_log>( "TT offload above threshold but TT offloading disabled", logPrio::LOG_WARNING );
         }
@@ -3185,8 +3245,14 @@ int tcsInterface::doTToffload( float tt_0, float tt_1 )
 
 int tcsInterface::sendTToffload( float tt_0, float tt_1 )
 {
+    bool labMode;
 
-    if( m_labMode ) // If labMode we send offloads to the modulator
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        labMode = m_labMode;
+    }
+
+    if( labMode ) // If labMode we send offloads to the modulator
     {
         pcf::IndiProperty ip( pcf::IndiProperty::Number );
         ip.setDevice( "modwfs" );
@@ -3214,28 +3280,46 @@ int tcsInterface::sendTToffload( float tt_0, float tt_1 )
 
 int tcsInterface::doFoffload( float F_0 )
 {
-    if( m_offlF_dump )
+    bool  offlFDump;
+    float offlFGain;
+    float offlFThresh;
+    bool  offlFEnabled;
+    bool  labMode;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        offlFDump    = m_offlF_dump;
+        offlFGain    = m_offlF_gain;
+        offlFThresh  = m_offlF_thresh;
+        offlFEnabled = m_offlF_enabled;
+        labMode      = m_labMode;
+    }
+
+    if( offlFDump )
     {
         log<text_log>( "[OFFL] Focus dumping: " + std::to_string( F_0 ) );
         sendFoffload( F_0 );
-        m_offlF_dump = false;
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            m_offlF_dump = false;
+        }
     }
     else
     {
-        F_0 *= m_offlF_gain;
+        F_0 *= offlFGain;
 
-        if( fabs( F_0 ) < m_offlF_thresh )
+        if( fabs( F_0 ) < offlFThresh )
             F_0 = 0;
 
         if( F_0 == 0 )
         {
         }
-        else if( m_offlF_enabled )
+        else if( offlFEnabled )
         {
             log<text_log>( "[OFFL] Focus sending: " + std::to_string( F_0 ) );
             sendFoffload( F_0 );
         }
-        else if( !m_labMode )
+        else if( !labMode )
         {
 
             log<text_log>( "Focus offload above threshold but Focus offloading disabled", logPrio::LOG_WARNING );
@@ -3276,14 +3360,23 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_labMode )( const pcf::IndiProperty 
         labMode = false;
     }
 
-    if( m_labMode == labMode )
+    bool changed = false;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        if( m_labMode != labMode )
+        {
+            m_labMode = labMode;
+            changed   = true;
+        }
+    }
+
+    if( !changed )
     {
         return 0;
     }
 
-    m_labMode = labMode;
-
-    if( m_labMode )
+    if( labMode )
     {
         log<text_log>( "lab mode ON", logPrio::LOG_NOTICE );
         updateSwitchIfChanged( m_indiP_labMode, "toggle", pcf::IndiElement::On, INDI_OK );
@@ -3368,6 +3461,43 @@ INDI_SETCALLBACK_DEFN( tcsInterface, m_indiP_offloadCoeffs )( const pcf::IndiPro
     if( m_loopState.load() != 2 )
         return 0;
 
+    // Tip-Tilt
+    float tt0 = ipRecv["00"].get<float>();
+    float tt1 = ipRecv["01"].get<float>();
+
+    bool  labMode;
+    float labOfflTTC00;
+    float labOfflTTC01;
+    float labOfflTTC10;
+    float labOfflTTC11;
+    float offlTTC00;
+    float offlTTC01;
+    float offlTTC10;
+    float offlTTC11;
+    float offlCFocus00;
+    float offlCComa00;
+    float offlCComa01;
+    float offlCComa10;
+    float offlCComa11;
+
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        labMode      = m_labMode;
+        labOfflTTC00 = m_lab_offlTT_C_00;
+        labOfflTTC01 = m_lab_offlTT_C_01;
+        labOfflTTC10 = m_lab_offlTT_C_10;
+        labOfflTTC11 = m_lab_offlTT_C_11;
+        offlTTC00    = m_offlTT_C_00;
+        offlTTC01    = m_offlTT_C_01;
+        offlTTC10    = m_offlTT_C_10;
+        offlTTC11    = m_offlTT_C_11;
+        offlCFocus00 = m_offlCFocus_00;
+        offlCComa00  = m_offlCComa_00;
+        offlCComa01  = m_offlCComa_01;
+        offlCComa10  = m_offlCComa_10;
+        offlCComa11  = m_offlCComa_11;
+    }
+
     { // mutex scope
         std::lock_guard<std::mutex> lock( m_offloadMutex );
 
@@ -3376,32 +3506,28 @@ INDI_SETCALLBACK_DEFN( tcsInterface, m_indiP_offloadCoeffs )( const pcf::IndiPro
         if( nextReq >= m_offloadRequests[0].size() )
             nextReq = 0;
 
-        // Tip-Tilt
-        float tt0 = ipRecv["00"].get<float>();
-        float tt1 = ipRecv["01"].get<float>();
-
-        if( m_labMode )
+        if( labMode )
         {
-            m_offloadRequests[0][nextReq] = m_lab_offlTT_C_00 * tt0 + m_lab_offlTT_C_01 * tt1;
-            m_offloadRequests[1][nextReq] = m_lab_offlTT_C_10 * tt0 + m_lab_offlTT_C_11 * tt1;
+            m_offloadRequests[0][nextReq] = labOfflTTC00 * tt0 + labOfflTTC01 * tt1;
+            m_offloadRequests[1][nextReq] = labOfflTTC10 * tt0 + labOfflTTC11 * tt1;
         }
         else
         {
-            m_offloadRequests[0][nextReq] = m_offlTT_C_00 * tt0 + m_offlTT_C_01 * tt1;
-            m_offloadRequests[1][nextReq] = m_offlTT_C_10 * tt0 + m_offlTT_C_11 * tt1;
+            m_offloadRequests[0][nextReq] = offlTTC00 * tt0 + offlTTC01 * tt1;
+            m_offloadRequests[1][nextReq] = offlTTC10 * tt0 + offlTTC11 * tt1;
         }
 
         // Focus
         float f0 = ipRecv["02"].get<float>();
 
-        m_offloadRequests[2][nextReq] = m_offlCFocus_00 * f0;
+        m_offloadRequests[2][nextReq] = offlCFocus00 * f0;
 
         // Coma
         float c0 = ipRecv["03"].get<float>();
         float c1 = ipRecv["04"].get<float>();
 
-        m_offloadRequests[3][nextReq] = m_offlCComa_00 * c0 + m_offlCComa_01 * c1;
-        m_offloadRequests[4][nextReq] = m_offlCComa_10 * c0 + m_offlCComa_11 * c1;
+        m_offloadRequests[3][nextReq] = offlCComa00 * c0 + offlCComa01 * c1;
+        m_offloadRequests[4][nextReq] = offlCComa10 * c0 + offlCComa11 * c1;
 
         // Now update circ buffer
         m_lastRequest = nextReq;
@@ -3427,19 +3553,39 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTenable )( const pcf::IndiProp
     if( !ipRecv.find( "toggle" ) )
         return 0;
 
-    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On && m_offlTT_enabled == false )
-    {
-        updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK );
+    bool changed = false;
 
-        m_offlTT_enabled = true;
-        recordTcsiTipTilt();
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+    {
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            if( m_offlTT_enabled == false )
+            {
+                m_offlTT_enabled = true;
+                changed          = true;
+            }
+        }
+        if( changed )
+        {
+            updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::On, INDI_OK );
+            recordTcsiTipTilt();
+        }
     }
-    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlTT_enabled == true )
+    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off )
     {
-        updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
-
-        m_offlTT_enabled = false;
-        recordTcsiTipTilt();
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            if( m_offlTT_enabled == true )
+            {
+                m_offlTT_enabled = false;
+                changed          = true;
+            }
+        }
+        if( changed )
+        {
+            updateSwitchIfChanged( m_indiP_offlTTenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+            recordTcsiTipTilt();
+        }
     }
 
     return 0;
@@ -3456,7 +3602,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTdump )( const pcf::IndiProper
     {
         updateSwitchIfChanged( m_indiP_offlTTdump, "request", pcf::IndiElement::On, INDI_OK );
 
-        m_offlTT_dump = true;
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            m_offlTT_dump = true;
+        }
     }
 
     return 0;
@@ -3474,7 +3623,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTavgInt )( const pcf::IndiProp
         return -1;
     }
 
-    m_offlTT_avgInt = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlTT_avgInt = target;
+    }
     recordTcsiTipTilt();
 
     return 0;
@@ -3492,7 +3644,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTgain )( const pcf::IndiProper
         return -1;
     }
 
-    m_offlTT_gain = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlTT_gain = target;
+    }
     recordTcsiTipTilt();
 
     return 0;
@@ -3510,7 +3665,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlTTthresh )( const pcf::IndiProp
         return -1;
     }
 
-    m_offlTT_thresh = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlTT_thresh = target;
+    }
     recordTcsiTipTilt();
 
     return 0;
@@ -3523,19 +3681,39 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFenable )( const pcf::IndiPrope
     if( !ipRecv.find( "toggle" ) )
         return 0;
 
-    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On && m_offlF_enabled == false )
-    {
-        updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK );
+    bool changed = false;
 
-        m_offlF_enabled = true;
-        recordTcsiFocus();
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
+    {
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            if( m_offlF_enabled == false )
+            {
+                m_offlF_enabled = true;
+                changed         = true;
+            }
+        }
+        if( changed )
+        {
+            updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::On, INDI_OK );
+            recordTcsiFocus();
+        }
     }
-    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off && m_offlF_enabled == true )
+    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off )
     {
-        updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
-
-        m_offlF_enabled = false;
-        recordTcsiFocus();
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            if( m_offlF_enabled == true )
+            {
+                m_offlF_enabled = false;
+                changed         = true;
+            }
+        }
+        if( changed )
+        {
+            updateSwitchIfChanged( m_indiP_offlFenable, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+            recordTcsiFocus();
+        }
     }
 
     return 0;
@@ -3552,7 +3730,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFdump )( const pcf::IndiPropert
     {
         updateSwitchIfChanged( m_indiP_offlFdump, "request", pcf::IndiElement::On, INDI_OK );
 
-        m_offlF_dump = true;
+        { // mutex scope
+            std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+            m_offlF_dump = true;
+        }
     }
 
     return 0;
@@ -3570,7 +3751,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFavgInt )( const pcf::IndiPrope
         return -1;
     }
 
-    m_offlF_avgInt = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlF_avgInt = target;
+    }
     recordTcsiFocus();
 
     return 0;
@@ -3588,7 +3772,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFgain )( const pcf::IndiPropert
         return -1;
     }
 
-    m_offlF_gain = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlF_gain = target;
+    }
     recordTcsiFocus();
 
     return 0;
@@ -3608,7 +3795,10 @@ INDI_NEWCALLBACK_DEFN( tcsInterface, m_indiP_offlFthresh )( const pcf::IndiPrope
         return -1;
     }
 
-    m_offlF_thresh = target;
+    { // mutex scope
+        std::lock_guard<std::mutex> lock( m_offloadCtrlMutex );
+        m_offlF_thresh = target;
+    }
     recordTcsiFocus();
 
     return 0;
