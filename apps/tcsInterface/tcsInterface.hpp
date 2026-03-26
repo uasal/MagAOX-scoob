@@ -351,13 +351,23 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
      */
     void offloadThreadExec();
 
-    int doTToffload( float TT_0, float TT_1 );
+    /// Apply tip/tilt offload controls to an averaged request vector.
+    int doTToffload( float TT_0, /**< [in] averaged tip request */
+                     float TT_1  /**< [in] averaged tilt request */
+    );
 
-    int sendTToffload( float TT_0, float TT_1 );
+    /// Send a tip/tilt offload command to the selected target.
+    int sendTToffload( float TT_0, /**< [in] tip offload command */
+                       float TT_1  /**< [in] tilt offload command */
+    );
 
-    int doFoffload( float F_0 );
+    /// Apply focus offload controls to an averaged request value.
+    int doFoffload( float F_0 /**< [in] averaged focus request */
+    );
 
-    int sendFoffload( float F_0 );
+    /// Send a focus offload command to the telescope.
+    int sendFoffload( float F_0 /**< [in] focus offload command */
+    );
 
     pcf::IndiProperty
         m_indiP_offloadCoeffs; ///< Property used to report the latest woofer modal coefficients for offloading
@@ -370,11 +380,20 @@ class tcsInterface : public MagAOXApp<true>, public dev::ioDevice, public dev::t
     /// Protects the offload request ring and its queue-state indices across producer and consumer threads.
     std::mutex m_offloadMutex;
 
+    /// Ring buffer of modal offload requests indexed by mode and request slot.
     std::vector<std::vector<float>> m_offloadRequests;
-    size_t                          m_firstRequest{ 0 };
-    size_t                          m_lastRequest{ std::numeric_limits<size_t>::max() };
-    size_t                          m_nRequests{ 0 };
-    size_t                          m_last_nRequests{ 0 };
+
+    /// Index of the oldest valid request in the offload ring.
+    size_t m_firstRequest{ 0 };
+
+    /// Index of the newest valid request in the offload ring.
+    size_t m_lastRequest{ std::numeric_limits<size_t>::max() };
+
+    /// Number of valid requests currently stored in the offload ring.
+    size_t m_nRequests{ 0 };
+
+    /// Request count last processed by the offload thread.
+    size_t m_last_nRequests{ 0 };
 
     // The TT control matrix -- LAb
     float m_lab_offlTT_C_00{ 0.17 };
