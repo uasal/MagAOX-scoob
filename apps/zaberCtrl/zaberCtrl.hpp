@@ -185,6 +185,16 @@ class zaberCtrl : public MagAOXApp<>, public dev::stdMotionStage<zaberCtrl>, pub
 
     int recordZaber( bool force = false );
 
+    /// Update the stage telemetry values used while the low-level stage is powered off.
+    /**
+     * When a parked stage transitions to `POWEROFF`, preserve the logical
+     * preset derived from the last reported position so telemetry consumers
+     * such as `xrif2fits` can keep writing valid preset headers.
+     *
+     * \returns 0 on success
+     */
+    int syncPowerOffStageTelemetry();
+
     ///@}
 };
 
@@ -495,6 +505,30 @@ int zaberCtrl::appLogic()
     return 0;
 }
 
+int zaberCtrl::syncPowerOffStageTelemetry()
+{
+    if( !m_parked )
+    {
+        m_preset        = 0;
+        m_preset_target = 0;
+        return 0;
+    }
+
+    int n = presetNumber();
+    if( n == 0 )
+    {
+        m_preset        = 0;
+        m_preset_target = 0;
+    }
+    else
+    {
+        m_preset        = n;
+        m_preset_target = n;
+    }
+
+    return 0;
+}
+
 int zaberCtrl::appShutdown()
 {
     return 0;
@@ -692,6 +726,8 @@ INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageState )( const pcf::IndiProperty 
     {
         state( stateCodes::POWEROFF );
         m_moving = -2;
+        syncPowerOffStageTelemetry();
+        dev::stdMotionStage<zaberCtrl>::recordStage( true );
     }
     else if( sstr == "POWERON" )
     {
@@ -891,6 +927,12 @@ INDI_SETCALLBACK_DEFN( zaberCtrl, m_indiP_stageParked )( const pcf::IndiProperty
     std::lock_guard<std::mutex> guard( m_indiMutex );
 
     m_parked = ( ipRecv[m_stageName].get<int>() != 0 );
+
+    if( state() == stateCodes::POWEROFF )
+    {
+        syncPowerOffStageTelemetry();
+        dev::stdMotionStage<zaberCtrl>::recordStage( true );
+    }
 
     updateIfChanged( m_indiP_parked, "current", static_cast<int>( m_parked ) );
 
