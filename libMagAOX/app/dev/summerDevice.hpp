@@ -467,7 +467,7 @@ void summerDevice<derivedT>::receive() {
   while (!Bored)
   {
     Bored = true;
-    if (UartParser->Process())
+    if (UartParser->ProcessBulk())
     {
       Bored = false;
     }

@@ -464,6 +464,28 @@ namespace MagAOX
                     return(c);
                 }
 
+                virtual int readBulk(uint8_t* buf, size_t maxLen) override
+                {
+                    if (-1 == ComFileDescriptor) {
+                        return(0);
+                    }
+
+                    ssize_t len = read(ComFileDescriptor, buf, maxLen);
+                    if (len < 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) return(0);
+
+                        if (autoreopen)
+                        {
+                            deinit();
+                            PinoutConfig pinoutConfig = PinoutConfig::CreateSerialConfig(Baud, Device, RtsCts, OddParity);
+                            init(pinoutConfig);
+                        }
+                        return('\0');
+                    }
+
+                    return static_cast<int>(len);
+                }
+
                 virtual char putcqq(char c)
                 {
                     if (echo) {

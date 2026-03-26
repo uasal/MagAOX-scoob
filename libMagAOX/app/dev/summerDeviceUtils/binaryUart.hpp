@@ -198,6 +198,44 @@ struct BinaryUart
 		return(true); //We just want to know if there's chars in the buffer to put threads to sleep or not...
 	}
 
+	bool ProcessBulk()
+	{
+		// Check if data is available
+		if (!Pinout.dataready()) return false;
+
+		// Read all available bytes at once into a temporary buffer
+		uint8_t tempBuffer[RxBufferLenBytes];
+		int bytesRead = Pinout.readBulk(tempBuffer, sizeof(tempBuffer));
+
+		if (bytesRead <= 0) return false;
+
+		// Feed each byte through the existing packet parsing state machine
+		for (int i = 0; i < bytesRead; i++)
+		{
+			if (debug) {
+				printf(".%.2x", tempBuffer[i]);
+			}
+
+			ProcessByte(tempBuffer[i]);
+
+			if (!InPacket) {
+				bool gotStart = CheckPacketStart();
+				if (gotStart) {
+					PayloadLen = Packet.PayloadLen(RxBuffer, RxCount, PacketStart);
+					HeaderLen = Packet.HeaderLen();
+					FooterLen = Packet.FooterLen();
+				}
+			}
+			else {
+				if (!(RxCount < HeaderLen + FooterLen + PayloadLen)) {
+					CheckPacketEnd();
+				}
+			}
+		}
+
+		return true;
+	}
+
 	void ProcessByte(const char c)
 	{
 		//Put the current character into the buffer

@@ -171,7 +171,7 @@ namespace MagAOX
 
 							deinit();
 
-							return (0);
+							return ('0');
 						}
 					}
 					else
@@ -180,6 +180,21 @@ namespace MagAOX
 					}
 
 					return (c);
+				}
+
+				virtual int readBulk(uint8_t* buf, size_t maxLen) override
+				{
+					if (-1 == hSocket) return (0);
+
+					ssize_t numbytes = recv(hSocket, buf, maxLen, MSG_DONTWAIT);
+					if (numbytes < 0) {
+						if (errno == EAGAIN || errno == EWOULDBLOCK) return (0);
+
+						deinit();
+						return (0);
+					}
+
+					return static_cast<int>(numbytes);
 				}
 
 				virtual char putcqq(char c)
@@ -200,7 +215,7 @@ namespace MagAOX
 
 							deinit();
 
-							return (0);
+							return ('0');
 						}
 					}
 					else

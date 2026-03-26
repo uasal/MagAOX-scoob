@@ -33,7 +33,18 @@ public:
 	virtual void flushoutput() = 0;
 	virtual void purgeinput() = 0;
 	virtual bool isopen() const = 0;
-	
+
+	/// Read up to maxLen bytes into buf. Returns number of bytes read.
+	/// Default implementation falls back to byte-by-byte via dataready()/getcqq().
+	virtual int readBulk(uint8_t* buf, size_t maxLen)
+	{
+		size_t count = 0;
+		while (count < maxLen && dataready()) {
+			buf[count++] = static_cast<uint8_t>(getcqq());
+		}
+		return static_cast<int>(count);
+	}
+
 	void puts(uint8_t const* s, const size_t len)
 	{
 		for (size_t i = 0; i < len; i++)
