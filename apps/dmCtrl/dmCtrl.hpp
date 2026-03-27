@@ -86,8 +86,9 @@ namespace MagAOX
       std::unique_ptr<dev::sdevQuery> telemetryQuery = std::make_unique<TelemetryQuery>();
       std::unique_ptr<dev::sdevQuery> shortPixelQuery = std::make_unique<ShortPixelsQuery>();
       std::unique_ptr<dev::sdevQuery> longPixelQuery = std::make_unique<LongPixelsQuery>();
+      std::unique_ptr<dev::sdevQuery> ditherPixelQuery = std::make_unique<DitherQuery>();
       std::unique_ptr<dev::sdevQuery> mappingQuery = std::make_unique<MappingQuery>();
-      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), versionQuery.get(), shortPixelQuery.get(), longPixelQuery.get(), mappingQuery.get() };
+      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), versionQuery.get(), shortPixelQuery.get(), longPixelQuery.get(), ditherPixelQuery.get(), mappingQuery.get() };
 
       // INDI properties
       pcf::IndiProperty m_indiP_mode;
@@ -563,8 +564,9 @@ namespace MagAOX
       uint16_t startPixel = 0;
       uint16_t payloadLen = static_cast<uint16_t>(m_nbAct * sizeof(CGraphDMMappingPayload));
 
+      // Prepare to request or send mapping by casting mappingQuery to the correct type
       if (auto castMappingQuery = dynamic_cast<MappingQuery *>(mappingQuery.get())) {
-        // If not map file provided, query the DM for the mapping
+        // If no map file provided, query the DM for the mapping
         if (m_dm_map_filename.empty()) {
           log<text_log>("Querying DM for mapping.");
           castMappingQuery->setPayload(map_lut.Mappings, 0, 0);
@@ -758,6 +760,8 @@ namespace MagAOX
     }
 
 
+    // Assuming the map is a 2D fits image where the value of each pixel is the index in the command vector for that position.
+    // Read the map and populate m_actuator_mapping.
     int dmCtrl::get_shmim_to_pixel_mapping()
     {
       mx::fits::fitsFile<realT> ff;
@@ -784,7 +788,8 @@ namespace MagAOX
         return -1;
       }
 
-      // Assuming this is an image, not a table (how to check this with fitsFile?)
+      // Assuming this is an image, not a table
+      // TODO: How to check this with fitsFile?
 
       // Check image dimensions
       if (ff.naxis() != 2)
@@ -795,15 +800,15 @@ namespace MagAOX
         return -1;
       }
 
-      // // Something like this could be a good check we're sending a sensible map, but max value might be the way to go
+      // // Something like this could be a good check that we're sending a sensible map, but max value might be the way to go
       // if (map_data.size() > m_nbAct) {
       //     log<software_critical>({__FILE__, __LINE__, "Mapping image is too large for actuator count"});
       //     return -1;
       // }
 
-      int ij = 0;/* actuator mapping index */
+      int ij = 0; /* actuator mapping index */
       // Currently, array starts at index 1, as it did for the original CFITSIO get_actuator_mapping implementation.
-      // Pre-increment it to start at 0.
+      // Subtract 1 to convert to 0-based indexing.
       for (auto it = map_data.data(); it != map_data.data() + map_data.size(); it++) {
         int element = *it;
         if (element > 0) {
@@ -903,18 +908,22 @@ namespace MagAOX
     {
       if (m_mode == SHORT)
       {
-        uint16_t *mode_inputs = reinterpret_cast<uint16_t *>(malloc(nbInputs * sizeof(uint16_t)));
+        uint16_t *mode_inputs = reinterpret_cast<uint16_t *>(malloc(static_cast<size_t>(nbInputs) * sizeof(uint16_t)));
         uint16_t payloadLen = static_cast<uint16_t>(nbInputs * sizeof(uint16_t));
 
-        // Convert m_dminputs to format expected by payload
+        // Convert inputs (0..1) to 16-bit values (0..65535)
         for (uint16_t i = 0; i < nbInputs; ++i)
         {
-          mode_inputs[i] = static_cast<uint16_t>(inputs[i]);
+          double v = inputs[i];
+          if (v < 0.0) v = 0.0;
+          if (v > 1.0) v = 1.0;
+          mode_inputs[i] = static_cast<uint16_t>(v * 65535.0 + 0.5);
         }
-        
+
         if (auto castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery.get())) {
           castShortPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
           query(castShortPixelQuery);
+          free(mode_inputs);
         } else {
           log<software_error>({__FILE__, __LINE__, "Query casting failed."});
           free(mode_inputs);
@@ -923,14 +932,16 @@ namespace MagAOX
       }
       else if (m_mode == LONG)
       {
-        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(nbInputs * 3 * sizeof(uint8_t)));
+        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(static_cast<size_t>(nbInputs) * 3UL * sizeof(uint8_t)));
         uint16_t payloadLen = static_cast<uint16_t>(nbInputs * 3 * sizeof(uint8_t));
 
-        // Convert m_dminputs to format expected by payload
-        // Hard coding little-endian, matching Summer's choice - can revisit or make it configurable if needed
+        // Convert inputs (0..1) to 24-bit values (0..0xFFFFFF) and pack little-endian
         for (uint16_t i = 0; i < nbInputs; ++i)
         {
-          uint32_t val = static_cast<uint32_t>(inputs[i]);
+          double v = inputs[i];
+          if (v < 0.0) v = 0.0;
+          if (v > 1.0) v = 1.0;
+          uint32_t val = static_cast<uint32_t>(v * 16777215.0 + 0.5);
           mode_inputs[i * 3] = static_cast<uint8_t>(val & 0x000000FFUL);
           mode_inputs[i * 3 + 1] = static_cast<uint8_t>((val & 0x0000FF00UL) >> 8);
           mode_inputs[i * 3 + 2] = static_cast<uint8_t>((val & 0x00FF0000UL) >> 16);
@@ -939,6 +950,7 @@ namespace MagAOX
         if (auto castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery.get())) {
           castLongPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
           query(castLongPixelQuery);
+          free(mode_inputs);
         } else {
           log<software_error>({__FILE__, __LINE__, "Query casting failed."});
           free(mode_inputs);
@@ -947,11 +959,27 @@ namespace MagAOX
       }
       else if (m_mode == DITHER)
       {
-        // mode_inputs = reinterpret_cast<int *>(malloc(m_nbAct * sizeof(int)));
-        
-        log<text_log>("Sending setpoints to dm");
-        // uint16_t payloadLen = static_cast<uint16_t>(inputsLen * sizeof(uint16_t));
-        // uint16_t startPixel = 0;
+        // Convert inputs (0..1) to 8-bit dither values (0..255)
+        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(static_cast<size_t>(nbInputs) * sizeof(uint8_t)));
+        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * sizeof(uint8_t));
+
+        for (uint16_t i = 0; i < nbInputs; ++i)
+        {
+          double v = inputs[i];
+          if (v < 0.0) v = 0.0;
+          if (v > 1.0) v = 1.0;
+          mode_inputs[i] = static_cast<uint8_t>(v * 255.0 + 0.5);
+        }
+
+        if (auto castDitherQuery = dynamic_cast<DitherQuery *>(ditherPixelQuery.get())) {
+          castDitherQuery->setPayload(mode_inputs, payloadLen, startPixel);
+          query(castDitherQuery);
+          free(mode_inputs);
+        } else {
+          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
+          free(mode_inputs);
+          return -1;
+        }
       }
       else
       {
