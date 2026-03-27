@@ -1240,6 +1240,11 @@ void streamWriter::fgThreadExec()
             return; // Will cause shutdown!
         }
 
+        // Buffer and XRIF setup can take long enough for monitor streams to accumulate
+        // stale semaphore posts. Flush again and re-baseline counters so we do not
+        // mistake startup backlog for repeated identical frames.
+        ImageStreamIO_semflush( &image, m_semaphoreNumber );
+
         uint8_t atype;
         size_t  snx, sny, snz;
 
@@ -1248,7 +1253,7 @@ void streamWriter::fgThreadExec()
         m_currChunkStart = 0;
         m_nextChunkStart = 0;
 
-        // Initialized curr_image ...
+        // Initialize curr_image after the post-setup flush.
         if( image.md[0].naxis > 2 && length > 1 )
         {
             curr_image = image.md[0].cnt1;
