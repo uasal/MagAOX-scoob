@@ -15,7 +15,7 @@ _List of controls via cursesINDI interface and there rough estimated status._
 | gain | Contrast Gain | Set the contrast gain | float | - | - | Not Working |
 | temp | Temperature | Current temperature of the sensor. | float | C | -50-100 | Working | 
  
-_Range values are assuming Dcam is set to SENSORMODE_AREA. Refer to the HTML docs for the 15550-22UP property information for more details._
+_Range values are assuming Dcam is set to `SENSORMODE_AREA`. Refer to the HTML docs for the 15550-22UP property information for more details._
 
 ## Related Docs
 _Below are links to related resources for the Hamamatsu qCMOS Camera._

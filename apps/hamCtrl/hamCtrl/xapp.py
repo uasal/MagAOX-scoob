@@ -24,7 +24,6 @@ from purepyindi2.messages import DefNumber, DefSwitch, DefLight, DefText
 from magaox.indi.device import XDevice, BaseConfig
 # Might remove / testing
 from magpyx.utils import create_shmim, ImageStream
-#from magaox.shmim import 
 
 log = logging.getLogger(__name__)
 
@@ -53,14 +52,13 @@ class HamCamConfig(BaseConfig):
     """
 
     # configurable_doodad_1 : str = xconf.field(default="abc", help="Configurable doodad 1")
-    exptime : float = xconf.field(default=0.01, help='Exposure time in seconds')
+    exptime : float = xconf.field(default=0.008653964, help='Exposure time in seconds')
     #gain : int = xconf.field(default=1, help='Camera gain')
-    binning : float = xconf.field(default=1.0, help='Binning:[1]- 1x1, [2]- 2x2, [3]- 4x4')
+    binning : float = xconf.field(default=1.0, help='Binning:[1]- 1x1, [2]- 2x2, [4]- 4x4')
     hpos : float = xconf.field(default=0.0, help='x center pixel of window (software)')
     vpos : float = xconf.field(default=0.0, help='y center pixel of window (software)')
-    hsize : float = xconf.field(default=4096.0, help='Window width (software)')
-    vsize : float = xconf.field(default=2304.0, help='Window height (software)')
-    readout : float = xconf.field(default=2.0, help='Readout Speed')
+    hsize : float = xconf.field(default=4432.0, help='Window width (software)')
+    vsize : float = xconf.field(default=2368.0, help='Window height (software)')
 
     #camera_stream(dpath='/dev/video2', exptime=args.exptime, gain=args.gain,
                   #window=(args.x0, args.y0, args.width, args.height))"""
@@ -94,7 +92,6 @@ class HamCam(XDevice):
     camstream : Optional[ImageStream] = None
     fan_status : Optional[float] = None # Testing
     protect_status : Optional[float] = None # Testing
-    readout : Optional[float] = None # Testing
     #lasterr = None
     th = threading.Thread()
 
@@ -126,7 +123,7 @@ class HamCam(XDevice):
         })
     ### Testing this breakdown instead
     def _init_camera(self):
-        print("Initalizing Hamamatsu!")
+        self.log.info("Initalizing Hamamatsu!")
         # initialize some defaults
         iDevice=0
         self.cam = Dcam(iDevice) # Temp hardcode
@@ -134,6 +131,7 @@ class HamCam(XDevice):
         if Dcamapi.init():
             #self.cam = Dcam(iDevice)
             # Don't need this but having it here for logs / troubleshooting
+            self.log.info("In _init_camera(self) within first 'if' loop.")
             if self.cam.dev_open():
                 self.exptime = self.cam.prop_getvalue(DCAM_IDPROP.EXPOSURETIME)
                 self.log.info(f"Exptime: {self.exptime}")
@@ -156,7 +154,7 @@ class HamCam(XDevice):
                 #self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE_STATUS) # This one works
                 self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLERSTATUS) # Testing <- this is also working
                 self.log.info(f"TEMP STATUS: {self.temp_status}")
-                #self.fan_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER) # Testing this / not working
+                self.fan_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER) # Testing this / not working
                 self.log.info(f"SENSORCOOLER: {self.fan_status}")
                 #self.lasterr = self.cam.lasterr()
                 #self.log.info(f"LAST DCAM ERROR: {self.lasterr}")
@@ -166,8 +164,7 @@ class HamCam(XDevice):
                 self.log.info(f"Width: {self.width}")
                 self.height = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_HEIGHT))
                 self.log.info(f"HEIGHT: {self.height}")
-                self.readout = self.cam.prop_getvalue(DCAM_IDPROP.READOUTSPEED)
-                self.log.info(f"READOUTSPEED SETTING: {self.readout}, (1 = Ultra Quiet Scan, 2 = Standard Scan, 3 = Fast Scan)")
+
                 model = self.cam.dev_getstring(DCAM_IDSTR.MODEL)
                 output = 'MODEL={}'.format(model)
                 cameraid = self.cam.dev_getstring(DCAM_IDSTR.CAMERAID)
@@ -175,10 +172,10 @@ class HamCam(XDevice):
                 self.log.info(output)
 
                 # quick test of fan on/off here
-                #self.cam.prop_setvalue(DCAM_IDPROP.SENSORCOOLER, DCAMPROP.SENSORCOOLER.OFF)
+                self.cam.prop_setvalue(DCAM_IDPROP.SENSORCOOLER, DCAMPROP.SENSORCOOLER.OFF)
 
-                #fanmode = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER)
-                #self.log.info(f'Fan mode is {fanmode}???')
+                fanmode = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER)
+                self.log.info(f'Fan mode is {fanmode}???')
                 #self.log.info(f'Failed with error: {self.cam.lasterr().name}')     
 
                 # testing this being here instead
@@ -188,10 +185,13 @@ class HamCam(XDevice):
                 return True
             else:
                 self.log.info('-NG: Dcam.dev_open() fails with error {}'.format(dcam.lasterr()))
+                Dcamapi.uninit()
         else:
             self.log.info('-NG: Dcamapi.init() fails with error {}'.format(Dcamapi.lasterr()))
+            Dcamapi.uninit()
         
-        #Dcamapi.uninit()
+        #comment this out later
+        Dcamapi.uninit()
 
         return False
 
@@ -202,6 +202,7 @@ class HamCam(XDevice):
         magaox/indi/device.py -> imports properties from purepyindi2 and is within the XDevice class
 
         """
+        
         self.log.info(f"Hamamatsu was configured! {self.config=}")
         fsmstate = properties.TextVector(name="fsm")
         fsmstate.add_element(DefText(name="state", _value="NODEVICE"))
@@ -225,11 +226,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='exptime', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='Exposure time (sec)', format='%3.1f',
-            min=0, max=1_000, step=1e-8, _value=self.exptime
+            min=0.000007309, max=10.000005818, step=0.00000001, _value=self.exptime
         ))
         nv.add_element(DefNumber(
             name='target', label="Requested exposure time(sec)", format="%3.1f",
-            min=0, max=1_000, step=1e-8, _value=self.exptime
+            min=0.000007309, max=10.000005818, step=0.00000001, _value=self.exptime
         ))
         self.add_property(nv, callback=self.set_exptime)
 
@@ -256,11 +257,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='binning', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='Binning', format='%3.1f',
-            min=1, max=3, step=1, _value=self.binning
+            min=1, max=4, step=1, _value=self.binning
         ))
         nv.add_element(DefNumber(
             name='target', label='Requested binning', format='%3.1f',
-            min=1, max=3, step=1, _value=self.binning
+            min=1, max=4, step=1, _value=self.binning
         ))
         self.add_property(nv, callback=self.set_binning)
 
@@ -269,11 +270,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='hpos', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='hpos', format='%3.1f',
-            min=0, max=4096, step=4, _value=self.hpos
+            min=0, max=4432, step=4, _value=self.hpos
         ))
         nv.add_element(DefNumber(
             name='target', label='Requested hpos', format='%3.1f',
-            min=0, max=4096, step=4, _value=self.hpos
+            min=0, max=4432, step=4, _value=self.hpos
         ))
         self.add_property(nv, callback=self.set_hpos)
 
@@ -281,11 +282,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='vpos', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='vpos', format='%3.1f',
-            min=0, max=2300, step=4, _value=self.vpos
+            min=0, max=2364, step=4, _value=self.vpos
         ))
         nv.add_element(DefNumber(
             name='target', label='Requested vpos', format='%3.1f',
-            min=0, max=2300, step=4, _value=self.vpos
+            min=0, max=2364, step=4, _value=self.vpos
         ))
         self.add_property(nv, callback=self.set_vpos)
 
@@ -293,11 +294,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='hsize', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='hsize', format='%3.1f',
-            min=4, max=4096, step=4, _value=self.hsize
+            min=4, max=4432, step=4, _value=self.hsize
         ))
         nv.add_element(DefNumber(
             name='target', label='Requested hsize', format='%3.1f',
-            min=4, max=4096, step=4, _value=self.hsize
+            min=4, max=4432, step=4, _value=self.hsize
         ))
         self.add_property(nv, callback=self.set_hsize)
 
@@ -305,11 +306,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name='vsize', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
             name='current', label='vsize', format='%3.1f',
-            min=4, max=2304, step=4, _value=self.vsize
+            min=4, max=2368, step=4, _value=self.vsize
         ))
         nv.add_element(DefNumber(
             name='target', label='Requested vsize', format='%3.1f',
-            min=4, max=2304, step=4, _value=self.vsize
+            min=4, max=2368, step=4, _value=self.vsize
         ))
         self.add_property(nv, callback=self.set_vsize)
 
@@ -326,19 +327,6 @@ class HamCam(XDevice):
             min=-50, max=100, step=0.1, _value=self.temp_target
         ))
         self.add_property(nv, callback=self.set_temp)
-
-        # Camera Mode -----------------------------------------------------------------------
-        # Testing switching camera modes / readout speeds
-        nv = properties.NumberVector(name='', perm=constants.PropertyPerm.READ_WRITE)
-        nv.add_element(DefNumber(
-            name='current', label='Readout Speed', format='%3.1f',
-            min=1, max=3, step=1, _value=self.readout
-        ))
-        nv.add_element(DefNumber(
-            name='target', label='Requested Readout Speed', format='%3.1f',
-            min=-1, max=3, step=1, _value=self.readout
-        ))
-        self.add_property(nv, callback=self.set_readout)
 
         # Temp Status -----------------------------------------------------------------------
         # Testing changing format- previous %d -> Changing to textvector?
@@ -357,7 +345,7 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name="frame_rate")
         nv.add_element(DefNumber(
             name='current', label='Current Frame Rate per second', format='%3.1f',
-            min=17, max=60.1 , step=0.1, _value=self.frame_rate
+            min=19, max=58, step=0, _value=self.frame_rate
         ))
         self.add_property(nv)
 
@@ -371,11 +359,11 @@ class HamCam(XDevice):
         nv = properties.NumberVector(name="fg_framesize")
         nv.add_element(DefNumber(
             name='height', label='Frame size height', format='%d', 
-            min=0, max=2304, step=1, _value=self.height,
+            min=4, max=2368, step=4, _value=self.height,
         ))
         nv.add_element(DefNumber(
             name='width', label='Frame size width', format='%d', 
-            min=0, max=4096, step=1, _value=self.width,
+            min=4, max=4432, step=4, _value=self.width,
         ))
         self.add_property(nv)
 
@@ -423,10 +411,8 @@ class HamCam(XDevice):
         self.frame_rate = self.cam.prop_getvalue(DCAM_IDPROP.INTERNALFRAMERATE)
         self.width = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_WIDTH))
         self.height = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_HEIGHT))
-        self.readout = self.cam.prop_getvalue(DCAM_IDPROP.READOUTSPEED)
-        self.framespeed = self.cam.prop_getvalue(DCAM_IDPROP.READOUTSPEED)
         # gain = {self.gain}
-        self.log.debug(f"Read from camera: exptime = {self.exptime}, hsize = {self.hsize}, vsize = {self.vsize}, hpos = {self.hpos}, vpos = {self.vpos}, readout = {self.readout}")
+        self.log.info(f"Read from camera: exptime = {self.exptime}, hsize = {self.hsize}, vsize = {self.vsize}, hpos = {self.hpos}, vpos = {self.vpos}")
 
     def refresh_properties(self):
         
@@ -457,10 +443,6 @@ class HamCam(XDevice):
         #self.properties['gain']['current'] = self.gain
         #self.properties['gain']['target'] = self.gain
         #self.update_property(self.properties['gain'])
-
-        self.properties['readout']['current'] = self.readout
-        self.properties['readout']['target'] = self.readout
-        self.update_property(self.properties['readout'])
 
         self.properties['binning']['current'] = self.binning
         self.properties['binning']['target'] = self.binning
@@ -631,11 +613,17 @@ class HamCam(XDevice):
 
     def set_hpos(self, existing_property, new_message):
         """
+        22-UP / Orca
         DCAM_IDPROP_SUBARRAYHPOS
             0 to 4096, step 4, default 0
                 For DCAMPROP_SENSORMODE_AREA or PHOTONNUMBERRESOLVING
             0 to 4096, step 1, default 0
                 For DCAMPROP_SENSORMODE_PROGRESS
+        20-UP / Fire
+            0 to 4428 , step 4 , default 0
+                For DCAMPROP_SENSORMODE_AREA
+            0 to 4431 , step 1 , default 0
+                For DCAMPROP_SENSORMODE__PROGRESSIVE
         """
         ## Need to turn off subarray before modifying
         self.pause_stream()
@@ -677,6 +665,11 @@ class HamCam(XDevice):
             4 to 4096, step 4, default 4096
                 For DCAMPROP_SENSORMODE_AREA or PHOTONNUMBERRESOLVING
             1 to 4096, step 1, default 4096
+                For DCAMPROP_SENSORMODE_PROGRESS
+        20-UP (Fire)
+            4 to 4432 , step 4 , default 4432
+                For DCAMPROP_SENSORMODE_AREA
+            1 to 4432 , step 1 , default 4432
                 For DCAMPROP_SENSORMODE_PROGRESS
         """
 
@@ -826,43 +819,6 @@ class HamCam(XDevice):
             self.log.info(f"Target requested is equal to current set value for binning")
         self.start_stream()
 
-    def set_readout(self, existing_property, new_message):
-        """
-        Available Readout Speed Options:
-            [1]- Ultra Quiet Scan
-            [2]- Standard Scan
-            [3]- Fast Scan
-        """
-        self.pause_stream()
-        self.log.debug(f"Setting Readout speed. Warning- Readout speed can only be changed if sensormode is set to 'AREA' (default).")
-
-        if 'target' in new_message and new_message['target'] != existing_property['current']:
-            if self.cam is None:
-                self.log.debug('-NG: Dcamcon is not opened')
-                return False
-            # prop_setvalue(self, idprop: DCAM_IDPROP, fValue)
-            sensormode = self.get_sensormode()
-            self.log.debug(f"Checking sensor mode before switching readout speed...")
-            if sensormode == "area":
-                self.log.debug(f"Sensormode is area / readout speed can be changed")
-                readout_requested = float(new_message['target'])
-                self.log.info(f'Setting readout speed to {readout_requested}')                
-                self.cam.prop_setvalue(DCAM_IDPROP.BINNING, readout_requested)
-                readout_actual = self.cam.prop_getvalue(DCAM_IDPROP.READOUTSPEED)
-                self.log.info(f'Went to a readout speed of {readout_actual}')
-                if readout_requested != readout_actual:
-                    self.log.info(f"Readout speed request does not = actual readout mode.")
-                else:
-                    existing_property['current'] = new_message['target']
-                    existing_property['target'] = new_message['target']
-                    self.readout = readout_actual
-                    self.update_property(existing_property)
-            else:
-                self.log.debug(f"Sensormode is set to progressive. Readout speed cannot be changed until sensormode is changed to area.")
-        else:
-            self.log.info(f"Target requested is equal to current set value for readout speed")
-        self.start_stream()
-
 
     # Might remove / probably don't need to have this like this.
     def check_subarray(self):
@@ -887,29 +843,6 @@ class HamCam(XDevice):
             self.log.info(f"Issues with detecting subarraymode")
             return False
     
-    # Testing this with readoutspeed
-    def get_sensormode(self):
-        """
-        Options:
-            DCAM_IDPROP_SENSORMODE_AREA
-            DCAM_IDPROP_SENSORMODE_PROGRESSIVE
-            Default- DCAM_IDPROP_SENSORMODE_AREA
-        """
-
-        sensormode = self.cam.prop_getvalue(DCAM_IDPROP.SENSORMODE)
-        self.log.info(f"In sensor mode check: {sensormode}")
-
-        if sensormode == DCAMPROP.SENSORMODE.AREA:
-            self.log.info(f"DCAMPROP.PROGRESSIVE mode is on")
-            return "area"
-        elif sensormode == DCAMPROP.SENSORMODE.PROGRESSIVE:
-            self.log.info(f"DCAMPROP.PROGRESSIVE mode is on")
-            return "progressive"
-        else:
-            # Error happened
-            self.log.info(f"Issues with detecting sensor mode information")
-            return False
-            
     def switch_subarray(self):
         """
         ROI Mode Setting:
@@ -1054,7 +987,7 @@ class HamCam(XDevice):
         """
         Set the Exposure Time in seconds
             DCAM_IDPROP.EXPOSURETIME
-
+            22-UP (Ora)
             0.000033949 to 1800.000015185, step 0.00000001, default 0.0082944
                 DCAMPROP_SENSORMODE_AREA and DCAM_IDPROP_READOUTSPEED=1 or
                 DCAMPROP_SENSORMODE_PHOTONNUMBERRESOLVING
@@ -1066,6 +999,11 @@ class HamCam(XDevice):
                 DCAMPROP_SENSORMODE_PROGRESSIVE 
                 Depends on INTERNALLINESPEED 
                 and INTERNAL_LINEINTERVAL, SUBARRY properties
+            20-UP (Fire)
+            0.000007309 to 10.000005818 , step 0.00000001 , default 0.008653964
+                @ DCAMPROP_SENSORMODE__AREA
+            0.000007309 to 0.008653964 , step 0.00000001 , default 0.008653964
+                @ DCAMPROP_SENSORMODE__PROGRESSIVE
         """
         self.pause_stream()
         self.log.debug(f"Setting exposure time")
@@ -1082,8 +1020,8 @@ class HamCam(XDevice):
             if exptime_requested != exptime_actual:
                 self.log.info(f"Exposure time request does not = exptime actual.")
             else:
-                existing_property['current'] = new_message[exptime_actual]
-                existing_property['target'] = new_message[exptime_actual]
+                existing_property['current'] = new_message['target']
+                existing_property['target'] = new_message['target']
                 self.exptime = exptime_actual
                 self.update_property(existing_property)
         self.start_stream()
