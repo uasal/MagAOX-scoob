@@ -1247,7 +1247,6 @@ void streamWriter::fgThreadExec()
 
         uint8_t atype;
         size_t  snx, sny, snz;
-        bool    useFrameArrays = image.cntarray != nullptr && length > 1;
 
         uint64_t curr_image; // The current cnt1 index
         m_currImage      = 0;
@@ -1267,7 +1266,7 @@ void streamWriter::fgThreadExec()
         uint64_t last_cnt0; // = ((uint64_t)-1);
 
         // so we can initialize last_cnt0 to avoid frame skip on startup
-        if( useFrameArrays )
+        if( image.cntarray )
         {
             last_cnt0 = image.cntarray[curr_image];
         }
@@ -1320,7 +1319,7 @@ void streamWriter::fgThreadExec()
                 }
 
                 uint64_t new_cnt0;
-                if( useFrameArrays )
+                if( image.cntarray )
                 {
                     new_cnt0 = image.cntarray[curr_image];
                 }
@@ -1363,7 +1362,7 @@ void streamWriter::fgThreadExec()
 
                 uint64_t *curr_timing = m_timingCircBuff + 5 * m_currImage;
 
-                if( useFrameArrays )
+                if( image.cntarray )
                 {
                     curr_timing[0] = image.cntarray[curr_image];
                     curr_timing[1] = image.atimearray[curr_image].tv_sec;
