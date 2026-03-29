@@ -59,6 +59,7 @@ class HamCamConfig(BaseConfig):
     vpos : float = xconf.field(default=0.0, help='y center pixel of window (software)')
     hsize : float = xconf.field(default=4432.0, help='Window width (software)')
     vsize : float = xconf.field(default=2368.0, help='Window height (software)')
+    defectCorrect_Mode : float = xconf.field(default=2.0, help='1.0 = off, 2.0 = on')
 
     #camera_stream(dpath='/dev/video2', exptime=args.exptime, gain=args.gain,
                   #window=(args.x0, args.y0, args.width, args.height))"""
@@ -94,7 +95,7 @@ class HamCam(XDevice):
     protect_status : Optional[float] = None # Testing
     #lasterr = None
     th = threading.Thread()
-
+    defectCorrect_Mode : Optional[float] = None
 
     def emit_telem_hamcam(self):
         self.log.info(f"In emit_telem_hamcam")
@@ -130,8 +131,6 @@ class HamCam(XDevice):
         #self.dcamcon = Dcamcon()
         if Dcamapi.init():
             #self.cam = Dcam(iDevice)
-            # Don't need this but having it here for logs / troubleshooting
-            self.log.info("In _init_camera(self) within first 'if' loop.")
             if self.cam.dev_open():
                 self.exptime = self.cam.prop_getvalue(DCAM_IDPROP.EXPOSURETIME)
                 self.log.info(f"Exptime: {self.exptime}")
@@ -164,6 +163,9 @@ class HamCam(XDevice):
                 self.log.info(f"Width: {self.width}")
                 self.height = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_HEIGHT))
                 self.log.info(f"HEIGHT: {self.height}")
+                self.defectCorrect_Mode = self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)
+                self.log.info(f"DEFECT CORRECTION MODE: {self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)}")
+                #self.log.info(f"DEFECT CORRECTION MODE: {self.defectCorrect_on}")
 
                 model = self.cam.dev_getstring(DCAM_IDSTR.MODEL)
                 output = 'MODEL={}'.format(model)
@@ -172,10 +174,8 @@ class HamCam(XDevice):
                 self.log.info(output)
 
                 # quick test of fan on/off here
-                self.cam.prop_setvalue(DCAM_IDPROP.SENSORCOOLER, DCAMPROP.SENSORCOOLER.OFF)
+                #self.cam.prop_setvalue(DCAM_IDPROP.SENSORCOOLER, DCAMPROP.SENSORCOOLER.OFF)
 
-                fanmode = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER)
-                self.log.info(f'Fan mode is {fanmode}???')
                 #self.log.info(f'Failed with error: {self.cam.lasterr().name}')     
 
                 # testing this being here instead
@@ -252,6 +252,20 @@ class HamCam(XDevice):
         #     min=0, max=100, step=1, _value=self.gain
         # ))
         # self.add_property(nv, callback=self.set_gain)
+
+        # ALU Settings
+        ## Defect Correct Mode --------------------------------------------------------------
+        ### Current Mode
+        nv = properties.NumberVector(name='defectCorrect_Mode', perm=constants.PropertyPerm.READ_WRITE)
+        nv.add_element(DefNumber(
+            name='current', label='defectCorrect_Mode', format='%3.1f',
+            min=1.0, max=2.0, step=1, _value=self.defectCorrect_Mode
+        ))
+        nv.add_element(DefNumber(
+            name='target', label='Requested defectCorrect_Mode', format='%3.1f',
+            min=1.0, max=2.0, step=1, _value=self.defectCorrect_Mode
+        ))
+        self.add_property(nv, callback=self.set_defectCorrect_Mode)    
 
         # Binning ----------------------------------------------------------------------------
         nv = properties.NumberVector(name='binning', perm=constants.PropertyPerm.READ_WRITE)
@@ -404,6 +418,7 @@ class HamCam(XDevice):
         self.vpos = self.cam.prop_getvalue(DCAM_IDPROP.SUBARRAYVPOS)
         self.temp = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE)
         self.temp_target = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURETARGET)
+        self.defectCorrect_Mode = self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)
         #self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE_STATUS) #This one works but not editable
         self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER) #SENSORCOOLERSTATUS
         #self.lasterr = self.cam.lasterr() # testing for getting last error for quicker view
@@ -412,7 +427,7 @@ class HamCam(XDevice):
         self.width = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_WIDTH))
         self.height = int(self.cam.prop_getvalue(DCAM_IDPROP.IMAGE_HEIGHT))
         # gain = {self.gain}
-        self.log.info(f"Read from camera: exptime = {self.exptime}, hsize = {self.hsize}, vsize = {self.vsize}, hpos = {self.hpos}, vpos = {self.vpos}")
+        self.log.info(f"Read from camera: exptime = {self.exptime}, hsize = {self.hsize}, vsize = {self.vsize}, hpos = {self.hpos}, vpos = {self.vpos}, temp = {self.temp}, binning = {self.binning}, defect_correction = {self.defectCorrect_Mode}, frame_rate = {self.frame_rate}")
 
     def refresh_properties(self):
         
@@ -443,6 +458,10 @@ class HamCam(XDevice):
         #self.properties['gain']['current'] = self.gain
         #self.properties['gain']['target'] = self.gain
         #self.update_property(self.properties['gain'])
+
+        self.properties['defectCorrect_Mode']['current'] = self.defectCorrect_Mode
+        self.properties['defectCorrect_Mode']['target'] = self.defectCorrect_Mode
+        self.update_property(self.properties['defectCorrect_Mode'])
 
         self.properties['binning']['current'] = self.binning
         self.properties['binning']['target'] = self.binning
@@ -609,7 +628,53 @@ class HamCam(XDevice):
         else:
             print("issues with dcamapi call in check fan")
         Dcamapi.uninit()
+    
+    def set_defectCorrect_Mode(self, existing_property, new_message):
+        """ For selecting if camera is in defect Correction mode or not
+            DCAM_IDPROP_DEFECTCORRECT_MODE
+                OFF (1.0)
+                ON (2.0) (default)
+        Args:
+            existing_property (float): Current status
+            new_message (float): Target / requested status change
+        """
+        #self.pause_stream()
+        self.log.debug(f"Setting defect correction mode")
+        if self.cam is None:
+            self.log.debug('-NG: Dcamcon is not opened')
+            return False
+        # prop_setvalue(self, idprop: DCAM_IDPROP, fValue)
+        mode_requested = float(new_message['target'])
+        self.log.info(f"Mode requested: {mode_requested}")
+        mode_check = self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)
+        self.log.info(f"Current mode is: {mode_check}")
+        if mode_requested == 2.0:
+            self.log.info(f'Setting mode to {mode_requested} (Defect Correction mode is being turned on)')
+            self.cam.prop_setvalue(DCAM_IDPROP.DEFECTCORRECT_MODE, 2.0)
+            if mode_check == DCAMPROP.MODE.ON:
+                self.log.info("DCAM_IDPROP.DEFECTCORRECT_MODE is == to DCAMPROP.MODE.ON")
+        elif mode_requested == 1.0:
+            self.log.info(f'Setting mode to {mode_requested} (Defect Correction mode is being turned off)')    
+            self.cam.prop_setvalue(DCAM_IDPROP.DEFECTCORRECT_MODE, 1.0)
+            if mode_check == DCAMPROP.MODE.OFF:
+                self.log.info("DCAM_IDPROP.DEFECTCORRECT_MODE is == to DCAMPROP.MODE.OFF")
+        else:
+            self.log.info("mode requested is neither 1.0 or 2.0?")
 
+        mode_actual = float(self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE))
+        self.log.info(f'Went to a defect correction mode of {mode_actual}')
+
+        if mode_requested != mode_actual:
+            self.log.info(f"Mode request does not = actual mode.")
+        else:
+            existing_property['current'] = new_message['target']
+            existing_property['target'] = new_message['target']
+            self.defectCorrect_Mode = mode_actual
+            self.update_property(existing_property)
+
+        #self.start_stream()
+        self.update_property(existing_property)
+        return True
 
     def set_hpos(self, existing_property, new_message):
         """
