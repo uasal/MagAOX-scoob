@@ -87,12 +87,16 @@ class HamCam(XDevice):
     width : Optional[int] = None
     cam : Optional[Dcam] = None
     temp : Optional[float] = None
-    temp_target : Optional[float] = None # Testing
-    temp_status : Optional[int] = None
+    #temp_target : Optional[float] = None # Testing
+    temp_status : Optional[float] = None
     frame_rate : Optional[float] = None
     camstream : Optional[ImageStream] = None
     fan_status : Optional[float] = None # Testing
     protect_status : Optional[float] = None # Testing
+    hotpixel_lvl : Optional[float] = None
+    hp_status : Optional[str] = None
+    dc_mode : Optional[str] = None
+    tmp_state : Optional[str] = None
     #lasterr = None
     th = threading.Thread()
     defectCorrect_Mode : Optional[float] = None
@@ -106,16 +110,16 @@ class HamCam(XDevice):
         y = self.vpos
         self.telem("telem_hamcam", {
             "roi": {
-                "xcen": x,  # Need to check this
-                "ycen": y, # Need to check this
+                "xcen": x,  
+                "ycen": y, 
                 "w": w,
                 "h": h,
-                "xbin": 1, # Need to change this
-                "ybin": 1, # Need to change this
+                "xbin": 1, 
+                "ybin": 1, 
             },
             "exptime": self.exptime, #(Standard Scan- 7.2us to 1800s, ultra quiet- 33.9us to 1800s)
-            "frame_rate": self.frame_rate, # Need to do this (Standard Scan- 120frames/s (CoaXPress), 17.6 frames/s(USB (Same for ultra quiet scan) -> assuming full resolution)
-            #"emGain": self.gain, # this isn't working right
+            "frame_rate": self.frame_rate, #Standard Scan- 120frames/s (CoaXPress), 17.6 frames/s(USB (Same for ultra quiet scan) -> assuming full resolution)
+            #"emGain": self.gain, # Not available for selected model (no model checking yet)
             "adcSpeed": -1,
             "shutter": {"statusStr": None, "state": None},
             "synchro": 0,
@@ -148,10 +152,10 @@ class HamCam(XDevice):
                 self.log.info(f"BINNING: {self.binning}")
                 self.temp = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE)
                 self.log.info(f"TEMP: {self.temp}" + "C")
-                self.temp_target = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURETARGET)
-                self.log.info(f"TEMP TARGET: {self.temp_target}" + "C")
+                #self.temp_target = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURETARGET)
+                #self.log.info(f"TEMP TARGET: {self.temp_target}" + "C")
                 #self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE_STATUS) # This one works
-                self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLERSTATUS) # Testing <- this is also working
+                self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLERSTATUS) # 1-OFF, 2-READY, 3-BUSY (-'s are errors)
                 self.log.info(f"TEMP STATUS: {self.temp_status}")
                 self.fan_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER) # Testing this / not working
                 self.log.info(f"SENSORCOOLER: {self.fan_status}")
@@ -165,13 +169,19 @@ class HamCam(XDevice):
                 self.log.info(f"HEIGHT: {self.height}")
                 self.defectCorrect_Mode = self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)
                 self.log.info(f"DEFECT CORRECTION MODE: {self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)}")
-                #self.log.info(f"DEFECT CORRECTION MODE: {self.defectCorrect_on}")
+                self.hotpixel_lvl = self.cam.prop_getvalue(DCAM_IDPROP.HOTPIXELCORRECT_LEVEL)
+                self.log.info(f"HOT PIXEL CORRECTION LEVEL: {self.hotpixel_lvl}")
 
                 model = self.cam.dev_getstring(DCAM_IDSTR.MODEL)
                 output = 'MODEL={}'.format(model)
                 cameraid = self.cam.dev_getstring(DCAM_IDSTR.CAMERAID)
                 output = output + ', CAMERAID={}'.format(cameraid)
                 self.log.info(output)
+
+                self.get_hotpixel_status()
+                self.get_defectCorrect_status()
+                self.get_tempstatus()
+                self.log.info(f"TEMP STATE: {self.tmp_state}")
 
                 # quick test of fan on/off here
                 #self.cam.prop_setvalue(DCAM_IDPROP.SENSORCOOLER, DCAMPROP.SENSORCOOLER.OFF)
@@ -267,6 +277,30 @@ class HamCam(XDevice):
         ))
         self.add_property(nv, callback=self.set_defectCorrect_Mode)    
 
+        tv = properties.TextVector(name="defectMode")
+        tv.add_element(DefText(
+            name='mode', label='Defect Correction Mode', _value=self.dc_mode,
+        ))
+        self.add_property(tv)
+
+        ## Hot Pixel Correction Level
+        nv = properties.NumberVector(name='hotpixel_lvl', perm=constants.PropertyPerm.READ_WRITE)
+        nv.add_element(DefNumber(
+            name='current', label='hotpixel_lvl', format='%3.1f',
+            min=1.0, max=3.0, step=1, _value=self.hotpixel_lvl
+        ))
+        nv.add_element(DefNumber(
+            name='target', label='Requested hotpixel_lvl', format='%3.1f',
+            min=1.0, max=3.0, step=1, _value=self.hotpixel_lvl
+        ))
+        self.add_property(nv, callback=self.set_hotpixel_lvl)  
+
+        tv = properties.TextVector(name="hotpixel_status")
+        tv.add_element(DefText(
+            name='status', label='Hot Pixel Status', _value=self.hp_status,
+        ))
+        self.add_property(tv)
+
         # Binning ----------------------------------------------------------------------------
         nv = properties.NumberVector(name='binning', perm=constants.PropertyPerm.READ_WRITE)
         nv.add_element(DefNumber(
@@ -331,29 +365,32 @@ class HamCam(XDevice):
         ## END ROI---------------------------------------------------------------------------
 
         # Temperature -----------------------------------------------------------------------
-        nv = properties.NumberVector(name='temp', perm=constants.PropertyPerm.READ_WRITE)
+        nv = properties.NumberVector(name='temp')
         nv.add_element(DefNumber(
             name='current', label='Current Temperature (deg C)', format='%3.1f',
             min=-50, max=100, step=0.1, _value=self.temp
         ))
-        nv.add_element(DefNumber(
-            name='target', label='Target Temperature (deg C)', format='%3.1f',
-            min=-50, max=100, step=0.1, _value=self.temp_target
-        ))
-        self.add_property(nv, callback=self.set_temp)
+        self.add_property(nv)
 
         # Temp Status -----------------------------------------------------------------------
         # Testing changing format- previous %d -> Changing to textvector?
-        nv = properties.NumberVector(name='temp_status', perm=constants.PropertyPerm.READ_WRITE)
+        nv = properties.NumberVector(name='temp_status')
         nv.add_element(DefNumber(
             name='current', label='Temperature Status', format='%3.1f',
             min=-5, max=5, step=1, _value=self.temp_status
         ))
-        nv.add_element(DefNumber(
-            name='target', label='Requested Temperature Status', format='%3.1f',
-            min=-5, max=5, step=1, _value=self.temp_status
+        #nv.add_element(DefNumber(
+        #    name='target', label='Requested Temperature Status', format='%3.1f',
+        #    min=-5, max=5, step=1, _value=self.temp_status
+        #))
+        #self.add_property(nv, callback=self.set_tempstatus)
+        self.add_property(nv)
+
+        tv = properties.TextVector(name="temp_state")
+        tv.add_element(DefText(
+            name='status', label='Temperature State', _value=self.tmp_state,
         ))
-        self.add_property(nv, callback=self.set_tempstatus)
+        self.add_property(tv)
 
         # Internal Frame rate (s) -----------------------------------------------------------
         nv = properties.NumberVector(name="frame_rate")
@@ -417,10 +454,11 @@ class HamCam(XDevice):
         self.hpos = self.cam.prop_getvalue(DCAM_IDPROP.SUBARRAYHPOS)
         self.vpos = self.cam.prop_getvalue(DCAM_IDPROP.SUBARRAYVPOS)
         self.temp = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE)
-        self.temp_target = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURETARGET)
+        #self.temp_target = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURETARGET)
         self.defectCorrect_Mode = self.cam.prop_getvalue(DCAM_IDPROP.DEFECTCORRECT_MODE)
+        self.hotpixel_lvl = self.cam.prop_getvalue(DCAM_IDPROP.HOTPIXELCORRECT_LEVEL)
         #self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORTEMPERATURE_STATUS) #This one works but not editable
-        self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLER) #SENSORCOOLERSTATUS
+        self.temp_status = self.cam.prop_getvalue(DCAM_IDPROP.SENSORCOOLERSTATUS) #SENSORCOOLERSTATUS
         #self.lasterr = self.cam.lasterr() # testing for getting last error for quicker view
         self.binning = self.cam.prop_getvalue(DCAM_IDPROP.BINNING)
         self.frame_rate = self.cam.prop_getvalue(DCAM_IDPROP.INTERNALFRAMERATE)
@@ -463,20 +501,32 @@ class HamCam(XDevice):
         self.properties['defectCorrect_Mode']['target'] = self.defectCorrect_Mode
         self.update_property(self.properties['defectCorrect_Mode'])
 
+        self.properties['defectMode']['mode'] = self.dc_mode
+        self.update_property(self.properties['defectMode'])
+
+        self.properties['hotpixel_lvl']['current'] = self.hotpixel_lvl
+        self.properties['hotpixel_lvl']['target'] = self.hotpixel_lvl
+        self.update_property(self.properties['hotpixel_lvl'])
+
+        self.properties['hotpixel_status']['status'] = self.hp_status
+        self.update_property(self.properties['hotpixel_status'])
+
         self.properties['binning']['current'] = self.binning
         self.properties['binning']['target'] = self.binning
         self.update_property(self.properties['binning'])
 
         self.properties['temp']['current'] = self.temp
-        self.properties['temp']['target'] = self.temp_target
+        #self.properties['temp']['target'] = self.temp_target
         self.update_property(self.properties['temp'])
 
         self.properties['frame_rate']['current'] = self.frame_rate
         self.update_property(self.properties['frame_rate'])
 
         self.properties['temp_status']['current'] = self.temp_status
-        self.properties['temp_status']['target'] = self.temp_status
         self.update_property(self.properties['temp_status'])
+
+        self.properties['temp_state']['status'] = self.tmp_state
+        self.update_property(self.properties['temp_state'])
 
         self.properties['fg_framesize']['width'] = self.width
         self.properties['fg_framesize']['height'] = self.height
@@ -517,7 +567,6 @@ class HamCam(XDevice):
              self.log.info(f"Failed to open shmim {self.shmim_name}. Trying to create...")
              create_shmim(self.shmim_name, shmim_shape)
              self.camstream == ImageStream(self.shmim_name)
-
         
         if self.cam.buf_alloc(10):
             #self.stream_thread()
@@ -541,31 +590,19 @@ class HamCam(XDevice):
         timeout = 10000 #(millisec)
         status = 0
         cam_status = self.cam.cap_status()
-        self.log.info(cam_status) # THis is reporting '2'
+        self.log.info(cam_status)
 
         if self.cam.cap_start():
             cam_status = self.cam.cap_status()
-            self.log.info(cam_status) # THis is reporting '1'
-            #self.log.info(self.cam.cap_start(bSequence=True))
+            self.log.info(cam_status)
             self.log.info("cam.cap_start working")
             while cam_status == DCAMCAP_STATUS.BUSY:
-                #if self.cam.wait_capevent_frameready(timeout):
-                #data = self.cam.buf_getlastframedata()
-                #data = self.cam.buf_getframe(1)
-                #print(data) # this is false / having issues doing this?
-                #print(self.cam.lasterr())
-                #status = self.show_framedata(data, status)
                 if self.cam.wait_capevent_frameready(timeout):
-                    #self.log.info("In cam.wait_capevent_frameready()")
                     data = self.cam.buf_getlastframedata()
-                    #print(data) # this is false / having issues doing this?
-                    #if isinstance(data, bool) and not data:
-                    #    print(self.cam.lasterr())
                     if data.dtype == np.uint16:
                         #rawframe = np.frombuffer(data, dtype=np.uint16).reshape(int(self.height), int(self.width))
                         rawframe = np.frombuffer(data, dtype=np.uint16).reshape(int(self.vsize), int(self.hsize))
                         self.camstream.write(rawframe)
-                        #self.log.info("in camstream.writer")
                     else:
                         dcamerr = self.cam.lasterr()
                         if dcamerr.is_timeout():
@@ -575,9 +612,7 @@ class HamCam(XDevice):
                 cam_status = self.cam.cap_status() # check if cap_status has been changed (e.g., when parameter change is requested)
                 #self.log.info(cam_status) # noisy, but useful for debugging
             else:
-                self.log.info("here")
                 self.log.info(self.cam.lasterr())
-            #self.log.info("stream_thread ended?")
         else:
             self.log.info("Issues with capturing / cap_start or stream was triggered to end.")
             self.log.info(self.cam.lasterr())
@@ -589,7 +624,7 @@ class HamCam(XDevice):
         self.cam.buf_release()
             
         
-    # Testing / not working -> I dont' think I need this?
+    # Not needed anymore but was for initial tests
     def show_framedata(self, data, status):
         """
         Testing this
@@ -604,6 +639,7 @@ class HamCam(XDevice):
         else:
             self.log.info("Issues with showing framedata")
 
+    # Dependent on hamamatsu camera type / model checking not implemented yet
     def check_fan(self):
         """
         Check fan status
@@ -626,7 +662,7 @@ class HamCam(XDevice):
             else:
                 self.log.info("other case")
         else:
-            print("issues with dcamapi call in check fan")
+            self.log.info("issues with dcamapi call in check fan")
         Dcamapi.uninit()
     
     def set_defectCorrect_Mode(self, existing_property, new_message):
@@ -673,8 +709,104 @@ class HamCam(XDevice):
             self.update_property(existing_property)
 
         #self.start_stream()
+        self.get_defectCorrect_status()
         self.update_property(existing_property)
         return True
+
+    def get_defectCorrect_status(self):
+        """
+        Adding indicator / string for what the defect correction mode float translates too
+        
+        DCAM_IDPROP_DEFECTCORRECT_MODE
+            OFF (1.0)
+            ON (2.0) (default)
+
+        Sets dc_mode to the string value of the float translation for the mode
+
+        """
+
+        if self.defectCorrect_Mode == 1.0:
+            mode = "OFF"
+        elif self.defectCorrect_Mode == 2.0:
+            mode = "ON"
+        else:
+            self.log.info("Defect Correction Mode set out of bounds or is not an available feature.")
+            mode = "N/A"
+        
+        self.dc_mode = mode
+        
+        return True
+
+    def set_hotpixel_lvl(self, existing_property, new_message):
+        """
+        Setting level for hot pixel settings
+
+        DCAM_IDPROP_HOTPIXELCORRECT_LEVEL
+            STANDARD (default) = 1
+            MINIMUM = 2
+            AGGRESSIVE = 3
+        """
+        if 'target' in new_message and new_message['target'] != existing_property['current']:
+            # Adding indicator in logs for what the float translates to
+            if float(new_message['target']) == 1.0:
+                level = "STANDARD"
+            elif float(new_message['target']) == 2.0:
+                level = "MINIMUM"
+            else:
+                level = "AGGRESSIVE"
+            self.log.info(f"Setting hotpixel correction level to {level}")
+
+            if self.cam is None:
+                self.log.debug('-NG: Dcamcon is not opened')
+                return False
+            else:# prop_setvalue(self, idprop: DCAM_IDPROP, fValue)
+                requested = float(new_message['target'])
+                self.log.info(f'Requested value: {requested}')
+                self.cam.prop_setvalue(DCAM_IDPROP.HOTPIXELCORRECT_LEVEL, requested)
+                actual = self.cam.prop_getvalue(DCAM_IDPROP.HOTPIXELCORRECT_LEVEL)
+                self.log.info(f'Actual: {actual}')
+                if requested != actual:
+                    self.log.info(f"Requested != actual.")
+                else:
+                    existing_property['current'] = new_message['target']
+                    existing_property['target'] = new_message['target']
+                    self.hotpixel_lvl = actual
+                    self.update_property(existing_property)
+        else:
+            self.log.info(f"Target requested is equal to current set value")
+
+        self.get_hotpixel_status()
+        self.update_property(existing_property)
+        return True
+
+
+    def get_hotpixel_status(self):
+        """
+        Adding indicator / string for what the hot pixel level float translates too
+        
+        DCAM_IDPROP_HOTPIXELCORRECT_LEVEL
+            STANDARD (default) = 1
+            MINIMUM = 2
+            AGGRESSIVE = 3
+
+        Sets the hp_status to the string translation of the hotpixel correction level
+
+        """
+
+        if self.hotpixel_lvl == 1.0:
+            lvl = "STANDARD"
+        elif self.hotpixel_lvl == 2.0:
+            lvl = "MINIMUM"
+        elif self.hotpixel_lvl == 3.0:
+            lvl = "AGGRESSIVE"
+        else:
+            self.log.info("Hot Pixel level set out of bounds or is not an available feature.")
+            lvl = "N/A"
+        
+        self.hp_status = lvl
+        
+        return True
+
 
     def set_hpos(self, existing_property, new_message):
         """
@@ -702,7 +834,6 @@ class HamCam(XDevice):
                 self.log.debug('-NG: Dcamcon is not opened')
                 return False
             else:# prop_setvalue(self, idprop: DCAM_IDPROP, fValue)
-                print("In hpos set self.cam else statement.")
                 hpos_requested = float(new_message['target'])
                 self.log.info(f'Setting horitizonal postiion to {hpos_requested}')
                 self.cam.prop_setvalue(DCAM_IDPROP.SUBARRAYHPOS, hpos_requested)
@@ -711,7 +842,6 @@ class HamCam(XDevice):
                 if hpos_requested != hpos_actual:
                     self.log.info(f"Hpos request does not = hpos actual.")
                 else:
-                    print("In hpos set second to last else statement")
                     existing_property['current'] = new_message['target']
                     existing_property['target'] = new_message['target']
                     self.hpos = hpos_actual
@@ -750,7 +880,6 @@ class HamCam(XDevice):
                 self.log.debug('-NG: Dcamcon is not opened')
                 return False
             else:
-                print("In hsize set self.cam else statement.")
                 hsize_requested = float(new_message['target'])
                 self.log.info(f'Setting horitizonal postiion to {hsize_requested}')
                 self.cam.prop_setvalue(DCAM_IDPROP.SUBARRAYHSIZE, hsize_requested)
@@ -759,7 +888,6 @@ class HamCam(XDevice):
                 if hsize_requested != hsize_actual:
                     self.log.info(f"Hsize request does not = hsize actual.")
                 else:
-                    print("In hsize set second to last else statement")
                     existing_property['current'] = new_message['target']
                     existing_property['target'] = new_message['target']
                     self.hsize = hsize_actual
@@ -790,7 +918,6 @@ class HamCam(XDevice):
                 self.log.debug('-NG: Dcamcon is not opened')
                 return False
             else:# prop_setvalue(self, idprop: DCAM_IDPROP, fValue)
-                print("In vpos set self.cam else statement.")
                 vpos_requested = float(new_message['target'])
                 self.log.info(f'Setting horitizonal postiion to {vpos_requested}')
                 self.cam.prop_setvalue(DCAM_IDPROP.SUBARRAYVPOS, vpos_requested)
@@ -799,7 +926,6 @@ class HamCam(XDevice):
                 if vpos_requested != vpos_actual:
                     self.log.info(f"Vpos request does not = vpos actual.")
                 else:
-                    print("In vpos set second to last else statement")
                     existing_property['current'] = new_message['target']
                     existing_property['target'] = new_message['target']
                     self.vpos = vpos_actual
@@ -852,6 +978,7 @@ class HamCam(XDevice):
         return True
 
 
+    # Options dependent on model / no model checking yet
     def set_binning(self, existing_property, new_message):
         """
         Available Binning Options:
@@ -885,7 +1012,6 @@ class HamCam(XDevice):
         self.start_stream()
 
 
-    # Might remove / probably don't need to have this like this.
     def check_subarray(self):
         """
         ROI Mode Setting:
@@ -941,7 +1067,7 @@ class HamCam(XDevice):
             self.log.info(f"Issues with detecting subarraymode")
             return False
 
-    # Having this try to set a target temp over actually turnning off the fan since its not working....
+    # Dependent on model type / model checking in app not implemented
     def set_temp(self, existing_property, new_message):
         """
         Target Temperature:
@@ -970,15 +1096,14 @@ class HamCam(XDevice):
                 self.update_property(existing_property)
 
             print(temp_actual, temp_requested)
-
     
     
-    # Not implemented yet / but should be a 'quick' add / This isn't working....false values even on the other IDS that should work for dcam and are R/W
+    # Dependent on model type / model checking not implemented
     def set_tempstatus(self, existing_property, new_message):
         """
         Temp Mode Setting:
-            DCAM_IDPROP_SENSORCOOLER (at Water Cooling only)
-            __OFF, __ON, __MAX
+            DCAM_IDPROP_SENSORCOOLERSTATUS
+            __OFF, __READY, __BUSY
         """
         self.log.info("Attempting to set temperature. Not Implemented yet fully.")
         
@@ -1001,24 +1126,46 @@ class HamCam(XDevice):
                 existing_property['target'] = new_message['target']
                 self.temp_status = mode_actual
                 self.update_property(existing_property)
-
-            print(mode_actual, mode_requested)
         
         #self.start_stream()
 
-
-    # Not implemented yet / but should be a 'quick' add
-    def get_temp(self, existing_property, new_message):
+    def get_tempstatus(self):
         """
-        Temp Mode Setting:
-            DCAM_IDPROP_SENSORCOOLER (at Water Cooling only)
-            __OFF, __ON, __MAX
+        Adding indicator / string for what the tempstatus float cooresponds too
+        
+        Temp Mode Setting: (Dependent on mode)
+            DCAM_IDPROP_SENSORCOOLER 
+                ERROR = (-4) - (-1)
+                NONE = 0
+                OFF = 1
+                READY = 2
+                BUSY = 3
+
+        Sets the tmp_status to the string translation
+
         """
-        print("Not Implemented yet.")
+        status = self.temp_status
+        
+        match status:
+            case -1.0 | -2.0 | -3.0 | -4.0:
+                self.tmp_state = "ERROR"
+            case 0.0:
+                self.tmp_state = "NONE"
+            case 1.0:
+                self.tmp_state = "OFF"
+            case 2.0:
+                self.tmp_state = "READY"
+            case 3.0:
+                self.tmp_state = "BUSY"
+            case _:
+                self.tmp_state = "N/A"
 
-        return False
+        self.log.info(f"Temperature Status: {self.tmp_state}")
+        
+        return True
 
-    # This isn't working right / gain in general -> outputs false / something wrong
+
+    # Dependent on camera model / model checking not implemented
     def set_gain(self, existing_property, new_message):
         """
         Setting Gain Value:
@@ -1105,7 +1252,7 @@ class HamCam(XDevice):
             self.update_property(self.properties['fsm'])
         self.refresh_properties()
 
-    # Not 'really' being used / placeholder
+    # Placeholder if desired to be used
     def _gather_metadata(self):
         meta = {
             #'GAIN': self.cam.prop_getvalue(DCAM_IDPROP.CONTRASTGAIN),
@@ -1123,7 +1270,7 @@ class CameraStreamThread(threading.Thread):
     '''
     Camera stream thread to enable pausing and resume while setting parameters
 
-    Unclear if it's actually needed for exposure time and gain.
+    Needed for changing ROIs and some other settings.
 
     '''    
     # stolen from https://stackoverflow.com/a/15734837
