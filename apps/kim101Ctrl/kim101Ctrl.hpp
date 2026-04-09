@@ -1,0 +1,1316 @@
+/** \file kim101Ctrl.hpp
+ * \brief The MagAO-X KIM101 Inertial Motor Controller header file
+ *
+ * \ingroup kim101Ctrl_files
+ */
+
+#ifndef kim101Ctrl_hpp
+#define kim101Ctrl_hpp
+
+#include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
+#include "../../magaox_git_version.h"
+
+// Include the tmcController from kcubeCtrl
+#include "../kcubeCtrl/tmcController.hpp"
+
+/** \defgroup kim101Ctrl
+ * \brief The KIM101 Inertial Motor Controller application
+ *
+ * <a href="../handbook/operating/software/apps/kim101Ctrl.html">Application Documentation</a>
+ *
+ * \ingroup apps
+ *
+ */
+
+/** \defgroup kim101Ctrl_files
+ * \ingroup kim101Ctrl
+ */
+
+namespace MagAOX
+{
+namespace app
+{
+
+/// Local derivation of tmcController to implement MagAO-X logging
+template<class parentT>
+class kimCon : public tmcController 
+{
+public:
+
+    /// Print a message to MagAO-X logs describing an error from an \libftdi1 function
+    virtual void ftdiErrmsg( const std::string & src,
+                             const std::string & msg,
+                             int rv,
+                             const std::string & file,
+                             int line
+                           )
+    {
+        std::stringstream logs;
+        logs << src << ": " << msg << " [ libftdi1: " << ftdi_get_error_string(m_ftdi) << " ] ";
+        uint32_t ln = line;
+        parentT::template log<software_error>({file.c_str(), ln, 0, rv, logs.str()});
+    }       
+
+    /// Print a message to MagAO-X logs describing an error 
+    virtual void otherErrmsg( const std::string & src,
+                              const std::string & msg,
+                              const std::string & file,
+                              int line
+                            )
+    {
+        uint32_t ln = line;
+        parentT::template log<software_error>({file.c_str(), ln, src + ": " + msg});
+    }
+
+};
+
+/// The MagAO-X KIM101 Inertial Motor Controller
+/**
+  * Controls the Thorlabs KIM101 K-Cube Inertial Motor Controller.
+  * The KIM101 has 4 channels for controlling piezo inertial motors.
+  * 
+  * \ingroup kim101Ctrl
+  */
+class kim101Ctrl : public MagAOXApp<true>
+{
+
+    // Give the test harness access.
+    friend class kim101Ctrl_test;
+
+public:
+    /// Number of channels on KIM101
+    static constexpr int NumChannels = 4;
+
+protected:
+    /** \name Configurable Parameters
+     *@{
+     */
+    
+    std::string m_serial; ///< USB serial number of the device
+
+    /// Drive parameters (can be configured per-channel or globally)
+    tmcController::KIMDriveOPParams m_driveParams;
+    
+    /// Jog parameters
+    tmcController::KIMJogParams m_jogParams;
+    
+    ///@}
+
+    /// The controller connection
+    kimCon<kim101Ctrl> m_kcube;
+
+    /// Channel state tracking
+    struct ChannelState {
+        bool enabled {false};
+        int32_t position {0};
+        int32_t targetPosition {0};
+        bool moving {false};
+        bool homed {false};
+    };
+    ChannelState m_channels[NumChannels];
+
+    /// Full device status
+    tmcController::KIMStatus m_status;
+
+public:
+
+    /// Default c'tor.
+    kim101Ctrl();
+
+    /// D'tor, declared and defined for noexcept.
+    ~kim101Ctrl() noexcept
+    {
+    }
+
+    virtual void setupConfig();
+
+    /// Implementation of loadConfig logic, separated for testing.
+    int loadConfigImpl(mx::app::appConfigurator &_config);
+
+    virtual void loadConfig();
+
+    /// Startup function
+    virtual int appStartup();
+
+    /// Implementation of the FSM for kim101Ctrl.
+    virtual int appLogic();
+
+    /// Shutdown the app.
+    virtual int appShutdown();
+
+    /** \name Device Interface
+     * @{
+     */
+    
+    /// Initialize the device after connection
+    int deviceInitialize();
+
+    /// Update status for all channels
+    int updateStatus();
+
+    /// Enable a channel
+    int channelEnable(int ch);
+
+    /// Disable a channel  
+    int channelDisable(int ch);
+
+    /// Move a channel to absolute position
+    int channelMoveAbsolute(int ch, int32_t position);
+
+    /// Jog a channel
+    int channelJog(int ch, int direction); ///< direction: 1=forward, -1=reverse
+
+    /// Stop motion on a channel
+    int channelStop(int ch);
+
+    /// Zero the position counter for a channel
+    int channelZero(int ch);
+
+    ///@}
+
+    /** \name Utility Functions
+     * @{
+     */
+
+    /// Convert channel number (1-4) to channel identifier bitmask
+    static uint16_t channelIdent(int ch)
+    {
+        if(ch < 1 || ch > 4) return 0;
+        return static_cast<uint16_t>(1 << (ch - 1));
+    }
+
+    ///@}
+
+    /** \name INDI
+     * @{
+     */
+
+    pcf::IndiProperty m_indiP_identify;
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_identify);
+
+    // Per-channel properties
+    pcf::IndiProperty m_indiP_ch1_enable;
+    pcf::IndiProperty m_indiP_ch1_position;
+    pcf::IndiProperty m_indiP_ch1_jog;
+    pcf::IndiProperty m_indiP_ch1_stop;
+    pcf::IndiProperty m_indiP_ch1_zero;
+
+    pcf::IndiProperty m_indiP_ch2_enable;
+    pcf::IndiProperty m_indiP_ch2_position;
+    pcf::IndiProperty m_indiP_ch2_jog;
+    pcf::IndiProperty m_indiP_ch2_stop;
+    pcf::IndiProperty m_indiP_ch2_zero;
+
+    pcf::IndiProperty m_indiP_ch3_enable;
+    pcf::IndiProperty m_indiP_ch3_position;
+    pcf::IndiProperty m_indiP_ch3_jog;
+    pcf::IndiProperty m_indiP_ch3_stop;
+    pcf::IndiProperty m_indiP_ch3_zero;
+
+    pcf::IndiProperty m_indiP_ch4_enable;
+    pcf::IndiProperty m_indiP_ch4_position;
+    pcf::IndiProperty m_indiP_ch4_jog;
+    pcf::IndiProperty m_indiP_ch4_stop;
+    pcf::IndiProperty m_indiP_ch4_zero;
+
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_enable);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_position);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_jog);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_stop);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_zero);
+
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_enable);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_position);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_jog);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_stop);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_zero);
+
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_enable);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_position);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_jog);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_stop);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_zero);
+
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_enable);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_position);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_jog);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_stop);
+    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_zero);
+
+    ///@}
+};
+
+kim101Ctrl::kim101Ctrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
+{
+    m_powerMgtEnabled = true;
+    return;
+}
+
+void kim101Ctrl::setupConfig()
+{
+    config.add("device.serial", "", "device.serial", argType::Required, "device", "serial", false, "string", "USB serial number");
+    
+    // Drive parameters
+    config.add("drive.maxVoltage", "", "drive.maxVoltage", argType::Required, "drive", "maxVoltage", false, "int", "Max drive voltage (85-125V), default 110");
+    config.add("drive.stepRate", "", "drive.stepRate", argType::Required, "drive", "stepRate", false, "int", "Step rate (1-2000 steps/sec), default 500");
+    config.add("drive.stepAccn", "", "drive.stepAccn", argType::Required, "drive", "stepAccn", false, "int", "Acceleration (1-100000 steps/sec/sec), default 100000");
+    
+    // Jog parameters
+    config.add("jog.mode", "", "jog.mode", argType::Required, "jog", "mode", false, "int", "Jog mode (1=continuous, 2=step), default 2");
+    config.add("jog.stepSize", "", "jog.stepSize", argType::Required, "jog", "stepSize", false, "int", "Jog step size in steps, default 100");
+    config.add("jog.stepRate", "", "jog.stepRate", argType::Required, "jog", "stepRate", false, "int", "Jog step rate (1-2000), default 500");
+    config.add("jog.stepAccn", "", "jog.stepAccn", argType::Required, "jog", "stepAccn", false, "int", "Jog acceleration, default 100000");
+}
+
+int kim101Ctrl::loadConfigImpl(mx::app::appConfigurator &_config)
+{
+    _config(m_serial, "device.serial");
+    m_kcube.serial(m_serial);
+    
+    // Drive parameters
+    int maxV = m_driveParams.MaxVoltage;
+    _config(maxV, "drive.maxVoltage");
+    m_driveParams.MaxVoltage = maxV;
+    
+    int stepRate = m_driveParams.StepRate;
+    _config(stepRate, "drive.stepRate");
+    m_driveParams.StepRate = stepRate;
+    
+    int stepAccn = m_driveParams.StepAccn;
+    _config(stepAccn, "drive.stepAccn");
+    m_driveParams.StepAccn = stepAccn;
+    
+    // Jog parameters
+    int jogMode = m_jogParams.JogMode;
+    _config(jogMode, "jog.mode");
+    m_jogParams.JogMode = jogMode;
+    
+    int jogStep = m_jogParams.JogStepSizeFwd;
+    _config(jogStep, "jog.stepSize");
+    m_jogParams.JogStepSizeFwd = jogStep;
+    m_jogParams.JogStepSizeRev = jogStep;
+    
+    int jogRate = m_jogParams.JogStepRate;
+    _config(jogRate, "jog.stepRate");
+    m_jogParams.JogStepRate = jogRate;
+    
+    int jogAccn = m_jogParams.JogStepAccn;
+    _config(jogAccn, "jog.stepAccn");
+    m_jogParams.JogStepAccn = jogAccn;
+
+    return 0;
+}
+
+void kim101Ctrl::loadConfig()
+{
+    loadConfigImpl(config);
+}
+
+int kim101Ctrl::appStartup()
+{
+    // Identify button
+    createStandardIndiRequestSw(m_indiP_identify, "identify");  
+    if(registerIndiPropertyNew(m_indiP_identify, INDI_NEWCALLBACK(m_indiP_identify)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    // Channel 1
+    createStandardIndiToggleSw(m_indiP_ch1_enable, "ch1_enable");  
+    if(registerIndiPropertyNew(m_indiP_ch1_enable, INDI_NEWCALLBACK(m_indiP_ch1_enable)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    
+    createStandardIndiNumber<int32_t>(m_indiP_ch1_position, "ch1_position", -2147483648, 2147483647, 1, "%d");  
+    if(registerIndiPropertyNew(m_indiP_ch1_position, INDI_NEWCALLBACK(m_indiP_ch1_position)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    m_indiP_ch1_position["current"] = 0;
+    m_indiP_ch1_position["target"] = 0;
+
+    createStandardIndiNumber<int>(m_indiP_ch1_jog, "ch1_jog", -1, 1, 1, "%d");  
+    m_indiP_ch1_jog["request"] = 0;
+    if(registerIndiPropertyNew(m_indiP_ch1_jog, INDI_NEWCALLBACK(m_indiP_ch1_jog)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch1_stop, "ch1_stop");  
+    if(registerIndiPropertyNew(m_indiP_ch1_stop, INDI_NEWCALLBACK(m_indiP_ch1_stop)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch1_zero, "ch1_zero");  
+    if(registerIndiPropertyNew(m_indiP_ch1_zero, INDI_NEWCALLBACK(m_indiP_ch1_zero)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    // Channel 2
+    createStandardIndiToggleSw(m_indiP_ch2_enable, "ch2_enable");  
+    if(registerIndiPropertyNew(m_indiP_ch2_enable, INDI_NEWCALLBACK(m_indiP_ch2_enable)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    
+    createStandardIndiNumber<int32_t>(m_indiP_ch2_position, "ch2_position", -2147483648, 2147483647, 1, "%d");  
+    if(registerIndiPropertyNew(m_indiP_ch2_position, INDI_NEWCALLBACK(m_indiP_ch2_position)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    m_indiP_ch2_position["current"] = 0;
+    m_indiP_ch2_position["target"] = 0;
+
+    createStandardIndiNumber<int>(m_indiP_ch2_jog, "ch2_jog", -1, 1, 1, "%d");  
+    m_indiP_ch2_jog["request"] = 0;
+    if(registerIndiPropertyNew(m_indiP_ch2_jog, INDI_NEWCALLBACK(m_indiP_ch2_jog)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch2_stop, "ch2_stop");  
+    if(registerIndiPropertyNew(m_indiP_ch2_stop, INDI_NEWCALLBACK(m_indiP_ch2_stop)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch2_zero, "ch2_zero");  
+    if(registerIndiPropertyNew(m_indiP_ch2_zero, INDI_NEWCALLBACK(m_indiP_ch2_zero)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    // Channel 3
+    createStandardIndiToggleSw(m_indiP_ch3_enable, "ch3_enable");  
+    if(registerIndiPropertyNew(m_indiP_ch3_enable, INDI_NEWCALLBACK(m_indiP_ch3_enable)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    
+    createStandardIndiNumber<int32_t>(m_indiP_ch3_position, "ch3_position", -2147483648, 2147483647, 1, "%d");  
+    if(registerIndiPropertyNew(m_indiP_ch3_position, INDI_NEWCALLBACK(m_indiP_ch3_position)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    m_indiP_ch3_position["current"] = 0;
+    m_indiP_ch3_position["target"] = 0;
+
+    createStandardIndiNumber<int>(m_indiP_ch3_jog, "ch3_jog", -1, 1, 1, "%d");  
+    m_indiP_ch3_jog["request"] = 0;
+    if(registerIndiPropertyNew(m_indiP_ch3_jog, INDI_NEWCALLBACK(m_indiP_ch3_jog)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch3_stop, "ch3_stop");  
+    if(registerIndiPropertyNew(m_indiP_ch3_stop, INDI_NEWCALLBACK(m_indiP_ch3_stop)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch3_zero, "ch3_zero");  
+    if(registerIndiPropertyNew(m_indiP_ch3_zero, INDI_NEWCALLBACK(m_indiP_ch3_zero)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    // Channel 4
+    createStandardIndiToggleSw(m_indiP_ch4_enable, "ch4_enable");  
+    if(registerIndiPropertyNew(m_indiP_ch4_enable, INDI_NEWCALLBACK(m_indiP_ch4_enable)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    
+    createStandardIndiNumber<int32_t>(m_indiP_ch4_position, "ch4_position", -2147483648, 2147483647, 1, "%d");  
+    if(registerIndiPropertyNew(m_indiP_ch4_position, INDI_NEWCALLBACK(m_indiP_ch4_position)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    m_indiP_ch4_position["current"] = 0;
+    m_indiP_ch4_position["target"] = 0;
+
+    createStandardIndiNumber<int>(m_indiP_ch4_jog, "ch4_jog", -1, 1, 1, "%d");  
+    m_indiP_ch4_jog["request"] = 0;
+    if(registerIndiPropertyNew(m_indiP_ch4_jog, INDI_NEWCALLBACK(m_indiP_ch4_jog)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch4_stop, "ch4_stop");  
+    if(registerIndiPropertyNew(m_indiP_ch4_stop, INDI_NEWCALLBACK(m_indiP_ch4_stop)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    createStandardIndiRequestSw(m_indiP_ch4_zero, "ch4_zero");  
+    if(registerIndiPropertyNew(m_indiP_ch4_zero, INDI_NEWCALLBACK(m_indiP_ch4_zero)) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+
+    state(stateCodes::NODEVICE);
+
+    return 0;
+}
+
+int kim101Ctrl::appLogic()
+{
+    if(state() == stateCodes::POWERON || state() == stateCodes::NODEVICE || state() == stateCodes::ERROR)
+    {
+        int rv;
+        {
+            elevatedPrivileges elPriv(this);
+            rv = m_kcube.open(false);
+        }
+
+        if(rv == 0)
+        {
+            if(!stateLogged())
+            {
+                std::stringstream logs;
+                logs << "USB Device " << m_kcube.vendor() << ":" << m_kcube.product() << ":";
+                logs << m_kcube.serial() << " found";
+                log<text_log>(logs.str());
+            }
+
+            state(stateCodes::NOTCONNECTED);
+        }
+        else if(rv == -3)
+        {
+            state(stateCodes::NODEVICE);
+            return 0;
+        }
+        else
+        {
+            std::stringstream em;
+            em << "tmcController::open failed (rv=" << rv << "). Check device.serial matches the 8-digit USB string; ";
+            em << "VID:PID " << std::hex << m_kcube.vendor() << ":" << m_kcube.product() << std::dec << "; ";
+            em << "on Linux ensure the interface is not bound by ftdi_sio (see lsmod) and udev permits access.";
+            log<software_error>({__FILE__, __LINE__, 0, rv, em.str()});
+            state(stateCodes::ERROR);
+            return 0;
+        }        
+    }
+
+    if(state() == stateCodes::NOTCONNECTED)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+
+        int rv;
+        {
+            elevatedPrivileges elPriv(this);
+            rv = m_kcube.connect();
+        }
+
+        if(rv < 0)
+        {
+            sleep(1);
+            if(m_powerState == 0) return -1;
+
+            std::stringstream em;
+            em << "tmcController::connect failed (rv=" << rv << "). USB open succeeded but FTDI init failed; ";
+            em << "see APT USB setup (115200 8N1, purge, reset, RTS/CTS, RTS high).";
+            log<software_error>({__FILE__, __LINE__, 0, rv, em.str()});
+            state(stateCodes::ERROR);
+            return 0;
+        }
+
+        state(stateCodes::CONNECTED);
+    }
+
+    if(state() == stateCodes::CONNECTED)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+
+        if(deviceInitialize() < 0)
+        {
+            return log<software_error, -1>({__FILE__,__LINE__, "error during device initialization"});
+        }
+
+        state(stateCodes::READY);
+    }
+
+    if(state() == stateCodes::READY || state() == stateCodes::OPERATING)
+    {
+        // Try to get lock, but don't block
+        std::unique_lock<std::mutex> lock(m_indiMutex, std::try_to_lock);
+        if(!lock.owns_lock()) return 0;
+
+        // Update status for all channels
+        if(updateStatus() < 0)
+        {
+            sleep(1);
+            if(m_powerState == 0) return -1;
+            
+            log<software_error>({__FILE__, __LINE__, "status update failed"});
+            state(stateCodes::ERROR);
+            return 0;
+        }
+
+        // Update INDI properties based on status
+        bool anyMoving = false;
+        bool anyEnabled = false;
+
+        for(int ch = 0; ch < NumChannels; ch++)
+        {
+            auto& chs = m_channels[ch];
+            auto& ss = m_status.channels[ch];
+            
+            chs.position = ss.position;
+            chs.enabled = ss.channelEnabled();
+            chs.moving = ss.isMoving();
+            chs.homed = ss.homed();
+
+            if(chs.moving) anyMoving = true;
+            if(chs.enabled) anyEnabled = true;
+        }
+
+        // Update channel 1 properties
+        if(m_channels[0].enabled)
+        {
+            updateSwitchIfChanged(m_indiP_ch1_enable, "toggle", pcf::IndiElement::On, INDI_OK);
+            updateIfChanged(m_indiP_ch1_position, "current", m_channels[0].position, 
+                           m_channels[0].moving ? INDI_BUSY : INDI_OK);
+        }
+        else
+        {
+            updateSwitchIfChanged(m_indiP_ch1_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+            updateIfChanged(m_indiP_ch1_position, "current", m_channels[0].position, INDI_IDLE);
+        }
+
+        // Update channel 2 properties
+        if(m_channels[1].enabled)
+        {
+            updateSwitchIfChanged(m_indiP_ch2_enable, "toggle", pcf::IndiElement::On, INDI_OK);
+            updateIfChanged(m_indiP_ch2_position, "current", m_channels[1].position,
+                           m_channels[1].moving ? INDI_BUSY : INDI_OK);
+        }
+        else
+        {
+            updateSwitchIfChanged(m_indiP_ch2_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+            updateIfChanged(m_indiP_ch2_position, "current", m_channels[1].position, INDI_IDLE);
+        }
+
+        // Update channel 3 properties
+        if(m_channels[2].enabled)
+        {
+            updateSwitchIfChanged(m_indiP_ch3_enable, "toggle", pcf::IndiElement::On, INDI_OK);
+            updateIfChanged(m_indiP_ch3_position, "current", m_channels[2].position,
+                           m_channels[2].moving ? INDI_BUSY : INDI_OK);
+        }
+        else
+        {
+            updateSwitchIfChanged(m_indiP_ch3_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+            updateIfChanged(m_indiP_ch3_position, "current", m_channels[2].position, INDI_IDLE);
+        }
+
+        // Update channel 4 properties
+        if(m_channels[3].enabled)
+        {
+            updateSwitchIfChanged(m_indiP_ch4_enable, "toggle", pcf::IndiElement::On, INDI_OK);
+            updateIfChanged(m_indiP_ch4_position, "current", m_channels[3].position,
+                           m_channels[3].moving ? INDI_BUSY : INDI_OK);
+        }
+        else
+        {
+            updateSwitchIfChanged(m_indiP_ch4_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
+            updateIfChanged(m_indiP_ch4_position, "current", m_channels[3].position, INDI_IDLE);
+        }
+
+        // Reset identify and other request buttons
+        updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch1_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch1_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch2_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch2_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch3_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch3_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch4_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
+        updateSwitchIfChanged(m_indiP_ch4_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
+
+        // Set state based on activity
+        if(anyMoving)
+        {
+            state(stateCodes::OPERATING);
+        }
+        else if(anyEnabled)
+        {
+            state(stateCodes::READY);
+        }
+        else
+        {
+            state(stateCodes::READY);
+        }
+    }
+
+    return 0;
+}
+
+int kim101Ctrl::appShutdown()
+{
+    return 0;
+}
+
+int kim101Ctrl::deviceInitialize()
+{
+    int rv;
+
+    // Get hardware info
+    tmcController::HWInfo hwi;
+    rv = m_kcube.hw_req_info(hwi);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed"});
+        return -1;
+    }
+
+    std::stringstream logs;
+    hwi.dump(logs);
+    log<text_log>(logs.str());
+
+    // Stop automatic update messages
+    rv = m_kcube.hw_stop_updatemsgs();
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "hw_stop_updatemsgs failed"});
+        return -1;
+    }
+
+    // Disable all channels initially
+    for(int ch = 1; ch <= NumChannels; ch++)
+    {
+        rv = m_kcube.mod_set_chanenablestate(channelIdent(ch), tmcController::EnableState::disabled);
+        if(rv < 0)
+        {
+            sleep(1);
+            if(m_powerState == 0) return -1;
+            log<software_error>({__FILE__, __LINE__, 0, rv, "failed to disable channel " + std::to_string(ch)});
+            return -1;
+        }
+        m_channels[ch-1].enabled = false;
+    }
+
+    // Set drive parameters for all channels
+    for(int ch = 1; ch <= NumChannels; ch++)
+    {
+        rv = m_kcube.kim_set_driveop_params(channelIdent(ch), m_driveParams);
+        if(rv < 0)
+        {
+            sleep(1);
+            if(m_powerState == 0) return -1;
+            log<software_error>({__FILE__, __LINE__, 0, rv, "failed to set drive params for channel " + std::to_string(ch)});
+            return -1;
+        }
+
+        rv = m_kcube.kim_set_jog_params(channelIdent(ch), m_jogParams);
+        if(rv < 0)
+        {
+            sleep(1);
+            if(m_powerState == 0) return -1;
+            log<software_error>({__FILE__, __LINE__, 0, rv, "failed to set jog params for channel " + std::to_string(ch)});
+            return -1;
+        }
+    }
+
+    // Log the configured parameters
+    logs.str("");
+    m_driveParams.dump(logs);
+    log<text_log>(logs.str());
+
+    logs.str("");
+    m_jogParams.dump(logs);
+    log<text_log>(logs.str());
+
+    return 0;
+}
+
+int kim101Ctrl::updateStatus()
+{
+    int rv = m_kcube.kim_req_statusupdate(m_status);
+    if(rv < 0)
+    {
+        return rv;
+    }
+    return 0;
+}
+
+int kim101Ctrl::channelEnable(int ch)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    int rv = m_kcube.mod_set_chanenablestate(channelIdent(ch), tmcController::EnableState::enabled);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "failed to enable channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    m_channels[ch-1].enabled = true;
+    log<text_log>("enabled channel " + std::to_string(ch), logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+int kim101Ctrl::channelDisable(int ch)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    int rv = m_kcube.mod_set_chanenablestate(channelIdent(ch), tmcController::EnableState::disabled);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "failed to disable channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    m_channels[ch-1].enabled = false;
+    log<text_log>("disabled channel " + std::to_string(ch), logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+int kim101Ctrl::channelMoveAbsolute(int ch, int32_t position)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    int rv = m_kcube.kim_move_absolute(channelIdent(ch), position);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "move absolute failed for channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    m_channels[ch-1].targetPosition = position;
+    log<text_log>("channel " + std::to_string(ch) + " moving to " + std::to_string(position), logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+int kim101Ctrl::channelJog(int ch, int direction)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    tmcController::KIMJogDir dir = (direction > 0) ? tmcController::KIMJogDir::Forward : tmcController::KIMJogDir::Reverse;
+
+    int rv = m_kcube.kim_move_jog(channelIdent(ch), dir);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "jog failed for channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    log<text_log>("channel " + std::to_string(ch) + " jogging " + (direction > 0 ? "forward" : "reverse"), logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+int kim101Ctrl::channelStop(int ch)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    int rv = m_kcube.kim_move_stop(channelIdent(ch));
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "stop failed for channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    log<text_log>("channel " + std::to_string(ch) + " stopped", logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+int kim101Ctrl::channelZero(int ch)
+{
+    if(ch < 1 || ch > NumChannels)
+    {
+        log<software_error>({__FILE__, __LINE__, "invalid channel number: " + std::to_string(ch)});
+        return -1;
+    }
+
+    int rv = m_kcube.kim_set_poscounts(channelIdent(ch), 0);
+    if(rv < 0)
+    {
+        sleep(1);
+        if(m_powerState == 0) return -1;
+        log<software_error>({__FILE__, __LINE__, 0, rv, "zero failed for channel " + std::to_string(ch)});
+        return -1;
+    }
+
+    m_channels[ch-1].position = 0;
+    m_channels[ch-1].targetPosition = 0;
+    log<text_log>("channel " + std::to_string(ch) + " position zeroed", logPrio::LOG_NOTICE);
+
+    return 0;
+}
+
+//=============================================================================
+// INDI Callbacks
+//=============================================================================
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_identify)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_identify, ipRecv);
+
+    if(state() != stateCodes::READY && state() != stateCodes::OPERATING) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::On, INDI_BUSY);
+        return m_kcube.mod_identify();
+    }
+   
+    return 0;
+}
+
+// Channel 1 callbacks
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_enable)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_enable, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+    
+    if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelEnable(1) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 1 enable failed"});
+        }
+    }
+    else
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelDisable(1) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 1 disable failed"});
+        }
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_position)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_position, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int32_t target;
+    indiTargetUpdate(m_indiP_ch1_position, target, ipRecv, true);
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelMoveAbsolute(1, target) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 1 move failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_jog)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_jog, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int dir = ipRecv["request"].get<int>();
+    if(dir == 0) return 0;
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelJog(1, dir) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 1 jog failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_stop)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_stop, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelStop(1);
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_zero)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_zero, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelZero(1);
+    }
+   
+    return 0;
+}
+
+// Channel 2 callbacks
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_enable)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_enable, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+    
+    if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelEnable(2) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 2 enable failed"});
+        }
+    }
+    else
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelDisable(2) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 2 disable failed"});
+        }
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_position)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_position, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int32_t target;
+    indiTargetUpdate(m_indiP_ch2_position, target, ipRecv, true);
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelMoveAbsolute(2, target) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 2 move failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_jog)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_jog, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int dir = ipRecv["request"].get<int>();
+    if(dir == 0) return 0;
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelJog(2, dir) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 2 jog failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_stop)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_stop, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelStop(2);
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_zero)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_zero, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelZero(2);
+    }
+   
+    return 0;
+}
+
+// Channel 3 callbacks
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_enable)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_enable, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+    
+    if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelEnable(3) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 3 enable failed"});
+        }
+    }
+    else
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelDisable(3) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 3 disable failed"});
+        }
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_position)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_position, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int32_t target;
+    indiTargetUpdate(m_indiP_ch3_position, target, ipRecv, true);
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelMoveAbsolute(3, target) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 3 move failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_jog)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_jog, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int dir = ipRecv["request"].get<int>();
+    if(dir == 0) return 0;
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelJog(3, dir) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 3 jog failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_stop)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_stop, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelStop(3);
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_zero)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_zero, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelZero(3);
+    }
+   
+    return 0;
+}
+
+// Channel 4 callbacks
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_enable)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_enable, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+    
+    if(ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelEnable(4) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 4 enable failed"});
+        }
+    }
+    else
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        if(channelDisable(4) < 0)
+        {
+            if(m_powerState == 0) return 0;
+            return log<software_error,-1>({__FILE__, __LINE__, "channel 4 disable failed"});
+        }
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_position)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_position, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int32_t target;
+    indiTargetUpdate(m_indiP_ch4_position, target, ipRecv, true);
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelMoveAbsolute(4, target) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 4 move failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_jog)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_jog, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    int dir = ipRecv["request"].get<int>();
+    if(dir == 0) return 0;
+
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    if(channelJog(4, dir) < 0)
+    {
+        if(m_powerState == 0) return 0;
+        return log<software_error,-1>({__FILE__, __LINE__, "channel 4 jog failed"});
+    }
+    
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_stop)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_stop, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelStop(4);
+    }
+   
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_zero)(const pcf::IndiProperty &ipRecv)
+{
+    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_zero, ipRecv);
+
+    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
+
+    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
+    {
+        std::lock_guard<std::mutex> guard(m_indiMutex);
+        return channelZero(4);
+    }
+   
+    return 0;
+}
+
+} // namespace app
+} // namespace MagAOX
+
+#endif // kim101Ctrl_hpp
+
