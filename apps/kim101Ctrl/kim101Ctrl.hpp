@@ -334,7 +334,8 @@ int kim101Ctrl::appStartup()
     m_indiP_ch1_position["target"] = 0;
 
     createStandardIndiNumber<int>(m_indiP_ch1_jog, "ch1_jog", -1, 1, 1, "%d");  
-    m_indiP_ch1_jog["request"] = 0;
+    m_indiP_ch1_jog["target"] = 0;
+    m_indiP_ch1_jog["current"] = 0;
     if(registerIndiPropertyNew(m_indiP_ch1_jog, INDI_NEWCALLBACK(m_indiP_ch1_jog)) < 0)
     {
         log<software_error>({__FILE__,__LINE__});
@@ -373,7 +374,8 @@ int kim101Ctrl::appStartup()
     m_indiP_ch2_position["target"] = 0;
 
     createStandardIndiNumber<int>(m_indiP_ch2_jog, "ch2_jog", -1, 1, 1, "%d");  
-    m_indiP_ch2_jog["request"] = 0;
+    m_indiP_ch2_jog["target"] = 0;
+    m_indiP_ch2_jog["current"] = 0;
     if(registerIndiPropertyNew(m_indiP_ch2_jog, INDI_NEWCALLBACK(m_indiP_ch2_jog)) < 0)
     {
         log<software_error>({__FILE__,__LINE__});
@@ -412,7 +414,8 @@ int kim101Ctrl::appStartup()
     m_indiP_ch3_position["target"] = 0;
 
     createStandardIndiNumber<int>(m_indiP_ch3_jog, "ch3_jog", -1, 1, 1, "%d");  
-    m_indiP_ch3_jog["request"] = 0;
+    m_indiP_ch3_jog["target"] = 0;
+    m_indiP_ch3_jog["current"] = 0;
     if(registerIndiPropertyNew(m_indiP_ch3_jog, INDI_NEWCALLBACK(m_indiP_ch3_jog)) < 0)
     {
         log<software_error>({__FILE__,__LINE__});
@@ -451,7 +454,8 @@ int kim101Ctrl::appStartup()
     m_indiP_ch4_position["target"] = 0;
 
     createStandardIndiNumber<int>(m_indiP_ch4_jog, "ch4_jog", -1, 1, 1, "%d");  
-    m_indiP_ch4_jog["request"] = 0;
+    m_indiP_ch4_jog["target"] = 0;
+    m_indiP_ch4_jog["current"] = 0;
     if(registerIndiPropertyNew(m_indiP_ch4_jog, INDI_NEWCALLBACK(m_indiP_ch4_jog)) < 0)
     {
         log<software_error>({__FILE__,__LINE__});
@@ -975,7 +979,7 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_jog)(const pcf::IndiProperty &ipRe
 
     if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
 
-    int dir = ipRecv["request"].get<int>();
+    int dir = ipRecv["target"].get<int>();
     if(dir == 0) return 0;
 
     std::lock_guard<std::mutex> guard(m_indiMutex);
@@ -1072,7 +1076,7 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_jog)(const pcf::IndiProperty &ipRe
 
     if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
 
-    int dir = ipRecv["request"].get<int>();
+    int dir = ipRecv["target"].get<int>();
     if(dir == 0) return 0;
 
     std::lock_guard<std::mutex> guard(m_indiMutex);
@@ -1169,7 +1173,7 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_jog)(const pcf::IndiProperty &ipRe
 
     if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
 
-    int dir = ipRecv["request"].get<int>();
+    int dir = ipRecv["target"].get<int>();
     if(dir == 0) return 0;
 
     std::lock_guard<std::mutex> guard(m_indiMutex);
@@ -1266,7 +1270,7 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_jog)(const pcf::IndiProperty &ipRe
 
     if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
 
-    int dir = ipRecv["request"].get<int>();
+    int dir = ipRecv["target"].get<int>();
     if(dir == 0) return 0;
 
     std::lock_guard<std::mutex> guard(m_indiMutex);
