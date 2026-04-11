@@ -51,7 +51,7 @@ namespace MagAOX
                         P3V3D == p->P3V3D && P4V3 == p->P4V3 && N5V == p->N5V && N6V == p->N6V && P150V == p->P150V);
             }
 
-            bool operator==(const CGraphFSMTelemetryPayload p /**< [in] the struct to compare to*/)
+            bool operator==(const CGraphFSMTelemetryPayload &p /**< [in] the struct to compare to*/) const
             {
                 return (P1V2 == p.P1V2 && P2V2 == p.P2V2 && P28V == p.P28V && P2V5 == p.P2V5 && P3V3A == p.P3V3A && P6V == p.P6V && P5V == p.P5V &&
                         P3V3D == p.P3V3D && P4V3 == p.P4V3 && N5V == p.N5V && N6V == p.N6V && P150V == p.P150V);
@@ -112,7 +112,7 @@ namespace MagAOX
             {
                 std::ostringstream oss;
                 oss << "AdcAccumulator: Samples: " << (double)Samples << " (x" << (unsigned long)(all >> 32) << (unsigned long)(all) << "), NumAccums: " << (unsigned long)NumAccums << "(0x" << (unsigned long)NumAccums << ")";
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
 
         } __attribute__((__packed__));
@@ -204,23 +204,27 @@ namespace MagAOX
 
             void logReply() override
             {
-                std::ostringstream oss;
-                oss << "BinaryFSMTelemetry Command: Telemetry received";
-                // debug
-                // oss << "BinaryFSMTelemetry Command: Values with corrected units follow:\n";
-                // oss << "P1V2: " << std::fixed << std::setprecision(6) << Telemetry.P1V2 << " V\n";
-                // oss << "P2V2: " << std::fixed << std::setprecision(6) << Telemetry.P2V2 << " V\n";
-                // oss << "P28V: " << std::fixed << std::setprecision(6) << Telemetry.P28V << " V\n";
-                // oss << "P2V5: " << std::fixed << std::setprecision(6) << Telemetry.P2V5 << " V\n";
-                // oss << "P3V3A: " << std::fixed << std::setprecision(6) << Telemetry.P3V3A << " V\n";
-                // oss << "P6V: " << std::fixed << std::setprecision(6) << Telemetry.P6V << " V\n";
-                // oss << "P5V: " << std::fixed << std::setprecision(6) << Telemetry.P5V << " V\n";
-                // oss << "P3V3D: " << std::fixed << std::setprecision(6) << Telemetry.P3V3D << " V\n";
-                // oss << "P4V3: " << std::fixed << std::setprecision(6) << Telemetry.P4V3 << " V\n";
-                // oss << "N5V: " << std::fixed << std::setprecision(6) << Telemetry.N5V << " V\n";
-                // oss << "N6V: " << std::fixed << std::setprecision(6) << Telemetry.N6V << " V\n";
-                // oss << "P150V: " << std::fixed << std::setprecision(6) << Telemetry.P150V << " V";
-                MagAOXAppT::log<text_log>(oss.str());
+                if(m_log.logLevel() >= flatlogs::logPrio::LOG_DEBUG)
+                {
+                    std::ostringstream oss;
+                    oss << "BinaryFSMTelemetry Command: Telemetry received";
+                    oss << "BinaryFSMTelemetry Command: Values with corrected units follow:\n";
+                    oss << "P1V2: " << std::fixed << std::setprecision(6) << Telemetry.P1V2 << " V\n";
+                    oss << "P2V2: " << std::fixed << std::setprecision(6) << Telemetry.P2V2 << " V\n";
+                    oss << "P28V: " << std::fixed << std::setprecision(6) << Telemetry.P28V << " V\n";
+                    oss << "P2V5: " << std::fixed << std::setprecision(6) << Telemetry.P2V5 << " V\n";
+                    oss << "P3V3A: " << std::fixed << std::setprecision(6) << Telemetry.P3V3A << " V\n";
+                    oss << "P6V: " << std::fixed << std::setprecision(6) << Telemetry.P6V << " V\n";
+                    oss << "P5V: " << std::fixed << std::setprecision(6) << Telemetry.P5V << " V\n";
+                    oss << "P3V3D: " << std::fixed << std::setprecision(6) << Telemetry.P3V3D << " V\n";
+                    oss << "P4V3: " << std::fixed << std::setprecision(6) << Telemetry.P4V3 << " V\n";
+                    oss << "N5V: " << std::fixed << std::setprecision(6) << Telemetry.N5V << " V\n";
+                    oss << "N6V: " << std::fixed << std::setprecision(6) << Telemetry.N6V << " V\n";
+                    oss << "P150V: " << std::fixed << std::setprecision(6) << Telemetry.P150V << " V";
+                    MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
+                }
+             
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, "BinaryFSMTelemetry Command: Telemetry received"});
             }
         };
 
@@ -262,7 +266,7 @@ namespace MagAOX
 
             void logReply() override
             {
-                MagAOXAppT::log<text_log>("BinaryFSMAdcsCommand: ");
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, "BinaryFSMAdcsCommand: "});
                 AdcVals[0].log();
                 AdcVals[1].log();
                 AdcVals[2].log();
@@ -276,6 +280,7 @@ namespace MagAOX
         class DacsQuery : public dev::sdevQuery
         {
         public:
+            using sdevQuery::setPayload; // using different signature here for this than base; might need to remove base if not used 
             DacsQuery()
             {
                 PayloadType = CGraphPayloadTypeFSMDacs;
@@ -340,7 +345,7 @@ namespace MagAOX
             {
                 std::ostringstream oss;
                 oss << "BinaryFSMDacsCommand: 0x" << std::hex << DacSetpoints[0] << " | 0x" << std::hex << DacSetpoints[1] << " | 0x" << std::hex << DacSetpoints[2];
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 

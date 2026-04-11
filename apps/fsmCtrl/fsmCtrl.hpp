@@ -75,7 +75,10 @@ namespace MagAOX
       const std::string INDI = "indi";
       const std::string LOCALHOST = "127.0.0.1";
       const std::string USB0 = "/dev/ttyUSB0";
+
+      enum class InputType : uint8_t { DACS, VOLTAGES, TTP };
       ///@}
+
 
       /** \name Configurable Parameters
        *@{
@@ -107,21 +110,23 @@ namespace MagAOX
       double d_piston = 5.0; // in micrometers 
 
       // Shmim size
-      double width = 1; // shm size
-      double height = 3; // shm size
+      uint32_t width = 1; // shm size
+      uint32_t height = 3; // shm size
 
       // input parameters
       std::string kw_name = "inputType";
-      std::string m_inputType;
+      InputType m_inputType{InputType::VOLTAGES}; ///< The type of values in the shmim (dacs, voltages, or ttp)
       std::string m_inputToggle;
+
+      // INDI update throttle
+      uint32_t m_indiUpdateInterval{100}; ///< Update INDI target values every Nth shmim frame. Configurable via input.indi_update_interval.
 
       // here add parameters which will be config-able at runtime
       ///@}
 
-      // char Buffer[4096];
-      // CGraphPacket PacketProtocol;
-      // std::unique_ptr<IUart> LocalPortPinout;
-      // std::unique_ptr<BinaryUart> UartParser;
+
+      uint32_t m_indiSkipCounter{0};      ///< Frame counter for INDI update throttling
+
       uint32_t targetSetpoints[3];
 
       double m_dac1{0};
@@ -133,10 +138,15 @@ namespace MagAOX
       double m_adc3{0};
 
     private:
-      dev::sdevQuery *telemetryQuery = new TelemetryQuery();
-      dev::sdevQuery *adcsQuery = new AdcsQuery();
-      dev::sdevQuery *dacsQuery = new DacsQuery();
-      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, adcsQuery, dacsQuery };
+      std::unique_ptr<dev::sdevQuery> telemetryQuery = std::make_unique<TelemetryQuery>();
+      std::unique_ptr<dev::sdevQuery> adcsQuery = std::make_unique<AdcsQuery>();
+      std::unique_ptr<dev::sdevQuery> dacsQuery = std::make_unique<DacsQuery>();
+      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), adcsQuery.get(), dacsQuery.get() };
+
+      /// Cached typed pointers to avoid per-frame dynamic_cast
+      DacsQuery *m_dacsQ = static_cast<DacsQuery *>(dacsQuery.get());
+      AdcsQuery *m_adcsQ = static_cast<AdcsQuery *>(adcsQuery.get());
+      TelemetryQuery *m_telemetryQ = static_cast<TelemetryQuery *>(telemetryQuery.get());
 
     protected:
       // INDI properties
@@ -206,22 +216,16 @@ namespace MagAOX
 
       const std::vector<dev::sdevQuery*>& getQueries() const override;
 
-      // /**
-      //  * @brief Request fsm telemetry
-      //  *
-      //  * Wrapper that calls query() with instance of TelemetryQuery.
-      //  * Response is stored in instance's Telemetry member.
-      //  * It returns fsm telemetry that is logged every 10s by the telemeter.
-      //  * Output in /opt/telem/fsmCtrl_xxxxx.bintel
-      //  */
-      // void queryTelemetry();
+      /** \name FSM-specific functions
+       *
+       * @{
+       */
 
       /**
        * @brief Request fsm's ADC values
        *
        * Wrapper that calls query() with instance of AdcsQuery.
        * Response is stored in instance's AdcVals member.
-       * Response is also logged in /opt/logs/fsmCtrl_xxxxxx.binlog
        */
       void receiveAdcs();
 
@@ -230,7 +234,6 @@ namespace MagAOX
        *
        * Wrapper that calls query() with instance of DacsQuery.
        * Response is stored in instance's DacSetpoints member.
-       * Response is also logged in /opt/logs/fsmCtrl_xxxxxx.binlog
        */
       void receiveDacs();
 
@@ -275,14 +278,8 @@ namespace MagAOX
        */
       void receive() override;
 
-      /**
-       * @brief Utility function that sets 'current' INDI values, if updated
-       *
-       * Function that takes the values in m_dac1, m_dac2 and m_dac3, transforms them
-       * (if necessary) to the type specified by m_inputType and updates the corresponding
-       * INDI parameter's 'current' value.
-       */
-      void updateINDICurrentParams();
+      ///@}
+
 
       /** \name Telemeter Interface
        *
@@ -336,8 +333,7 @@ namespace MagAOX
        * \returns 0 on success
        * \returns -1 if incorrect size or data type in stream.
        */
-      int processImage(void *curr_src,
-                       const dev::shmimT &sp);
+      int processImage(void *curr_src, const dev::shmimT &sp);
 
       /**
        * @brief Send to fsm new DAC values from shmim
@@ -378,9 +374,69 @@ namespace MagAOX
        */
       int createStream();
       ///@}
+
+  
+      /** \name Utility functions
+        *
+        * @{
+        */
+
+      /**
+       * @brief Convert InputType enum value to a string
+      */
+      const std::string & inputTypeToString(InputType type) const
+      {
+        switch(type)
+        {
+          case InputType::DACS:     
+            return DACS;
+          case InputType::VOLTAGES:
+            return VOLTAGES;
+          case InputType::TTP:
+            return TTP;
+        }
+        return VOLTAGES;
+      }
+
+      /**
+       * @brief Convert string to InputType enum value
+       * 
+       * \returns 0 on success, with type set to the corresponding InputType value
+       * \returns -1 if the string does not match any InputType value
+       */
+      int inputTypeFromString(const std::string &string, InputType &type) const
+      {
+        if(string == DACS) 
+        {
+          type = InputType::DACS;
+          return 0; 
+        }
+        if(string == VOLTAGES)
+        {
+          type = InputType::VOLTAGES;
+          return 0;
+        }
+        if(string == TTP)
+        {
+          type = InputType::TTP;
+          return 0;
+        }
+        
+        return -1;
+      }
+
+      /**
+       * @brief Utility function that sets 'current' INDI values, if updated
+       *
+       * Function that takes the values in m_dac1, m_dac2 and m_dac3, transforms them
+       * (if necessary) to the type specified by m_inputType and updates the corresponding
+       * INDI parameter's 'current' value.
+       */
+      void updateINDICurrentParams();
+        
+      ///@}
     };
 
-    // fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED), LocalPortPinout(nullptr), UartParser(nullptr)
     fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
     {
       m_powerMgtEnabled = true;
@@ -393,14 +449,7 @@ namespace MagAOX
       dev::summerDevice<fsmCtrl>::setupConfig(config);
       shmimMonitor::setupConfig(config);
 
-      // config.add("parameters.connection_type", "", "parameters.connection_type", argType::Required, "parameters", "connection_type", false, "string", "The type of connection: serial_port or socket.");
       config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
-
-      // config.add("socket.client_entrance_ip", "", "socket.client_entrance_ip", argType::Optional, "socket", "client_entrance_ip", false, "string", "The IP address on the client machine that the tunnel is set up from.");
-      // config.add("socket.host_port", "", "socket.host_port", argType::Optional, "socket", "host_port", false, "int", "The port at which the fsm driver is listening for connections.");
-      
-      // config.add("serial_port.port_address", "", "serial_port.port_address", argType::Optional, "serial_port", "port_address", false, "string", "The address where the client machine is connected to.");
-      // config.add("serial_port.baud_rate", "", "serial_port.baud_rate", argType::Optional, "serial_port", "baud_rate", false, "int", "The baud rate for the serial port.");
 
       config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
       config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
@@ -422,36 +471,17 @@ namespace MagAOX
 
       config.add("input.type", "", "input.type", argType::Optional, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'ttp'. Defaults to voltages.");
       config.add("input.toggle", "", "input.toggle", argType::Optional, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'. Defaults to shmim.");
+      config.add("input.indi_update_interval", "", "input.indi_update_interval", argType::Optional, "input", "indi_update_interval", false, "int", "Update INDI target values every Nth shmim frame. Defaults to 100.");
       telemeterT::setupConfig(config);
     }
 
     int fsmCtrl::loadConfigImpl(mx::app::appConfigurator &_config)
     {
       /// CONNECTION PARAMETERS ///
-      // _config(type, "parameters.connection_type");
       _config(period_s, "parameters.period_s");
-      log<text_log>("Loading config");
+      log<software_info>({__FILE__, __LINE__, "Loading config"});
 
-      // if (type == "socket")
-      // {
-      //   PortName = LOCALHOST;
-      //   _config(PortName, "socket.client_entrance_ip");
-      //   _config(nHostPort, "socket.host_port");
-
-      //   fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_client_socket>();
-      // }
-      // else // defaulting to serial_port
-      // {
-      //   PortName = USB0;
-      //   _config(PortName, "serial_port.port_address");
-      //   _config(BaudRate, "serial_port.baud_rate");
-
-      //   fsmCtrl::LocalPortPinout = std::make_unique<linux_pinout_uart>();
-      // }
-      // // Since LocalPortPinout is now initialized, can also initialize UartParser
-      // initUartParser();
-
-      /// CONVERSTION PARAMETERS ///
+      /// CONVERSION PARAMETERS ///
       _config(m_L, "fsm.L");
       m_B = m_L * cos(30 * (M_PI / 180.0));
       _config(m_B, "fsm.B");
@@ -477,12 +507,12 @@ namespace MagAOX
       _config(height, "shmimMonitor.height");
 
       /// COMMAND INPUT PARAMETERS ///
-      m_inputType = VOLTAGES;
-      _config(m_inputType, "input.type");
-      if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+      std::string inputTypeStr = VOLTAGES;
+      _config(inputTypeStr, "input.type");
+      if(inputTypeFromString(inputTypeStr, m_inputType) < 0)
       {
         std::ostringstream oss;
-        oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
+        oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << inputTypeStr;
         log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
         return -1;
       }
@@ -495,7 +525,11 @@ namespace MagAOX
         oss << "Config file sets m_inputToggle to a value other than 'shmim', or 'indi': " << m_inputToggle;
         log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
         return -1;
-      }      
+      }
+
+      /// INDI UPDATE INTERVAL WHEN RUNNING FROM SHMIM ///
+      _config(m_indiUpdateInterval, "input.indi_update_interval");
+
       return 0;
     }
 
@@ -503,25 +537,25 @@ namespace MagAOX
     {
       if (loadConfigImpl(config) < 0)
       {
-        log<text_log>("Error during config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during config"});
         m_shutdown = true;
       }
 
       if (dev::summerDevice<fsmCtrl>::loadConfig(config) < 0)
       {
-        log<text_log>("Error during summerDevice config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during summerDevice config"});
         m_shutdown = true;
       }
 
       if (telemeterT::loadConfig(config) < 0)
       {
-        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during telemeter config"});
         m_shutdown = true;
       }
 
       if (shmimMonitor::loadConfig(config) < 0)
       {
-        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during shmimMonitor config"});
         m_shutdown = true;
       }
 
@@ -608,7 +642,7 @@ namespace MagAOX
       m_indiP_input.add(pcf::IndiElement("toggle"));
       m_indiP_input["toggle"] = m_inputToggle;
       m_indiP_input.add(pcf::IndiElement("type"));
-      m_indiP_input["type"] = m_inputType;
+      m_indiP_input["type"] = inputTypeToString(m_inputType);
 
       // type of query
       REG_INDI_NEWPROP(m_indiP_query, "telemetry", pcf::IndiProperty::Text);
@@ -669,10 +703,10 @@ namespace MagAOX
       if (state() == stateCodes::CONNECTED)
       {
         // // Get current adc values
-        dev::summerDevice<fsmCtrl>::query(adcsQuery);
+        dev::summerDevice<fsmCtrl>::query(adcsQuery.get());
 
         // // Get current dac values
-        dev::summerDevice<fsmCtrl>::query(dacsQuery);
+        dev::summerDevice<fsmCtrl>::query(dacsQuery.get());
 
         // Get telemetry
         // queryTelemetry();
@@ -736,15 +770,13 @@ namespace MagAOX
     // Function to request fsm ADCs
     void fsmCtrl::receiveAdcs()
     {
-      AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
+      double samples1 = static_cast<double>(m_adcsQ->AdcVals[0].Samples);
+      double samples2 = static_cast<double>(m_adcsQ->AdcVals[1].Samples);
+      double samples3 = static_cast<double>(m_adcsQ->AdcVals[2].Samples);
 
-      double samples1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
-      double samples2 = static_cast<double>(castAdcsQuery->AdcVals[1].Samples);
-      double samples3 = static_cast<double>(castAdcsQuery->AdcVals[2].Samples);
-
-      double numAccums1 = static_cast<double>(castAdcsQuery->AdcVals[0].NumAccums);
-      double numAccums2 = static_cast<double>(castAdcsQuery->AdcVals[1].NumAccums);
-      double numAccums3 = static_cast<double>(castAdcsQuery->AdcVals[2].NumAccums);
+      double numAccums1 = static_cast<double>(m_adcsQ->AdcVals[0].NumAccums);
+      double numAccums2 = static_cast<double>(m_adcsQ->AdcVals[1].NumAccums);
+      double numAccums3 = static_cast<double>(m_adcsQ->AdcVals[2].NumAccums);
 
       m_adc1 = (8.192 * ((samples1 - 0) / numAccums1)) / 16777216.0;
       m_adc2 = (8.192 * ((samples2 - 0) / numAccums2)) / 16777216.0;
@@ -758,11 +790,9 @@ namespace MagAOX
     // Function to request fsm DACs
     void fsmCtrl::receiveDacs()
     {
-      DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
-
-      m_dac1 = static_cast<float>(castDacsQuery->DacSetpoints[0]);
-      m_dac2 = static_cast<float>(castDacsQuery->DacSetpoints[1]);
-      m_dac3 = static_cast<float>(castDacsQuery->DacSetpoints[2]);
+      m_dac1 = static_cast<float>(m_dacsQ->DacSetpoints[0]);
+      m_dac2 = static_cast<float>(m_dacsQ->DacSetpoints[1]);
+      m_dac3 = static_cast<float>(m_dacsQ->DacSetpoints[2]);
 
       updateINDICurrentParams();
     }
@@ -780,7 +810,7 @@ namespace MagAOX
       {
         std::ostringstream oss;
         oss << "Requested dac1 out of range; (min|dac1|max) : (" << m_dac1_min << "|" << Setpoints[0] << "|" << m_dac1_max << ");";
-        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, oss.str()});
         return -1;
       }
 
@@ -788,7 +818,7 @@ namespace MagAOX
       {
         std::ostringstream oss;
         oss << "Requested dac2 out of range; (min|dac2|max) : (" << m_dac2_min << "|" << Setpoints[1] << "|" << m_dac2_max << ");";
-        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, oss.str()});
         return -1;
       }
 
@@ -796,21 +826,22 @@ namespace MagAOX
       {
         std::ostringstream oss;
         oss << "Requested dac3 out of range; (min|dac3|max) : (" << m_dac3_min << "|" << Setpoints[2] << "|" << m_dac3_max << ");";
-        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, oss.str()});
         return -1;
       }
 
-      std::ostringstream oss;
-      oss << "SETDACS: " << Setpoints[0] << " | " << Setpoints[1] << " | " << Setpoints[2];
-      log<text_log>(oss.str());
+      if(m_log.logLevel() >= flatlogs::logPrio::LOG_DEBUG)
+      {
+        std::ostringstream oss;
+        oss << "SETDACS: " << Setpoints[0] << " | " << Setpoints[1] << " | " << Setpoints[2];
+        log<software_debug>({__FILE__, __LINE__, oss.str()});
+      }
 
-      DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
-
-      castDacsQuery->setPayload(Setpoints, 3 * sizeof(uint32_t));
-      dev::summerDevice<fsmCtrl>::query(castDacsQuery);
+      m_dacsQ->setPayload(Setpoints, 3 * sizeof(uint32_t));
+      dev::summerDevice<fsmCtrl>::query(m_dacsQ);
 
       // castDacsQuery->logReply();
-      castDacsQuery->resetPayload();
+      m_dacsQ->resetPayload();
 
       // m_dac1 = castDacsQuery->DacSetpoints[0];
       // m_dac2 = castDacsQuery->DacSetpoints[1];
@@ -833,7 +864,7 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
-      dev::summerDevice<fsmCtrl>::query(telemetryQuery);
+      dev::summerDevice<fsmCtrl>::query(telemetryQuery.get());
       
       dev::summerDevice<fsmCtrl>::receive();
       telemetryQuery->logReply();
@@ -844,11 +875,10 @@ namespace MagAOX
     int fsmCtrl::recordFsm(bool force)
     {
       static CGraphFSMTelemetryPayload LastTelemetry; ///< Structure holding the previous fsm voltage measurement.
-      TelemetryQuery *telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery);
 
-      if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
+      if (!(LastTelemetry == m_telemetryQ->Telemetry) || force)
       {
-        LastTelemetry = telemetryQueryPtr->Telemetry;
+        LastTelemetry = m_telemetryQ->Telemetry;
         telem<telem_fsm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P3V3A, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.N5V, LastTelemetry.N6V, LastTelemetry.P150V});
       }
 
@@ -899,41 +929,51 @@ namespace MagAOX
       val1 = ((float *)curr_src)[0];
       val2 = ((float *)curr_src)[1];
       
-      if (m_inputType == TTP) {
-        val3 = d_piston;
-      } else {
-        val3 = ((float *)curr_src)[2];
+      switch(m_inputType)
+      {
+        case InputType::TTP:
+          val3 = d_piston;
+          break;
+        default:
+          val3 = ((float *)curr_src)[2];
+          break;
       }
 
+      // Throttle INDI updates to every m_indiUpdateInterval frames
+      if(++m_indiSkipCounter >= m_indiUpdateInterval)
       {
+        m_indiSkipCounter = 0;
         std::unique_lock<std::mutex> lock(m_indiMutex);
         updateIfChanged(m_indiP_val1, "target", val1);
         updateIfChanged(m_indiP_val2, "target", val2);
         updateIfChanged(m_indiP_val3, "target", val3);
       }
 
-      if (m_inputType == DACS)
+      switch(m_inputType)
       {
-        dacs[0] = val1;
-        dacs[1] = val2;
-        dacs[2] = val3;
-      }
-      else if (m_inputType == VOLTAGES)
-      {
-        dacs[0] = vi_to_daci(val1, m_v);
-        dacs[1] = vi_to_daci(val2, m_v);
-        dacs[2] = vi_to_daci(val3, m_v);
-      }
-      else if (m_inputType == TTP)
-      {
-        dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
-        dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
-        dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+        case InputType::DACS:
+          dacs[0] = val1;
+          dacs[1] = val2;
+          dacs[2] = val3;
+          break;
+        case InputType::VOLTAGES:
+          dacs[0] = vi_to_daci(val1, m_v);
+          dacs[1] = vi_to_daci(val2, m_v);
+          dacs[2] = vi_to_daci(val3, m_v);
+          break;
+        case InputType::TTP:
+          dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
+          dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+          dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+          break;
       }
 
-      std::ostringstream oss;
-      oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-      log<text_log>(oss.str());
+      if(m_log.logLevel() >= flatlogs::logPrio::LOG_DEBUG)
+      {
+        std::ostringstream oss;
+        oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<software_debug>({__FILE__, __LINE__, oss.str()});
+      }
 
       return setDacs(dacs);
     }
@@ -983,7 +1023,8 @@ namespace MagAOX
         {
           kw_found = true;
           inputType = std::string(m_imageStream.kw[kwn].value.valstr);
-          if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
+          InputType parsedType;
+          if (inputTypeFromString(inputType, parsedType) < 0)
           {
             std::ostringstream oss;
             oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
@@ -992,8 +1033,8 @@ namespace MagAOX
           }
 
           // If keyword exists, it takes precedence
-          m_inputType = inputType;
-          updateIfChanged(m_indiP_input, "type", m_inputType);
+          m_inputType = parsedType;
+          updateIfChanged(m_indiP_input, "type", inputTypeToString(m_inputType));
         }
         kwn++;
       }
@@ -1013,7 +1054,7 @@ namespace MagAOX
         // }
 
         std::ostringstream oss;
-        oss << "No inputType keyword found for shmim '" << shmimMonitor::m_shmimName << ". Defaulting to pre-set input type: " << m_inputType << std::endl;
+        oss << "No inputType keyword found for shmim '" << shmimMonitor::m_shmimName << ". Defaulting to pre-set input type: " << inputTypeToString(m_inputType) << std::endl;
         log<software_warning>({__FILE__, __LINE__, errno, oss.str()});           
       }
 
@@ -1029,19 +1070,17 @@ namespace MagAOX
       ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, _DATATYPE_FLOAT, -1, 1, IMAGE_NB_SEMAPHORE, 1, MATH_DATA, 0);
 
       // Set name of first keyword is 'inputType'
-      strncpy(m_imageStream.kw[0].name, kw_name.c_str(), sizeof(m_imageStream.kw[0].name));
-      // Ensure null termination
-      m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
+      snprintf(m_imageStream.kw[0].name, sizeof(m_imageStream.kw[0].name), "%s", kw_name.c_str());
       // Set type
       m_imageStream.kw[0].type = 'S';
       // Set keyword value
-      strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+      strncpy(m_imageStream.kw[0].value.valstr, inputTypeToString(m_inputType).c_str(), sizeof(m_imageStream.kw[0].value.valstr));
       // Ensure null termination
       m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
 
       std::ostringstream oss;
       oss << "Created: " << m_shmimName << std::endl;
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
 
       return 0;
     }
@@ -1085,17 +1124,17 @@ namespace MagAOX
 
         uint32_t dacs[3] = {0, 0, 0};
 
-        if (m_inputType == DACS)
+        switch(m_inputType)
         {
-          dacs[0] = target;
-        }
-        else if (m_inputType == VOLTAGES)
-        {
-          dacs[0] = vi_to_daci(target, m_v);
-        }
-        else if (m_inputType == TTP)
-        {
-          dacs[0] = ttp_to_dac1(target, d_piston, m_B, D_per_V, m_v);
+          case InputType::DACS:
+            dacs[0] = target;
+            break;
+          case InputType::VOLTAGES:
+            dacs[0] = vi_to_daci(target, m_v);
+            break;
+          case InputType::TTP:
+            dacs[0] = ttp_to_dac1(target, d_piston, m_B, D_per_V, m_v);
+            break;
         }
 
         dacs[1] = m_dac2;
@@ -1103,10 +1142,12 @@ namespace MagAOX
 
         std::ostringstream oss;
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-        log<text_log>(oss.str());
+        log<software_info>({__FILE__, __LINE__, oss.str()});
 
         return setDacs(dacs);
       }
+
+      return 0;
     }
 
     // callback from setting m_indiP_val2
@@ -1144,29 +1185,33 @@ namespace MagAOX
         uint32_t dacs[3] = {0, 0, 0};
         dacs[0] = m_dac1;
 
-        if (m_inputType == DACS)
+        switch(m_inputType)
         {
-          dacs[1] = target;
-        }
-        else if (m_inputType == VOLTAGES)
-        {
-          dacs[1] = vi_to_daci(target, m_v);
-        }
-        else if (m_inputType == TTP)
-        {
-          // Get current alpha and z to calculate dac2 from the target
-          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
-          dacs[1] = ttp_to_dac2(tip, target, d_piston, m_B, m_L, D_per_V, m_v);
+          case InputType::DACS:
+            dacs[1] = target;
+            break;
+          case InputType::VOLTAGES:
+            dacs[1] = vi_to_daci(target, m_v);
+            break;
+          case InputType::TTP:
+          {
+            // Get current alpha and z to calculate dac2 from the target
+            double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+            dacs[1] = ttp_to_dac2(tip, target, d_piston, m_B, m_L, D_per_V, m_v);
+            break;
+          }
         }
 
         dacs[2] = m_dac3;
 
         std::ostringstream oss;
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-        log<text_log>(oss.str());
+        log<software_info>({__FILE__, __LINE__, oss.str()});
 
         return setDacs(dacs);
       }
+
+      return 0;
     }
 
     // callback from setting m_indiP_val3
@@ -1205,28 +1250,32 @@ namespace MagAOX
         dacs[0] = m_dac1;
         dacs[1] = m_dac2;
 
-        if (m_inputType == DACS)
+        switch(m_inputType)
         {
-          dacs[2] = target;
-        }
-        else if (m_inputType == VOLTAGES)
-        {
-          dacs[2] = vi_to_daci(target, m_v);
-        }
-        else if (m_inputType == TTP)
-        {
-          // Get current tip and beta to calculate dac3 from the target
-          double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
-          double tilt = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
-          dacs[2] = ttp_to_dac3(tip, tilt, target, m_B, m_L, D_per_V, m_v);
+          case InputType::DACS:
+            dacs[2] = target;
+            break;
+          case InputType::VOLTAGES:
+            dacs[2] = vi_to_daci(target, m_v);
+            break;
+          case InputType::TTP:
+          {
+            // Get current tip and beta to calculate dac3 from the target
+            double tip = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+            double tilt = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+            dacs[2] = ttp_to_dac3(tip, tilt, target, m_B, m_L, D_per_V, m_v);
+            break;
+          }
         }
 
         std::ostringstream oss;
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
-        log<text_log>(oss.str());
+        log<software_info>({__FILE__, __LINE__, oss.str()});
 
         return setDacs(dacs);
       }
+
+      return 0;
     }
 
     // callback from setting conversion_factors
@@ -1266,7 +1315,9 @@ namespace MagAOX
 
       std::ostringstream oss;
       oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
+
+      return 0;
     }
 
     // callback from setting m_indiP_input (dacs, voltages, ttp)
@@ -1277,7 +1328,8 @@ namespace MagAOX
       if (ipRecv.find("type"))
       {
         std::string type = ipRecv["type"].get<std::string>();
-        if (!(type == DACS || type == VOLTAGES || type == TTP))
+        InputType parsedType;
+        if (inputTypeFromString(type, parsedType) < 0)
         {
           std::ostringstream oss;
           oss << "input.type '" << type << "' not dacs, voltages or ttp";
@@ -1285,8 +1337,8 @@ namespace MagAOX
           return -1;
         }
 
-        m_inputType = type;
-        updateIfChanged(m_indiP_input, "type", m_inputType);
+        m_inputType = parsedType;
+        updateIfChanged(m_indiP_input, "type", inputTypeToString(m_inputType));
 
         if (state() == stateCodes::READY)
         {
@@ -1299,8 +1351,8 @@ namespace MagAOX
         }
 
         std::ostringstream oss;
-        oss << "INDI input type callback: " << m_inputType;
-        log<text_log>(oss.str());
+        oss << "INDI input type callback: " << inputTypeToString(m_inputType);
+        log<software_info>({__FILE__, __LINE__, oss.str()});
       }
 
       if (ipRecv.find("toggle"))
@@ -1319,8 +1371,10 @@ namespace MagAOX
 
         std::ostringstream oss;
         oss << "INDI input toggle: " << m_inputToggle;
-        log<text_log>(oss.str());
+        log<software_info>({__FILE__, __LINE__, oss.str()});
       }
+
+      return 0;
     }
 
     // callback from setting m_indiP_dac1 (min, max)
@@ -1345,8 +1399,9 @@ namespace MagAOX
         updateIfChanged(m_indiP_dac1, "max", m_dac1_max);
       }
 
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
 
+      return 0;
     }
 
     // callback from setting m_indiP_dac2 (min, max)
@@ -1371,7 +1426,9 @@ namespace MagAOX
         updateIfChanged(m_indiP_dac2, "max", m_dac2_max);
       }
 
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
+
+      return 0;
     }
 
     // callback from setting m_indiP_dac3 (min, max)
@@ -1396,7 +1453,9 @@ namespace MagAOX
         updateIfChanged(m_indiP_dac3, "max", m_dac3_max);
       }
 
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
+
+      return 0;
     }
 
     // // callback from setting m_indiP_adc1 - not a settable param
@@ -1434,22 +1493,24 @@ namespace MagAOX
         std::string query_obj = ipRecv["query"].get<std::string>();
         if (query_obj == "adc")
         {
-          log<text_log>("INDI query ADCs.");
-          dev::summerDevice<fsmCtrl>::query(adcsQuery);
+          log<software_info>({__FILE__, __LINE__, "INDI query ADCs."});
+          dev::summerDevice<fsmCtrl>::query(adcsQuery.get());
           updateIfChanged(m_indiP_query, "query", "adc");
         }
         else if (query_obj == "dac")
         {
-          log<text_log>("INDI query ADCs.");
-          dev::summerDevice<fsmCtrl>::query(dacsQuery);
+          log<software_info>({__FILE__, __LINE__, "INDI query DACs."});
+          dev::summerDevice<fsmCtrl>::query(dacsQuery.get());
           updateIfChanged(m_indiP_query, "query", "dac");
         }
         else
         {
-          log<text_log>("INDI query of unknown.");
+          log<software_warning>({__FILE__, __LINE__, "INDI query of unknown."});
           updateIfChanged(m_indiP_query, "query", "none");
         }
       }
+
+      return 0;
     }
 
     /////////
@@ -1460,23 +1521,23 @@ namespace MagAOX
     {
       float val1, val2, val3;
 
-      if (m_inputType == DACS)
+      switch(m_inputType)
       {
-        val1 = m_dac1;
-        val2 = m_dac2;
-        val3 = m_dac3;
-      }
-      else if (m_inputType == VOLTAGES)
-      {
-        val1 = daci_to_vi(m_dac1, m_v);
-        val2 = daci_to_vi(m_dac2, m_v);
-        val3 = daci_to_vi(m_dac3, m_v);
-      }
-      else if (m_inputType == TTP)
-      {
-        val1 = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
-        val2 = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
-        val3 = d_piston;
+        case InputType::DACS:
+          val1 = m_dac1;
+          val2 = m_dac2;
+          val3 = m_dac3;
+          break;
+        case InputType::VOLTAGES:
+          val1 = daci_to_vi(m_dac1, m_v);
+          val2 = daci_to_vi(m_dac2, m_v);
+          val3 = daci_to_vi(m_dac3, m_v);
+          break;
+        case InputType::TTP:
+          val1 = daci_to_tip(m_dac1, m_dac2, m_dac3, m_B, D_per_V, m_v);
+          val2 = daci_to_tilt(m_dac2, m_dac3, m_L, D_per_V, m_v);
+          val3 = d_piston;
+          break;
       }
 
       updateIfChanged(m_indiP_val1, "current", val1);

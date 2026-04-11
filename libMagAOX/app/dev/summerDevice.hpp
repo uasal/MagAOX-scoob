@@ -315,7 +315,7 @@ int summerDevice<derivedT>::setupConfig(mx::app::appConfigurator &config)
 template <class derivedT>
 int summerDevice<derivedT>::loadConfig(mx::app::appConfigurator &config)
 {
-  derivedT::template log<text_log>( "Sdev loading config");
+  derivedT::template log<software_info>({__FILE__, __LINE__, "Sdev loading config"});
   config(m_connectionType, "sdev.connection_type");
 
   if (m_connectionType == "socket")
@@ -405,7 +405,7 @@ int summerDevice<derivedT>::socketConnect()
     return -1;
   }
 
-  derivedT::template log<text_log>("Connected to socket (" + m_portName + ":" + std::to_string(m_hostPort) + ")");
+  derivedT::template log<software_info>({__FILE__, __LINE__, "Connected to socket (" + m_portName + ":" + std::to_string(m_hostPort) + ")"});
   return 0;
 }
 
@@ -420,7 +420,7 @@ int summerDevice<derivedT>::serialPortConnect()
     return -1;
   }
 
-  derivedT::template log<text_log>("Connected to port (" + m_portName + ":" + std::to_string(m_baudRate) + ")");
+  derivedT::template log<software_info>({__FILE__, __LINE__, "Connected to port (" + m_portName + ":" + std::to_string(m_baudRate) + ")"});
   return 0;
 }
 
@@ -457,7 +457,7 @@ void summerDevice<derivedT>::query(sdevQuery *Query)
   // Send command packet
   UartParser->TxBinaryPacket(Query->getPayloadType(), Query->getPayloadData(), Query->getPayloadLen());
   // debug
-  derivedT::template log<text_log>(Query->endLog);
+  derivedT::template log<software_debug>({__FILE__, __LINE__, Query->endLog});
 }
 
 template <class derivedT>
