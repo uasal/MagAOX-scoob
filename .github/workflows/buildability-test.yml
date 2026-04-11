@@ -18,7 +18,19 @@ jobs:
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
-        run: bash -x /opt/MagAOX/source/magao-x-setup/steps/install_MagAOX.sh
+        run: |
+          pwd
+          ls -la
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          source /opt/rh/gcc-toolset-14/enable
+          cd flatlogs/src
+          make
+          make install
+          cd ../..
+          make setup
+          make libs_all
+          make all
+          make install
   build-arm:
     runs-on: ubuntu-latest
     container:
@@ -30,4 +42,16 @@ jobs:
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
-        run: bash -x /opt/MagAOX/source/magao-x-setup/steps/install_MagAOX.sh
+        run: |
+          pwd
+          ls -la
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          source /opt/rh/gcc-toolset-14/enable
+          cd flatlogs/src
+          make
+          make install
+          cd ../..
+          make setup
+          make libs_all
+          make all
+          make install
