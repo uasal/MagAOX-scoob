@@ -56,7 +56,7 @@ namespace MagAOX
                         P3V3D == p->P3V3D && P4V3 == p->P4V3 && P2I2 == p->P2I2 && P4I3 == p->P4I3 && P6I == p->P6I);
             }
 
-            bool operator==(const CGraphDMTelemetryPayload p /**< [in] the struct to compare to*/)
+            bool operator==(const CGraphDMTelemetryPayload &p /**< [in] the struct to compare to*/) const
             {
                 return (P1V2 == p.P1V2 && P2V2 == p.P2V2 && P28V == p.P28V && P2V5 == p.P2V5 && P6V == p.P6V && P5V == p.P5V &&
                         P3V3D == p.P3V3D && P4V3 == p.P4V3 && P2I2 == p.P2I2 && P4I3 == p.P4I3 && P6I == p.P6I);
@@ -169,15 +169,15 @@ namespace MagAOX
         class TelemetryQuery : public dev::sdevQuery
         {
         public:
+            const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
+            CGraphDMTelemetryPayload Telemetry;
+
             TelemetryQuery()
             {
                 PayloadType = CGraphPayloadTypeDMTelemetry;
                 startLog = "DMTelemetry: Querying telemetry.";
                 endLog = "DMTelemetry: Finished querying telemetry.";
             }
-
-            const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
-            CGraphDMTelemetryPayload Telemetry;
 
             void processReply(char const *Params, const size_t ParamsLen) override
             {
@@ -216,7 +216,7 @@ namespace MagAOX
                 oss << "P2I2: " << std::fixed << std::setprecision(6) << Telemetry.P2I2 << " V\n";
                 oss << "P4I3: " << std::fixed << std::setprecision(6) << Telemetry.P4I3 << " V\n";
                 oss << "P6I: " << std::fixed << std::setprecision(6) << Telemetry.P6I << " V";
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 
@@ -226,7 +226,12 @@ namespace MagAOX
          */
         class ShortPixelsQuery : public dev::sdevQuery
         {
+        private:
+            uint8_t *m_buffer = nullptr;
+            size_t m_bufferCapacity = 0;
+
         public:
+            using sdevQuery::setPayload; // using different signature here for this than base; might need to remove base if not used anywhere else
             ShortPixelsQuery()
             {
                 PayloadType = CGraphPayloadTypeDMShortPixels;
@@ -234,32 +239,43 @@ namespace MagAOX
                 endLog = "DMShortPixels: Finished querying short pixels.";
             }
 
-            // const uint32_t *ParamsPtr = nullptr;
-            // uint32_t DacSetpoints[3];
-
-            // Assumes that SetPoints is an array of uint16_t values, each corresponding to a pixel.
-            virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel=0)
+            ~ShortPixelsQuery() override
             {
-                // Make payload header
-                CGraphDMPixelPayloadHeader payloadHeader(StartPixel);
+                delete[] m_buffer;
+            }
 
-                // Calculate sizes
-                const size_t headerSize = sizeof(payloadHeader);
-                const size_t totalSize = headerSize + static_cast<size_t>(SetpointsLen);
+            /// Convert normalized double inputs [0,1] to 16-bit pixel values and
+            /// pack them into the internal buffer with the pixel header.
+            virtual void setPayload(const double *inputs, uint16_t numInputs, uint16_t startPixel = 0)
+            {
+                static constexpr size_t headerSize = sizeof(CGraphDMPixelPayloadHeader);
+                const size_t dataBytes = static_cast<size_t>(numInputs) * sizeof(uint16_t);
+                const size_t totalSize = headerSize + dataBytes;
 
-                // Allocate new buffer for the combined payload.
-                uint8_t *buffer = new uint8_t[totalSize];
+                if (totalSize > m_bufferCapacity)
+                {
+                    delete[] m_buffer;
+                    m_buffer = new uint8_t[totalSize];
+                    m_bufferCapacity = totalSize;
+                }
 
-                // Copy header first.
-                std::memcpy(buffer, &payloadHeader, headerSize);
-                // Then copy the setpoints after the header.
-                std::memcpy(buffer + headerSize, Setpoints, SetpointsLen);
+                CGraphDMPixelPayloadHeader hdr(startPixel);
+                std::memcpy(m_buffer, &hdr, headerSize);
 
-                // Save new payload.
-                PayloadData = buffer;
+                uint16_t *dest = reinterpret_cast<uint16_t *>(m_buffer + headerSize);
+                for (uint16_t i = 0; i < numInputs; ++i)
+                {
+                    double v = inputs[i];
+                    if (v < 0.0) v = 0.0;
+                    if (v > 1.0) v = 1.0;
+                    dest[i] = static_cast<uint16_t>(v * 65535.0 + 0.5);
+                }
+
+                PayloadData = m_buffer;
                 PayloadLen = totalSize;
             }
 
+        private:
             void processReply(char const *Params, const size_t ParamsLen) override
             {
                 if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
@@ -268,14 +284,14 @@ namespace MagAOX
                     const uint16_t StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
                     oss << "DMShortPixels: Returned StartPixel: " << StartPixel;
-                    MagAOXAppT::log<text_log>( oss.str());
+                    MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     
                     uint16_t NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(uint16_t);
                     if ((NumPixels + StartPixel) > DMMaxActuators) 
                     {
                         oss.str("");
                         oss << "DMShortPixels: Invalid NumPixels (truncating):  " << NumPixels;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_warning>({__FILE__, __LINE__, oss.str()});
                         NumPixels = DMMaxActuators - StartPixel; 
                     }
                                     
@@ -284,7 +300,7 @@ namespace MagAOX
                         const uint16_t Pixel = *reinterpret_cast<const uint16_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(uint16_t)));
                         oss.str("");
                         oss << "DMShortPixels: Pixel " << i << ": " << Pixel;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     }
                 }
                 else
@@ -305,7 +321,7 @@ namespace MagAOX
                 std::ostringstream oss;
                 oss << "DMShortPixels: Short pixels received";
                 // debug
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 
@@ -315,7 +331,12 @@ namespace MagAOX
          */
         class LongPixelsQuery : public dev::sdevQuery
         {
+        private:
+            uint8_t *m_buffer = nullptr;
+            size_t m_bufferCapacity = 0;
+
         public:
+            using sdevQuery::setPayload; // using different signature here for this than base; might need to remove base if not used anywhere else
             LongPixelsQuery()
             {
                 PayloadType = CGraphPayloadTypeDMLongPixels;
@@ -323,32 +344,46 @@ namespace MagAOX
                 endLog = "DMLongPixels: Finished querying long pixels.";
             }
 
-            // const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
-            // CGraphDMTelemetryPayload Telemetry;
-
-            // Assumes that SetPoints is an array of uint8_t values, where each group of 3 successive values makes a pixel.
-            virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel=0)
+            ~LongPixelsQuery() override
             {
-                // Make payload header
-                CGraphDMPixelPayloadHeader payloadHeader(StartPixel);
+                delete[] m_buffer;
+            }
 
-                // Calculate sizes
-                const size_t headerSize = sizeof(payloadHeader);
-                const size_t totalSize = headerSize + static_cast<size_t>(SetpointsLen);
+            /// Convert normalized double inputs [0,1] to 24-bit pixel values
+            /// packed little-endian into the internal buffer with the pixel header.
+            virtual void setPayload(const double *inputs, uint16_t numInputs, uint16_t startPixel = 0)
+            {
+                static constexpr size_t headerSize = sizeof(CGraphDMPixelPayloadHeader);
+                const size_t dataBytes = static_cast<size_t>(numInputs) * 3;
+                const size_t totalSize = headerSize + dataBytes;
 
-                // Allocate new buffer for the combined payload.
-                uint8_t *buffer = new uint8_t[totalSize];
+                if (totalSize > m_bufferCapacity)
+                {
+                    delete[] m_buffer;
+                    m_buffer = new uint8_t[totalSize];
+                    m_bufferCapacity = totalSize;
+                }
 
-                // Copy header first.
-                std::memcpy(buffer, &payloadHeader, headerSize);
-                // Then copy the setpoints after the header.
-                std::memcpy(buffer + headerSize, Setpoints, SetpointsLen);
+                CGraphDMPixelPayloadHeader hdr(startPixel);
+                std::memcpy(m_buffer, &hdr, headerSize);
 
-                // Save new payload.
-                PayloadData = buffer;
+                uint8_t *dest = m_buffer + headerSize;
+                for (uint16_t i = 0; i < numInputs; ++i)
+                {
+                    double v = inputs[i];
+                    if (v < 0.0) v = 0.0;
+                    if (v > 1.0) v = 1.0;
+                    uint32_t val = static_cast<uint32_t>(v * 16777215.0 + 0.5);
+                    dest[i * 3]     = static_cast<uint8_t>(val & 0x000000FFUL);
+                    dest[i * 3 + 1] = static_cast<uint8_t>((val & 0x0000FF00UL) >> 8);
+                    dest[i * 3 + 2] = static_cast<uint8_t>((val & 0x00FF0000UL) >> 16);
+                }
+
+                PayloadData = m_buffer;
                 PayloadLen = totalSize;
             }
 
+        private:
             void processReply(char const *Params, const size_t ParamsLen) override
             {
                 if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
@@ -357,7 +392,7 @@ namespace MagAOX
                     const unsigned long StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
                     oss << "DMLongPixels: Returned StartPixel: " << StartPixel;
-                    MagAOXAppT::log<text_log>( oss.str());
+                    MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
 
                     // Each long pixel is 3 bytes (24-bit) packed in the payload
                     unsigned long NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / (3 * sizeof(uint8_t));
@@ -366,7 +401,7 @@ namespace MagAOX
                     {
                         oss.str("");
                         oss << "DMLongPixels: Invalid NumPixels (truncating):  " << NumPixels;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_warning>({__FILE__, __LINE__, oss.str()});
                         NumPixels = DMMaxActuators - StartPixel; 
                     }
                                     
@@ -376,7 +411,7 @@ namespace MagAOX
                         const uint32_t Pixel = *reinterpret_cast<const uint32_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*3*sizeof(uint8_t))) & 0x00FFFFFFUL;
                         oss.str("");
                         oss << "DMLongPixels: Pixel " << i << ": " << Pixel;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     }
                 }
                 else
@@ -397,7 +432,7 @@ namespace MagAOX
                 std::ostringstream oss;
                 oss << "DMLongPixels: Long pixels received";
                 // debug
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 
@@ -407,7 +442,12 @@ namespace MagAOX
          */
         class DitherQuery : public dev::sdevQuery
         {
+        private:
+            uint8_t *m_buffer = nullptr;
+            size_t m_bufferCapacity = 0;
+
         public:
+            using sdevQuery::setPayload;  // using different signature here for this than base; might need to remove base if not used anywhere else
             DitherQuery()
             {
                 PayloadType = CGraphPayloadTypeDMDither;
@@ -415,29 +455,43 @@ namespace MagAOX
                 endLog = "DMDither: Finished querying dither pixels.";
             }
 
-            // Assumes that SetPoints is an array of uint8_t values, each corresponding to a pixel.
-            virtual void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel=0)
+            ~DitherQuery() override
             {
-                // Make payload header
-                CGraphDMPixelPayloadHeader payloadHeader(StartPixel);
-
-                // Calculate sizes
-                const size_t headerSize = sizeof(payloadHeader);
-                const size_t totalSize = headerSize + static_cast<size_t>(SetpointsLen);
-
-                // Allocate new buffer for the combined payload.
-                uint8_t *buffer = new uint8_t[totalSize];
-
-                // Copy header first.
-                std::memcpy(buffer, &payloadHeader, headerSize);
-                // Then copy the setpoints after the header.
-                std::memcpy(buffer + headerSize, Setpoints, SetpointsLen);
-
-                // Save new payload.
-                PayloadData = buffer;
-                PayloadLen = totalSize;
+                delete[] m_buffer;
             }
 
+            /// Convert normalized double inputs [0,1] to 8-bit dither values and
+            /// pack them into the internal buffer with the pixel header.
+            virtual void setPayload(const double *inputs, uint16_t numInputs, uint16_t startPixel = 0)
+            {
+                static constexpr size_t headerSize = sizeof(CGraphDMPixelPayloadHeader);
+                const size_t dataBytes = static_cast<size_t>(numInputs) * sizeof(uint8_t);
+                const size_t totalSize = headerSize + dataBytes;
+
+                if (totalSize > m_bufferCapacity)
+                {
+                    delete[] m_buffer;
+                    m_buffer = new uint8_t[totalSize];
+                    m_bufferCapacity = totalSize;
+                }
+
+                CGraphDMPixelPayloadHeader hdr(startPixel);
+                std::memcpy(m_buffer, &hdr, headerSize);
+
+                uint8_t *dest = m_buffer + headerSize;
+                for (uint16_t i = 0; i < numInputs; ++i)
+                {
+                    double v = inputs[i];
+                    if (v < 0.0) v = 0.0;
+                    if (v > 1.0) v = 1.0;
+                    dest[i] = static_cast<uint8_t>(v * 255.0 + 0.5);
+                }
+
+                PayloadData = m_buffer;
+                PayloadLen = totalSize;
+            }
+        
+        private:
             void processReply(char const *Params, const size_t ParamsLen) override
             {
                 if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
@@ -446,14 +500,14 @@ namespace MagAOX
                     const unsigned long StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
                     oss << "DMDither: Returned StartPixel: " << StartPixel;
-                    MagAOXAppT::log<text_log>( oss.str());
+                    MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     unsigned long NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(uint8_t);
 
                     if ((NumPixels + StartPixel) > DMMaxActuators)
                     {
                         oss.str("");
                         oss << "DMDither: Invalid NumPixels (truncating):  " << NumPixels;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_warning>({__FILE__, __LINE__, oss.str()});
                         NumPixels = DMMaxActuators - StartPixel;
                     }
 
@@ -462,7 +516,7 @@ namespace MagAOX
                         const uint8_t Pixel = *reinterpret_cast<const uint8_t*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(uint8_t)));
                         oss.str("");
                         oss << "DMDither: Pixel " << i << ": " << static_cast<int>(Pixel);
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     }
                 }
                 else
@@ -482,7 +536,7 @@ namespace MagAOX
             {
                 std::ostringstream oss;
                 oss << "DMDither: Dither pixels received";
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 
@@ -492,7 +546,12 @@ namespace MagAOX
          */
         class MappingQuery : public dev::sdevQuery
         {
+        private:
+            uint8_t *m_buffer = nullptr;
+            size_t m_bufferCapacity = 0;
+
         public:
+            using sdevQuery::setPayload;  // using different signature here for this than base; might need to remove base if not used anywhere else
             MappingQuery()
             {
                 PayloadType = CGraphPayloadTypeDMMappings;
@@ -500,32 +559,33 @@ namespace MagAOX
                 endLog = "DMMapping: Finished querying mapping.";
             }
 
-            // const CGraphDMTelemetryPayload *ParamsPtr = nullptr;
-            // CGraphDMTelemetryPayload Telemetry;
+            ~MappingQuery() override
+            {
+                delete[] m_buffer;
+            }
 
             // Assumes that MappingPayloads is an array of CGraphDMMappingPayload values.
-            virtual void setPayload(const void *MappingPayloads, uint16_t MappingPayloadsLen, uint16_t StartPixel=0)
+            virtual void setPayload(const void *mappingPayloads, uint16_t mappingPayloadsLen, uint16_t startPixel=0)
             {
-                // Make payload header
-                CGraphDMPixelPayloadHeader payloadHeader(StartPixel);
+                static constexpr size_t headerSize = sizeof(CGraphDMPixelPayloadHeader);
+                const size_t totalSize = headerSize + static_cast<size_t>(mappingPayloadsLen);
 
-                // Calculate sizes
-                const size_t headerSize = sizeof(payloadHeader);
-                const size_t totalSize = headerSize + static_cast<size_t>(MappingPayloadsLen);
+                if (totalSize > m_bufferCapacity)
+                {
+                    delete[] m_buffer;
+                    m_buffer = new uint8_t[totalSize];
+                    m_bufferCapacity = totalSize;
+                }
 
-                // Allocate new buffer for the combined payload.
-                uint8_t *buffer = new uint8_t[totalSize];
+                CGraphDMPixelPayloadHeader hdr(startPixel);
+                std::memcpy(m_buffer, &hdr, headerSize);
+                std::memcpy(m_buffer + headerSize, mappingPayloads, mappingPayloadsLen);
 
-                // Copy header first.
-                std::memcpy(buffer, &payloadHeader, headerSize);
-                // Then copy the setpoints after the header.
-                std::memcpy(buffer + headerSize, MappingPayloads, MappingPayloadsLen);
-
-                // Save new payload.
-                PayloadData = buffer;
+                PayloadData = m_buffer;
                 PayloadLen = totalSize;
             }
 
+        private:
             void processReply(char const *Params, const size_t ParamsLen) override
             {
                 if ( (nullptr != Params) && (ParamsLen >= sizeof(CGraphDMPixelPayloadHeader)) )
@@ -534,14 +594,14 @@ namespace MagAOX
                     const unsigned long StartPixel = PixelHeader.StartPixel;
                     std::ostringstream oss;
                     oss << "DMMapping: Returned StartPixel: " << StartPixel;
-                    MagAOXAppT::log<text_log>( oss.str());                    
+                    MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});                    
                     unsigned long NumPixels = (ParamsLen - sizeof(CGraphDMPixelPayloadHeader)) / sizeof(CGraphDMMappingPayload);
                     
                     if ((NumPixels + StartPixel) > DMMaxActuators) 
                     {
                         oss.str("");
                         oss << "DMMapping: Invalid NumPixels (truncating):  " << NumPixels;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_warning>({__FILE__, __LINE__, oss.str()});
                         NumPixels = DMMaxActuators - StartPixel; 
                     }
                                     
@@ -550,7 +610,7 @@ namespace MagAOX
                         oss.str("");
                         const CGraphDMMappingPayload Mapping = *reinterpret_cast<const CGraphDMMappingPayload*>(Params+sizeof(CGraphDMPixelPayloadHeader)+(i*sizeof(CGraphDMMappingPayload)));
                         oss << "DMMapping: Pixel " << i << ": " << Mapping;
-                        MagAOXAppT::log<text_log>(oss.str());
+                        MagAOXAppT::log<software_debug>({__FILE__, __LINE__, oss.str()});
                     }
                 }
                 else
@@ -571,7 +631,7 @@ namespace MagAOX
                 std::ostringstream oss;
                 oss << "DMMapping: Mapping received";
                 // debug
-                MagAOXAppT::log<text_log>(oss.str());
+                MagAOXAppT::log<software_info>({__FILE__, __LINE__, oss.str()});
             }
         };
 

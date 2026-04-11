@@ -90,6 +90,12 @@ namespace MagAOX
       std::unique_ptr<dev::sdevQuery> mappingQuery = std::make_unique<MappingQuery>();
       std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), versionQuery.get(), shortPixelQuery.get(), longPixelQuery.get(), ditherPixelQuery.get(), mappingQuery.get() };
 
+      // Cached typed pointers to avoid per-frame dynamic_cast in send_array;
+      // lifetime is managed by the unique_ptrs above.
+      ShortPixelsQuery *m_shortQ = static_cast<ShortPixelsQuery *>(shortPixelQuery.get());
+      LongPixelsQuery *m_longQ = static_cast<LongPixelsQuery *>(longPixelQuery.get());
+      DitherQuery *m_ditherQ = static_cast<DitherQuery *>(ditherPixelQuery.get());
+
       // INDI properties
       pcf::IndiProperty m_indiP_mode;
 
@@ -183,6 +189,7 @@ namespace MagAOX
       protected:
         double m_act_gain {0}; ///< Actuator gain (microns/volt)
         double m_volume_factor {0}; ///< the volume factor to convert from displacement to commands
+        double m_volumeOverGain {0}; ///< Pre-computed m_volume_factor / m_act_gain, updated when either changes
         uint32_t m_nbAct {DMMaxActuators}; ///< The number of actuators
 
         std::vector<int> m_actuator_mapping;///< Vector containing the mapping from 2D grid position to linear index in the command vector
@@ -297,7 +304,7 @@ namespace MagAOX
 
     int dmCtrl::loadConfigImpl( mx::app::appConfigurator & _config )
     {
-      log<text_log>("Loading config");
+      log<software_info>({__FILE__, __LINE__, "Loading config"});
       
       /// CONNECTION PARAMETERS ///
       config(period_s, "parameters.period_s");
@@ -317,6 +324,10 @@ namespace MagAOX
 
       config(m_act_gain, "dm.actuatorGain");
       config(m_volume_factor, "dm.volumeFactor");
+      if (m_act_gain != 0)
+      {
+        m_volumeOverGain = m_volume_factor / m_act_gain;
+      }
       
       // If map_filename is shorter than FITS or doesn't end with FITS, it is not a valid fits file.
       if ((m_shmim_map_filename.length() < FITS.length()) || (0 != m_shmim_map_filename.compare (m_shmim_map_filename.length() - FITS.length(), FITS.length(), FITS)))
@@ -342,25 +353,25 @@ namespace MagAOX
     {
       if (loadConfigImpl(config) < 0)
       {
-        log<text_log>("Error during config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during config"});
         m_shutdown = true;
       }
 
       if (summerDeviceT::loadConfig(config) < 0)
       {
-        log<text_log>("Error during summerDevice config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during summerDevice config"});
         m_shutdown = true;
       }
 
       if (telemeterT::loadConfig(config) < 0)
       {
-        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during telemeter config"});
         m_shutdown = true;
       }
 
       if (shmimMonitorT::loadConfig(config) < 0)
       {
-        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        log<software_critical>({__FILE__, __LINE__, "Error during shmimMonitor config"});
         m_shutdown = true;
       }
     }
@@ -467,7 +478,7 @@ namespace MagAOX
 
         if(m_nsat > m_satThresh)
         {
-            log<text_log>("Saturated actuators in last second: " + std::to_string(m_nsat), logPrio::LOG_WARNING);
+            log<software_warning>({__FILE__, __LINE__, "Saturated actuators in last second: " + std::to_string(m_nsat)});
         }
 
         m_nsat = 0;
@@ -568,11 +579,11 @@ namespace MagAOX
       if (auto castMappingQuery = dynamic_cast<MappingQuery *>(mappingQuery.get())) {
         // If no map file provided, query the DM for the mapping
         if (m_dm_map_filename.empty()) {
-          log<text_log>("Querying DM for mapping.");
+          log<software_info>({__FILE__, __LINE__, "Querying DM for mapping."});
           castMappingQuery->setPayload(map_lut.Mappings, 0, 0);
         // If map file provided, read it and send a new mapping to the DM instead
         } else {
-          log<text_log>("Sending mapping to DM.");
+          log<software_info>({__FILE__, __LINE__, "Sending mapping to DM."});
 
           int ret = get_array_to_actuator_mapping(map_lut);
           if (ret < 0)
@@ -605,7 +616,7 @@ namespace MagAOX
   
       if(get_shmim_to_pixel_mapping() < 0)
       {
-        log<text_log>("DM initialization failed.  Failed to get actuator mapping.", logPrio::LOG_ERROR);
+        log<software_error>({__FILE__, __LINE__, "DM initialization failed.  Failed to get actuator mapping."});
         return -1;
       }
   
@@ -625,14 +636,12 @@ namespace MagAOX
         return -1;
       }
   
-      log<text_log>("DM zeroed");
+      log<software_info>({__FILE__, __LINE__, "DM zeroed"});
       return 0;
     }
     
     int dmCtrl::commandDM(void * curr_src)
     {
-      log<text_log>("Starting commandDM");
-
        //This is based on Kyle Van Gorkoms original sendCommand function.
     
        /*This loop performs the following steps:
@@ -654,7 +663,7 @@ namespace MagAOX
           }
           else
           {
-             m_dminputs[idx] = ((double)  (static_cast<realT *>(curr_src)[address])) * m_volume_factor/m_act_gain;
+             m_dminputs[idx] = ((double)  (static_cast<realT *>(curr_src)[address])) * m_volumeOverGain;
     
              if (m_dminputs[idx] > 1)
              {
@@ -687,8 +696,7 @@ namespace MagAOX
        message first and then return the failure code. */
        if(ret != 0)
        {
-          const char *err;
-          log<text_log>(std::string("DM command failed: "), logPrio::LOG_ERROR);
+          log<software_error>({__FILE__, __LINE__, "DM command failed"});
           return -1;
        }
     
@@ -720,8 +728,6 @@ namespace MagAOX
        dmT::m_tact4 = mx::sys::get_curr_time();
        #endif
     
-      log<text_log>("Ending commandDM");
-
       return 0;
     }
     
@@ -740,7 +746,7 @@ namespace MagAOX
     
        if(zeroDM() < 0)
        {
-          log<text_log>("DM release failed. Error zeroing DM.", logPrio::LOG_ERROR);
+          log<software_error>({__FILE__, __LINE__, "DM release failed. Error zeroing DM."});
           return -1;
        }
     
@@ -754,7 +760,7 @@ namespace MagAOX
       //  }
       //  log<text_log>("BMC high resolution mode disabled", logPrio::LOG_NOTICE);
     
-       log<text_log>("DM reset and released", logPrio::LOG_NOTICE);
+       log<software_notice>({__FILE__, __LINE__, "DM reset and released"});
     
        return 0;
     }
@@ -773,16 +779,9 @@ namespace MagAOX
         return -1;
       }
 
-      int ret;
-      try { 
-        ret = ff.read(map_data, fh, m_shmim_map_filename);
-      } catch(const mx::err::liberr &e) 
-      {
-        log<software_critical>({__FILE__, __LINE__, errno, "Could not read mapping fits file " + m_shmim_map_filename + ": " + e.what()});
-        return -1;
-      }
+      mx::error_t ret = ff.read(map_data, fh, m_shmim_map_filename);
       
-      if (ret < 0)
+      if (ret != mx::error_t::noerror)
       {
         log<software_critical>({__FILE__, __LINE__, errno, "Could not read mapping fits file " + m_shmim_map_filename});
         return -1;
@@ -819,7 +818,7 @@ namespace MagAOX
 
       ff.close();
 
-      log<text_log>("DM: Using actuator mapping from " + m_shmim_map_filename);
+      log<software_info>({__FILE__, __LINE__, "DM: Using actuator mapping from " + m_shmim_map_filename});
 
       // std::ostringstream oss;
       // for (int i = 0; i < m_nbAct; i++)
@@ -908,78 +907,18 @@ namespace MagAOX
     {
       if (m_mode == SHORT)
       {
-        uint16_t *mode_inputs = reinterpret_cast<uint16_t *>(malloc(static_cast<size_t>(nbInputs) * sizeof(uint16_t)));
-        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * sizeof(uint16_t));
-
-        // Convert inputs (0..1) to 16-bit values (0..65535)
-        for (uint16_t i = 0; i < nbInputs; ++i)
-        {
-          double v = inputs[i];
-          if (v < 0.0) v = 0.0;
-          if (v > 1.0) v = 1.0;
-          mode_inputs[i] = static_cast<uint16_t>(v * 65535.0 + 0.5);
-        }
-
-        if (auto castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery.get())) {
-          castShortPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
-          query(castShortPixelQuery);
-          free(mode_inputs);
-        } else {
-          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
-          free(mode_inputs);
-          return -1;
-        }
+        m_shortQ->setPayload(inputs.data(), nbInputs, startPixel);
+        query(m_shortQ);
       }
       else if (m_mode == LONG)
       {
-        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(static_cast<size_t>(nbInputs) * 3UL * sizeof(uint8_t)));
-        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * 3 * sizeof(uint8_t));
-
-        // Convert inputs (0..1) to 24-bit values (0..0xFFFFFF) and pack little-endian
-        for (uint16_t i = 0; i < nbInputs; ++i)
-        {
-          double v = inputs[i];
-          if (v < 0.0) v = 0.0;
-          if (v > 1.0) v = 1.0;
-          uint32_t val = static_cast<uint32_t>(v * 16777215.0 + 0.5);
-          mode_inputs[i * 3] = static_cast<uint8_t>(val & 0x000000FFUL);
-          mode_inputs[i * 3 + 1] = static_cast<uint8_t>((val & 0x0000FF00UL) >> 8);
-          mode_inputs[i * 3 + 2] = static_cast<uint8_t>((val & 0x00FF0000UL) >> 16);
-        }
-
-        if (auto castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery.get())) {
-          castLongPixelQuery->setPayload(mode_inputs, payloadLen, startPixel);
-          query(castLongPixelQuery);
-          free(mode_inputs);
-        } else {
-          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
-          free(mode_inputs);
-          return -1;
-        }
+        m_longQ->setPayload(inputs.data(), nbInputs, startPixel);
+        query(m_longQ);
       }
       else if (m_mode == DITHER)
       {
-        // Convert inputs (0..1) to 8-bit dither values (0..255)
-        uint8_t *mode_inputs = reinterpret_cast<uint8_t *>(malloc(static_cast<size_t>(nbInputs) * sizeof(uint8_t)));
-        uint16_t payloadLen = static_cast<uint16_t>(nbInputs * sizeof(uint8_t));
-
-        for (uint16_t i = 0; i < nbInputs; ++i)
-        {
-          double v = inputs[i];
-          if (v < 0.0) v = 0.0;
-          if (v > 1.0) v = 1.0;
-          mode_inputs[i] = static_cast<uint8_t>(v * 255.0 + 0.5);
-        }
-
-        if (auto castDitherQuery = dynamic_cast<DitherQuery *>(ditherPixelQuery.get())) {
-          castDitherQuery->setPayload(mode_inputs, payloadLen, startPixel);
-          query(castDitherQuery);
-          free(mode_inputs);
-        } else {
-          log<software_error>({__FILE__, __LINE__, "Query casting failed."});
-          free(mode_inputs);
-          return -1;
-        }
+        m_ditherQ->setPayload(inputs.data(), nbInputs, startPixel);
+        query(m_ditherQ);
       }
       else
       {
@@ -1029,7 +968,9 @@ namespace MagAOX
 
       std::ostringstream oss;
       oss << "INDI mode callback: " << target;
-      log<text_log>(oss.str());
+      log<software_info>({__FILE__, __LINE__, oss.str()});
+
+      return 0;
     }
 
 

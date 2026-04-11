@@ -34,45 +34,20 @@ class MockMappingQuery : public MappingQuery {
 class MockShortPixelsQuery : public ShortPixelsQuery {
    public:
    bool payloadSet = false;
-   uint16_t startPixel;
    
-   void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel) override {
+   void setPayload(const double *inputs, uint16_t numInputs, uint16_t startPixel) override {
       payloadSet = true;
-      ShortPixelsQuery::setPayload(Setpoints, SetpointsLen, StartPixel);
+      ShortPixelsQuery::setPayload(inputs, numInputs, startPixel);
    }
 };
 
 class MockLongPixelsQuery : public LongPixelsQuery {
    public:
    bool payloadSet = false;
-   uint16_t startPixel;
    
-   void setPayload(const void *Setpoints, uint16_t SetpointsLen, uint16_t StartPixel) override {
+   void setPayload(const double *inputs, uint16_t numInputs, uint16_t startPixel) override {
       payloadSet = true;
-      PayloadData = const_cast<void*>(Setpoints);
-      PayloadLen = SetpointsLen;
-      startPixel = StartPixel;
-   }
-};
-
-class MockBaseQuery : public dev::sdevQuery {
-   public:
-   bool payloadSet = false;
-   
-   void setPayload(void *Setpoints, uint16_t SetpointsLen) override {
-      payloadSet = true;
-      PayloadData = const_cast<void*>(Setpoints);
-      PayloadLen = SetpointsLen;
-   }
-
-   void errorLogString(const size_t ParamsLen) override {
-      // Empty; don't need it for testing
-   }
-   void processReply(char const *Params, const size_t ParamsLen) override {
-      // Empty; don't need it for testing
-   }
-   void logReply() override {
-      // Empty; don't need it for testing
+      LongPixelsQuery::setPayload(inputs, numInputs, startPixel);
    }
 };
 
@@ -99,6 +74,7 @@ public:
       m_mode = "short";
       m_act_gain = 1.0;
       m_volume_factor = 1.0;
+      m_volumeOverGain = 1.0;
    }
 
    // Override the query method
@@ -131,6 +107,9 @@ public:
    using dmCtrl::SHORT;
    using dmCtrl::LONG;
    using dmCtrl::DITHER;
+   using dmCtrl::m_shortQ;
+   using dmCtrl::m_longQ;
+   using dmCtrl::m_ditherQ;
 };
 
 
@@ -141,24 +120,12 @@ SCENARIO("Testing send_array", "[dmCtrl]") {
       uint16_t nbInputs = inputs.size();
       uint16_t startPixel = 0;
       
-      WHEN("send_array is called with valid parameters and the mode is SHORT, but shortPixelQuery cast fails") {
-         ctrl.m_mode = ctrl.SHORT;
-         std::unique_ptr<dev::sdevQuery> mockBaseQuery = std::make_unique<MockBaseQuery>();
-         MockBaseQuery* mockBaseQueryPtr = static_cast<MockBaseQuery*>(mockBaseQuery.get()); // Keep a pointer to the mock instance
-         ctrl.shortPixelQuery = std::move(mockBaseQuery);
-
-         THEN("It should return -1 and not set the payload") {
-            int result = ctrl.send_array(inputs, nbInputs, startPixel);
-            REQUIRE(result == -1);
-            REQUIRE(!mockBaseQueryPtr->payloadSet);
-         }
-      }
-
       WHEN("send_array is called with valid parameters and the mode is SHORT") {
          ctrl.m_mode = ctrl.SHORT;
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          MockShortPixelsQuery* mockShortPixelsQueryPtr = static_cast<MockShortPixelsQuery*>(mockShortPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = mockShortPixelsQueryPtr;
 
          THEN("It should return 0 and have set the payload") {
             int result = ctrl.send_array(inputs, nbInputs, startPixel);
@@ -168,24 +135,12 @@ SCENARIO("Testing send_array", "[dmCtrl]") {
          }
       }
       
-      WHEN("send_array is called with valid parameters and the mode is LONG, but longPixelQuery cast fails") {
-         ctrl.m_mode = ctrl.LONG;
-         std::unique_ptr<dev::sdevQuery> mockBaseQuery = std::make_unique<MockBaseQuery>();
-         MockBaseQuery* mockBaseQueryPtr = static_cast<MockBaseQuery*>(mockBaseQuery.get()); // Keep a pointer to the mock instance
-         ctrl.longPixelQuery = std::move(mockBaseQuery);
-
-         THEN("It should return -1 and not set the payload") {
-            int result = ctrl.send_array(inputs, nbInputs, startPixel);
-            REQUIRE(result == -1);
-            REQUIRE(!mockBaseQueryPtr->payloadSet);
-         }
-      }
-
       WHEN("send_array is called with valid parameters and the mode is LONG") {
          ctrl.m_mode = ctrl.LONG;
          std::unique_ptr<dev::sdevQuery> mockLongPixelsQuery = std::make_unique<MockLongPixelsQuery>();
          MockLongPixelsQuery* mockLongPixelsQueryPtr = static_cast<MockLongPixelsQuery*>(mockLongPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.longPixelQuery = std::move(mockLongPixelsQuery);
+         ctrl.m_longQ = mockLongPixelsQueryPtr;
 
          THEN("It should return 0 and have set the payload") {
             int result = ctrl.send_array(inputs, nbInputs, startPixel);
@@ -203,10 +158,12 @@ SCENARIO("Testing send_array", "[dmCtrl]") {
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          MockShortPixelsQuery* mockShortPixelsQueryPtr = static_cast<MockShortPixelsQuery*>(mockShortPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = mockShortPixelsQueryPtr;
 
          std::unique_ptr<dev::sdevQuery> mockLongPixelsQuery = std::make_unique<MockLongPixelsQuery>();
          MockLongPixelsQuery* mockLongPixelsQueryPtr = static_cast<MockLongPixelsQuery*>(mockLongPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.longPixelQuery = std::move(mockLongPixelsQuery);
+         ctrl.m_longQ = mockLongPixelsQueryPtr;
 
          THEN("It should return -1 and not set the payload") {
             int result = ctrl.send_array(inputs, nbInputs, startPixel);
@@ -446,6 +403,7 @@ SCENARIO("Testing zeroDM", "[dmCtrl]") {
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          MockShortPixelsQuery* mockShortPixelsQueryPtr = static_cast<MockShortPixelsQuery*>(mockShortPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = mockShortPixelsQueryPtr;
          
          int result = ctrl.zeroDM();
 
@@ -462,6 +420,7 @@ SCENARIO("Testing zeroDM", "[dmCtrl]") {
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          MockShortPixelsQuery* mockShortPixelsQueryPtr = static_cast<MockShortPixelsQuery*>(mockShortPixelsQuery.get()); // Keep a pointer to the mock instance
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = mockShortPixelsQueryPtr;
          
          int result = ctrl.zeroDM();
 
@@ -506,6 +465,7 @@ SCENARIO("Testing initDM", "[dmCtrl]") {
          ctrl.m_mode = ctrl.SHORT;
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = static_cast<ShortPixelsQuery*>(ctrl.shortPixelQuery.get());
 
          // Make get_shmim_to_pixel_mapping succeed
          std::string filename = "valid.fits";
@@ -552,6 +512,7 @@ SCENARIO("Testing initDM", "[dmCtrl]") {
          ctrl.m_mode = ctrl.SHORT;
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = static_cast<ShortPixelsQuery*>(ctrl.shortPixelQuery.get());
 
          // Make get_shmim_to_pixel_mapping succeed
          std::string filename = "valid.fits";
@@ -620,6 +581,7 @@ SCENARIO("Testing initDM", "[dmCtrl]") {
          ctrl.m_mode = ctrl.SHORT;
          std::unique_ptr<dev::sdevQuery> mockShortPixelsQuery = std::make_unique<MockShortPixelsQuery>();
          ctrl.shortPixelQuery = std::move(mockShortPixelsQuery);
+         ctrl.m_shortQ = static_cast<ShortPixelsQuery*>(ctrl.shortPixelQuery.get());
 
          // Make get_shmim_to_pixel_mapping fail
          ctrl.m_shmim_map_filename = "invalid.fits"; // Non-existent file
