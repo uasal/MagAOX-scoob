@@ -1,4 +1,4 @@
-name: Verify buildability
+name: Check buildability
 permissions:
   contents: read
   packages: read
@@ -10,7 +10,7 @@ jobs:
   build-x86:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/magao-x/magao-x-setup:build
+      image: ghcr.io/magao-x/magao-x-setup:gui
       options: --user root
     steps:
       - name: Check out repository code
@@ -34,7 +34,7 @@ jobs:
   build-arm:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/magao-x/magao-x-setup:build
+      image: ghcr.io/magao-x/magao-x-setup:gui
       options: --user root
     steps:
       - name: Check out repository code
