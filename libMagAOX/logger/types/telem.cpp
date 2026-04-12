@@ -13,6 +13,7 @@ namespace MagAOX
 namespace logger
 {
 
+timespec cred2_temps::lastRecord          = { 0, 0 };
 timespec ocam_temps::lastRecord           = { 0, 0 };
 timespec telem_blockgains::lastRecord     = { 0, 0 };
 timespec telem_chrony_stats::lastRecord   = { 0, 0 };
