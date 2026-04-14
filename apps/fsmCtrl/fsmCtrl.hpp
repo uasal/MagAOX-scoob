@@ -17,17 +17,12 @@
 using namespace std;
 
 #include <pthread.h>
+#include <optional>
 
 typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
 
 #include "conversion.hpp"
 #include "fsmCommands.hpp"
-// #include "binaryUart.hpp"
-// #include "cGraphPacket.hpp"
-// #include "linux_pinout_client_socket.hpp"
-// #include "linux_pinout_uart.hpp"
-// #include "socket.hpp"
-// #include "IUart.h"
 
 /** \defgroup fsmCtrl
  * \brief Application to interface with ESC FSM
@@ -144,9 +139,9 @@ namespace MagAOX
       std::vector<dev::sdevQuery*> customQueries = { telemetryQuery.get(), adcsQuery.get(), dacsQuery.get() };
 
       /// Cached typed pointers to avoid per-frame dynamic_cast
+      TelemetryQuery *m_telemetryQ = static_cast<TelemetryQuery *>(telemetryQuery.get());
       DacsQuery *m_dacsQ = static_cast<DacsQuery *>(dacsQuery.get());
       AdcsQuery *m_adcsQ = static_cast<AdcsQuery *>(adcsQuery.get());
-      TelemetryQuery *m_telemetryQ = static_cast<TelemetryQuery *>(telemetryQuery.get());
 
     protected:
       // INDI properties
@@ -383,19 +378,22 @@ namespace MagAOX
 
       /**
        * @brief Convert InputType enum value to a string
+       * 
+       * \returns string representation of the InputType value if type is valid or an empty string if the value is invalid
       */
-      const std::string & inputTypeToString(InputType type) const
+      const std::string inputTypeToString(InputType type) const
       {
         switch(type)
         {
-          case InputType::DACS:     
+          case InputType::DACS:
             return DACS;
           case InputType::VOLTAGES:
             return VOLTAGES;
           case InputType::TTP:
             return TTP;
         }
-        return VOLTAGES;
+        log<software_critical>({__FILE__, __LINE__, errno, "inputTypeToString: invalid InputType value"});
+        return "";
       }
 
       /**
@@ -448,8 +446,6 @@ namespace MagAOX
     {
       dev::summerDevice<fsmCtrl>::setupConfig(config);
       shmimMonitor::setupConfig(config);
-
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the fsm.");
 
       config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
       config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
@@ -645,9 +641,9 @@ namespace MagAOX
       m_indiP_input["type"] = inputTypeToString(m_inputType);
 
       // type of query
-      REG_INDI_NEWPROP(m_indiP_query, "telemetry", pcf::IndiProperty::Text);
-      m_indiP_query.add(pcf::IndiElement("query"));
-      m_indiP_query["query"] = "none";
+      REG_INDI_NEWPROP(m_indiP_query, "query", pcf::IndiProperty::Text);
+      m_indiP_query.add(pcf::IndiElement("type"));
+      m_indiP_query["type"] = "none";
 
       if(!streamExists()) {
         if (createStream() < 0) {
@@ -684,14 +680,7 @@ namespace MagAOX
       if (state() == stateCodes::NOTCONNECTED)
       {
         int rv;
-        // if (type == "serial_port")
-        // {
-        //   rv = serialPortConnect();
-        // }
-        // else if (type == "socket")
-        // {
-        //   rv = socketConnect();
-        // }
+ 
         rv = dev::summerDevice<fsmCtrl>::connect();
 
         if (rv == 0)
@@ -703,13 +692,10 @@ namespace MagAOX
       if (state() == stateCodes::CONNECTED)
       {
         // // Get current adc values
-        dev::summerDevice<fsmCtrl>::query(adcsQuery.get());
+        dev::summerDevice<fsmCtrl>::query(m_adcsQ);
 
         // // Get current dac values
-        dev::summerDevice<fsmCtrl>::query(dacsQuery.get());
-
-        // Get telemetry
-        // queryTelemetry();
+        dev::summerDevice<fsmCtrl>::query(m_dacsQ);
 
         if (m_inputToggle == SHMIM)
         {
@@ -797,12 +783,6 @@ namespace MagAOX
       updateINDICurrentParams();
     }
 
-    // // Function to request fsm telemetry
-    // void fsmCtrl::receiveTelemetry()
-    // {
-    //   TelemetryQuery *castTelemetryQuery = dynamic_cast<TelemetryQuery *>(telemetryQuery);
-    // }
-
     // Function to set fsm DACs
     int fsmCtrl::setDacs(uint32_t *Setpoints)
     {
@@ -848,8 +828,8 @@ namespace MagAOX
       // m_dac3 = castDacsQuery->DacSetpoints[2];
       // updateINDICurrentParams();
 
-      // dev::summerDevice<fsmCtrl>::query(dacsQuery);
-      // dev::summerDevice<fsmCtrl>::query(adcsQuery);
+      // dev::summerDevice<fsmCtrl>::query(m_dacsQ);
+      // dev::summerDevice<fsmCtrl>::query(m_adcsQ);
       return 0;
     }
 
@@ -864,10 +844,10 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
-      dev::summerDevice<fsmCtrl>::query(telemetryQuery.get());
+      dev::summerDevice<fsmCtrl>::query(m_telemetryQ);
       
       dev::summerDevice<fsmCtrl>::receive();
-      telemetryQuery->logReply();
+      m_telemetryQ->logReply();
 
       return recordFsm(true);
     }
@@ -1074,9 +1054,12 @@ namespace MagAOX
       // Set type
       m_imageStream.kw[0].type = 'S';
       // Set keyword value
-      strncpy(m_imageStream.kw[0].value.valstr, inputTypeToString(m_inputType).c_str(), sizeof(m_imageStream.kw[0].value.valstr));
-      // Ensure null termination
-      m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+      {
+        std::string val = inputTypeToString(m_inputType);
+        strncpy(m_imageStream.kw[0].value.valstr, val.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+        // Ensure null termination
+        m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+      }
 
       std::ostringstream oss;
       oss << "Created: " << m_shmimName << std::endl;
@@ -1144,7 +1127,13 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<software_info>({__FILE__, __LINE__, oss.str()});
 
-        return setDacs(dacs);
+        if (setDacs(dacs) < 0)
+        {
+          log<software_error>({__FILE__, __LINE__, "Error setting dacs from INDI val1 callback"});
+          return -1;
+        }
+
+        updateINDICurrentParams();
       }
 
       return 0;
@@ -1208,7 +1197,13 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<software_info>({__FILE__, __LINE__, oss.str()});
 
-        return setDacs(dacs);
+        if (setDacs(dacs) < 0)
+        {
+          log<software_error>({__FILE__, __LINE__, "Error setting dacs from INDI val2 callback"});
+          return -1;
+        }
+
+        updateINDICurrentParams();
       }
 
       return 0;
@@ -1272,7 +1267,13 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<software_info>({__FILE__, __LINE__, oss.str()});
 
-        return setDacs(dacs);
+        if (setDacs(dacs) < 0)
+        {
+          log<software_error>({__FILE__, __LINE__, "Error setting dacs from INDI val3 callback"});
+          return -1;
+        }
+
+        updateINDICurrentParams();
       }
 
       return 0;
@@ -1458,55 +1459,37 @@ namespace MagAOX
       return 0;
     }
 
-    // // callback from setting m_indiP_adc1 - not a settable param
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc1)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   log<text_log>("INDI callback.");
-    //   return 0;
-    // }
-
-    // // callback from setting m_indiP_adc2 - not a settable param
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc2)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   log<text_log>("INDI callback.");
-    //   return 0;
-    // }
-
-    // // callback from setting m_indiP_adc3 - not a settable param
-    // INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adc3)
-    // (const pcf::IndiProperty &ipRecv)
-    // {
-    //   log<text_log>("INDI callback.");
-    //   return 0;
-    // }
-
     // callback from setting m_indiP_query - trigger adc or dac query
     INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_query)
     (const pcf::IndiProperty &ipRecv)
     {
+      if (state() != stateCodes::READY)
+      {
+        log<software_warning>({__FILE__, __LINE__, "Received INDI query request while not in READY state. Ignoring."});
+        return 0;
+      }
+
       INDI_VALIDATE_CALLBACK_PROPS(m_indiP_query, ipRecv);
 
-      if (ipRecv.find("query"))
+      if (ipRecv.find("type"))
       {
-        std::string query_obj = ipRecv["query"].get<std::string>();
+        std::string query_obj = ipRecv["type"].get<std::string>();
         if (query_obj == "adc")
         {
           log<software_info>({__FILE__, __LINE__, "INDI query ADCs."});
-          dev::summerDevice<fsmCtrl>::query(adcsQuery.get());
-          updateIfChanged(m_indiP_query, "query", "adc");
+          dev::summerDevice<fsmCtrl>::query(m_adcsQ);
+          updateIfChanged(m_indiP_query, "type", "adc");
         }
         else if (query_obj == "dac")
         {
           log<software_info>({__FILE__, __LINE__, "INDI query DACs."});
-          dev::summerDevice<fsmCtrl>::query(dacsQuery.get());
-          updateIfChanged(m_indiP_query, "query", "dac");
+          dev::summerDevice<fsmCtrl>::query(m_dacsQ);
+          updateIfChanged(m_indiP_query, "type", "dac");
         }
         else
         {
           log<software_warning>({__FILE__, __LINE__, "INDI query of unknown."});
-          updateIfChanged(m_indiP_query, "query", "none");
+          updateIfChanged(m_indiP_query, "type", "none");
         }
       }
 

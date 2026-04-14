@@ -204,7 +204,7 @@ namespace MagAOX
 
             void logReply() override
             {
-                if(m_log.logLevel() >= flatlogs::logPrio::LOG_DEBUG)
+                if(MagAOXAppT::m_log.logLevel() >= flatlogs::logPrio::LOG_DEBUG)
                 {
                     std::ostringstream oss;
                     oss << "BinaryFSMTelemetry Command: Telemetry received";
