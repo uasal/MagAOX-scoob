@@ -1673,32 +1673,49 @@ void tmcController::KMMIParams::dump(streamT & ios)
 
 #define TMCC_READ_RESPONSE(fxn, esz)                                                                           \
     {                                                                                                          \
-        /** \todo this needs a timeout, and/or look for ftdi function to manage this*/                         \
         m_totrd = 0;                                                                                           \
-        do                                                                                                     \
+        if((esz) > 0)                                                                                          \
         {                                                                                                      \
-            int rd = ftdi_read_data(m_ftdi, m_rdbuf + m_totrd, sizeof(m_rdbuf)-m_totrd);                       \
-            if(rd < 0)                                                                                         \
+            auto tmcc_t0 = std::chrono::steady_clock::now();                                                  \
+            while(m_totrd < (esz))                                                                             \
+            {                                                                                                  \
+                int rd = ftdi_read_data(m_ftdi, m_rdbuf + m_totrd, sizeof(m_rdbuf)-m_totrd);                 \
+                if(rd < 0)                                                                                     \
+                {                                                                                              \
+                    if(errmsg)                                                                                 \
+                    {                                                                                          \
+                        ftdiErrmsg("tmcController::" fxn, "unable to read data", rd, __FILE__, __LINE__);    \
+                    }                                                                                          \
+                    if(rd == -666) return rd;                                                                  \
+                    return -200+rd;                                                                            \
+                }                                                                                              \
+                if(rd == 0)                                                                                    \
+                {                                                                                              \
+                    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(                       \
+                                     std::chrono::steady_clock::now() - tmcc_t0).count();                     \
+                    if(dt_ms > 2000)                                                                           \
+                    {                                                                                          \
+                        if(errmsg)                                                                             \
+                        {                                                                                      \
+                            otherErrmsg("tmcController::" fxn, "read timeout waiting for " +                  \
+                                      std::to_string(esz) + " bytes, got " +                                  \
+                                      std::to_string(m_totrd), __FILE__, __LINE__);                           \
+                        }                                                                                      \
+                        return -301;                                                                           \
+                    }                                                                                          \
+                    continue;                                                                                  \
+                }                                                                                              \
+                m_totrd += rd;                                                                                 \
+            }                                                                                                  \
+            if(m_totrd != (esz))                                                                               \
             {                                                                                                  \
                 if(errmsg)                                                                                     \
                 {                                                                                              \
-                    ftdiErrmsg("tmcController::" fxn, "unable to read data", rd, __FILE__, __LINE__);          \
-                }                                                                                              \
-                if(rd == -666) return rd;                                                                      \
-                return -200+rd;                                                                                \
-            }                                                                                                  \
-            m_totrd += rd;                                                                                     \
-        }                                                                                                      \
-        while(m_totrd < esz);                                                                                  \
-                                                                                                               \
-        if(m_totrd != esz && esz > 0)                                                                          \
-        {                                                                                                      \
-            if(errmsg)                                                                                         \
-            {                                                                                                  \
-                otherErrmsg("tmcController::" fxn, "did not read correct amount of data, got " +               \
+                    otherErrmsg("tmcController::" fxn, "did not read correct amount of data, got " +         \
                                                                   std::to_string(m_totrd), __FILE__, __LINE__);\
+                }                                                                                              \
+                return -300;                                                                                   \
             }                                                                                                  \
-            return -300;                                                                                       \
         }                                                                                                      \
     } /*TMCC_READ_RESPONSE(fxn, esz)*/
 
