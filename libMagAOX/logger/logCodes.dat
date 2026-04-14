@@ -85,7 +85,8 @@ telem_offloading         20923    telem_offloading
 telem_pi335              20930    telem_pi335
 
 telem_fsm                21100    telem_fsm
-telem_dm                21101    telem_dm
+telem_dm                 21101    telem_dm
+telem_fw                 21102    telem_fw
 telem_sparkleclock       20940    telem_sparkleclock
 
 telem_poltrack           20945    telem_poltrack
