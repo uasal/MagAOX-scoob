@@ -234,6 +234,11 @@ protected:
     /// Flag indicating whether or not the TMC device is connected
     bool m_connected {false};
 
+    /// Destination byte used for generic HW messages (e.g. HW_REQ_INFO)
+    /** Default 0x50 for generic USB unit. Some controllers expect 0x11 for these commands.
+      */
+    uint8_t m_hwDest {0x50};
+
     /// The chip ID of the FTDI on the TMC device.
     /** Read and set during \ref connect().
       * See \ftdi_read_chipid
@@ -386,6 +391,12 @@ public:
       * \returns the true if connected, false if not
       */
     bool connected();
+
+    /// Set destination byte used by generic HW messages.
+    void hwDest( uint8_t d /**< [in] destination byte */ );
+
+    /// Get destination byte used by generic HW messages.
+    uint8_t hwDest();
 
     /// Get the chip ID of the FTDI on the TMC device
     /** This is read and set during \ref connect().
@@ -1538,6 +1549,18 @@ bool tmcController::connected()
 }
 
 inline
+void tmcController::hwDest( uint8_t d )
+{
+    m_hwDest = d;
+}
+
+inline
+uint8_t tmcController::hwDest()
+{
+    return m_hwDest;
+}
+
+inline
 unsigned int tmcController::chipid()
 {
     return m_chipid;
@@ -1693,7 +1716,7 @@ void tmcController::KMMIParams::dump(streamT & ios)
                 {                                                                                              \
                     auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(                       \
                                      std::chrono::steady_clock::now() - tmcc_t0).count();                     \
-                    if(dt_ms > 2000)                                                                           \
+                    if(dt_ms > 5000)                                                                           \
                     {                                                                                          \
                         if(errmsg)                                                                             \
                         {                                                                                      \
@@ -1812,7 +1835,7 @@ int tmcController::hw_stop_updatemsgs( bool errmsg )
 {
     TMCC_CHECK_CONNECTED("hw_stop_updatemsgs")
 
-    TMCC_SNDBUF_HEAD(0x12,0x00,0x00,0x00,0x50,0x01)
+    TMCC_SNDBUF_HEAD(0x12,0x00,0x00,0x00,m_hwDest,0x01)
     
     TMCC_WRITE_REQUEST("hw_stop_updatemsgs")
 
@@ -1826,7 +1849,7 @@ int tmcController::hw_req_info( HWInfo & hwi,
 {
     TMCC_CHECK_CONNECTED("hw_req_info")
 
-    TMCC_SNDBUF_HEAD(0x05,0x00,0x00,0x00,0x50,0x01)
+    TMCC_SNDBUF_HEAD(0x05,0x00,0x00,0x00,m_hwDest,0x01)
 
     TMCC_WRITE_REQUEST("hw_req_info")
 

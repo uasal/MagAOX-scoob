@@ -243,6 +243,8 @@ public:
 kim101Ctrl::kim101Ctrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
     m_powerMgtEnabled = true;
+    // APT examples for TIM/KIM use destination 0x11 for HW_REQ_INFO/HW_STOP_UPDATEMSGS.
+    m_kcube.hwDest(0x11);
     return;
 }
 
@@ -556,7 +558,9 @@ int kim101Ctrl::appLogic()
 
         if(diRv < 0)
         {
-            return log<software_error, -1>({__FILE__,__LINE__, "error during device initialization"});
+            log<software_error>({__FILE__,__LINE__, "error during device initialization"});
+            state(stateCodes::ERROR);
+            return 0;
         }
 
         state(stateCodes::READY);
@@ -679,11 +683,22 @@ int kim101Ctrl::deviceInitialize()
 
     // Get hardware info
     tmcController::HWInfo hwi;
-    rv = m_kcube.hw_req_info(hwi);
-    if(rv < 0)
+    rv = -1;
+    for(int attempt = 0; attempt < 3; ++attempt)
     {
+        rv = m_kcube.hw_req_info(hwi);
+        if(rv >= 0) break;
+
         sleep(1);
         if(m_powerState == 0) return -1;
+
+        if(attempt < 2)
+        {
+            log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed, retrying"});
+        }
+    }
+    if(rv < 0)
+    {
         log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed"});
         return -1;
     }
@@ -693,11 +708,22 @@ int kim101Ctrl::deviceInitialize()
     log<text_log>(logs.str());
 
     // Stop automatic update messages
-    rv = m_kcube.hw_stop_updatemsgs();
-    if(rv < 0)
+    rv = -1;
+    for(int attempt = 0; attempt < 3; ++attempt)
     {
+        rv = m_kcube.hw_stop_updatemsgs();
+        if(rv >= 0) break;
+
         sleep(1);
         if(m_powerState == 0) return -1;
+
+        if(attempt < 2)
+        {
+            log<software_error>({__FILE__, __LINE__, 0, rv, "hw_stop_updatemsgs failed, retrying"});
+        }
+    }
+    if(rv < 0)
+    {
         log<software_error>({__FILE__, __LINE__, 0, rv, "hw_stop_updatemsgs failed"});
         return -1;
     }
