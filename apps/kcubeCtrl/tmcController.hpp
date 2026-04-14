@@ -1487,7 +1487,7 @@ int tmcController::connect(bool errmsg /*default=true*/)
         return -49;
     }
 
-    if((rv = ftdi_tcioflush(m_ftdi)) < 0)
+    if((rv = ftdi_usb_purge_buffers(m_ftdi)) < 0)
     {
         if(errmsg)
         {
@@ -1741,7 +1741,7 @@ void tmcController::KMMIParams::dump(streamT & ios)
 
 #define TMCC_WRITE_COMMAND(fxn, esz)                                                            \
     int rv;                                                                                     \
-    rv = ftdi_tcioflush(m_ftdi); \
+    rv = ftdi_usb_purge_buffers(m_ftdi); \
     std::this_thread::sleep_for(std::chrono::milliseconds(m_postFlushSleep));\
     if((rv = ftdi_write_data(m_ftdi, m_sndbuf, esz))  < 0)                                      \
     {                                                                                           \
