@@ -27,6 +27,8 @@
 #include <cstring>
 #include <string>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <thread>
 #include <chrono>
 
@@ -239,6 +241,9 @@ protected:
       */
     uint8_t m_hwDest {0x50};
 
+    /// Enable raw TX/RX tracing of USB packets.
+    bool m_traceIO {false};
+
     /// The chip ID of the FTDI on the TMC device.
     /** Read and set during \ref connect().
       * See \ftdi_read_chipid
@@ -398,6 +403,12 @@ public:
     /// Get destination byte used by generic HW messages.
     uint8_t hwDest();
 
+    /// Enable/disable debug hex tracing for low-level USB packets.
+    void traceIO( bool enable );
+
+    /// Get whether debug hex tracing is enabled.
+    bool traceIO() const;
+
     /// Get the chip ID of the FTDI on the TMC device
     /** This is read and set during \ref connect().
       */ 
@@ -413,6 +424,9 @@ public:
   */
 
 protected:
+
+    /// Dump a raw packet in hex to stderr.
+    void ioTrace( const std::string & tag, const unsigned char * buf, int nbytes ) const;
 
     /// The total number of bytes read
     /** Is set to 0 before a read attempt starts
@@ -1561,6 +1575,18 @@ uint8_t tmcController::hwDest()
 }
 
 inline
+void tmcController::traceIO( bool enable )
+{
+    m_traceIO = enable;
+}
+
+inline
+bool tmcController::traceIO() const
+{
+    return m_traceIO;
+}
+
+inline
 unsigned int tmcController::chipid()
 {
     return m_chipid;
@@ -1678,7 +1704,11 @@ void tmcController::KMMIParams::dump(streamT & ios)
         }                                                                                       \
         if(rv == -666) return rv;                                                               \
         else return -100 + rv;                                                                  \
-    } 
+    }                                                                                            \
+    if(m_traceIO)                                                                               \
+    {                                                                                            \
+        ioTrace("TX " fxn, m_sndbuf, 6);                                                        \
+    }
 
 #define TMCC_WRITE_COMMAND(fxn, esz)                                                            \
     int rv;                                                                                     \
@@ -1692,6 +1722,10 @@ void tmcController::KMMIParams::dump(streamT & ios)
         }                                                                                       \
         if(rv == -666) return rv;                                                               \
         else return -100 + rv;                                                                  \
+    }                                                                                            \
+    if(m_traceIO)                                                                               \
+    {                                                                                            \
+        ioTrace("TX " fxn, m_sndbuf, esz);                                                      \
     }
 
 #define TMCC_READ_RESPONSE(fxn, esz)                                                                           \
@@ -1726,7 +1760,12 @@ void tmcController::KMMIParams::dump(streamT & ios)
                         }                                                                                      \
                         return -301;                                                                           \
                     }                                                                                          \
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));                                \
                     continue;                                                                                  \
+                }                                                                                              \
+                if(m_traceIO)                                                                                  \
+                {                                                                                              \
+                    ioTrace("RX " fxn, m_rdbuf + m_totrd, rd);                                                \
                 }                                                                                              \
                 m_totrd += rd;                                                                                 \
             }                                                                                                  \
@@ -2454,6 +2493,22 @@ void tmcController::otherErrmsg( const std::string & src,
 {
     std::cerr << src << ": " << msg << "\n";
     std::cerr << "in " << file << " at line " << line << "\n";
+}
+
+inline
+void tmcController::ioTrace( const std::string & tag, const unsigned char * buf, int nbytes ) const
+{
+    if(buf == nullptr || nbytes <= 0) return;
+
+    std::ostringstream oss;
+    oss << tag << " (" << nbytes << " bytes):";
+    for(int i = 0; i < nbytes; ++i)
+    {
+        oss << ' '
+            << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+            << static_cast<unsigned int>(buf[i]);
+    }
+    std::cerr << oss.str() << std::dec << "\n";
 }
 
 #endif //tmcController_hpp

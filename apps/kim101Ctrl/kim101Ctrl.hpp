@@ -87,6 +87,7 @@ protected:
      */
     
     std::string m_serial; ///< USB serial number of the device
+    bool m_traceHex {false}; ///< Enable low-level TX/RX hex tracing for FTDI traffic
 
     /// Drive parameters (can be configured per-channel or globally)
     tmcController::KIMDriveOPParams m_driveParams;
@@ -243,14 +244,13 @@ public:
 kim101Ctrl::kim101Ctrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
     m_powerMgtEnabled = true;
-    // APT examples for TIM/KIM use destination 0x11 for HW_REQ_INFO/HW_STOP_UPDATEMSGS.
-    m_kcube.hwDest(0x11);
     return;
 }
 
 void kim101Ctrl::setupConfig()
 {
     config.add("device.serial", "", "device.serial", argType::Required, "device", "serial", false, "string", "USB serial number");
+    config.add("device.traceHex", "", "device.traceHex", argType::True, "device", "traceHex", false, "bool", "Enable low-level TX/RX hex tracing");
     
     // Drive parameters
     config.add("drive.maxVoltage", "", "drive.maxVoltage", argType::Required, "drive", "maxVoltage", false, "int", "Max drive voltage (85-125V), default 110");
@@ -268,6 +268,12 @@ int kim101Ctrl::loadConfigImpl(mx::app::appConfigurator &_config)
 {
     _config(m_serial, "device.serial");
     m_kcube.serial(m_serial);
+    _config(m_traceHex, "device.traceHex");
+    m_kcube.traceIO(m_traceHex);
+    if(m_traceHex)
+    {
+        log<text_log>("FTDI hex trace enabled for kim101 transport", logPrio::LOG_WARNING);
+    }
     
     // Drive parameters
     int maxV = m_driveParams.MaxVoltage;
@@ -536,6 +542,11 @@ int kim101Ctrl::appLogic()
             sleep(1);
             if(m_powerState == 0) return -1;
 
+            {
+                std::lock_guard<std::mutex> guard(m_indiMutex);
+                m_kcube.close(false);
+            }
+
             std::stringstream em;
             em << "tmcController::connect failed (rv=" << rv << "). USB open succeeded but FTDI init failed; ";
             em << "see APT USB setup (115200 8N1, purge, reset, RTS/CTS, RTS high).";
@@ -550,6 +561,11 @@ int kim101Ctrl::appLogic()
 
     if(state() == stateCodes::CONNECTED)
     {
+        // Give the controller a brief settle period after FTDI connect/reset before
+        // first HW queries (observed to help with intermittent zero-byte responses).
+        sleep(1);
+        if(m_powerState == 0) return -1;
+
         int diRv;
         {
             std::lock_guard<std::mutex> guard(m_indiMutex);
@@ -558,6 +574,10 @@ int kim101Ctrl::appLogic()
 
         if(diRv < 0)
         {
+            {
+                std::lock_guard<std::mutex> guard(m_indiMutex);
+                m_kcube.close(false);
+            }
             log<software_error>({__FILE__,__LINE__, "error during device initialization"});
             state(stateCodes::ERROR);
             return 0;
@@ -579,6 +599,7 @@ int kim101Ctrl::appLogic()
             if(m_powerState == 0) return -1;
 
             log<software_error>({__FILE__, __LINE__, "status update failed"});
+            m_kcube.close(false);
             lock.unlock();
             state(stateCodes::ERROR);
             return 0;
@@ -683,22 +704,31 @@ int kim101Ctrl::deviceInitialize()
 
     // Get hardware info
     tmcController::HWInfo hwi;
+    uint8_t origHwDest = m_kcube.hwDest();
+    uint8_t altHwDest = (origHwDest == 0x11) ? 0x50 : 0x11;
     rv = -1;
-    for(int attempt = 0; attempt < 3; ++attempt)
+    for(int attempt = 0; attempt < 4; ++attempt)
     {
+        if(attempt == 2)
+        {
+            m_kcube.hwDest(altHwDest);
+            log<text_log>("hw_req_info switching HW destination to " + std::to_string(m_kcube.hwDest()), logPrio::LOG_WARNING);
+        }
+
         rv = m_kcube.hw_req_info(hwi);
         if(rv >= 0) break;
 
         sleep(1);
         if(m_powerState == 0) return -1;
 
-        if(attempt < 2)
+        if(attempt < 3)
         {
             log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed, retrying"});
         }
     }
     if(rv < 0)
     {
+        m_kcube.hwDest(origHwDest);
         log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed"});
         return -1;
     }

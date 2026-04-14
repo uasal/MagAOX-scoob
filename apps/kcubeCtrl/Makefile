@@ -23,13 +23,16 @@ TARGET=kcubeCtrl
 
 # tmcController.hpp is in this directory
 INCLUDES+=-I.
-# libftdi1: prefer pkg-config (e.g. Ubuntu: libftdi1-dev), else /usr/local install
-ifeq ($(shell pkg-config --exists libftdi1 2>/dev/null && echo yes),yes)
-INCLUDES+=$(shell pkg-config --cflags libftdi1)
-LDLIBS+=$(shell pkg-config --libs libftdi1)
+# libftdi: prefer pkg-config (libftdi1 or libftdi), else distro defaults
+FTDI_CFLAGS:=$(shell pkg-config --cflags libftdi1 2>/dev/null || pkg-config --cflags libftdi 2>/dev/null)
+FTDI_LIBS:=$(shell pkg-config --libs libftdi1 2>/dev/null || pkg-config --libs libftdi 2>/dev/null)
+
+ifneq ($(strip $(FTDI_LIBS)),)
+INCLUDES+=$(FTDI_CFLAGS)
+LDLIBS+=$(FTDI_LIBS)
 else
-INCLUDES+=-I/usr/local/include/libftdi1/
-LDLIBS+=-L/usr/local/lib64/ -lftdi1
+INCLUDES+=-I/usr/include/libftdi1 -I/usr/include/libusb-1.0
+LDLIBS+=-L/usr/lib/x86_64-linux-gnu -lftdi1 -lusb-1.0
 endif
 
 include ../../Make/magAOXApp.mk
