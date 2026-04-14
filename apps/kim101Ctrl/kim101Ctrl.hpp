@@ -522,10 +522,9 @@ int kim101Ctrl::appLogic()
 
     if(state() == stateCodes::NOTCONNECTED)
     {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-
         int rv;
         {
+            std::lock_guard<std::mutex> guard(m_indiMutex);
             elevatedPrivileges elPriv(this);
             rv = m_kcube.connect();
         }
@@ -543,14 +542,19 @@ int kim101Ctrl::appLogic()
             return 0;
         }
 
+        // state() updates INDI fsm via try_lock(m_indiMutex); must not hold m_indiMutex here
         state(stateCodes::CONNECTED);
     }
 
     if(state() == stateCodes::CONNECTED)
     {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
+        int diRv;
+        {
+            std::lock_guard<std::mutex> guard(m_indiMutex);
+            diRv = deviceInitialize();
+        }
 
-        if(deviceInitialize() < 0)
+        if(diRv < 0)
         {
             return log<software_error, -1>({__FILE__,__LINE__, "error during device initialization"});
         }
@@ -569,15 +573,15 @@ int kim101Ctrl::appLogic()
         {
             sleep(1);
             if(m_powerState == 0) return -1;
-            
+
             log<software_error>({__FILE__, __LINE__, "status update failed"});
+            lock.unlock();
             state(stateCodes::ERROR);
             return 0;
         }
 
         // Update INDI properties based on status
         bool anyMoving = false;
-        bool anyEnabled = false;
 
         for(int ch = 0; ch < NumChannels; ch++)
         {
@@ -590,7 +594,6 @@ int kim101Ctrl::appLogic()
             chs.homed = ss.homed();
 
             if(chs.moving) anyMoving = true;
-            if(chs.enabled) anyEnabled = true;
         }
 
         // Update channel 1 properties
@@ -656,19 +659,10 @@ int kim101Ctrl::appLogic()
         updateSwitchIfChanged(m_indiP_ch4_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
         updateSwitchIfChanged(m_indiP_ch4_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
 
-        // Set state based on activity
-        if(anyMoving)
-        {
-            state(stateCodes::OPERATING);
-        }
-        else if(anyEnabled)
-        {
-            state(stateCodes::READY);
-        }
-        else
-        {
-            state(stateCodes::READY);
-        }
+        const stateCodes::stateCodeT nextState =
+            anyMoving ? stateCodes::OPERATING : stateCodes::READY;
+        lock.unlock();
+        state(nextState);
     }
 
     return 0;
