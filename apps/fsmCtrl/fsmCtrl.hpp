@@ -723,7 +723,7 @@ namespace MagAOX
         receive();
       }
 
-      if ((state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
+      if ((state() == stateCodes::CONNECTED) || (state() == stateCodes::OPERATING) || (state() == stateCodes::READY))
       {
         receive();
 
