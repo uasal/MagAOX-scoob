@@ -73,6 +73,7 @@ INCLUDEDEPS= \
 	logger/types/telem_fgtimings.hpp \
 	logger/types/telem_fsm.hpp \
 	logger/types/telem_fxngen.hpp \
+	logger/types/telem_fw.hpp \
 	logger/types/telem_loopgain.hpp \
 	logger/types/telem_observer.hpp \
 	logger/types/telem_offloading.hpp \
