@@ -65,7 +65,7 @@ public:
     /// Route transport trace to MagAO-X text logs when enabled.
     virtual void traceMsg( const std::string & msg )
     {
-        parentT::template log<text_log>(msg, logPrio::LOG_DEBUG);
+        parentT::template log<text_log>(msg, logPrio::LOG_NOTICE);
     }
 
 };
