@@ -25,17 +25,9 @@ TARGET=kim101Ctrl
 
 # tmcController.hpp lives in kcubeCtrl (this repo)
 INCLUDES+=-I../kcubeCtrl/
-# libftdi: prefer pkg-config (libftdi1 or libftdi), else distro defaults
-FTDI_CFLAGS:=$(shell pkg-config --cflags libftdi1 2>/dev/null || pkg-config --cflags libftdi 2>/dev/null)
-FTDI_LIBS:=$(shell pkg-config --libs libftdi1 2>/dev/null || pkg-config --libs libftdi 2>/dev/null)
-
-ifneq ($(strip $(FTDI_LIBS)),)
-INCLUDES+=$(FTDI_CFLAGS)
-LDLIBS+=$(FTDI_LIBS)
-else
+# Force system FTDI/libusb (avoid /usr/local pkg-config ambiguity on this host)
 INCLUDES+=-I/usr/include/libftdi1 -I/usr/include/libusb-1.0
-LDLIBS+=-L/usr/lib/x86_64-linux-gnu -lftdi1 -lusb-1.0
-endif
+LDLIBS+=/usr/lib/x86_64-linux-gnu/libftdi1.so /usr/lib/x86_64-linux-gnu/libusb-1.0.so
 
 include ../../Make/magAOXApp.mk
 
