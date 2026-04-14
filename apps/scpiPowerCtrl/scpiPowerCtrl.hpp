@@ -18,6 +18,7 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <sys/select.h>
 
 /** \defgroup scpiPowerCtrl SCPI Power Supply
   * \brief Control of MagAO-X SCPI-standard DC Power Supplies.
@@ -37,6 +38,14 @@ namespace MagAOX
 namespace app
 {
 
+/// How \ref scpiPowerCtrl reaches the instrument (matches `device.protocol` in config).
+enum class scpiPowerDeviceTransport
+{
+   Usb,    ///< `device.address` is a USB-TMC path (e.g. `/dev/usbtmc0`).
+   Ipv4,   ///< `device.address` is a host IPv4 address; SCPI is raw TCP on `device.port` (default 5025).
+   Invalid ///< `device.protocol` was not recognized after load.
+};
+
 /// MagAO-X application to control any DC power supply that supports the SCPI standard.
 /** The available outputs are organized into channels.  See \ref dev::outletController for details of configuring the channels.
   *
@@ -52,7 +61,11 @@ class scpiPowerCtrl : public MagAOXApp<>, public dev::outletController<scpiPower
 
 protected:
 
-   std::string m_deviceAddr; ///< The device address  -> /dev/usbtmc0 where 0 gets assigned on USB connect
+   std::string m_deviceAddr; ///< USB: path (e.g. `/dev/usbtmc0`). IPv4: host address only.
+   scpiPowerDeviceTransport m_deviceTransport {scpiPowerDeviceTransport::Usb};
+   int m_port {5025}; ///< TCP port when `m_deviceTransport == Ipv4` (typical raw SCPI: 5025).
+   int m_socketFd {-1}; ///< Connected TCP socket when using IPv4 transport.
+   int m_connectTimeoutMs {5000}; ///< TCP connect timeout [ms], same idea as \ref scpiCtrl.
 
    // arrays for all high and low limits for volts and amps because defined independently for each channel
 
@@ -66,12 +79,14 @@ protected:
     std::vector<ChannelLimits> m_channelLimits;
     std::vector<float> m_channelVoltages;
     std::vector<float> m_channelCurrents;
+    std::vector<float> m_channelTargetVoltages;
+    std::vector<float> m_channelTargetCurrents;
     int m_numChannels = 4; ///< The number of channels on the device -- abandoning dynamic, hard-coding 3 for now
     int m_currentChannel = 0; ///< The current channel being monitored
 
     int maxChannels = 4; // define maximum number of power channels
 
-    int fd; ///< The file descriptor for the device
+    int fd {-1}; ///< USB-TMC file descriptor when using USB transport
     int m_pollRateHz {100};  ///< The polling rate for measurements [Hz].
 
     // array for voltages with length numChannels when it gets set
@@ -134,7 +149,10 @@ public:
  
     /// D'tor, declared and defined for noexcept.
     ~scpiPowerCtrl() noexcept
-    {}
+    {
+       stopPollThread();
+       devDisconnect();
+    }
  
     /** \name MagAOXApp Interface
       *
@@ -203,6 +221,9 @@ public:
       */
     int devConnect();
 
+    /// Close USB and/or TCP resources (safe to call multiple times).
+    int devDisconnect();
+
     int devStatus();
     
     int updateChannels();
@@ -222,6 +243,10 @@ public:
     int setChannelHighCurr(int channel, double highCurr);
     
     int setChannelLowCurr(int channel, double lowCurr);
+
+    int applyChannelSetpoint(int channel, bool isCurrent, double requestedValue);
+    int forceAllOutputsOff();
+    int applyConfiguredSetpoints();
     
     void updateAlarmsAndWarnings();
 
@@ -264,6 +289,9 @@ protected:
    
    // Power control toggles are handled by outletController framework
 
+   int connectUSB();
+   int connectTCP();
+
 };
 
 scpiPowerCtrl::scpiPowerCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
@@ -275,7 +303,10 @@ scpiPowerCtrl::scpiPowerCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODI
 
 void scpiPowerCtrl::setupConfig()
 {
-    config.add("device.address", "a", "device.address", argType::Required, "device", "address", false, "string", "The device address.");
+    config.add("device.protocol", "", "device.protocol", argType::Required, "device", "protocol", false, "string", "Transport: 'usb' (address is path) or 'ipv4' (address is host, SCPI TCP on device.port).");
+    config.add("device.address", "a", "device.address", argType::Required, "device", "address", false, "string", "USB: device path (e.g. /dev/usbtmc0). IPv4: host address only.");
+    config.add("device.port", "", "device.port", argType::Optional, "device", "port", false, "int", "TCP port for ipv4 transport (default: 5025, raw SCPI).");
+    config.add("device.connectTimeout", "", "device.connectTimeout", argType::Optional, "device", "connectTimeout", false, "int", "TCP connect timeout [ms] for ipv4 (default: 5000).");
     
     // force user to define the number of channels so that limits can be pre-defined
     config.add("device.numChannels", "", "device.numChannels", argType::Required, "device", "numChannels", false, "int", "The number of channels on the device.");
@@ -299,6 +330,12 @@ void scpiPowerCtrl::setupConfig()
                    prefix, "highCurr", false, "float", "The high-current limit threshold");
         config.add(prefix + ".lowCurr", "", prefix + ".lowCurr", argType::Optional,
                    prefix, "lowCurr", false, "float", "The low-current limit threshold");
+
+        std::string defaultsPrefix = "channel" + std::to_string(i) + ".defaults";
+        config.add(defaultsPrefix + ".volt", "", defaultsPrefix + ".volt", argType::Optional,
+                   defaultsPrefix, "volt", false, "float", "Default target voltage set at startup.");
+        config.add(defaultsPrefix + ".curr", "", defaultsPrefix + ".curr", argType::Optional,
+                   defaultsPrefix, "curr", false, "float", "Default target current set at startup.");
     }
 
    dev::outletController<scpiPowerCtrl>::setupConfig(config);
@@ -309,6 +346,32 @@ void scpiPowerCtrl::setupConfig()
 void scpiPowerCtrl::loadConfig()
 {
     config(m_deviceAddr, "device.address");
+
+    std::string protoStr;
+    config(protoStr, "device.protocol");
+    for (char& c : protoStr) {
+       if (c >= 'A' && c <= 'Z') {
+          c = static_cast<char>(c - 'A' + 'a');
+       }
+    }
+    if (protoStr == "usb") {
+       m_deviceTransport = scpiPowerDeviceTransport::Usb;
+    } else if (protoStr == "ipv4") {
+       m_deviceTransport = scpiPowerDeviceTransport::Ipv4;
+    } else {
+       log<software_error>({__FILE__, __LINE__, "device.protocol must be 'usb' or 'ipv4', got: " + protoStr});
+       m_deviceTransport = scpiPowerDeviceTransport::Invalid;
+    }
+
+    config(m_port, "device.port");
+    if (m_port <= 0 || m_port > 65535) {
+       log<software_error>({__FILE__, __LINE__, "device.port out of range, using 5025"});
+       m_port = 5025;
+    }
+    config(m_connectTimeoutMs, "device.connectTimeout");
+    if (m_connectTimeoutMs <= 0) {
+       m_connectTimeoutMs = 5000;
+    }
 
     dev::ioDevice::loadConfig(config);
     config(m_numChannels, "device.numChannels");
@@ -326,6 +389,8 @@ void scpiPowerCtrl::loadConfig()
     m_channelLimits.resize(m_numChannels);
     m_channelVoltages.resize(m_numChannels);
     m_channelCurrents.resize(m_numChannels);
+    m_channelTargetVoltages.resize(m_numChannels, 0.0f);
+    m_channelTargetCurrents.resize(m_numChannels, 0.0f);
 
     for (int i = 0; i < m_numChannels; i++) {
         auto& ch = m_channelLimits[i];
@@ -336,6 +401,19 @@ void scpiPowerCtrl::loadConfig()
         config(ch.voltLowLimit,  prefix + "lowVolt");
         config(ch.currHighLimit, prefix + "highCurr");
         config(ch.currLowLimit,  prefix + "lowCurr");
+
+        std::string defaultsPrefix = "channel" + std::to_string(i + 1) + ".defaults.";
+        config(m_channelTargetVoltages[i], defaultsPrefix + "volt");
+        config(m_channelTargetCurrents[i], defaultsPrefix + "curr");
+
+        if (m_channelTargetVoltages[i] > ch.voltHighLimit) m_channelTargetVoltages[i] = ch.voltHighLimit;
+        if (m_channelTargetVoltages[i] < ch.voltLowLimit) m_channelTargetVoltages[i] = ch.voltLowLimit;
+        if (m_channelTargetCurrents[i] > ch.currHighLimit) m_channelTargetCurrents[i] = ch.currHighLimit;
+        if (m_channelTargetCurrents[i] < ch.currLowLimit) m_channelTargetCurrents[i] = ch.currLowLimit;
+
+        // Before first measurement poll, publish defaults as current placeholders.
+        m_channelVoltages[i] = m_channelTargetVoltages[i];
+        m_channelCurrents[i] = m_channelTargetCurrents[i];
     }
 
     /*  expecting this format
@@ -383,44 +461,44 @@ int scpiPowerCtrl::appStartup()
     
     //}
     
-    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%0.3f");
     m_indiP_outlet1volt["current"] = m_channelVoltages[0];
-    m_indiP_outlet1volt["target"] = m_channelVoltages[0];
+    m_indiP_outlet1volt["target"] = m_channelTargetVoltages[0];
     registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%0.3f");
     m_indiP_outlet1curr["current"] = m_channelCurrents[0];
-    m_indiP_outlet1curr["target"] = m_channelCurrents[0];
+    m_indiP_outlet1curr["target"] = m_channelTargetCurrents[0];
     registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
 
-    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%0.3f");
     m_indiP_outlet2volt["current"] = m_channelVoltages[1];
-    m_indiP_outlet2volt["target"] = m_channelVoltages[1];
+    m_indiP_outlet2volt["target"] = m_channelTargetVoltages[1];
     registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%0.3f");
     m_indiP_outlet2curr["current"] = m_channelCurrents[1];
-    m_indiP_outlet2curr["target"] = m_channelCurrents[1];
+    m_indiP_outlet2curr["target"] = m_channelTargetCurrents[1];
     registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
 
-    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%0.3f");
     m_indiP_outlet3volt["current"] = m_channelVoltages[2];
-    m_indiP_outlet3volt["target"] = m_channelVoltages[2];
+    m_indiP_outlet3volt["target"] = m_channelTargetVoltages[2];
     registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%0.3f");
     m_indiP_outlet3curr["current"] = m_channelCurrents[2];
-    m_indiP_outlet3curr["target"] = m_channelCurrents[2];
+    m_indiP_outlet3curr["target"] = m_channelTargetCurrents[2];
     registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
 
-    createStandardIndiNumber<float>(m_indiP_outlet4volt, "ch_4_volt", -240.0, 240.0, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet4volt, "ch_4_volt", -240.0, 240.0, 0.001, "%0.3f");
     m_indiP_outlet4volt["current"] = m_channelVoltages[3];
-    m_indiP_outlet4volt["target"] = m_channelVoltages[3];
+    m_indiP_outlet4volt["target"] = m_channelTargetVoltages[3];
     registerIndiPropertyNew(m_indiP_outlet4volt, INDI_NEWCALLBACK(m_indiP_outlet4volt));
 
-    createStandardIndiNumber<float>(m_indiP_outlet4curr, "ch_4_curr", 0, 1000, 0.001, "%d");
+    createStandardIndiNumber<float>(m_indiP_outlet4curr, "ch_4_curr", 0, 1000, 0.001, "%0.3f");
     m_indiP_outlet4curr["current"] = m_channelCurrents[3];
-    m_indiP_outlet4curr["target"] = m_channelCurrents[3];
+    m_indiP_outlet4curr["target"] = m_channelTargetCurrents[3];
     registerIndiPropertyNew(m_indiP_outlet4curr, INDI_NEWCALLBACK(m_indiP_outlet4curr));
     
     // Telemetry toggle switch
@@ -471,7 +549,10 @@ int scpiPowerCtrl::appLogic()
 
             if(!stateLogged())
             {
-                std::string logs = "Connected to " + m_deviceAddr;;
+                std::string logs = "Connected to " + m_deviceAddr;
+                if (m_deviceTransport == scpiPowerDeviceTransport::Ipv4) {
+                   logs += ":" + std::to_string(m_port);
+                }
                 log<text_log>(logs);
             }
             lastrv = rv;
@@ -481,16 +562,24 @@ int scpiPowerCtrl::appLogic()
         {
             if(!stateLogged())
             {
-               log<text_log>({"Failed to connect to " + m_deviceAddr}, logPrio::LOG_ERROR);
+               std::string detail = m_deviceAddr;
+               if (m_deviceTransport == scpiPowerDeviceTransport::Ipv4) {
+                  detail += ":" + std::to_string(m_port);
+               }
+               log<text_log>({"Failed to connect to " + detail}, logPrio::LOG_ERROR);
             }
             if( rv != lastrv )
             {
-               log<software_error>( {__FILE__,__LINE__, 0, rv,  tty::ttyErrorString(rv)} );
+               if (m_deviceTransport == scpiPowerDeviceTransport::Usb) {
+                  log<software_error>( {__FILE__,__LINE__, 0, rv,  tty::ttyErrorString(rv)} );
+               } else {
+                  log<software_error>( {__FILE__,__LINE__, "devConnect failed (return " + std::to_string(rv) + ")"} );
+               }
                lastrv = rv;
             }
             if( errno != lasterrno )
             {
-               log<software_error>( {__FILE__,__LINE__, errno});
+               log<software_error>( {__FILE__,__LINE__, errno, std::string(strerror(errno))});
                lasterrno = errno;
             }
             return 0;
@@ -499,12 +588,27 @@ int scpiPowerCtrl::appLogic()
  
     if(state() == stateCodes::CONNECTED)
     {
-        // after fd open set for remote control
-    
-        // CONF:SETPT 3
+        {
+           std::unique_lock<std::mutex> lock(m_indiMutex);
+           int rv = forceAllOutputsOff();
+           if(rv < 0)
+           {
+              log<software_error>({__FILE__, __LINE__, "Failed forcing outputs off at startup."});
+              state(stateCodes::NOTCONNECTED);
+              return 0;
+           }
 
+           rv = applyConfiguredSetpoints();
+           if(rv < 0)
+           {
+              log<software_error>({__FILE__, __LINE__, "Failed applying startup channel defaults."});
+              state(stateCodes::NOTCONNECTED);
+              return 0;
+           }
+        }
+        // Keep polling in one place (appLogic) so INDI callbacks don't compete with
+        // a second polling thread for the same SCPI connection.
         state(stateCodes::READY);
-        startPollThread();
     }
  
     if(state() == stateCodes::READY)
@@ -551,6 +655,7 @@ int scpiPowerCtrl::appLogic()
 int scpiPowerCtrl::appShutdown()
 {
     stopPollThread();
+    devDisconnect();
     return 0;
 }
 
@@ -651,6 +756,14 @@ int scpiPowerCtrl::turnOutletOn( int outletNum )
 {
     std::lock_guard<std::mutex> guard(m_indiMutex);  //Lock the mutex before doing anything
 
+    // Ensure the latest configured target setpoints are in place before enabling output.
+    if (applyChannelSetpoint(outletNum, false, m_channelTargetVoltages[outletNum]) < 0) {
+        return log<text_log,-1>("Failed applying target voltage for channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
+    }
+    if (applyChannelSetpoint(outletNum, true, m_channelTargetCurrents[outletNum]) < 0) {
+        return log<text_log,-1>("Failed applying target current for channel " + std::to_string(outletNum), logPrio::LOG_WARNING);
+    }
+
     // Select channel, then turn output ON (generic SCPI pattern)
     std::string res;
     std::string cmd_sel = "INST:NSEL " + std::to_string(outletNum + 1) + "\n";
@@ -686,11 +799,129 @@ int scpiPowerCtrl::turnOutletOff( int outletNum )
 
 int scpiPowerCtrl::devConnect()
 {
+    devDisconnect();
+
+    if (m_deviceTransport == scpiPowerDeviceTransport::Invalid) {
+       return log<text_log,-1>("Invalid device.protocol; must be 'usb' or 'ipv4'.", logPrio::LOG_CRITICAL);
+    }
+    if (m_deviceTransport == scpiPowerDeviceTransport::Usb) {
+       return connectUSB();
+    }
+    return connectTCP();
+}
+
+int scpiPowerCtrl::devDisconnect()
+{
+    int result = 0;
+    if (fd >= 0) {
+       if (close(fd) < 0) {
+          log<software_error>({__FILE__, __LINE__, "Error closing USB TMC: " + std::string(strerror(errno))});
+          result = -1;
+       }
+       fd = -1;
+    }
+    if (m_socketFd >= 0) {
+       if (close(m_socketFd) < 0) {
+          log<software_error>({__FILE__, __LINE__, "Error closing TCP socket: " + std::string(strerror(errno))});
+          result = -1;
+       }
+       m_socketFd = -1;
+    }
+    return result;
+}
+
+int scpiPowerCtrl::connectUSB()
+{
     fd = open(m_deviceAddr.c_str(), O_RDWR);
     if (fd < 0) {
-        return log<text_log,-1>("Error connecting to power supply.", logPrio::LOG_CRITICAL);
+       return log<text_log,-1>(std::string("Error opening USB TMC device ") + m_deviceAddr + ": " + strerror(errno), logPrio::LOG_CRITICAL);
+    }
+    log<text_log>("Opened USB TMC: " + m_deviceAddr);
+    return 0;
+}
+
+int scpiPowerCtrl::connectTCP()
+{
+    m_socketFd = socket(AF_INET, SOCK_STREAM, 0);
+    if (m_socketFd < 0) {
+       return log<text_log,-1>("Failed to create TCP socket: " + std::string(strerror(errno)), logPrio::LOG_CRITICAL);
+    }
+    int opt = 1;
+    setsockopt(m_socketFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(m_socketFd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+
+    int flags = fcntl(m_socketFd, F_GETFL, 0);
+    if (flags < 0 || fcntl(m_socketFd, F_SETFL, flags | O_NONBLOCK) < 0) {
+       close(m_socketFd);
+       m_socketFd = -1;
+       return log<text_log,-1>("Failed to set socket non-blocking: " + std::string(strerror(errno)), logPrio::LOG_CRITICAL);
     }
 
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(static_cast<uint16_t>(m_port));
+    if (inet_pton(AF_INET, m_deviceAddr.c_str(), &server_addr.sin_addr) <= 0) {
+       close(m_socketFd);
+       m_socketFd = -1;
+       return log<text_log,-1>("Invalid IPv4 address: " + m_deviceAddr, logPrio::LOG_CRITICAL);
+    }
+
+    int connect_result = connect(m_socketFd, reinterpret_cast<struct sockaddr*>(&server_addr), sizeof(server_addr));
+    if (connect_result < 0 && errno != EINPROGRESS) {
+       close(m_socketFd);
+       m_socketFd = -1;
+       return log<text_log,-1>("Failed to connect to " + m_deviceAddr + ":" + std::to_string(m_port) + " (" + std::string(strerror(errno)) + ")", logPrio::LOG_CRITICAL);
+    }
+    if (connect_result < 0 && errno == EINPROGRESS) {
+       fd_set write_fds, except_fds;
+       struct timeval timeout;
+       FD_ZERO(&write_fds);
+       FD_ZERO(&except_fds);
+       FD_SET(m_socketFd, &write_fds);
+       FD_SET(m_socketFd, &except_fds);
+       timeout.tv_sec = m_connectTimeoutMs / 1000;
+       timeout.tv_usec = (m_connectTimeoutMs % 1000) * 1000;
+       int select_result = select(m_socketFd + 1, nullptr, &write_fds, &except_fds, &timeout);
+       if (select_result <= 0) {
+          close(m_socketFd);
+          m_socketFd = -1;
+          if (select_result == 0) {
+             return log<text_log,-1>("Connection timeout to " + m_deviceAddr + ":" + std::to_string(m_port), logPrio::LOG_CRITICAL);
+          }
+          return log<text_log,-1>("Connection select error: " + std::string(strerror(errno)), logPrio::LOG_CRITICAL);
+       }
+       if (FD_ISSET(m_socketFd, &except_fds)) {
+          close(m_socketFd);
+          m_socketFd = -1;
+          return log<text_log,-1>("Connection failed to " + m_deviceAddr + ":" + std::to_string(m_port), logPrio::LOG_CRITICAL);
+       }
+       int soerr = 0;
+       socklen_t len = sizeof(soerr);
+       if (getsockopt(m_socketFd, SOL_SOCKET, SO_ERROR, &soerr, &len) < 0) {
+          close(m_socketFd);
+          m_socketFd = -1;
+          return log<text_log,-1>("getsockopt SO_ERROR failed: " + std::string(strerror(errno)), logPrio::LOG_CRITICAL);
+       }
+       if (soerr != 0) {
+          close(m_socketFd);
+          m_socketFd = -1;
+          return log<text_log,-1>("Connection failed to " + m_deviceAddr + ":" + std::to_string(m_port) + " (" + std::string(strerror(soerr)) + ")", logPrio::LOG_CRITICAL);
+       }
+    }
+
+    if (fcntl(m_socketFd, F_SETFL, flags) < 0) {
+       close(m_socketFd);
+       m_socketFd = -1;
+       return log<text_log,-1>("Failed to restore socket blocking mode: " + std::string(strerror(errno)), logPrio::LOG_CRITICAL);
+    }
+
+    struct timeval recv_timeout;
+    recv_timeout.tv_sec = 2;
+    recv_timeout.tv_usec = 0;
+    setsockopt(m_socketFd, SOL_SOCKET, SO_RCVTIMEO, &recv_timeout, sizeof(recv_timeout));
+
+    log<text_log>("Connected TCP SCPI: " + m_deviceAddr + ":" + std::to_string(m_port));
     return 0;
 }
 
@@ -756,6 +987,54 @@ int scpiPowerCtrl::updateChannel(int channel)
 
 int scpiPowerCtrl::setPollRate()
 {
+    return 0;
+}
+
+int scpiPowerCtrl::applyChannelSetpoint(int channel, bool isCurrent, double requestedValue)
+{
+    if (channel < 0 || channel >= m_numChannels) {
+        return log<text_log,-1>("Invalid channel index for setpoint: " + std::to_string(channel), logPrio::LOG_WARNING);
+    }
+
+    const auto & lim = m_channelLimits[channel];
+    const double low = (isCurrent ? lim.currLowLimit : lim.voltLowLimit);
+    const double high = (isCurrent ? lim.currHighLimit : lim.voltHighLimit);
+    double value = requestedValue;
+    if (value < low) value = low;
+    if (value > high) value = high;
+
+    int rv = (isCurrent ? setChannelAmps(channel, value) : setChannelVolts(channel, value));
+    if (rv < 0) return rv;
+
+    if (isCurrent) m_channelTargetCurrents[channel] = static_cast<float>(value);
+    else m_channelTargetVoltages[channel] = static_cast<float>(value);
+    return 0;
+}
+
+int scpiPowerCtrl::applyConfiguredSetpoints()
+{
+    for(int ch = 0; ch < m_numChannels; ++ch)
+    {
+        if (applyChannelSetpoint(ch, false, m_channelTargetVoltages[ch]) < 0) return -1;
+        if (applyChannelSetpoint(ch, true, m_channelTargetCurrents[ch]) < 0) return -1;
+    }
+    return 0;
+}
+
+int scpiPowerCtrl::forceAllOutputsOff()
+{
+    std::string res;
+    for(int ch = 0; ch < m_numChannels; ++ch)
+    {
+        std::string cmd_sel = "INST:NSEL " + std::to_string(ch + 1) + "\n";
+        if (!send_scpi(cmd_sel, res)) {
+            return log<text_log,-1>("Could not select outlet channel " + std::to_string(ch) + " while forcing outputs off", logPrio::LOG_WARNING);
+        }
+        if (!send_scpi("OUTP 0\n", res)) {
+            return log<text_log,-1>("Could not force output off for channel " + std::to_string(ch), logPrio::LOG_WARNING);
+        }
+        m_outletStates[ch] = OUTLET_STATE_OFF;
+    }
     return 0;
 }
 
@@ -869,26 +1148,57 @@ void scpiPowerCtrl::updateAlarmsAndWarnings()
 }
 
 bool scpiPowerCtrl::send_scpi(const std::string& cmd, std::string& response) {
-    // Write command
-    if (write(fd, cmd.c_str(), cmd.size()) < 0) {
-        perror("Write failed");
-        return false;
+    const int active_fd = (m_deviceTransport == scpiPowerDeviceTransport::Ipv4) ? m_socketFd : fd;
+    if (active_fd < 0) {
+       log<software_error>({__FILE__, __LINE__, "SCPI I/O with no open device (fd)"});
+       return false;
     }
 
-    // Only read if this is a query (contains '?')
+    const ssize_t nwr = write(active_fd, cmd.c_str(), cmd.size());
+    if (nwr < 0) {
+       log<software_error>({__FILE__, __LINE__, std::string("SCPI write failed: ") + strerror(errno)});
+       return false;
+    }
+
     if (cmd.find('?') == std::string::npos) {
         response.clear();
         return true;
     }
 
-    char buffer[1024] = {0};
-    int n = read(fd, buffer, sizeof(buffer) - 1);
-    if (n < 0) {
-        perror("Read failed");
-        return false;
+    std::vector<char> buffer(8192);
+    response.clear();
+    while (true) {
+        ssize_t n = read(active_fd, buffer.data(), buffer.size() - 1);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                for (int retry = 0; retry < 5; ++retry) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20 * (retry + 1)));
+                    n = read(active_fd, buffer.data(), buffer.size() - 1);
+                    if (n >= 0) {
+                        break;
+                    }
+                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                        break;
+                    }
+                }
+            }
+            if (n < 0) {
+                log<software_error>({__FILE__, __LINE__, std::string("SCPI read failed: ") + strerror(errno)});
+                return false;
+            }
+        }
+        if (n == 0) {
+            break;
+        }
+        response.append(buffer.data(), static_cast<size_t>(n));
+        if (!response.empty() && response.back() == '\n') {
+            break;
+        }
+        if (response.size() > 100000) {
+            log<software_error>({__FILE__, __LINE__, "SCPI response exceeded 100KB, truncating"});
+            break;
+        }
     }
-
-    response.assign(buffer, n);
     return true;
 }
 
@@ -900,17 +1210,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1volt)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelVoltages[0] = vc;
-   int rv = setChannelVolts(0, vc);
+   int rv = applyChannelSetpoint(0, false, vc);
    
    if(rv < 0)
    {
@@ -918,8 +1222,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1volt)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet1volt, "target", vc);
-   updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
+   updateIfChanged(m_indiP_outlet1volt, "target", m_channelTargetVoltages[0]);
 
    return 0;
 }
@@ -932,17 +1235,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2volt)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelVoltages[1] = vc;
-   int rv = setChannelVolts(1, vc);
+   int rv = applyChannelSetpoint(1, false, vc);
    
    if(rv < 0)
    {
@@ -950,8 +1247,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2volt)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet2volt, "target", vc);
-   updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
+   updateIfChanged(m_indiP_outlet2volt, "target", m_channelTargetVoltages[1]);
 
    return 0;
 }
@@ -964,17 +1260,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3volt)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelVoltages[2] = vc;
-   int rv = setChannelVolts(2, vc);
+   int rv = applyChannelSetpoint(2, false, vc);
    
    if(rv < 0)
    {
@@ -982,8 +1272,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3volt)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet3volt, "target", vc);
-   updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
+   updateIfChanged(m_indiP_outlet3volt, "target", m_channelTargetVoltages[2]);
 
    return 0;
 }
@@ -996,17 +1285,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4volt)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelVoltages[3] = vc;
-   int rv = setChannelVolts(3, vc);
+   int rv = applyChannelSetpoint(3, false, vc);
    
    if(rv < 0)
    {
@@ -1014,8 +1297,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4volt)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet4volt, "target", vc);
-   updateIfChanged(m_indiP_outlet4volt, "current", m_channelVoltages[3]);
+   updateIfChanged(m_indiP_outlet4volt, "target", m_channelTargetVoltages[3]);
 
    return 0;
 }
@@ -1028,17 +1310,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1curr)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelCurrents[0] = vc;
-   int rv = setChannelAmps(0, vc);
+   int rv = applyChannelSetpoint(0, true, vc);
    
    if(rv < 0)
    {
@@ -1046,8 +1322,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1curr)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet1curr, "target", vc);
-   updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+   updateIfChanged(m_indiP_outlet1curr, "target", m_channelTargetCurrents[0]);
 
    return 0;
 }
@@ -1060,17 +1335,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2curr)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelCurrents[1] = vc;
-   int rv = setChannelAmps(1, vc);
+   int rv = applyChannelSetpoint(1, true, vc);
    
    if(rv < 0)
    {
@@ -1078,8 +1347,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2curr)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet2curr, "target", vc);
-   updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+   updateIfChanged(m_indiP_outlet2curr, "target", m_channelTargetCurrents[1]);
 
    return 0;
 }
@@ -1092,17 +1360,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3curr)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelCurrents[2] = vc;
-   int rv = setChannelAmps(2, vc);
+   int rv = applyChannelSetpoint(2, true, vc);
    
    if(rv < 0)
    {
@@ -1110,8 +1372,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3curr)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet3curr, "target", vc);
-   updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+   updateIfChanged(m_indiP_outlet3curr, "target", m_channelTargetCurrents[2]);
 
    return 0;
 }
@@ -1124,17 +1385,11 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4curr)(const pcf::IndiPropert
       return -1;
    }
 
-   int vc = 0;
-
-   if (ipRecv.find("current"))
-      vc = ipRecv["current"].get<int>();
-
-   if (ipRecv.find("target"))
-      vc = ipRecv["target"].get<int>();
+   if (!ipRecv.find("target")) return 0;
+   double vc = ipRecv["target"].get<double>();
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
-   m_channelCurrents[3] = vc;
-   int rv = setChannelAmps(3, vc);
+   int rv = applyChannelSetpoint(3, true, vc);
    
    if(rv < 0)
    {
@@ -1142,8 +1397,7 @@ INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4curr)(const pcf::IndiPropert
       return -1;
    }
 
-   updateIfChanged(m_indiP_outlet4curr, "target", vc);
-   updateIfChanged(m_indiP_outlet4curr, "current", m_channelCurrents[3]);
+   updateIfChanged(m_indiP_outlet4curr, "target", m_channelTargetCurrents[3]);
 
    return 0;
 }
