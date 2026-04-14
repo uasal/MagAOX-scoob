@@ -68,6 +68,8 @@ namespace MagAOX
         const std::string SHORT = "short";
         const std::string LONG = "long";
         const std::string DITHER = "dither";
+
+        enum class Mode : uint8_t { SHORT, LONG, DITHER };
       ///@}
 
       /** \name Configurable Parameters
@@ -75,7 +77,7 @@ namespace MagAOX
          */
         std::string m_shmim_map_filename = "actuator_mapping.fits"; ///< Filename of fits image containing the mapping from 2D grid position to linear index in the command vector; must exist in the calibPath (or calibRelDir if set)
         std::string m_dm_map_filename = ""; ///< Request the pixel array to actuator map from the DM. If false, a map will be sent to the DM.
-        std::string m_mode = ""; ///< Operating mode of the DM. Takes one value from: "short", "long", "dither"
+        Mode m_mode_enum = Mode::SHORT; ///< Operating mode of the DM. Takes one of enum Mode values.
 
         // Telemeter callback parameters
         int period_s;
@@ -92,6 +94,7 @@ namespace MagAOX
 
       // Cached typed pointers to avoid per-frame dynamic_cast in send_array;
       // lifetime is managed by the unique_ptrs above.
+      TelemetryQuery *m_telemetryQ = static_cast<TelemetryQuery *>(telemetryQuery.get());
       ShortPixelsQuery *m_shortQ = static_cast<ShortPixelsQuery *>(shortPixelQuery.get());
       LongPixelsQuery *m_longQ = static_cast<LongPixelsQuery *>(longPixelQuery.get());
       DitherQuery *m_ditherQ = static_cast<DitherQuery *>(ditherPixelQuery.get());
@@ -271,10 +274,56 @@ namespace MagAOX
           */
         int releaseDM();
 
-        /** \name Other methods
-         *
-         *@{
+      /** \name Utility functions
+        *
+        * @{
         */
+
+      /**
+       * @brief Convert Mode enum value to a string
+       * 
+       * \returns the string representation of the Mode value, or an empty string if the value is invalid
+      */
+      const std::string modeToString(Mode mode) const
+      {
+        switch(mode)
+        {
+          case Mode::SHORT:     
+            return SHORT;
+          case Mode::LONG:
+            return LONG;
+          case Mode::DITHER:
+            return DITHER;
+        }
+        return "";
+      }
+
+      /**
+       * @brief Convert string to Mode enum value
+       * 
+       * \returns 0 on success, with type set to the corresponding Mode value
+       * \returns -1 if the string does not match any Mode value
+       */
+      int modeFromString(const std::string &string, Mode &mode) const
+      {
+        if(string == SHORT) 
+        {
+          mode = Mode::SHORT;
+          return 0; 
+        }
+        if(string == LONG)
+        {
+          mode = Mode::LONG;
+          return 0;
+        }
+        if(string == DITHER)
+        {
+          mode = Mode::DITHER;
+          return 0;
+        }
+        
+        return -1;
+      }
     };
 
     dmCtrl::dmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
@@ -289,7 +338,6 @@ namespace MagAOX
       summerDeviceT::setupConfig(config);
       shmimMonitorT::setupConfig(config);
 
-      config.add("parameters.period_s", "", "parameters.period_s", argType::Optional, "parameters", "period_s", false, "int", "The period of telemetry queries to the dm.");
       config.add("dm.calibRelDir", "", "dm.calibRelDir", argType::Optional, "dm", "calibRelDir", false, "string", "Used to find the default config directory.");
       config.add("dm.satThresh", "", "dm.satThresh", argType::Required, "dm", "satThresh", false, "string", "Threshold above which to log saturation.");
       config.add("dm.mapFilename", "", "dm.mapFilename", argType::Required, "dm", "mapFilename", false, "string", "The filename of fits image containing the mapping from 2D grid position to linear index in the command vector. Must exist in the calibPath (or calibRelDir if set).");
@@ -315,10 +363,11 @@ namespace MagAOX
       config(m_dm_map_filename, "dm.dmMapFilename");
       config(m_satThresh, "dm.satThresh");
 
-      config(m_mode, "dm.mode");
-      if (!(m_mode == SHORT || m_mode == LONG || m_mode == DITHER))
+      std::string modeStr = "";
+      config(modeStr, "dm.mode");
+      if(modeFromString(modeStr, m_mode_enum) < 0)
       {
-        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + m_mode + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
+        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + modeStr + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
         return -1;
       }
 
@@ -401,8 +450,8 @@ namespace MagAOX
       REG_INDI_NEWPROP(m_indiP_mode, "mode", pcf::IndiProperty::Text);
       m_indiP_mode.add(pcf::IndiElement("current"));
       m_indiP_mode.add(pcf::IndiElement("target"));
-      m_indiP_mode["current"] = m_mode;
-      m_indiP_mode["target"] = m_mode;
+      m_indiP_mode["current"] = modeToString(m_mode_enum);
+      m_indiP_mode["target"] = modeToString(m_mode_enum);
 
       return 0;
     }
@@ -460,19 +509,17 @@ namespace MagAOX
 
         // log<text_log>("Sending setpoints to dm");
 
-        // ShortPixelsQuery *castShortPixelQuery = dynamic_cast<ShortPixelsQuery *>(shortPixelQuery);
-        // castShortPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
+        // m_shortQ->setPayload(setpoints, setpointsLen, startPixel);
 
-        // dev::summerDevice<dmCtrl>::query(castShortPixelQuery);
+        // dev::summerDevice<dmCtrl>::query(m_shortQ);
       
         // dev::summerDevice<dmCtrl>::receive();
 
         sleep(10);
 
-        // LongPixelsQuery *castLongPixelQuery = dynamic_cast<LongPixelsQuery *>(longPixelQuery);
-        // castLongPixelQuery->setPayload(setpoints, setpointsLen, startPixel);
+        // m_longQ->setPayload(setpoints, setpointsLen, startPixel);
 
-        // dev::summerDevice<dmCtrl>::query(castLongPixelQuery);
+        // dev::summerDevice<dmCtrl>::query(m_longQ);
       
         // dev::summerDevice<dmCtrl>::receive();
 
@@ -528,10 +575,10 @@ namespace MagAOX
 
     int dmCtrl::recordTelem(const telem_dm *)
     {
-      summerDeviceT::query(telemetryQuery.get());
+      summerDeviceT::query(m_telemetryQ);
       
       summerDeviceT::receive();
-      telemetryQuery->logReply();
+      m_telemetryQ->logReply();
 
       return recordDM(true);
     }
@@ -540,15 +587,10 @@ namespace MagAOX
     {
       static CGraphDMTelemetryPayload LastTelemetry; ///< Structure holding the previous dm voltage measurement.
 
-      if (auto telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery.get())) {
-        if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
-        {
-          LastTelemetry = telemetryQueryPtr->Telemetry;
-          telem<telem_dm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.P2I2, LastTelemetry.P4I3, LastTelemetry.P6I});
-        }
-      } else {
-        log<software_error>({__FILE__, __LINE__, "Query casting failed."});
-        return -1;
+      if (!(LastTelemetry == m_telemetryQ->Telemetry) || force)
+      {
+        LastTelemetry = m_telemetryQ->Telemetry;
+        telem<telem_dm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.P2I2, LastTelemetry.P4I3, LastTelemetry.P6I});
       }
 
       return 0;
@@ -595,7 +637,7 @@ namespace MagAOX
           castMappingQuery->setPayload(map_lut.Mappings, payloadLen, startPixel);
         }
 
-        query(castMappingQuery);
+        dev::summerDevice<dmCtrl>::query(castMappingQuery);
         receive();
       } else {
         log<software_error>({__FILE__, __LINE__, "Query casting failed."});
@@ -905,27 +947,31 @@ namespace MagAOX
 
     int dmCtrl::send_array(const std::vector<double> &inputs, uint16_t nbInputs, uint16_t startPixel)
     {
-      if (m_mode == SHORT)
+      // Read the saved enum mode (plain load for minimal overhead)
+      Mode mode = m_mode_enum;
+
+      switch (mode)
       {
-        m_shortQ->setPayload(inputs.data(), nbInputs, startPixel);
-        query(m_shortQ);
+        case Mode::SHORT:
+          m_shortQ->setPayload(inputs.data(), nbInputs, startPixel);
+          dev::summerDevice<dmCtrl>::query(m_shortQ);
+          break;
+
+        case Mode::LONG:
+          m_longQ->setPayload(inputs.data(), nbInputs, startPixel);
+          dev::summerDevice<dmCtrl>::query(m_longQ);
+          break;
+
+        case Mode::DITHER:
+          m_ditherQ->setPayload(inputs.data(), nbInputs, startPixel);
+          dev::summerDevice<dmCtrl>::query(m_ditherQ);
+          break;
+
+        default:
+          log<software_error>({__FILE__, __LINE__, "Unknown dm mode: "+ modeToString(m_mode_enum) + "."});
+          return -1;
       }
-      else if (m_mode == LONG)
-      {
-        m_longQ->setPayload(inputs.data(), nbInputs, startPixel);
-        query(m_longQ);
-      }
-      else if (m_mode == DITHER)
-      {
-        m_ditherQ->setPayload(inputs.data(), nbInputs, startPixel);
-        query(m_ditherQ);
-      }
-      else
-      {
-        log<software_error>({__FILE__, __LINE__, "Unkown dm mode: "+ m_mode + "."});
-        return -1;
-      }
-      
+
       receive();
 
       return 0;
@@ -936,7 +982,7 @@ namespace MagAOX
     // INDI CALLBACKS
     ////////////////////
 
-    // callback from setting m_indiP_val1
+    // callback from setting m_indiP_mode
     // only 'target' is editable ('current' should be updated by code)
     INDI_NEWCALLBACK_DEFN(dmCtrl, m_indiP_mode)
     (const pcf::IndiProperty &ipRecv)
@@ -945,26 +991,24 @@ namespace MagAOX
 
       std::string current = "", target = "";
 
-      if (ipRecv.find("current"))
-      {
-        current = ipRecv["current"].get<std::string>();
-      }
-
       if (ipRecv.find("target"))
       {
         target = ipRecv["target"].get<std::string>();
       }
 
-      if (!(target == SHORT || target == LONG || target == DITHER))
+      Mode parsedMode;
+      if (modeFromString(target, parsedMode) < 0)
       {
-        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + m_mode + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
+        log<software_critical>({__FILE__, __LINE__, errno, "The provided mode, " + target + ", is not a valid option. Valid options are: 'short', 'long', 'dither'."});
+        return -1;
       }
 
       // Lock the mutex, waiting if necessary
       std::unique_lock<std::mutex> lock(m_indiMutex);
 
+      m_mode_enum = parsedMode;
       updateIfChanged(m_indiP_mode, "target", target);
-      m_mode = target;
+      updateIfChanged(m_indiP_mode, "current", target);
 
       std::ostringstream oss;
       oss << "INDI mode callback: " << target;
