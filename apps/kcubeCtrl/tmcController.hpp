@@ -244,6 +244,9 @@ protected:
     /// Enable raw TX/RX tracing of USB packets.
     bool m_traceIO {false};
 
+    /// Control whether ftdi_usb_reset is issued during connect().
+    bool m_doUsbReset {true};
+
     /// The chip ID of the FTDI on the TMC device.
     /** Read and set during \ref connect().
       * See \ftdi_read_chipid
@@ -408,6 +411,12 @@ public:
 
     /// Get whether debug hex tracing is enabled.
     bool traceIO() const;
+
+    /// Enable/disable USB reset during connect().
+    void usbResetOnConnect( bool enable );
+
+    /// Get whether USB reset is enabled during connect().
+    bool usbResetOnConnect() const;
 
     /// Get the chip ID of the FTDI on the TMC device
     /** This is read and set during \ref connect().
@@ -1250,6 +1259,11 @@ public:
                               int line                  ///< [in] The line number at which the error was recorded
                             );
 
+    /// Print a trace/debug message.
+    /** Intended to be overriden in a derived class to route transport traces.
+      */
+    virtual void traceMsg( const std::string & msg );
+
  ///@}                   
 
 
@@ -1495,13 +1509,16 @@ int tmcController::connect(bool errmsg /*default=true*/)
         return -59;
     }
 
-    if((rv = ftdi_usb_reset(m_ftdi)) < 0)
+    if(m_doUsbReset)
     {
-        if(errmsg)
+        if((rv = ftdi_usb_reset(m_ftdi)) < 0)
         {
-            ftdiErrmsg("tmcController::connect", "unable to reset device", rv, __FILE__, __LINE__-4);
+            if(errmsg)
+            {
+                ftdiErrmsg("tmcController::connect", "unable to reset device", rv, __FILE__, __LINE__-4);
+            }
+            return -60 + rv;
         }
-        return -60 + rv;
     }
 
     if((rv = ftdi_setflowctrl(m_ftdi, SIO_RTS_CTS_HS)) < 0)
@@ -1584,6 +1601,18 @@ inline
 bool tmcController::traceIO() const
 {
     return m_traceIO;
+}
+
+inline
+void tmcController::usbResetOnConnect( bool enable )
+{
+    m_doUsbReset = enable;
+}
+
+inline
+bool tmcController::usbResetOnConnect() const
+{
+    return m_doUsbReset;
 }
 
 inline
@@ -2496,6 +2525,12 @@ void tmcController::otherErrmsg( const std::string & src,
 }
 
 inline
+void tmcController::traceMsg( const std::string & msg )
+{
+    std::cerr << msg << "\n";
+}
+
+inline
 void tmcController::ioTrace( const std::string & tag, const unsigned char * buf, int nbytes ) const
 {
     if(buf == nullptr || nbytes <= 0) return;
@@ -2508,7 +2543,7 @@ void tmcController::ioTrace( const std::string & tag, const unsigned char * buf,
             << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
             << static_cast<unsigned int>(buf[i]);
     }
-    std::cerr << oss.str() << std::dec << "\n";
+    const_cast<tmcController*>(this)->traceMsg(oss.str());
 }
 
 #endif //tmcController_hpp

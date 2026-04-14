@@ -62,6 +62,12 @@ public:
         parentT::template log<software_error>({file.c_str(), ln, src + ": " + msg});
     }
 
+    /// Route transport trace to MagAO-X text logs when enabled.
+    virtual void traceMsg( const std::string & msg )
+    {
+        parentT::template log<text_log>(msg, logPrio::LOG_DEBUG);
+    }
+
 };
 
 /// The MagAO-X KIM101 Inertial Motor Controller
@@ -244,6 +250,9 @@ public:
 kim101Ctrl::kim101Ctrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 {
     m_powerMgtEnabled = true;
+    // KIM101 can stop responding if USB reset triggers re-enumeration/rebind
+    // immediately after connect(); keep FTDI link setup but skip usb_reset.
+    m_kcube.usbResetOnConnect(false);
     return;
 }
 
