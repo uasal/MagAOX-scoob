@@ -707,6 +707,17 @@ public:
         Reverse = 0x02
     };
 
+    /// KIM101 channel-enable mode (PZMOT sub-message 0x2B)
+    enum class KIMChanEnableMode : uint16_t {
+        None = 0x00,      ///< All channels disabled
+        Channel1 = 0x01,  ///< Enable channel 1
+        Channel2 = 0x02,  ///< Enable channel 2
+        Channel3 = 0x03,  ///< Enable channel 3
+        Channel4 = 0x04,  ///< Enable channel 4
+        Pair12 = 0x05,    ///< Enable channels 1 and 2
+        Pair34 = 0x06     ///< Enable channels 3 and 4
+    };
+
     /// KIM101 Drive Operation Parameters
     /** Used with PZMOT sub-message 0x07
       * See page 372 of the APT manual.
@@ -1121,6 +1132,22 @@ public:
                            int32_t & position,    ///< [out] Current position count
                            bool errmsg = true     ///< [in] [optional] flag controlling error messages
                          );
+
+    /// Set KIM101 channel-enable mode
+    /** Uses PZMOT sub-message 0x2B.
+      * See page 392 of the APT manual.
+      */
+    int kim_set_chan_enable_mode( KIMChanEnableMode mode, ///< [in] KIM channel enable mode
+                                  bool errmsg = true      ///< [in] [optional] flag controlling error messages
+                                );
+
+    /// Request KIM101 channel-enable mode
+    /** Uses PZMOT sub-message 0x2B (REQ/GET).
+      * See page 392 of the APT manual.
+      */
+    int kim_req_chan_enable_mode( KIMChanEnableMode & mode, ///< [out] KIM channel enable mode
+                                  bool errmsg = true        ///< [in] [optional] flag controlling error messages
+                                );
 
     /// Set KIM101 drive operation parameters
     /** Uses PZMOT sub-message 0x07.
@@ -2271,6 +2298,58 @@ int tmcController::kim_req_poscounts( uint16_t channel,
     TMCC_READ_RESPONSE("kim_req_poscounts", 18)
 
     position = *((int32_t*) &m_rdbuf[10]);
+
+    return 0;
+}
+
+inline
+int tmcController::kim_set_chan_enable_mode( KIMChanEnableMode mode,
+                                             bool errmsg
+                                           )
+{
+    TMCC_CHECK_CONNECTED("kim_set_chan_enable_mode")
+
+    // MGMSG_PZMOT_SET_PARAMS (0x08C0), sub-message 0x2B.
+    // 6-byte header + 4-byte payload.
+    TMCC_SNDBUF_HEAD(0xC0, 0x08, 0x04, 0x00, 0x50 | 0x80, 0x01)
+
+    *((uint16_t*) &m_sndbuf[6]) = 0x002B; // Sub-message ID
+    *((uint16_t*) &m_sndbuf[8]) = static_cast<uint16_t>(mode);
+
+    TMCC_WRITE_COMMAND("kim_set_chan_enable_mode", 10)
+
+    return 0;
+}
+
+inline
+int tmcController::kim_req_chan_enable_mode( KIMChanEnableMode & mode,
+                                             bool errmsg
+                                           )
+{
+    TMCC_CHECK_CONNECTED("kim_req_chan_enable_mode")
+
+    // MGMSG_PZMOT_REQ_PARAMS (0x08C1), sub-message 0x2B.
+    TMCC_SNDBUF_HEAD(0xC1, 0x08, 0x2B, 0x00, 0x50, 0x01)
+
+    TMCC_WRITE_REQUEST("kim_req_chan_enable_mode")
+
+    // Response: MGMSG_PZMOT_GET_PARAMS (0x08C2), 10 bytes total.
+    TMCC_READ_RESPONSE("kim_req_chan_enable_mode", 10)
+
+    uint16_t submsg = *((uint16_t*) &m_rdbuf[6]);
+    if(submsg != 0x002B)
+    {
+        if(errmsg)
+        {
+            otherErrmsg("tmcController::kim_req_chan_enable_mode",
+                        "unexpected sub-message in reply: " + std::to_string(submsg),
+                        __FILE__, __LINE__);
+        }
+        return -1000;
+    }
+
+    uint16_t rawMode = *((uint16_t*) &m_rdbuf[8]);
+    mode = static_cast<KIMChanEnableMode>(rawMode);
 
     return 0;
 }
