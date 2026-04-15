@@ -737,6 +737,10 @@ int kim101Ctrl::appLogic()
 
 int kim101Ctrl::appShutdown()
 {
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+    // Best-effort graceful disconnect to release the FTDI interface cleanly.
+    m_kcube.hw_stop_updatemsgs(false);
+    m_kcube.close(false);
     return 0;
 }
 
