@@ -146,6 +146,9 @@ public:
     /// Implementation of the FSM for kim101Ctrl.
     virtual int appLogic();
 
+    /// Called by MagAOXApp when power transitions to off.
+    virtual int onPowerOff();
+
     /// Shutdown the app.
     virtual int appShutdown();
 
@@ -253,8 +256,6 @@ public:
      * @{
      */
 
-    pcf::IndiProperty m_indiP_identify;
-    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_identify);
     pcf::IndiProperty m_indiP_stop;
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_stop);
     pcf::IndiProperty m_indiP_current_channel;
@@ -378,14 +379,6 @@ void kim101Ctrl::loadConfig()
 
 int kim101Ctrl::appStartup()
 {
-    // Identify button
-    createStandardIndiRequestSw(m_indiP_identify, "identify");  
-    if(registerIndiPropertyNew(m_indiP_identify, INDI_NEWCALLBACK(m_indiP_identify)) < 0)
-    {
-        log<software_error>({__FILE__,__LINE__});
-        return -1;
-    }
-
     createStandardIndiRequestSw(m_indiP_stop, "stop");
     if(registerIndiPropertyNew(m_indiP_stop, INDI_NEWCALLBACK(m_indiP_stop)) < 0)
     {
@@ -682,8 +675,7 @@ int kim101Ctrl::appLogic()
 
         updateIfChanged(m_indiP_current_channel, "value", currentChannelString(m_enabledMask), INDI_OK);
 
-        // Reset identify and other request buttons
-        updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::Off, INDI_IDLE);
+        // Reset request buttons
         updateSwitchIfChanged(m_indiP_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
 
         const stateCodes::stateCodeT nextState =
@@ -701,6 +693,25 @@ int kim101Ctrl::appShutdown()
     // Best-effort graceful disconnect to release the FTDI interface cleanly.
     m_kcube.hw_stop_updatemsgs(false);
     m_kcube.close(false);
+    return 0;
+}
+
+int kim101Ctrl::onPowerOff()
+{
+    std::lock_guard<std::mutex> guard(m_indiMutex);
+
+    // Explicitly release FTDI/USB handle during runtime power-off transitions.
+    m_kcube.hw_stop_updatemsgs(false);
+    m_kcube.close(false);
+
+    m_statusConsecutiveFailures = 0;
+    m_enabledMask = 0;
+    for(int ch = 0; ch < NumChannels; ++ch)
+    {
+        m_channels[ch].enabled = false;
+        m_channels[ch].moving = false;
+    }
+
     return 0;
 }
 
@@ -1082,7 +1093,7 @@ int kim101Ctrl::channelStop(int ch)
         return -1;
     }
 
-    // MGMSG_MOT_MOVE_STOP (0x0465) expects channel index (1..4), not PZMOT bitmask.
+    // First try MGMSG_MOT_MOVE_STOP (0x0465) using channel index (1..4).
     int rv = m_kcube.kim_move_stop(static_cast<uint16_t>(ch));
     if(rv < 0)
     {
@@ -1090,6 +1101,28 @@ int kim101Ctrl::channelStop(int ch)
         if(m_powerState == 0) return -1;
         log<software_error>({__FILE__, __LINE__, 0, rv, "stop failed for channel " + std::to_string(ch)});
         return -1;
+    }
+
+    // Verify stop latched. If still moving, retry with channel bitmask encoding as fallback.
+    bool stillMoving = false;
+    if(m_kcube.kim_req_statusupdate(m_status, false) >= 0)
+    {
+        stillMoving = m_status.channels[ch-1].isMoving();
+    }
+
+    if(stillMoving)
+    {
+        rv = m_kcube.kim_move_stop(channelIdent(ch), false);
+        if(rv < 0)
+        {
+            log<software_error>({__FILE__, __LINE__, 0, rv, "stop fallback failed for channel " + std::to_string(ch)});
+            return -1;
+        }
+
+        if(m_kcube.kim_req_statusupdate(m_status, false) >= 0 && m_status.channels[ch-1].isMoving())
+        {
+            log<text_log>("stop command sent but channel " + std::to_string(ch) + " still reports moving", logPrio::LOG_WARNING);
+        }
     }
 
     log<text_log>("channel " + std::to_string(ch) + " stopped", logPrio::LOG_NOTICE);
@@ -1125,22 +1158,6 @@ int kim101Ctrl::channelZero(int ch)
 // INDI Callbacks
 //=============================================================================
 
-INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_identify)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_identify, ipRecv);
-
-    if(state() != stateCodes::READY && state() != stateCodes::OPERATING) return 0;
-
-    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
-    {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-        updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::On, INDI_BUSY);
-        return m_kcube.mod_identify();
-    }
-   
-    return 0;
-}
-
 INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_stop)(const pcf::IndiProperty &ipRecv)
 {
     INDI_VALIDATE_CALLBACK_PROPS(m_indiP_stop, ipRecv);
@@ -1151,7 +1168,16 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_stop)(const pcf::IndiProperty &ipRecv)
 
     std::lock_guard<std::mutex> guard(m_indiMutex);
 
-    const int ch = currentStopChannel(m_enabledMask);
+    int ch = 0;
+    for(int i = 0; i < NumChannels; ++i)
+    {
+        if(m_channels[i].moving)
+        {
+            ch = i + 1;
+            break;
+        }
+    }
+    if(ch <= 0) ch = currentStopChannel(m_enabledMask);
     if(ch <= 0)
     {
         log<text_log>("stop requested but no active channel is selected", logPrio::LOG_WARNING);
