@@ -724,17 +724,9 @@ int kim101Ctrl::deviceInitialize()
 
     // Get hardware info
     tmcController::HWInfo hwi;
-    uint8_t origHwDest = m_kcube.hwDest();
-    uint8_t altHwDest = (origHwDest == 0x11) ? 0x50 : 0x11;
     rv = -1;
     for(int attempt = 0; attempt < 4; ++attempt)
     {
-        if(attempt == 2)
-        {
-            m_kcube.hwDest(altHwDest);
-            log<text_log>("hw_req_info switching HW destination to " + std::to_string(m_kcube.hwDest()), logPrio::LOG_WARNING);
-        }
-
         rv = m_kcube.hw_req_info(hwi);
         if(rv >= 0) break;
 
@@ -751,7 +743,6 @@ int kim101Ctrl::deviceInitialize()
     {
         // Some KIM units appear to ignore HW_REQ_INFO over this transport.
         // Continue init and fall back to channel-by-channel probes.
-        m_kcube.hwDest(origHwDest);
         log<text_log>("hw_req_info failed; continuing with per-channel probing", logPrio::LOG_WARNING);
     }
     else

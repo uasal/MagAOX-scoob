@@ -2260,7 +2260,8 @@ int tmcController::kim_req_poscounts( uint16_t channel,
     m_sndbuf[1] = 0x08;
     m_sndbuf[2] = 0x05;
     m_sndbuf[3] = static_cast<uint8_t>(channel & 0xFF);
-    m_sndbuf[4] = 0xD0;
+    // Short requests must use plain destination (no long-data 0x80 bit).
+    m_sndbuf[4] = 0x50;
     m_sndbuf[5] = 0x01;
 
     TMCC_WRITE_REQUEST("kim_req_poscounts")
