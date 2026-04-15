@@ -888,8 +888,43 @@ int kim101Ctrl::deviceInitialize()
     m_jogParams.dump(logs);
     log<text_log>(logs.str());
 
-    // Prime startup values by querying each channel explicitly.
-    queryChannelsIndividually(false);
+    // Require at least one successful status read before declaring init complete.
+    // This avoids entering READY in a transport-dead state where all subsequent
+    // polls time out for long periods.
+    rv = -1;
+    for(int attempt = 0; attempt < 3; ++attempt)
+    {
+        rv = m_kcube.kim_req_statusupdate(m_status, false);
+        if(rv >= 0)
+        {
+            uint8_t statusMask = 0;
+            for(int ch = 0; ch < NumChannels; ++ch)
+            {
+                m_channels[ch].position = m_status.channels[ch].position;
+                m_channels[ch].moving = m_status.channels[ch].isMoving();
+                m_channels[ch].enabled = m_status.channels[ch].channelEnabled();
+                if(m_channels[ch].enabled) statusMask |= static_cast<uint8_t>(channelIdent(ch+1));
+            }
+            m_enabledMask = statusMask;
+            break;
+        }
+
+        // Fallback probe: some sessions recover with per-channel read even if packed status misses once.
+        if(queryChannelsIndividually(false) >= 0)
+        {
+            rv = 0;
+            break;
+        }
+
+        sleep(1);
+        if(m_powerState == 0) return -1;
+    }
+
+    if(rv < 0)
+    {
+        log<software_error>({__FILE__, __LINE__, 0, rv, "no status response during initialization"});
+        return -1;
+    }
 
     return 0;
 }
