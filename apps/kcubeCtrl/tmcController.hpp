@@ -2585,9 +2585,76 @@ int tmcController::kim_req_statusupdate( KIMStatus & status,
 
     TMCC_WRITE_REQUEST("kim_req_statusupdate")
 
-    // Response: MGMSG_PZMOT_GET_STATUSUPDATE (0x08E1)
-    // 62 bytes: 6 header + 2 chan + (14 bytes per channel * 4)
-    TMCC_READ_RESPONSE("kim_req_statusupdate", 62)
+    // Response: MGMSG_PZMOT_GET_STATUSUPDATE (0x08E1), 62 bytes.
+    // KIM can prepend asynchronous messages (e.g., 0x08D6 move completed),
+    // so we need to scan for the 0x08E1 frame inside the received stream.
+    m_totrd = 0;
+    bool foundStatus = false;
+    auto t0 = std::chrono::steady_clock::now();
+    while(!foundStatus)
+    {
+        int rd = ftdi_read_data(m_ftdi, m_rdbuf + m_totrd, sizeof(m_rdbuf) - m_totrd);
+        if(rd < 0)
+        {
+            if(errmsg)
+            {
+                ftdiErrmsg("tmcController::kim_req_statusupdate", "unable to read data", rd, __FILE__, __LINE__);
+            }
+            if(rd == -666) return rd;
+            return -200 + rd;
+        }
+
+        if(rd == 0)
+        {
+            auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - t0).count();
+            if(dt_ms > 5000)
+            {
+                if(errmsg)
+                {
+                    otherErrmsg("tmcController::kim_req_statusupdate",
+                                "read timeout waiting for status frame, got " + std::to_string(m_totrd) + " bytes",
+                                __FILE__, __LINE__);
+                }
+                return -301;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
+        if(m_traceIO)
+        {
+            ioTrace("RX kim_req_statusupdate", m_rdbuf + m_totrd, rd);
+        }
+        m_totrd += rd;
+
+        // Search for the 62-byte status frame header: E1 08 38 00 81 50
+        for(int i = 0; i + 62 <= m_totrd; ++i)
+        {
+            if(m_rdbuf[i + 0] == 0xE1 &&
+               m_rdbuf[i + 1] == 0x08 &&
+               m_rdbuf[i + 2] == 0x38 &&
+               m_rdbuf[i + 3] == 0x00 &&
+               m_rdbuf[i + 4] == 0x81 &&
+               m_rdbuf[i + 5] == 0x50)
+            {
+                if(i > 0)
+                {
+                    std::memmove(m_rdbuf, m_rdbuf + i, 62);
+                }
+                m_totrd = 62;
+                foundStatus = true;
+                break;
+            }
+        }
+
+        // Prevent overflow in pathological streams by retaining a small tail window.
+        if(!foundStatus && m_totrd > static_cast<int>(sizeof(m_rdbuf) - 128))
+        {
+            std::memmove(m_rdbuf, m_rdbuf + (m_totrd - 128), 128);
+            m_totrd = 128;
+        }
+    }
 
     clock_gettime(CLOCK_REALTIME, &status.statusTime);
 

@@ -209,6 +209,35 @@ public:
         }
     }
 
+    static bool KIMEnableModeToMask(tmcController::KIMChanEnableMode mode, uint8_t & mask)
+    {
+        switch(mode)
+        {
+            case tmcController::KIMChanEnableMode::None: mask = 0x00; return true;
+            case tmcController::KIMChanEnableMode::Channel1: mask = 0x01; return true;
+            case tmcController::KIMChanEnableMode::Channel2: mask = 0x02; return true;
+            case tmcController::KIMChanEnableMode::Channel3: mask = 0x04; return true;
+            case tmcController::KIMChanEnableMode::Channel4: mask = 0x08; return true;
+            case tmcController::KIMChanEnableMode::Pair12: mask = 0x03; return true;
+            case tmcController::KIMChanEnableMode::Pair34: mask = 0x0C; return true;
+            default: return false;
+        }
+    }
+
+    static std::string currentChannelString(uint8_t mask)
+    {
+        switch(mask)
+        {
+            case 0x01: return "ch_1";
+            case 0x02: return "ch_2";
+            case 0x04: return "ch_3";
+            case 0x08: return "ch_4";
+            case 0x03: return "ch_1_2";
+            case 0x0C: return "ch_3_4";
+            default: return "none";
+        }
+    }
+
     ///@}
 
     /** \name INDI
@@ -217,6 +246,7 @@ public:
 
     pcf::IndiProperty m_indiP_identify;
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_identify);
+    pcf::IndiProperty m_indiP_current_channel;
 
     // Per-channel properties
     pcf::IndiProperty m_indiP_ch1_enable;
@@ -368,6 +398,18 @@ int kim101Ctrl::appStartup()
         log<software_error>({__FILE__,__LINE__});
         return -1;
     }
+
+    if(createROIndiText(m_indiP_current_channel, "current_channel", "value", "current_channel", "channels", "current_channel") < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    if(registerIndiPropertyReadOnly(m_indiP_current_channel) < 0)
+    {
+        log<software_error>({__FILE__,__LINE__});
+        return -1;
+    }
+    m_indiP_current_channel["value"] = "none";
 
     // Channel 1
     createStandardIndiToggleSw(m_indiP_ch1_enable, "ch1_enable");  
@@ -669,9 +711,9 @@ int kim101Ctrl::appLogic()
             auto& ss = m_status.channels[ch];
             
             chs.position = ss.position;
-            chs.enabled = ss.channelEnabled();
             chs.moving = ss.isMoving();
             chs.homed = ss.homed();
+            chs.enabled = (m_enabledMask & channelIdent(ch+1)) != 0;
 
             if(chs.moving) anyMoving = true;
         }
@@ -735,6 +777,8 @@ int kim101Ctrl::appLogic()
             updateIfChanged(m_indiP_ch4_position, "current", m_channels[3].position, INDI_IDLE);
             updateIfChanged(m_indiP_ch4_position, "target", m_channels[3].targetPosition, INDI_IDLE);
         }
+
+        updateIfChanged(m_indiP_current_channel, "value", currentChannelString(m_enabledMask), INDI_OK);
 
         // Jog controls are edge-trigger style; reset so repeated jog clicks retrigger.
         updateIfChanged(m_indiP_ch1_jog, "target", 0, INDI_IDLE);
@@ -825,36 +869,28 @@ int kim101Ctrl::deviceInitialize()
         log<text_log>("hw_stop_updatemsgs failed; continuing initialization", logPrio::LOG_WARNING);
     }
 
-    if(m_useKIMEnableMode)
+    // Detect currently enabled channel mode at startup and reflect this in INDI toggles.
+    // Do not force-disable all channels here.
     {
-        // Disable all channels initially using KIM-specific channel enable mode (sub-message 0x2B).
-        rv = m_kcube.kim_set_chan_enable_mode(tmcController::KIMChanEnableMode::None);
-        if(rv < 0)
+        tmcController::KIMChanEnableMode mode;
+        rv = m_kcube.kim_req_chan_enable_mode(mode, false);
+        if(rv >= 0)
         {
-            sleep(1);
-            if(m_powerState == 0) return -1;
-            log<software_error>({__FILE__, __LINE__, 0, rv, "failed to set initial channel enable mode"});
-            return -1;
-        }
-        m_enabledMask = 0;
-        for(int ch = 0; ch < NumChannels; ++ch) m_channels[ch].enabled = false;
-    }
-    else
-    {
-        // Legacy path (known to work on this hardware in prior runs).
-        for(int ch = 1; ch <= NumChannels; ch++)
-        {
-            rv = m_kcube.mod_set_chanenablestate(channelIdent(ch), tmcController::EnableState::disabled);
-            if(rv < 0)
+            uint8_t mask = 0;
+            if(KIMEnableModeToMask(mode, mask))
             {
-                sleep(1);
-                if(m_powerState == 0) return -1;
-                log<software_error>({__FILE__, __LINE__, 0, rv, "failed to disable channel " + std::to_string(ch)});
-                return -1;
+                m_enabledMask = mask;
             }
-            m_channels[ch-1].enabled = false;
         }
-        m_enabledMask = 0;
+        else
+        {
+            m_enabledMask = 0;
+        }
+
+        for(int ch = 0; ch < NumChannels; ++ch)
+        {
+            m_channels[ch].enabled = (m_enabledMask & channelIdent(ch+1)) != 0;
+        }
     }
 
     // Set drive parameters for all channels
@@ -888,43 +924,9 @@ int kim101Ctrl::deviceInitialize()
     m_jogParams.dump(logs);
     log<text_log>(logs.str());
 
-    // Require at least one successful status read before declaring init complete.
-    // This avoids entering READY in a transport-dead state where all subsequent
-    // polls time out for long periods.
-    rv = -1;
-    for(int attempt = 0; attempt < 3; ++attempt)
-    {
-        rv = m_kcube.kim_req_statusupdate(m_status, false);
-        if(rv >= 0)
-        {
-            uint8_t statusMask = 0;
-            for(int ch = 0; ch < NumChannels; ++ch)
-            {
-                m_channels[ch].position = m_status.channels[ch].position;
-                m_channels[ch].moving = m_status.channels[ch].isMoving();
-                m_channels[ch].enabled = m_status.channels[ch].channelEnabled();
-                if(m_channels[ch].enabled) statusMask |= static_cast<uint8_t>(channelIdent(ch+1));
-            }
-            m_enabledMask = statusMask;
-            break;
-        }
-
-        // Fallback probe: some sessions recover with per-channel read even if packed status misses once.
-        if(queryChannelsIndividually(false) >= 0)
-        {
-            rv = 0;
-            break;
-        }
-
-        sleep(1);
-        if(m_powerState == 0) return -1;
-    }
-
-    if(rv < 0)
-    {
-        log<software_error>({__FILE__, __LINE__, 0, rv, "no status response during initialization"});
-        return -1;
-    }
+    // Prime startup values by querying each channel explicitly.
+    // This sequence matched the first successful RX runs on KIM101.
+    queryChannelsIndividually(false);
 
     return 0;
 }
@@ -939,15 +941,17 @@ int kim101Ctrl::updateStatus()
     }
 
     // Primary fast-path: parse one packed status message containing all channels.
-    uint8_t statusMask = 0;
     for(int ch = 0; ch < NumChannels; ++ch)
     {
         m_channels[ch].position = m_status.channels[ch].position;
         m_channels[ch].moving = m_status.channels[ch].isMoving();
-        m_channels[ch].enabled = m_status.channels[ch].channelEnabled();
-        if(m_channels[ch].enabled) statusMask |= static_cast<uint8_t>(channelIdent(ch+1));
     }
-    m_enabledMask = statusMask;
+
+    for(int ch = 0; ch < NumChannels; ++ch)
+    {
+        m_channels[ch].enabled = (m_enabledMask & channelIdent(ch+1)) != 0;
+    }
+
     return 0;
 }
 
@@ -971,15 +975,8 @@ int kim101Ctrl::queryChannelsIndividually(bool logErrors)
         m_channels[ch-1].position = pos;
         m_channels[ch-1].moving = false;
 
-        if(!m_useKIMEnableMode)
-        {
-            tmcController::EnableState es = tmcController::EnableState::invalid;
-            rv = m_kcube.mod_req_chanenablestate(es, channelIdent(ch), false);
-            if(rv >= 0)
-            {
-                m_channels[ch-1].enabled = (es == tmcController::EnableState::enabled);
-            }
-        }
+        // Do not request 0x0211/0x0212 here; it adds timeout-heavy traffic on KIM.
+        // Enabled state is tracked via the requested KIM channel-enable mode.
     }
 
     if(failures == NumChannels)
@@ -1000,18 +997,12 @@ int kim101Ctrl::channelEnable(int ch)
 
     if(m_useKIMEnableMode)
     {
-        uint8_t newMask = m_enabledMask | static_cast<uint8_t>(channelIdent(ch));
+        uint8_t newMask = static_cast<uint8_t>(channelIdent(ch));
         tmcController::KIMChanEnableMode mode;
         if(!maskToKIMEnableMode(newMask, mode))
         {
-            // KIM supports singles and fixed pairs (1+2, 3+4). Fall back to enabling this channel only.
-            newMask = static_cast<uint8_t>(channelIdent(ch));
-            if(!maskToKIMEnableMode(newMask, mode))
-            {
-                log<software_error>({__FILE__, __LINE__, "unsupported KIM enable mask " + std::to_string(newMask)});
-                return -1;
-            }
-            log<text_log>("unsupported mixed channel-enable mask requested; enabling only channel " + std::to_string(ch), logPrio::LOG_WARNING);
+            log<software_error>({__FILE__, __LINE__, "unsupported KIM enable mask " + std::to_string(newMask)});
+            return -1;
         }
 
         int rv = m_kcube.kim_set_chan_enable_mode(mode);
@@ -1046,8 +1037,39 @@ int kim101Ctrl::channelEnable(int ch)
             return -1;
         }
 
-        m_channels[ch-1].enabled = true;
-        m_enabledMask |= static_cast<uint8_t>(channelIdent(ch));
+        // Verify whether the legacy enable command actually latched for KIM.
+        // KIM status enable bits are unreliable, so still enforce one-active-channel mode below.
+        bool latched = false;
+        if(m_kcube.kim_req_statusupdate(m_status, false) >= 0)
+        {
+            latched = m_status.channels[ch-1].channelEnabled();
+        }
+
+        // Force KIM one-channel mode so INDI toggles and hardware selection stay consistent.
+        tmcController::KIMChanEnableMode mode;
+        if(!maskToKIMEnableMode(static_cast<uint8_t>(channelIdent(ch)), mode))
+        {
+            log<software_error>({__FILE__, __LINE__, "unable to map channel to KIM enable mode"});
+            return -1;
+        }
+
+        rv = m_kcube.kim_set_chan_enable_mode(mode, false);
+        if(rv < 0)
+        {
+            log<software_error>({__FILE__, __LINE__, 0, rv, "failed to set KIM one-channel mode for channel " + std::to_string(ch)});
+            return -1;
+        }
+
+        if(!latched)
+        {
+            log<text_log>("legacy enable did not latch; used KIM 0x2B mode set for channel " + std::to_string(ch), logPrio::LOG_WARNING);
+        }
+
+        m_enabledMask = static_cast<uint8_t>(channelIdent(ch));
+        for(int i = 0; i < NumChannels; ++i)
+        {
+            m_channels[i].enabled = (m_enabledMask & channelIdent(i+1)) != 0;
+        }
     }
     log<text_log>("enabled channel " + std::to_string(ch), logPrio::LOG_NOTICE);
 
@@ -1064,7 +1086,7 @@ int kim101Ctrl::channelDisable(int ch)
 
     if(m_useKIMEnableMode)
     {
-        uint8_t newMask = m_enabledMask & ~static_cast<uint8_t>(channelIdent(ch));
+        uint8_t newMask = (m_enabledMask & static_cast<uint8_t>(channelIdent(ch))) ? 0x00 : m_enabledMask;
         tmcController::KIMChanEnableMode mode;
         if(!maskToKIMEnableMode(newMask, mode))
         {
@@ -1102,6 +1124,17 @@ int kim101Ctrl::channelDisable(int ch)
             if(m_powerState == 0) return -1;
             log<software_error>({__FILE__, __LINE__, 0, rv, "failed to disable channel " + std::to_string(ch)});
             return -1;
+        }
+
+        if(m_enabledMask & static_cast<uint8_t>(channelIdent(ch)))
+        {
+            rv = m_kcube.kim_set_chan_enable_mode(tmcController::KIMChanEnableMode::None, false);
+            if(rv < 0)
+            {
+                log<software_error>({__FILE__, __LINE__, 0, rv, "failed to clear KIM one-channel mode while disabling channel " + std::to_string(ch)});
+                return -1;
+            }
+            m_enabledMask = 0;
         }
 
         m_channels[ch-1].enabled = false;
