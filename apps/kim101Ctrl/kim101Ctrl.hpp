@@ -647,11 +647,13 @@ int kim101Ctrl::appLogic()
             updateSwitchIfChanged(m_indiP_ch1_enable, "toggle", pcf::IndiElement::On, INDI_OK);
             updateIfChanged(m_indiP_ch1_position, "current", m_channels[0].position, 
                            m_channels[0].moving ? INDI_BUSY : INDI_OK);
+            updateIfChanged(m_indiP_ch1_position, "target", m_channels[0].targetPosition, INDI_OK);
         }
         else
         {
             updateSwitchIfChanged(m_indiP_ch1_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
             updateIfChanged(m_indiP_ch1_position, "current", m_channels[0].position, INDI_IDLE);
+            updateIfChanged(m_indiP_ch1_position, "target", m_channels[0].targetPosition, INDI_IDLE);
         }
 
         // Update channel 2 properties
@@ -660,11 +662,13 @@ int kim101Ctrl::appLogic()
             updateSwitchIfChanged(m_indiP_ch2_enable, "toggle", pcf::IndiElement::On, INDI_OK);
             updateIfChanged(m_indiP_ch2_position, "current", m_channels[1].position,
                            m_channels[1].moving ? INDI_BUSY : INDI_OK);
+            updateIfChanged(m_indiP_ch2_position, "target", m_channels[1].targetPosition, INDI_OK);
         }
         else
         {
             updateSwitchIfChanged(m_indiP_ch2_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
             updateIfChanged(m_indiP_ch2_position, "current", m_channels[1].position, INDI_IDLE);
+            updateIfChanged(m_indiP_ch2_position, "target", m_channels[1].targetPosition, INDI_IDLE);
         }
 
         // Update channel 3 properties
@@ -673,11 +677,13 @@ int kim101Ctrl::appLogic()
             updateSwitchIfChanged(m_indiP_ch3_enable, "toggle", pcf::IndiElement::On, INDI_OK);
             updateIfChanged(m_indiP_ch3_position, "current", m_channels[2].position,
                            m_channels[2].moving ? INDI_BUSY : INDI_OK);
+            updateIfChanged(m_indiP_ch3_position, "target", m_channels[2].targetPosition, INDI_OK);
         }
         else
         {
             updateSwitchIfChanged(m_indiP_ch3_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
             updateIfChanged(m_indiP_ch3_position, "current", m_channels[2].position, INDI_IDLE);
+            updateIfChanged(m_indiP_ch3_position, "target", m_channels[2].targetPosition, INDI_IDLE);
         }
 
         // Update channel 4 properties
@@ -686,12 +692,24 @@ int kim101Ctrl::appLogic()
             updateSwitchIfChanged(m_indiP_ch4_enable, "toggle", pcf::IndiElement::On, INDI_OK);
             updateIfChanged(m_indiP_ch4_position, "current", m_channels[3].position,
                            m_channels[3].moving ? INDI_BUSY : INDI_OK);
+            updateIfChanged(m_indiP_ch4_position, "target", m_channels[3].targetPosition, INDI_OK);
         }
         else
         {
             updateSwitchIfChanged(m_indiP_ch4_enable, "toggle", pcf::IndiElement::Off, INDI_IDLE);
             updateIfChanged(m_indiP_ch4_position, "current", m_channels[3].position, INDI_IDLE);
+            updateIfChanged(m_indiP_ch4_position, "target", m_channels[3].targetPosition, INDI_IDLE);
         }
+
+        // Jog controls are edge-trigger style; reset so repeated jog clicks retrigger.
+        updateIfChanged(m_indiP_ch1_jog, "target", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch1_jog, "current", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch2_jog, "target", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch2_jog, "current", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch3_jog, "target", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch3_jog, "current", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch4_jog, "target", 0, INDI_IDLE);
+        updateIfChanged(m_indiP_ch4_jog, "current", 0, INDI_IDLE);
 
         // Reset identify and other request buttons
         updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::Off, INDI_IDLE);

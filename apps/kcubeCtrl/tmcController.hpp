@@ -2266,8 +2266,9 @@ int tmcController::kim_req_poscounts( uint16_t channel,
 
     TMCC_WRITE_REQUEST("kim_req_poscounts")
 
-    // Response: MGMSG_PZMOT_GET_PARAMS (0x08C2), 20 bytes (6 header + 14 data)
-    TMCC_READ_RESPONSE("kim_req_poscounts", 20)
+    // Response observed from KIM101: MGMSG_PZMOT_GET_PARAMS (0x08C2), 18 bytes total.
+    // Header indicates data length 0x000C (12), i.e. 6 header + 12 payload.
+    TMCC_READ_RESPONSE("kim_req_poscounts", 18)
 
     position = *((int32_t*) &m_rdbuf[10]);
 
