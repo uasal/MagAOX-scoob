@@ -94,6 +94,7 @@ protected:
     
     std::string m_serial; ///< USB serial number of the device
     bool m_traceHex {false}; ///< Enable low-level TX/RX hex tracing for FTDI traffic
+    bool m_disableRtsCts {false}; ///< Disable RTS/CTS flow-control setup during connect
 
     /// Drive parameters (can be configured per-channel or globally)
     tmcController::KIMDriveOPParams m_driveParams;
@@ -154,6 +155,9 @@ public:
 
     /// Update status for all channels
     int updateStatus();
+
+    /// Query each channel individually for position/enable state.
+    int queryChannelsIndividually(bool logErrors);
 
     /// Enable a channel
     int channelEnable(int ch);
@@ -260,6 +264,7 @@ void kim101Ctrl::setupConfig()
 {
     config.add("device.serial", "", "device.serial", argType::Required, "device", "serial", false, "string", "USB serial number");
     config.add("device.traceHex", "", "device.traceHex", argType::True, "device", "traceHex", false, "bool", "Enable low-level TX/RX hex tracing");
+    config.add("device.disableRtsCts", "", "device.disableRtsCts", argType::True, "device", "disableRtsCts", false, "bool", "Disable RTS/CTS flow-control setup in connect()");
     
     // Drive parameters
     config.add("drive.maxVoltage", "", "drive.maxVoltage", argType::Required, "drive", "maxVoltage", false, "int", "Max drive voltage (85-125V), default 110");
@@ -279,9 +284,15 @@ int kim101Ctrl::loadConfigImpl(mx::app::appConfigurator &_config)
     m_kcube.serial(m_serial);
     _config(m_traceHex, "device.traceHex");
     m_kcube.traceIO(m_traceHex);
+    _config(m_disableRtsCts, "device.disableRtsCts");
+    m_kcube.useRtsCtsOnConnect(!m_disableRtsCts);
     if(m_traceHex)
     {
         log<text_log>("FTDI hex trace enabled for kim101 transport", logPrio::LOG_WARNING);
+    }
+    if(m_disableRtsCts)
+    {
+        log<text_log>("RTS/CTS flow-control disabled for kim101 transport", logPrio::LOG_WARNING);
     }
     
     // Drive parameters
@@ -735,16 +746,19 @@ int kim101Ctrl::deviceInitialize()
             log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed, retrying"});
         }
     }
+    std::stringstream logs;
     if(rv < 0)
     {
+        // Some KIM units appear to ignore HW_REQ_INFO over this transport.
+        // Continue init and fall back to channel-by-channel probes.
         m_kcube.hwDest(origHwDest);
-        log<software_error>({__FILE__, __LINE__, 0, rv, "hw_req_info failed"});
-        return -1;
+        log<text_log>("hw_req_info failed; continuing with per-channel probing", logPrio::LOG_WARNING);
     }
-
-    std::stringstream logs;
-    hwi.dump(logs);
-    log<text_log>(logs.str());
+    else
+    {
+        hwi.dump(logs);
+        log<text_log>(logs.str());
+    }
 
     // Stop automatic update messages
     rv = -1;
@@ -763,8 +777,8 @@ int kim101Ctrl::deviceInitialize()
     }
     if(rv < 0)
     {
-        log<software_error>({__FILE__, __LINE__, 0, rv, "hw_stop_updatemsgs failed"});
-        return -1;
+        // Non-fatal: if periodic updates are not active, this may be unsupported/ignored.
+        log<text_log>("hw_stop_updatemsgs failed; continuing initialization", logPrio::LOG_WARNING);
     }
 
     // Disable all channels initially
@@ -812,6 +826,9 @@ int kim101Ctrl::deviceInitialize()
     m_jogParams.dump(logs);
     log<text_log>(logs.str());
 
+    // Prime startup values by querying each channel explicitly.
+    queryChannelsIndividually(false);
+
     return 0;
 }
 
@@ -820,8 +837,52 @@ int kim101Ctrl::updateStatus()
     int rv = m_kcube.kim_req_statusupdate(m_status);
     if(rv < 0)
     {
-        return rv;
+        // Fallback path for controllers that do not return the packed 4-channel status.
+        return queryChannelsIndividually(true);
     }
+
+    // Primary fast-path: parse one packed status message containing all channels.
+    for(int ch = 0; ch < NumChannels; ++ch)
+    {
+        m_channels[ch].position = m_status.channels[ch].position;
+        m_channels[ch].moving = (m_status.channels[ch].statusBits & 0x00000020) != 0;
+    }
+    return 0;
+}
+
+int kim101Ctrl::queryChannelsIndividually(bool logErrors)
+{
+    int failures = 0;
+    for(int ch = 1; ch <= NumChannels; ++ch)
+    {
+        int32_t pos = 0;
+        int rv = m_kcube.kim_req_poscounts(channelIdent(ch), pos);
+        if(rv < 0)
+        {
+            ++failures;
+            if(logErrors)
+            {
+                log<software_error>({__FILE__, __LINE__, 0, rv, "kim_req_poscounts failed for channel " + std::to_string(ch)});
+            }
+            continue;
+        }
+
+        m_channels[ch-1].position = pos;
+        m_channels[ch-1].moving = false;
+
+        tmcController::EnableState es = tmcController::EnableState::invalid;
+        rv = m_kcube.mod_req_chanenablestate(es, channelIdent(ch), false);
+        if(rv >= 0)
+        {
+            m_channels[ch-1].enabled = (es == tmcController::EnableState::enabled);
+        }
+    }
+
+    if(failures == NumChannels)
+    {
+        return -1;
+    }
+
     return 0;
 }
 

@@ -27,7 +27,9 @@ TARGET=kim101Ctrl
 INCLUDES+=-I../kcubeCtrl/
 # Force system FTDI/libusb (avoid /usr/local pkg-config ambiguity on this host)
 INCLUDES+=-I/usr/include/libftdi1 -I/usr/include/libusb-1.0
-LDLIBS+=/usr/lib/x86_64-linux-gnu/libftdi1.so /usr/lib/x86_64-linux-gnu/libusb-1.0.so
+FTDI_SO:=$(firstword $(wildcard /usr/lib/x86_64-linux-gnu/libftdi1.so /usr/lib/x86_64-linux-gnu/libftdi1.so.*))
+LIBUSB_SO:=$(firstword $(wildcard /usr/lib/x86_64-linux-gnu/libusb-1.0.so /usr/lib/x86_64-linux-gnu/libusb-1.0.so.*))
+LDLIBS+=$(FTDI_SO) $(LIBUSB_SO)
 
 include ../../Make/magAOXApp.mk
 

@@ -247,6 +247,9 @@ protected:
     /// Control whether ftdi_usb_reset is issued during connect().
     bool m_doUsbReset {true};
 
+    /// Control whether RTS/CTS flow control is configured during connect().
+    bool m_useRtsCtsOnConnect {true};
+
     /// The chip ID of the FTDI on the TMC device.
     /** Read and set during \ref connect().
       * See \ftdi_read_chipid
@@ -417,6 +420,12 @@ public:
 
     /// Get whether USB reset is enabled during connect().
     bool usbResetOnConnect() const;
+
+    /// Enable/disable RTS/CTS flow-control setup during connect().
+    void useRtsCtsOnConnect( bool enable );
+
+    /// Get whether RTS/CTS flow-control setup is enabled during connect().
+    bool useRtsCtsOnConnect() const;
 
     /// Get the chip ID of the FTDI on the TMC device
     /** This is read and set during \ref connect().
@@ -1521,23 +1530,25 @@ int tmcController::connect(bool errmsg /*default=true*/)
         }
     }
 
-    if((rv = ftdi_setflowctrl(m_ftdi, SIO_RTS_CTS_HS)) < 0)
+    if(m_useRtsCtsOnConnect)
     {
-        if(errmsg)
+        if((rv = ftdi_setflowctrl(m_ftdi, SIO_RTS_CTS_HS)) < 0)
         {
-            ftdiErrmsg("tmcController::connect", "unable to set flow control", rv, __FILE__, __LINE__-4);
+            if(errmsg)
+            {
+                ftdiErrmsg("tmcController::connect", "unable to set flow control", rv, __FILE__, __LINE__-4);
+            }
+            return -70 + rv;
         }
-        return -70 + rv;
-    }
 
-
-    if((rv = ftdi_setrts(m_ftdi, 1)) < 0 )
-    {
-        if(errmsg)
+        if((rv = ftdi_setrts(m_ftdi, 1)) < 0 )
         {
-            ftdiErrmsg("tmcController::connect", "unable to set RTS", rv, __FILE__, __LINE__-4);
+            if(errmsg)
+            {
+                ftdiErrmsg("tmcController::connect", "unable to set RTS", rv, __FILE__, __LINE__-4);
+            }
+            return -80 + rv;
         }
-        return -80 + rv;
     }
 
     m_connected = true;
@@ -1613,6 +1624,18 @@ inline
 bool tmcController::usbResetOnConnect() const
 {
     return m_doUsbReset;
+}
+
+inline
+void tmcController::useRtsCtsOnConnect( bool enable )
+{
+    m_useRtsCtsOnConnect = enable;
+}
+
+inline
+bool tmcController::useRtsCtsOnConnect() const
+{
+    return m_useRtsCtsOnConnect;
 }
 
 inline
