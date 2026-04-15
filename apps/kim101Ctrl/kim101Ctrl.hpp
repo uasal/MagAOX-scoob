@@ -262,35 +262,27 @@ public:
     // Per-channel properties
     pcf::IndiProperty m_indiP_ch1_enable;
     pcf::IndiProperty m_indiP_ch1_position;
-    pcf::IndiProperty m_indiP_ch1_zero;
 
     pcf::IndiProperty m_indiP_ch2_enable;
     pcf::IndiProperty m_indiP_ch2_position;
-    pcf::IndiProperty m_indiP_ch2_zero;
 
     pcf::IndiProperty m_indiP_ch3_enable;
     pcf::IndiProperty m_indiP_ch3_position;
-    pcf::IndiProperty m_indiP_ch3_zero;
 
     pcf::IndiProperty m_indiP_ch4_enable;
     pcf::IndiProperty m_indiP_ch4_position;
-    pcf::IndiProperty m_indiP_ch4_zero;
 
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_enable);
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_position);
-    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch1_zero);
 
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_enable);
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_position);
-    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch2_zero);
 
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_enable);
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_position);
-    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch3_zero);
 
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_enable);
     INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_position);
-    INDI_NEWCALLBACK_DECL(kim101Ctrl, m_indiP_ch4_zero);
 
     ///@}
 };
@@ -430,13 +422,6 @@ int kim101Ctrl::appStartup()
     m_indiP_ch1_position["current"] = 0;
     m_indiP_ch1_position["target"] = 0;
 
-    createStandardIndiRequestSw(m_indiP_ch1_zero, "ch1_zero");  
-    if(registerIndiPropertyNew(m_indiP_ch1_zero, INDI_NEWCALLBACK(m_indiP_ch1_zero)) < 0)
-    {
-        log<software_error>({__FILE__,__LINE__});
-        return -1;
-    }
-
     // Channel 2
     createStandardIndiToggleSw(m_indiP_ch2_enable, "ch2_enable");  
     if(registerIndiPropertyNew(m_indiP_ch2_enable, INDI_NEWCALLBACK(m_indiP_ch2_enable)) < 0)
@@ -453,13 +438,6 @@ int kim101Ctrl::appStartup()
     }
     m_indiP_ch2_position["current"] = 0;
     m_indiP_ch2_position["target"] = 0;
-
-    createStandardIndiRequestSw(m_indiP_ch2_zero, "ch2_zero");  
-    if(registerIndiPropertyNew(m_indiP_ch2_zero, INDI_NEWCALLBACK(m_indiP_ch2_zero)) < 0)
-    {
-        log<software_error>({__FILE__,__LINE__});
-        return -1;
-    }
 
     // Channel 3
     createStandardIndiToggleSw(m_indiP_ch3_enable, "ch3_enable");  
@@ -478,13 +456,6 @@ int kim101Ctrl::appStartup()
     m_indiP_ch3_position["current"] = 0;
     m_indiP_ch3_position["target"] = 0;
 
-    createStandardIndiRequestSw(m_indiP_ch3_zero, "ch3_zero");  
-    if(registerIndiPropertyNew(m_indiP_ch3_zero, INDI_NEWCALLBACK(m_indiP_ch3_zero)) < 0)
-    {
-        log<software_error>({__FILE__,__LINE__});
-        return -1;
-    }
-
     // Channel 4
     createStandardIndiToggleSw(m_indiP_ch4_enable, "ch4_enable");  
     if(registerIndiPropertyNew(m_indiP_ch4_enable, INDI_NEWCALLBACK(m_indiP_ch4_enable)) < 0)
@@ -501,13 +472,6 @@ int kim101Ctrl::appStartup()
     }
     m_indiP_ch4_position["current"] = 0;
     m_indiP_ch4_position["target"] = 0;
-
-    createStandardIndiRequestSw(m_indiP_ch4_zero, "ch4_zero");  
-    if(registerIndiPropertyNew(m_indiP_ch4_zero, INDI_NEWCALLBACK(m_indiP_ch4_zero)) < 0)
-    {
-        log<software_error>({__FILE__,__LINE__});
-        return -1;
-    }
 
     state(stateCodes::NODEVICE);
 
@@ -721,10 +685,6 @@ int kim101Ctrl::appLogic()
         // Reset identify and other request buttons
         updateSwitchIfChanged(m_indiP_identify, "request", pcf::IndiElement::Off, INDI_IDLE);
         updateSwitchIfChanged(m_indiP_stop, "request", pcf::IndiElement::Off, INDI_IDLE);
-        updateSwitchIfChanged(m_indiP_ch1_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
-        updateSwitchIfChanged(m_indiP_ch2_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
-        updateSwitchIfChanged(m_indiP_ch3_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
-        updateSwitchIfChanged(m_indiP_ch4_zero, "request", pcf::IndiElement::Off, INDI_IDLE);
 
         const stateCodes::stateCodeT nextState =
             anyMoving ? stateCodes::OPERATING : stateCodes::READY;
@@ -1249,21 +1209,6 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_position)(const pcf::IndiProperty 
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch1_zero)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch1_zero, ipRecv);
-
-    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
-
-    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
-    {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-        return channelZero(1);
-    }
-   
-    return 0;
-}
-
 // Channel 2 callbacks
 INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_enable)(const pcf::IndiProperty &ipRecv)
 {
@@ -1309,21 +1254,6 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_position)(const pcf::IndiProperty 
         return log<software_error,-1>({__FILE__, __LINE__, "channel 2 move failed"});
     }
     
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch2_zero)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch2_zero, ipRecv);
-
-    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
-
-    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
-    {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-        return channelZero(2);
-    }
-   
     return 0;
 }
 
@@ -1375,21 +1305,6 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_position)(const pcf::IndiProperty 
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch3_zero)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch3_zero, ipRecv);
-
-    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
-
-    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
-    {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-        return channelZero(3);
-    }
-   
-    return 0;
-}
-
 // Channel 4 callbacks
 INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_enable)(const pcf::IndiProperty &ipRecv)
 {
@@ -1435,21 +1350,6 @@ INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_position)(const pcf::IndiProperty 
         return log<software_error,-1>({__FILE__, __LINE__, "channel 4 move failed"});
     }
     
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN(kim101Ctrl, m_indiP_ch4_zero)(const pcf::IndiProperty &ipRecv)
-{
-    INDI_VALIDATE_CALLBACK_PROPS(m_indiP_ch4_zero, ipRecv);
-
-    if(!(state() == stateCodes::READY || state() == stateCodes::OPERATING)) return 0;
-
-    if(ipRecv["request"].getSwitchState() == pcf::IndiElement::On)
-    {
-        std::lock_guard<std::mutex> guard(m_indiMutex);
-        return channelZero(4);
-    }
-   
     return 0;
 }
 
