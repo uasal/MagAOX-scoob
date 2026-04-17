@@ -91,6 +91,7 @@ apps/indiTSAccumulator/indiTSAccumulator
 
 #k
 apps/kcubeCtrl/kcubeCtrl
+apps/kim101Ctrl/kim101Ctrl
 apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
