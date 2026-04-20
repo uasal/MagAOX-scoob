@@ -19,10 +19,7 @@ jobs:
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
         run: |
-          pwd
-          ls -la
-          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
-          export INSTRUMENT_CONDA_ENV="xpy3_13"
+          source /etc/profile.d/*.sh
           conda activate $INSTRUMENT_CONDA_ENV
           source /opt/rh/gcc-toolset-14/enable
           make all_clean
@@ -46,10 +43,7 @@ jobs:
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
         run: |
-          pwd
-          ls -la
-          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
-          export INSTRUMENT_CONDA_ENV="xpy3_13"
+          source /etc/profile.d/*.sh
           conda activate $INSTRUMENT_CONDA_ENV
           source /opt/rh/gcc-toolset-14/enable
           make all_clean
