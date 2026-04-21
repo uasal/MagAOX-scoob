@@ -62,6 +62,9 @@ class cameraStatus : public rtimvOverlayInterface
     /// Cached detector height used when mapping ROI coordinates into the view.
     int m_height{ 0 };
 
+    /// True after logging one status-text overflow warning for the current overflow episode.
+    bool m_statusTextOverflowWarned{ false };
+
   public:
     /// Construct the camera-status plugin.
     cameraStatus();
