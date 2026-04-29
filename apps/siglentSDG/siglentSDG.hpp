@@ -1857,12 +1857,14 @@ int siglentSDG::changeFreq( int channel,
    // we want to automatically set the pulse width when setting a new frequency
    if(m_waveform == "PULSE"){
       // we want to auto change the pulse duration, want either 0.000250 or 0.5%
-      double wdthLim = 0.5 / newFreq ;         // this is the limit if we don't have long enough frequencies
-      double wdth250 = 0.000250;  // this is the ideal length of low dip WHACK THINGS.. it's doubling, want to be 0.00025
-      double newWdth = wdthLim;
+      double wdth250 = 1 / newFreq  - 0.000250; // Ideal puse width 250us, subtract from period to get width
+      double wdthLim = 0.5 / newFreq ;          // this is the limit for periods < 2 * 250us
+      double newWdth = wdth250;
 
       if(wdthLim > wdth250){
-         newWdth = wdth250;
+         // if keeping the ideal 250 pulse width gives a pulse is shorter than 50% of the period
+         // switch to the duty cycle limit
+         newWdth = wdthLim;
          log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to duty cycle limit: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
       }else{
          log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to 250us ideal case: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
