@@ -10,6 +10,9 @@
 #include <ImageStreamIO/ImageStruct.h>
 #include <ImageStreamIO/ImageStreamIO.h>
 
+#include <lz4.h>
+#include <zstd.h>
+
 #include <arpa/inet.h>
 #include <endian.h>
 #include <fcntl.h>
@@ -59,6 +62,13 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
         receive
     };
 
+    enum class compressionT : uint32_t
+    {
+        none = 0,
+        lz4  = 1,
+        zstd = 2
+    };
+
 #pragma pack(push, 1)
     struct frameHeaderNet
     {
@@ -71,8 +81,10 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
         uint32_t width;
         uint32_t height;
         uint32_t depth;
+        uint32_t compression;
 
         uint64_t frameBytes;
+        uint64_t payloadBytes;
         uint64_t cnt0;
         uint64_t cnt1;
 
@@ -92,8 +104,10 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
         uint32_t width{ 0 };
         uint32_t height{ 0 };
         uint32_t depth{ 1 };
+        compressionT compression{ compressionT::none };
 
         uint64_t frameBytes{ 0 };
+        uint64_t payloadBytes{ 0 };
         uint64_t cnt0{ 0 };
         uint64_t cnt1{ 0 };
 
@@ -107,7 +121,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     };
 
     static constexpr uint32_t c_magic{ 0x53484D54 }; // "SHMT"
-    static constexpr uint16_t c_version{ 2 };
+    static constexpr uint16_t c_version{ 3 };
     static constexpr size_t   c_maxTargetName{ 256 };
 
   protected:
@@ -122,20 +136,30 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
 
     std::string m_remoteHost{ "127.0.0.1" };
     int         m_remotePort{ 30105 };
+    std::string m_remoteTunnel;
     std::string m_listenAddress{ "0.0.0.0" };
 
     int m_connectTimeoutSec{ 2 };
     int m_reconnectSec{ 2 };
     int m_socketTimeoutSec{ 2 };
+
+    std::string m_compressionModeString{ "none" };
+    compressionT m_compressionMode{ compressionT::none };
+    size_t       m_compressionMinBytes{ 2097152 };
+    size_t       m_compressionMinGainBytes{ 64 };
+    int          m_lz4Acceleration{ 1 };
+    int          m_zstdLevel{ 1 };
     ///@}
 
     std::mutex m_paramMutex;
 
     size_t m_frameBytes{ 0 };
+    std::vector<uint8_t> m_txCompressedBuffer;
 
     std::mutex       m_txMutex;
     int              m_txSockFd{ -1 };
     std::atomic<bool> m_txConnected{ false };
+    std::atomic<bool> m_forceReconnect{ false };
     std::chrono::steady_clock::time_point m_nextReconnect;
 
     std::thread       m_rxThread;
@@ -145,6 +169,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     int               m_listenFd{ -1 };
     int               m_clientFd{ -1 };
     std::vector<uint8_t> m_rxFrameBuffer;
+    std::vector<uint8_t> m_rxPayloadBuffer;
 
     IMAGE       m_targetImage;
     bool        m_targetImageOpen{ false };
@@ -157,6 +182,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
 
     pcf::IndiProperty m_indiP_sourceShmim;
     pcf::IndiProperty m_indiP_targetShmim;
+    pcf::IndiProperty m_indiP_remoteHost;
     pcf::IndiProperty m_indiP_linkState;
     pcf::IndiProperty m_indiP_timing;
 
@@ -171,6 +197,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
 
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_sourceShmim );
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_targetShmim );
+    INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_remoteHost );
 
   public:
     shmimTCP();
@@ -200,6 +227,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     void closeTxSocket();
     void closeTxSocketLocked();
     void scheduleReconnect();
+    std::string resolveTunnelHost( const std::string &entry );
     int  connectRemote();
     int  connectWithTimeout( int fd, const sockaddr *sa, socklen_t saLen, int timeoutSec );
 
@@ -237,22 +265,22 @@ inline void shmimTCP::setupConfig()
     config.add( "shmimTCP.sourceShmim",
                 "",
                 "shmimTCP.sourceShmim",
-                argType::Required,
+                argType::Optional,
                 "shmimTCP",
                 "sourceShmim",
                 false,
                 "string",
-                "Name of local source shmim to monitor and transmit." );
+                "Name of local source shmim to monitor and transmit (used in transmit mode)." );
 
     config.add( "shmimTCP.targetShmim",
                 "",
                 "shmimTCP.targetShmim",
-                argType::Required,
+                argType::Optional,
                 "shmimTCP",
                 "targetShmim",
                 false,
                 "string",
-                "Name of target shmim to create/update on receiver." );
+                "Name of target shmim route for transmitted frames, and fallback target name on receiver." );
 
     config.add( "remote.host",
                 "",
@@ -273,6 +301,16 @@ inline void shmimTCP::setupConfig()
                 false,
                 "int",
                 "TCP port used for send/receive." );
+
+    config.add( "remote.tunnel",
+                "",
+                "remote.tunnel",
+                argType::Optional,
+                "remote",
+                "tunnel",
+                false,
+                "string",
+                "Optional sshTunnels.conf section name used to look up remote hostname by tunnel alias." );
 
     config.add( "remote.listenAddress",
                 "",
@@ -313,6 +351,56 @@ inline void shmimTCP::setupConfig()
                 false,
                 "int",
                 "Send/receive timeout in seconds for TCP sockets." );
+
+    config.add( "compression.mode",
+                "",
+                "compression.mode",
+                argType::Required,
+                "compression",
+                "mode",
+                false,
+                "string",
+                "Payload compression mode: none, lz4, or zstd." );
+
+    config.add( "compression.minBytes",
+                "",
+                "compression.minBytes",
+                argType::Required,
+                "compression",
+                "minBytes",
+                false,
+                "size_t",
+                "Minimum uncompressed frame size for attempting adaptive compression." );
+
+    config.add( "compression.minGainBytes",
+                "",
+                "compression.minGainBytes",
+                argType::Required,
+                "compression",
+                "minGainBytes",
+                false,
+                "size_t",
+                "Minimum byte savings required to keep compressed payload; otherwise send raw." );
+
+    config.add( "compression.lz4Acceleration",
+                "",
+                "compression.lz4Acceleration",
+                argType::Required,
+                "compression",
+                "lz4Acceleration",
+                false,
+                "int",
+                "LZ4 acceleration parameter for adaptive LZ4 compression. 1 is max ratio." );
+
+    config.add( "compression.zstdLevel",
+                "",
+                "compression.zstdLevel",
+                argType::Required,
+                "compression",
+                "zstdLevel",
+                false,
+                "int",
+                "Zstd compression level for adaptive zstd mode." );
 }
 
 inline void shmimTCP::loadConfig()
@@ -330,10 +418,16 @@ inline void shmimTCP::loadConfig()
 
     config( m_remoteHost, "remote.host" );
     config( m_remotePort, "remote.port" );
+    config( m_remoteTunnel, "remote.tunnel" );
     config( m_listenAddress, "remote.listenAddress" );
     config( m_connectTimeoutSec, "remote.connectTimeoutSec" );
     config( m_reconnectSec, "remote.reconnectSec" );
     config( m_socketTimeoutSec, "remote.socketTimeoutSec" );
+    config( m_compressionModeString, "compression.mode" );
+    config( m_compressionMinBytes, "compression.minBytes" );
+    config( m_compressionMinGainBytes, "compression.minGainBytes" );
+    config( m_lz4Acceleration, "compression.lz4Acceleration" );
+    config( m_zstdLevel, "compression.zstdLevel" );
 
     if( m_sourceShmim == "" )
     {
@@ -371,6 +465,23 @@ inline void shmimTCP::loadConfig()
         m_remotePort = 30105;
     }
 
+    if( m_mode == modeT::transmit && !m_remoteTunnel.empty() )
+    {
+        std::string tunnelHost = resolveTunnelHost( m_remoteTunnel );
+        if( !tunnelHost.empty() )
+        {
+            m_remoteHost = tunnelHost;
+            log<text_log>( "using sshDigger tunnel alias [" + m_remoteTunnel + "] remote host " + m_remoteHost,
+                           logPrio::LOG_NOTICE );
+        }
+        else
+        {
+            log<text_log>( "remote.tunnel set to [" + m_remoteTunnel +
+                               "] but no host/remoteHost found in sshTunnels.conf; using remote.host",
+                           logPrio::LOG_WARNING );
+        }
+    }
+
     if( m_connectTimeoutSec < 1 )
     {
         m_connectTimeoutSec = 1;
@@ -384,6 +495,36 @@ inline void shmimTCP::loadConfig()
     if( m_socketTimeoutSec < 1 )
     {
         m_socketTimeoutSec = 1;
+    }
+
+    std::string compLower = m_compressionModeString;
+    for( size_t i = 0; i < compLower.size(); ++i )
+    {
+        compLower[i] = static_cast<char>( ::tolower( static_cast<unsigned char>( compLower[i] ) ) );
+    }
+
+    if( compLower == "lz4" )
+    {
+        m_compressionMode = compressionT::lz4;
+    }
+    else if( compLower == "zstd" )
+    {
+        m_compressionMode = compressionT::zstd;
+    }
+    else
+    {
+        m_compressionMode      = compressionT::none;
+        m_compressionModeString = "none";
+    }
+
+    if( m_lz4Acceleration < 1 )
+    {
+        m_lz4Acceleration = 1;
+    }
+
+    if( m_zstdLevel < 1 )
+    {
+        m_zstdLevel = 1;
     }
 }
 
@@ -411,6 +552,20 @@ inline int shmimTCP::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
+    if( m_mode == modeT::transmit )
+    {
+        if( createStandardIndiText( m_indiP_remoteHost, "remoteHost", "Remote host", "shmimTCP" ) < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__ } );
+        }
+        m_indiP_remoteHost["current"] = m_remoteHost;
+        m_indiP_remoteHost["target"]  = m_remoteHost;
+        if( registerIndiPropertyNew( m_indiP_remoteHost, INDI_NEWCALLBACK( m_indiP_remoteHost ) ) < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__ } );
+        }
+    }
+
     if( createROIndiText( m_indiP_linkState, "linkState", "state", "TCP link state", "shmimTCP", "State" ) < 0 )
     {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
@@ -427,20 +582,20 @@ inline int shmimTCP::appStartup()
     }
     if( m_mode == modeT::transmit )
     {
-        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0, "%0.9f" );
-        indi::addNumberElement( m_indiP_timing, "tx_send_unix", -1e12, 1e12, 0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0.0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "tx_send_unix", -1e12, 1e12, 0.0, "%0.9f" );
 
         m_indiP_timing["src_write_unix"] = m_lastSourceWriteUnix;
         m_indiP_timing["tx_send_unix"]   = m_lastTxSendUnix;
     }
     else
     {
-        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0, "%0.9f" );
-        indi::addNumberElement( m_indiP_timing, "rx_recv_unix", -1e12, 1e12, 0, "%0.9f" );
-        indi::addNumberElement( m_indiP_timing, "rx_write_unix", -1e12, 1e12, 0, "%0.9f" );
-        indi::addNumberElement( m_indiP_timing, "lat_src_to_recv_ms", -1e9, 1e9, 0, "%0.3f" );
-        indi::addNumberElement( m_indiP_timing, "lat_src_to_write_ms", -1e9, 1e9, 0, "%0.3f" );
-        indi::addNumberElement( m_indiP_timing, "lat_recv_to_write_ms", -1e9, 1e9, 0, "%0.3f" );
+        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0.0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "rx_recv_unix", -1e12, 1e12, 0.0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "rx_write_unix", -1e12, 1e12, 0.0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "lat_src_to_recv_ms", -1e9, 1e9, 0.0, "%0.3f" );
+        indi::addNumberElement( m_indiP_timing, "lat_src_to_write_ms", -1e9, 1e9, 0.0, "%0.3f" );
+        indi::addNumberElement( m_indiP_timing, "lat_recv_to_write_ms", -1e9, 1e9, 0.0, "%0.3f" );
 
         m_indiP_timing["src_write_unix"]       = m_lastSourceWriteUnix;
         m_indiP_timing["rx_recv_unix"]         = m_lastRxRecvUnix;
@@ -492,7 +647,11 @@ inline int shmimTCP::appLogic()
         SHMIMMONITOR_APP_LOGIC;
 
         auto now = std::chrono::steady_clock::now();
-        if( !m_txConnected && now >= m_nextReconnect )
+        if( m_forceReconnect.exchange( false ) )
+        {
+            connectRemote();
+        }
+        else if( !m_txConnected && now >= m_nextReconnect )
         {
             connectRemote();
         }
@@ -534,16 +693,25 @@ inline int shmimTCP::appLogic()
 
     std::string source;
     std::string target;
+    std::string remoteHost;
+    int         remotePort;
     {
         std::lock_guard<std::mutex> lock( m_paramMutex );
-        source = m_sourceShmim;
-        target = m_targetShmim;
+        source     = m_sourceShmim;
+        target     = m_targetShmim;
+        remoteHost = m_remoteHost;
+        remotePort = m_remotePort;
     }
 
     updateIfChanged( m_indiP_sourceShmim, "current", source, INDI_IDLE );
     updateIfChanged( m_indiP_sourceShmim, "target", source, INDI_IDLE );
     updateIfChanged( m_indiP_targetShmim, "current", target, INDI_IDLE );
     updateIfChanged( m_indiP_targetShmim, "target", target, INDI_IDLE );
+    if( m_mode == modeT::transmit )
+    {
+        updateIfChanged( m_indiP_remoteHost, "current", remoteHost, INDI_IDLE );
+        updateIfChanged( m_indiP_remoteHost, "target", remoteHost, INDI_IDLE );
+    }
 
     double srcWriteUnix;
     double txSendUnix;
@@ -582,12 +750,13 @@ inline int shmimTCP::appLogic()
     {
         if( m_txConnected )
         {
-            updateIfChanged( m_indiP_linkState, "state", "connected " + m_remoteHost + ":" + std::to_string( m_remotePort ), INDI_OK );
+            updateIfChanged(
+                m_indiP_linkState, "state", "connected " + remoteHost + ":" + std::to_string( remotePort ), INDI_OK );
         }
         else
         {
             updateIfChanged(
-                m_indiP_linkState, "state", "disconnected " + m_remoteHost + ":" + std::to_string( m_remotePort ), INDI_IDLE );
+                m_indiP_linkState, "state", "disconnected " + remoteHost + ":" + std::to_string( remotePort ), INDI_IDLE );
         }
     }
     else
@@ -701,8 +870,10 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
     headerHost.height     = shmimMonitorT::m_height;
     headerHost.depth      = shmimMonitorT::m_depth == 0 ? 1 : shmimMonitorT::m_depth;
     headerHost.frameBytes = m_frameBytes;
+    headerHost.payloadBytes = m_frameBytes;
+    headerHost.compression = compressionT::none;
 
-    IMAGE *img = &shmimMonitorT::m_imageStream;
+    IMAGE *img = &m_imageStream;
     if( img && img->md )
     {
         uint64_t idx = 0;
@@ -737,6 +908,56 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
         headerHost.atimeNsec     = at.tv_nsec;
     }
 
+    const uint8_t *payloadPtr   = reinterpret_cast<const uint8_t *>( curr_src );
+    size_t         payloadBytes = m_frameBytes;
+
+    if( m_compressionMode != compressionT::none && m_frameBytes >= m_compressionMinBytes )
+    {
+        if( m_compressionMode == compressionT::lz4 )
+        {
+            if( m_frameBytes <= static_cast<size_t>( std::numeric_limits<int>::max() ) )
+            {
+                int maxOut = LZ4_compressBound( static_cast<int>( m_frameBytes ) );
+                if( maxOut > 0 )
+                {
+                    m_txCompressedBuffer.resize( static_cast<size_t>( maxOut ) );
+                    int compBytes = LZ4_compress_fast( reinterpret_cast<const char *>( curr_src ),
+                                                       reinterpret_cast<char *>( m_txCompressedBuffer.data() ),
+                                                       static_cast<int>( m_frameBytes ),
+                                                       maxOut,
+                                                       m_lz4Acceleration );
+
+                    if( compBytes > 0 && static_cast<size_t>( compBytes ) < m_frameBytes &&
+                        m_frameBytes - static_cast<size_t>( compBytes ) > m_compressionMinGainBytes )
+                    {
+                        payloadPtr             = m_txCompressedBuffer.data();
+                        payloadBytes           = static_cast<size_t>( compBytes );
+                        headerHost.compression = compressionT::lz4;
+                    }
+                }
+            }
+        }
+        else if( m_compressionMode == compressionT::zstd )
+        {
+            size_t maxOut = ZSTD_compressBound( m_frameBytes );
+            if( maxOut > 0 )
+            {
+                m_txCompressedBuffer.resize( maxOut );
+                size_t compBytes =
+                    ZSTD_compress( m_txCompressedBuffer.data(), maxOut, curr_src, m_frameBytes, m_zstdLevel );
+
+                if( !ZSTD_isError( compBytes ) && compBytes < m_frameBytes &&
+                    m_frameBytes - compBytes > m_compressionMinGainBytes )
+                {
+                    payloadPtr             = m_txCompressedBuffer.data();
+                    payloadBytes           = compBytes;
+                    headerHost.compression = compressionT::zstd;
+                }
+            }
+        }
+    }
+    headerHost.payloadBytes = payloadBytes;
+
     frameHeaderNet headerNet;
     std::memset( &headerNet, 0, sizeof( headerNet ) );
     headerNet.magic           = htonl( c_magic );
@@ -746,7 +967,9 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
     headerNet.width           = htonl( headerHost.width );
     headerNet.height          = htonl( headerHost.height );
     headerNet.depth           = htonl( headerHost.depth );
+    headerNet.compression     = htonl( static_cast<uint32_t>( headerHost.compression ) );
     headerNet.frameBytes      = hostToNet64( headerHost.frameBytes );
+    headerNet.payloadBytes    = hostToNet64( headerHost.payloadBytes );
     headerNet.cnt0            = hostToNet64( headerHost.cnt0 );
     headerNet.cnt1            = hostToNet64( headerHost.cnt1 );
     headerNet.writetimeSec    = hostToNet64( static_cast<uint64_t>( headerHost.writetimeSec ) );
@@ -778,7 +1001,7 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
     }
     if( ok )
     {
-        ok = sendAll( m_txSockFd, curr_src, m_frameBytes );
+        ok = sendAll( m_txSockFd, payloadPtr, payloadBytes );
     }
 
     if( !ok )
@@ -909,6 +1132,27 @@ inline void shmimTCP::closeTxSocketLocked()
 inline void shmimTCP::scheduleReconnect()
 {
     m_nextReconnect = std::chrono::steady_clock::now() + std::chrono::seconds( m_reconnectSec );
+}
+
+inline std::string shmimTCP::resolveTunnelHost( const std::string &entry )
+{
+    if( entry.empty() )
+    {
+        return "";
+    }
+
+    mx::app::appConfigurator tconfig;
+    tconfig.readConfig( m_configDir + "/sshTunnels.conf" );
+
+    std::string host;
+    tconfig.configUnused( host, mx::app::iniFile::makeKey( entry, "host" ) );
+    if( !host.empty() )
+    {
+        return host;
+    }
+
+    tconfig.configUnused( host, mx::app::iniFile::makeKey( entry, "remoteHost" ) );
+    return host;
 }
 
 inline int shmimTCP::connectWithTimeout( int fd, const sockaddr *sa, socklen_t saLen, int timeoutSec )
@@ -1233,7 +1477,9 @@ inline int shmimTCP::receiveClient( int clientFd )
         header.width         = ntohl( netHeader.width );
         header.height        = ntohl( netHeader.height );
         header.depth         = ntohl( netHeader.depth );
+        header.compression   = static_cast<compressionT>( ntohl( netHeader.compression ) );
         header.frameBytes    = netToHost64( netHeader.frameBytes );
+        header.payloadBytes  = netToHost64( netHeader.payloadBytes );
         header.cnt0          = netToHost64( netHeader.cnt0 );
         header.cnt1          = netToHost64( netHeader.cnt1 );
         header.writetimeSec  = static_cast<int64_t>( netToHost64( netHeader.writetimeSec ) );
@@ -1270,6 +1516,25 @@ inline int shmimTCP::receiveClient( int clientFd )
             return -1;
         }
 
+        if( header.payloadBytes == 0 || header.payloadBytes > std::numeric_limits<size_t>::max() )
+        {
+            log<software_error>( { __FILE__, __LINE__, "invalid payload size in frame header" } );
+            return -1;
+        }
+
+        if( header.compression == compressionT::none && header.payloadBytes != header.frameBytes )
+        {
+            log<software_error>( { __FILE__, __LINE__, "raw payload size does not match frame size" } );
+            return -1;
+        }
+
+        if( header.compression != compressionT::none && header.payloadBytes >= header.frameBytes )
+        {
+            // Adaptive sender should have sent raw in this case.
+            log<software_error>( { __FILE__, __LINE__, "compressed payload is not smaller than raw frame" } );
+            return -1;
+        }
+
         std::string targetName;
         targetName.resize( targetNameBytes );
         if( targetNameBytes > 0 )
@@ -1286,14 +1551,60 @@ inline int shmimTCP::receiveClient( int clientFd )
             targetName = m_targetShmim;
         }
 
-        if( m_rxFrameBuffer.size() != header.frameBytes )
+        if( m_rxPayloadBuffer.size() != header.payloadBytes )
         {
-            m_rxFrameBuffer.resize( static_cast<size_t>( header.frameBytes ) );
+            m_rxPayloadBuffer.resize( static_cast<size_t>( header.payloadBytes ) );
         }
 
-        if( !recvAll( clientFd, m_rxFrameBuffer.data(), m_rxFrameBuffer.size() ) )
+        if( !recvAll( clientFd, m_rxPayloadBuffer.data(), m_rxPayloadBuffer.size() ) )
         {
             return 0;
+        }
+
+        const uint8_t *framePtr = nullptr;
+
+        if( header.compression == compressionT::none )
+        {
+            framePtr = m_rxPayloadBuffer.data();
+        }
+        else
+        {
+            m_rxFrameBuffer.resize( static_cast<size_t>( header.frameBytes ) );
+            if( header.compression == compressionT::lz4 )
+            {
+                if( m_rxPayloadBuffer.size() > static_cast<size_t>( std::numeric_limits<int>::max() ) ||
+                    m_rxFrameBuffer.size() > static_cast<size_t>( std::numeric_limits<int>::max() ) )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "LZ4 payload/frame exceeds API int limits" } );
+                    return -1;
+                }
+                int dec = LZ4_decompress_safe( reinterpret_cast<const char *>( m_rxPayloadBuffer.data() ),
+                                               reinterpret_cast<char *>( m_rxFrameBuffer.data() ),
+                                               static_cast<int>( m_rxPayloadBuffer.size() ),
+                                               static_cast<int>( m_rxFrameBuffer.size() ) );
+                if( dec < 0 || static_cast<size_t>( dec ) != m_rxFrameBuffer.size() )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "LZ4 decompression failed" } );
+                    return -1;
+                }
+                framePtr = m_rxFrameBuffer.data();
+            }
+            else if( header.compression == compressionT::zstd )
+            {
+                size_t dec = ZSTD_decompress(
+                    m_rxFrameBuffer.data(), m_rxFrameBuffer.size(), m_rxPayloadBuffer.data(), m_rxPayloadBuffer.size() );
+                if( ZSTD_isError( dec ) || dec != m_rxFrameBuffer.size() )
+                {
+                    log<software_error>( { __FILE__, __LINE__, "zstd decompression failed" } );
+                    return -1;
+                }
+                framePtr = m_rxFrameBuffer.data();
+            }
+            else
+            {
+                log<software_error>( { __FILE__, __LINE__, "unknown compression mode in frame header" } );
+                return -1;
+            }
         }
 
         timespec rxRecvTs;
@@ -1310,7 +1621,7 @@ inline int shmimTCP::receiveClient( int clientFd )
             return -1;
         }
 
-        if( writeFrameToTarget( header, m_rxFrameBuffer.data() ) < 0 )
+        if( writeFrameToTarget( header, framePtr ) < 0 )
         {
             return -1;
         }
@@ -1534,6 +1845,56 @@ INDI_NEWCALLBACK_DEFN( shmimTCP, m_indiP_targetShmim )( const pcf::IndiProperty 
     updateIfChanged( m_indiP_targetShmim, "target", m_targetShmim, INDI_OK );
 
     log<text_log>( "set target shmim to " + m_targetShmim, logPrio::LOG_NOTICE );
+
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( shmimTCP, m_indiP_remoteHost )( const pcf::IndiProperty &ipRecv )
+{
+    if( m_mode != modeT::transmit )
+    {
+        return 0;
+    }
+
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteHost, ipRecv );
+
+    std::string requestedHost;
+    if( indiTargetUpdate( m_indiP_remoteHost, requestedHost, ipRecv, true ) < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+
+    if( requestedHost.empty() )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "remote host cannot be empty" } );
+    }
+
+    std::string resolvedHost = resolveTunnelHost( requestedHost );
+    if( resolvedHost.empty() )
+    {
+        resolvedHost = requestedHost;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock( m_paramMutex );
+        m_remoteHost = resolvedHost;
+    }
+
+    updateIfChanged( m_indiP_remoteHost, "current", resolvedHost, INDI_OK );
+    updateIfChanged( m_indiP_remoteHost, "target", resolvedHost, INDI_OK );
+
+    closeTxSocket();
+    m_forceReconnect = true;
+
+    if( resolvedHost != requestedHost )
+    {
+        log<text_log>( "set remote host via sshDigger alias [" + requestedHost + "] -> " + resolvedHost,
+                       logPrio::LOG_NOTICE );
+    }
+    else
+    {
+        log<text_log>( "set remote host to " + resolvedHost, logPrio::LOG_NOTICE );
+    }
 
     return 0;
 }
