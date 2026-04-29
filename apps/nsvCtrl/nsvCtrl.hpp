@@ -17,6 +17,14 @@
 
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <map>
+#include <filesystem>
+#include <set>
+#include <thread>
+#include <mutex>
 
 #include <unistd.h>
 
@@ -45,7 +53,7 @@ public:
      */
    static constexpr bool c_stdCamera_tempControl = false; ///< app::dev config to tell stdCamera to expose temperature controls
    
-   static constexpr bool c_stdCamera_temp = false; ///< app::dev config to tell stdCamera to expose temperature
+   static constexpr bool c_stdCamera_temp = true; ///< app::dev config to tell stdCamera to expose temperature
    
    static constexpr bool c_stdCamera_readoutSpeed = false; ///< app::dev config to tell stdCamera to expose readout speed controls
    
@@ -57,7 +65,7 @@ public:
 
    static constexpr bool c_stdCamera_exptimeCtrl = true; ///< app::dev config to tell stdCamera to expose exposure time controls
    
-   static constexpr bool c_stdCamera_fpsCtrl = false; ///< app::dev config to tell stdCamera to not expose FPS controls
+   static constexpr bool c_stdCamera_fpsCtrl = true; ///< app::dev config to tell stdCamera to not expose FPS controls
 
    static constexpr bool c_stdCamera_fps = true; ///< app::dev config to tell stdCamera not to expose FPS status
    
@@ -100,7 +108,43 @@ protected:
    std::string m_powerOffTS;
    std::string m_poweredOnDuration;
 
-   std::string m_camPath; ///< /dev/video2 or similar, path to l4v2 cam, read from config
+   // Power monitoring variables
+   float m_gmslVoltage {0.0};
+   float m_gmslCurrent {0.0};
+   std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
+   int m_powerChannel { -1 };             // Optional fixed channel (1..3) to use with m_powerDevicePath
+   int m_powerUpdateCounter = 0;          // Counter for rate limiting power updates
+   int m_powerUpdateInterval = 10;        // Update power every N frames (10Hz at 100fps = every 10 frames)
+   
+   // High-frequency power monitoring thread
+   std::thread m_powerThread;             // Separate thread for power monitoring
+   bool m_powerThreadRunning = false;     // Control flag for power thread
+   std::chrono::milliseconds m_powerUpdateRate{10}; // Update every 10ms (100Hz)
+   std::mutex m_powerMutex;               // Separate mutex for power data
+   
+   // Comprehensive power monitoring structure
+   struct PowerRail {
+      std::string name;           // e.g., "12V_A_GMSL1"
+      std::string devicePath;     // e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6"
+      int channel;                // e.g., 1, 2, 3, 7
+      std::string voltageFile;    // e.g., "in1_input"
+      std::string currentFile;    // e.g., "curr1_input"
+      float voltage = 0.0;
+      float current = 0.0;
+      bool valid = false;
+   };
+   
+   std::vector<PowerRail> m_powerRails;
+   
+   // Power logging variables
+   bool m_powerLoggingEnabled = false;
+   std::ofstream m_powerLogFile;
+   std::mutex m_powerLogMutex;
+   std::string m_powerLogPath;
+   bool m_powerHeaderWritten = false;
+
+   std::string m_camID; // ID encoded in the camera (necessary to pair with path)
+   std::string m_camPath; // dev/videoX
 
    int m_current_frame; ///< frame index, from 0 to bufsize for current frame to read out
    int m_oldest_frame; ///< the oldest camera frame in the buffer (must be dequeued first)
@@ -111,7 +155,34 @@ protected:
 
    int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
+   int m_xStartPos;
+   int m_yStartPos;
+
+   float m_minEMGain; // no min defined in stdCamera. Can assume 0?
+   int m_minVCrop;
+   int m_maxVCrop;
+   int m_maxYStartPos;
+   int m_minYStartPos;
+   int m_maxXStartPos;
+   int m_minXStartPos;
+
    std::vector<void*> ROIbuffers;
+
+   // booleans for potential config values in camera... could do away with these but would be uglier
+   bool uses_vCrop = false; 
+   bool uses_fpgaPower = false;
+
+   struct TimeSpec {
+      long tv_sec;
+      long tv_nsec;
+  };
+
+   // timing info for extra camera statistics
+   TimeSpec prev_timestamp = {0,0};
+   double running_mean = 0.0;
+   int frame_count = 0;
+   int buffer_discard = 0;
+   bool has_prev = false;
 
 public:
 
@@ -144,6 +215,20 @@ public:
 
    int getTemp();
 
+   int getPowerStatus();
+
+   // Power monitoring thread function
+   void powerMonitoringThread();
+   
+   // Power monitoring functions
+   void initializePowerRails();
+   void updateAllPowerRails();
+   
+   // Power logging functions
+   int startPowerLogging();
+   int stopPowerLogging();
+   void logPowerData();
+
    int setTempControl();
 
    int getFPS();
@@ -156,6 +241,14 @@ public:
 
    int getVCrop();
 
+   int getXStartPos();
+
+   int setXStartPos(int pos);
+   
+   int getYStartPos();
+   
+   int setYStartPos(int pos);
+
    int setBitDepth(int bitDepth);
 
    int getBlacklevel();
@@ -163,6 +256,8 @@ public:
    int setBlacklevel();
 
    int setCropMode();
+
+   int set_preferred_stride(int stride);
 
    int setShutter(unsigned os);
 
@@ -173,6 +268,8 @@ public:
    int writeROISubframe();
 
    int resizeROIbufs();
+
+   void reset_cam_statistics();
 
    //int getBitDepth(); //12, 14, 16
 
@@ -231,13 +328,20 @@ protected:
 
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
+   pcf::IndiProperty m_indiP_frame_timestamp_s;
+   pcf::IndiProperty m_indiP_frame_timestamp_ns;
+   pcf::IndiProperty m_indiP_mean_frame_time;
    pcf::IndiProperty m_indiP_power;
    pcf::IndiProperty m_indiP_power_status;
+   pcf::IndiProperty m_indiP_gmsl_voltage;
+   pcf::IndiProperty m_indiP_gmsl_current;
+   pcf::IndiProperty m_indiP_power_logging;
 
 public:
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power_logging);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power);
 
    /** \name Telemeter Interface
@@ -262,20 +366,44 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    std::string m_powerDevice;             ///< The INDI device name of the power controller
    std::string m_powerChannel;            ///< The INDI property name of the channel controlling this device's power.
 
-   //int m_powerState = -1;       ///< Current power state, 1=On, 0=Off, -1=Unk.
+   m_powerState = -1;       ///< Current power state, 1=On, 0=Off, -1=Unk.
    //int m_powerTargetState = -1; ///< Current target power state, 1=On, 0=Off, -1=Unk.
 
    //m_startupTemp = -45;  
    
+   // overwrite these once camera powered on, set a mode, & loaded camera params
    m_maxEMGain = 360;
-   m_emGainSet = 100;
+   m_minEMGain = 0;
+   m_emGainSet = 100; //default
+
    m_blacklevelSet = 10;
    m_maxBlacklevel = 65535; // assuming 16-bit. Pair with bitdepth when implemented
    m_minBlacklevel = 0;
+   
    m_maxExpTime = 3600000000;
    m_minExpTime = 69;
 
+   m_minFPS = 0;
+   m_maxFPS = 99999999999;
+
+   m_minVCrop = 0;
+   m_maxVCrop = 99999999;
+
+   m_maxYStartPos = 9999999;
+   m_maxXStartPos = 99999999;
+   m_xStartPos = 0;
+
+   m_minYStartPos = 0;
+   m_minXStartPos = 0;
+   m_yStartPos = 0;
+
+   // fps, expsoure, black level, gain, 
+   // roi start pos, ver start pos, end pos, etc.
    m_powerCycles = 0;
+
+   // Initialize power monitoring
+   m_gmslVoltage = 0.0;
+   m_gmslCurrent = 0.0;
 
    return;
 }
@@ -283,6 +411,15 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 inline
 nsvCtrl::~nsvCtrl() noexcept
 {
+   // Stop power monitoring thread
+   if (m_powerThreadRunning) {
+      m_powerThreadRunning = false;
+      if (m_powerThread.joinable()) {
+         m_powerThread.join();
+      }
+   }
+   
+   // Power monitoring uses direct file reading, no persistent streams to close
    return;
 }
 
@@ -290,10 +427,12 @@ inline
 void nsvCtrl::setupConfig()
 {
  
-   config.add("camera.camPath", "", "camera.camPath", argType::Required, "camera","camPath", false, "str", "The path to the camera.");
-   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Optional, "camera", "vcropoffset", false, "str", "vertical crop offset for camera");
-   config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "str", "pixel bit depth");
-   config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "str", "camera power");
+   config.add("camera.camID", "", "camera.camID", argType::Required, "camera","camID", false, "str", "v4l2 Card Type identifyer for camera.");
+   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
+   config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
+   config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
+   config.add("camera.power_device_path", "", "camera.power_device_path", argType::Optional, "camera", "power_device_path", false, "str", "Direct device path for power monitoring (e.g., /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6)");
+   config.add("camera.power_channel", "", "camera.power_channel", argType::Optional, "camera", "power_channel", false, "int", "Channel index (1-3) to read when using power_device_path");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -304,11 +443,12 @@ void nsvCtrl::setupConfig()
 inline
 void nsvCtrl::loadConfig()
 {
-
-   config(m_camPath, "camera.camPath");
+   config(m_camID, "camera.camID");
    config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
+   config(m_powerDevicePath, "camera.power_device_path");
+   config(m_powerChannel, "camera.power_channel");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -318,17 +458,12 @@ void nsvCtrl::loadConfig()
    m_modeName = m_startupMode;
    m_nextMode = m_modeName;
 
-   //m_default_x = m_cameraModes[m_modeName].m_centerX;
-   //m_default_y = m_cameraModes[m_modeName].m_centerY;
-   //m_default_w = m_cameraModes[m_modeName].m_sizeX;
-   //m_default_h = m_cameraModes[m_modeName].m_sizeY;
-
    m_full_x = m_cameraModes[m_modeName].m_centerX;
    m_full_y = m_cameraModes[m_modeName].m_centerY;
    m_full_w = m_cameraModes[m_modeName].m_sizeX;
    m_full_h = m_cameraModes[m_modeName].m_sizeY;
    
-   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
+   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS; // config defaults. actual camera will be different
    m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
 
    m_currentROI.x = m_default_x;
@@ -356,7 +491,9 @@ void nsvCtrl::loadConfig()
       m_maxEMGain = 360;
       log<text_log>("maxGain set to 360");
    }
-
+   
+   m_camPath = findCameraByID(m_camID);
+   
    dev::frameGrabber<nsvCtrl>::loadConfig(config);
    
    dev::telemeter<nsvCtrl>::loadConfig(config);
@@ -395,6 +532,36 @@ int nsvCtrl::appStartup()
    m_indiP_power_status["power_cycles"] = std::to_string(m_powerCycles);
    registerIndiPropertyReadOnly(m_indiP_power_status);
 
+   createROIndiNumber( m_indiP_frame_timestamp_s, "frame_timestamp_s", "Frame Timestamp (s)");
+   indi::addNumberElement<uint>( m_indiP_frame_timestamp_s, "value", 0, std::numeric_limits<uint>::max(), 0,  "%d", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_frame_timestamp_s );
+
+   createROIndiNumber( m_indiP_frame_timestamp_ns, "frame_timestamp_ns", "Frame Timestamp (ns)");
+   indi::addNumberElement<uint>( m_indiP_frame_timestamp_ns, "value", 0, std::numeric_limits<uint>::max(), 0,  "%d", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_frame_timestamp_ns );
+
+   createROIndiNumber( m_indiP_mean_frame_time, "m_indiP_mean_frame_time", "Mean Frame Time (s)");
+   indi::addNumberElement<float>( m_indiP_mean_frame_time, "value", 0.0, std::numeric_limits<float>::max(), 0.0,  "%f", "readout time");
+   registerIndiPropertyReadOnly( m_indiP_mean_frame_time );
+
+   createROIndiNumber( m_indiP_gmsl_voltage, "gmsl_voltage", "GMSL Voltage (V)");
+   indi::addNumberElement<float>( m_indiP_gmsl_voltage, "value", 0.0, 15.0, 0.0,  "%.3f", "GMSL interface voltage");
+   registerIndiPropertyReadOnly( m_indiP_gmsl_voltage );
+
+   createROIndiNumber( m_indiP_gmsl_current, "gmsl_current", "GMSL Current (A)");
+   indi::addNumberElement<float>( m_indiP_gmsl_current, "value", 0.0, 10.0, 0.0,  "%.3f", "GMSL interface current");
+   registerIndiPropertyReadOnly( m_indiP_gmsl_current );
+
+   createStandardIndiToggleSw( m_indiP_power_logging, "power_logging", "Power Logging", "Enable/disable power data logging");
+   m_indiP_power_logging["toggle"].set(0);
+   registerIndiPropertyNew( m_indiP_power_logging, INDI_NEWCALLBACK(m_indiP_power_logging));
+
+   /*
+   createStandardIndiNumber<int>(m_indiP_frame_timestamp_s, "frame_timestamp_s", 0, 2147483647, 1, "%d");
+   m_indiP_frame_timestamp_s["current"] = prev_timestamp.tv_sec;
+   registerIndiPropertyReadOnly(m_indiP_frame_timestamp_s, INDI_NEWCALLBACK(m_indiP_frame_timestamp_s));
+   */
+
    if(dev::stdCamera<nsvCtrl>::appStartup() < 0)
    {
       return log<software_critical,-1>({__FILE__,__LINE__});
@@ -416,6 +583,33 @@ int nsvCtrl::appStartup()
 
    m_powerState = 0;  
    //m_powerTargetState = 1;
+
+   // Initialize power monitoring
+   if (!m_powerDevicePath.empty()) {
+      // Determine channel to test (default to 1 if unspecified)
+      const int channel = (m_powerChannel >= 1 && m_powerChannel <= 3) ? m_powerChannel : 1;
+      const std::string currentFile = m_powerDevicePath + "/curr" + std::to_string(channel) + "_input";
+      const std::string voltageFile = m_powerDevicePath + "/in" + std::to_string(channel) + "_input";
+
+      std::ifstream testCurrent(currentFile);
+      std::ifstream testVoltage(voltageFile);
+
+      if (testCurrent.is_open() && testVoltage.is_open()) {
+         log<text_log>("Power monitoring initialized: " + m_powerDevicePath + " (ch" + std::to_string(channel) + ")", logPrio::LOG_INFO);
+
+         // Initialize all power rails (respects m_powerChannel if set)
+         initializePowerRails();
+
+         // Start power monitoring thread
+         m_powerThreadRunning = true;
+         m_powerThread = std::thread(&nsvCtrl::powerMonitoringThread, this);
+         log<text_log>("Power monitoring thread started at " + std::to_string(1000/m_powerUpdateRate.count()) + "Hz", logPrio::LOG_INFO);
+      } else {
+         log<text_log>("Power monitoring files not available: " + currentFile + ", " + voltageFile, logPrio::LOG_WARNING);
+      }
+   } else {
+      log<text_log>("No power_device_path configured, power monitoring disabled", logPrio::LOG_INFO);
+   }
 
    return 0;
 
@@ -481,14 +675,13 @@ int nsvCtrl::appLogic()
 
       //but don't wait for it, just go back around.
       if(!lock.owns_lock()) return 0;
-
-      /*
-      if(getTemp() < 0)
+      
+      // Update power data inside INDI mutex to ensure it gets processed
       {
-         state(stateCodes::ERROR);
-         return 0;
+         std::lock_guard<std::mutex> powerLock(m_powerMutex);
+         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
       }
-      */
    
       if(m_powerState == 0) return 0;
 
@@ -503,9 +696,10 @@ int nsvCtrl::appLogic()
 
       if(getFPS() < 0 || 
         getEMGain() < 0 ||
-        getBlacklevel() < 0 ||
-        getExpTime() < 0 || 
-        (config.isSet("camera.vcropoffset") ? getVCrop() < 0 : 0))
+        getBlacklevel() < 0 || // currently returning 1 hard-coded when value not found in camera... so return val is not useful
+        getExpTime() < 0 ||
+        uses_vCrop ? getVCrop() < 0 : 0 ||
+        c_stdCamera_temp ? getTemp() < 0 : 0)
       {   
          if(m_powerState == 0) return 0;
 
@@ -513,21 +707,13 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      if(int ps = getPowerStatus() != 0){
-         
-         /*
-         if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);   //refer to V4L2_IN_ST_NO_POWER in videodev2.h
-         } else if(ps == 2){
-            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
-         } else{
-            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
-         }
-
+      if(getPowerStatus() < 0 && getPowerStatus() != PARAM_NOT_FOUND){
+         log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
          state(stateCodes::NODEVICE);
          return 0;
-         */
       }
+
+      // Power data already updated above
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -631,61 +817,50 @@ int nsvCtrl::appShutdown()
 inline
 int nsvCtrl::cameraSelect()  
 {  
-   const char *path = m_camPath.c_str();
-   if(openCamera(path) == -1){
-      log<text_log>("No nsv camera found on path", logPrio::LOG_CRITICAL);
+   if(openCamera(m_camPath.c_str()) == -1){
+      log<text_log>("No nsv camera found matching id", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
 
-   if(!m_powerState) return -1;
+   // after connecting to the camera, we have polled all values and need to reconfigure INDI
+   // Could connect to the camera and poll values with the fd prior to streaming, however this could be dangerous? Wait for power on for now
 
-   /*
-   if(int ps = getPowerStatus() != 0){
-      m_powerState = 0;
-      m_poweredOn = false; */
-      /*
-         if(ps == 1){
-            log<text_log>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);  
-         } else if(ps == 2){
-            log<text_log>("Camera in 'No Signal' state", logPrio::LOG_CRITICAL); 
-         } else{
-            log<text_log>("Camera Bad Status", logPrio::LOG_CRITICAL);   
-         }
+   getPowerStatus();
+   if(!m_powerState) {
+      state(stateCodes::NODEVICE);
+      return log<text_log,-1>("Camera in 'No Power' state", logPrio::LOG_CRITICAL);
+   } 
 
-         state(stateCodes::NODEVICE);
-         return 0;
-         */
- /*  } else {
-      m_powerState = 1;
-      m_poweredOn = true;
-   }
-   */
+   // need to get valid modes first before setting mode
 
    if(setReadoutMode() == -1){
       log<text_log>("Failed to set camera mode", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+
+   // before initializing camera, need to pull settings for new mode
    
-   if(initCamera(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
+   /* including this in the setReadoutMode call, verify x's, y's, after setting. After true ROI is implemented might rework this
+   if(setCamImageFormat(m_cameraModes[m_modeName].m_sizeX,m_cameraModes[m_modeName].m_sizeY,m_bitDepth) == -1){
       log<text_log>("Failed to initialize camera", logPrio::LOG_CRITICAL);
       state(stateCodes::NODEVICE);
       return -1;
    }
+   */
 
    // reload parameters affected by sensor mode
-   if(config.isSet("camera.vcropoffset")){
+   if(uses_vCrop){
       getVCrop();
+      updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
    }
-   updateIfChanged(m_indiP_vCrop, "current", m_vCrop);
    getExpTime();
    updateIfChanged(m_indiP_exptime, "current", m_expTime);
 
-   CameraParams params = getCameraParams();
-   std::cout << "Camera initialized to - Width: " << params.width
-                  << ", Height: " << params.height
-                  << ", Pixel Format: " << params.pixelFormat << std::endl;
+   printf("Camera initialized to - Width: %d,", camera_modes[0].resolutions[camera_modes[0].current_resolution].first);
+   printf(" Height: %d,", camera_modes[0].resolutions[camera_modes[0].current_resolution].second);
+   printf(" Bit depth: %d\n", camera_modes[0].bitDepth);
 
    if(requestBuffers(m_circBuffLength)  == -1 || 
       queryBuffers()     == -1) {
@@ -708,64 +883,162 @@ int nsvCtrl::cameraSelect()
       return -1;
    }
 
+   reset_cam_statistics();
+
    m_current_frame = 0; 
    m_oldest_frame = 0;
 
    state(stateCodes::CONNECTED);
-   log<text_log>(std::string("Connected to ") + m_camPath); //camera_string);
+   log<text_log>(std::string("Connected to ") + m_camID);
 
    m_init = true;
 
    return 0;
 }
 
+/*
+   Old firmware for IMX 571 requires setting a sensor_mode parameter to switch between a certain width/height 
+
+   Newer firmware allows --set-fmt-video=width=1280,height=720 type call and will automatically change modes,
+   although there is some vagueness when it comes to width/height priority. CameraMode struct has list of resolutions
+   w/ indexer current_resolution and can call updateCurrentMode() to update current_resolution index. 
+   
+   Assumes resolutions doesn't change. When switching cameras, use getCameraModes() for list of valid resolutions
+
+   if using "Modes" and m_modeName as an indexer, need to match valid modes on camera in a MagAOX config file.  
+   Could generically support setting width/height from INDI and report back what sensor mode the camera set,
+   however this would not be backwards compatible with old firmware.  
+   
+   Want to preserve camera mode/resolution settings for experiments, so better to contain in MagAOX conf file
+   with appropriate 'startupMode' value and categories for each mode. Not ideal/ requires extra work since each
+   camera config has to be rewritten whenever there's a firmware update.
+   
+   There may be a better solution to dynamically create modes and maintain reproducibilty/consistency
+*/
+
+// maybe should accept a width/height input from user and programatically decide what mode to set (obscure from user)
+// and just report the new max framerate when switching ROIs. as well as report new h/w limits within mode
 inline
 int nsvCtrl::setReadoutMode()
 {
    int result = 0;
 
-   if(m_modeName == "sliced")
-   {
-      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camPath;
-      result = std::system(command.c_str());
+   auto it = camera_controls.find("sensor_mode");
+   if(it != camera_controls.end()){ 
+      if(m_modeName == "sliced")  // keep sliced and fullframe config to indicate mode for old firmware for now
+      {
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=1 -d " + m_camID;
+         result = std::system(command.c_str());
+      }
+      if(m_modeName == "fullframe")
+      {
+         const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camID;
+         result = std::system(command.c_str());
+      }
+
+      if(result != 0)
+      {
+         log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"}); 
+         return -1;
+      }
    }
-   if(m_modeName == "fullframe")
-   {
-      const std::string command = "v4l2-ctl --set-ctrl sensor_mode=0 -d " + m_camPath;
-      result = std::system(command.c_str());
-   }
 
-   if(result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setReadoutMode setting mode"}); 
-      return -1;
-   }
+   log<text_log>("Setting readout mode to " +  m_modeName);
 
-   log<text_log>("Set readout mode to " +  m_modeName);
-   std::cout << "Set readout mode to " + m_modeName << std::endl;
+   // each mode has defined width & height so call set-fmt to configure. Could make this more flexible.
+   // after set-fmt confirm the output values for width/height match input config, otherwise warn user,
+   //    then update max width and height using output from camera. 
 
 
-   // new camera mode defaults. Should e able to specify an x,y and width, height for each mode rather than global to each
-   /*
-   m_default_x = m_cameraModes[m_modeName].m_default_x;
-   m_default_y = m_cameraModes[m_modeName].m_default_y;
-   m_default_w = m_cameraModes[m_modeName].m_default_w;
-   m_default_h = m_cameraModes[m_modeName].m_default_w;
-   */
-   /*
-      m_default_x = m_cameraModes[m_modeName].m_centerX;
-      m_default_y = m_cameraModes[m_modeName].m_centerY;
-      m_default_w = m_cameraModes[m_modeName].m_sizeX;
-      m_default_h = m_cameraModes[m_modeName].m_sizeY;
-  */ 
-
-   m_full_x = m_cameraModes[m_modeName].m_centerX;
-   m_full_y = m_cameraModes[m_modeName].m_centerY;
-   m_full_w = m_cameraModes[m_modeName].m_sizeX;
-   m_full_h = m_cameraModes[m_modeName].m_sizeY;
+   // to diagnose issues with setting format- use "v4l2-ctl --set-fmt-video=width=1280,height=720 --verbose" optional bitDepth
+   //    then check outputs -> VIDIOC_QUERYCAP: ok   VIDIOC_G_FMT: ok   VIDIOC_S_FMT: ok
    
-   m_maxFPS = m_cameraModes[m_modeName].m_maxFPS;
-   m_minFPS = m_cameraModes[m_modeName].m_maxFPS;
+   // not generically supporting setting width and height. Will need to change when Neutralino adds true ROI support. Still doing pseudo-ROI
+   printf("width: %d height: %d\n", m_cameraModes[m_modeName].m_sizeX, m_cameraModes[m_modeName].m_sizeY);
+   setCamImageFormat(m_cameraModes[m_modeName].m_sizeX, m_cameraModes[m_modeName].m_sizeY, m_bitDepth); 
+   sleep(2);
+   updateCameraControls();  // update controls after updating image format
+   updateCurrentMode(); 
+
+   // update sensor parameters after camera image format
+   // bypass_mode
+   // override_enable
+   // height_align
+   // size_align
+   // preferred_stride 
+   set_preferred_stride(32);
+
+   // now update local variables.  some redundancy with CameraControl struct
+   int width = camera_modes[0].resolutions[camera_modes[0].current_resolution].first;
+   int height = camera_modes[0].resolutions[camera_modes[0].current_resolution].second;
+
+   m_full_w = width;
+   m_full_h = height;
+
+   printf("width :%d, height: %d\n", width, height);
+
+   m_maxFPS = (1 / camera_modes[0].intervals[camera_modes[0].current_resolution]);  // would get from CameraControl frame_rate, but 571 doesn't report correctly
+
+   // could directly reference these via camera_controls["frame_rate"].maximum but
+   auto fr = camera_controls.find("frame_rate"); // exposure time and framerate are tied, so when you update one you must update the other
+   if(fr != camera_controls.end()){
+      m_minFPS = fr->second.minimum / 1000000;  
+      m_maxFPS = fr->second.maximum / 1000000;
+   } 
+
+   auto bl = camera_controls.find("blacklevel"); 
+   if(bl != camera_controls.end()){
+      m_minBlacklevel = bl->second.minimum; 
+      m_maxBlacklevel = bl->second.maximum;
+   }
+
+   auto blv = camera_controls.find("black_level");
+   if(blv != camera_controls.end()){
+      m_minBlacklevel = blv->second.minimum; 
+      m_maxBlacklevel = blv->second.maximum;
+   }
+
+   auto gn = camera_controls.find("gain");
+   if(gn != camera_controls.end()){
+      m_minEMGain = gn->second.minimum;  
+      m_maxEMGain = gn->second.maximum;
+   }
+
+   auto xp = camera_controls.find("exposure");
+   if(xp != camera_controls.end()){
+      m_minExpTime = xp->second.minimum;  
+      m_maxExpTime = xp->second.maximum;
+   } 
+
+   auto vc = camera_controls.find("vcropoffset");
+   if(vc != camera_controls.end()){
+      uses_vCrop = true;
+      m_minVCrop = vc->second.minimum;  
+      m_maxVCrop = vc->second.maximum;
+      m_vCrop = vc->second.current_value;
+      // TODO check if it's already been added to indi../
+      createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", m_minVCrop, m_maxVCrop, vc->second.step, "%d");  // need to check if already defined
+      m_indiP_vCrop["current"] = m_vCrop;
+      m_indiP_vCrop["target"] = m_vCrop;
+      registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop)); // only create if already created
+   } else {
+      uses_vCrop = false;
+   }
+
+   auto hs = camera_controls.find("roi_hor_start_pos");
+   if(hs != camera_controls.end()){
+      m_minXStartPos = hs->second.minimum;  
+      m_maxXStartPos = hs->second.maximum;
+   } 
+
+   auto vs = camera_controls.find("roi_ver_start_pos");
+   if(vs != camera_controls.end()){
+      m_minYStartPos = vs->second.minimum;  
+      m_maxYStartPos = vs->second.maximum;
+   } 
+
+   m_full_x = width / 2; // get from sensor not from config
+   m_full_y = height / 2;
 
    // after setting ReadoutMode reset ROI parameters
    
@@ -773,19 +1046,13 @@ int nsvCtrl::setReadoutMode()
       Want to preserve ROI across modes, however still need to check valid x,y w,h when changing modes.
       What would be preferable is 'global' defaults in addition to mode-based defaults. 
       To truly preserve ROI, need to account for vcropoffset parameter as well for y... */
-   m_nextROI.x = m_default_x;
-   m_nextROI.y = m_default_y;
-   m_nextROI.w = m_default_w;
-   m_nextROI.h = m_default_h;
-   m_nextROI.bin_x = 1;
-   m_nextROI.bin_y = 1;
 
-   m_currentROI.x = m_default_x;
-   m_currentROI.y = m_default_y;
-   m_currentROI.w = m_default_w;
-   m_currentROI.h = m_default_h;
-   m_currentROI.bin_x = 1;
-   m_currentROI.bin_y = 1;
+   m_currentROI.x = m_nextROI.x = m_default_x;
+   m_currentROI.y = m_nextROI.y = m_default_y;
+   m_currentROI.w = m_nextROI.w = m_default_w;
+   m_currentROI.h = m_nextROI.h = m_default_h;
+   m_currentROI.bin_x = m_nextROI.bin_x = 1;
+   m_currentROI.bin_y = m_nextROI.bin_y = 1;
 
    if(m_default_x + (m_default_w / 2) > m_full_w || m_default_x - (m_default_w / 2) < 0)
    {
@@ -808,8 +1075,7 @@ int nsvCtrl::setReadoutMode()
       log<text_log>("Invalid default h with current mode. Setting to max height", logPrio::LOG_WARNING);
    }
 
-  // m_readoutSpeedName = m_readoutSpeedNameSet;
-   //m_reconfig = true;
+   printf("Set readout mode to: %s\n", m_modeName.c_str());
 
    return 0;
 }
@@ -817,174 +1083,628 @@ int nsvCtrl::setReadoutMode()
 inline
 int nsvCtrl::getTemp()
 {
-   float temp = -999;
+   int res = getAndUpdateSingleControlVal("get_fpga_temperature");  // values range from -1 to 15
+   if(res == PARAM_NOT_FOUND){
+      // handle when we can't see power explicitly.  Assume turned on..
+      //m_poweredOn = true;
+      //m_powerState = 1;
+      return PARAM_NOT_FOUND;
+   }
+   m_ccdTemp = res / 1000.0;
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get fpga temperature"}) : m_ccdTemp;
+}
 
-   m_ccdTemp = temp;
+inline
+int nsvCtrl::getPowerStatus()
+{
+   int res = getAndUpdateSingleControlVal("get_fpga_power_status");  // values range from -1 to 15
+   if(res == PARAM_NOT_FOUND){
+      // handle when we can't see power explicitly.  Assume turned on..
+      m_poweredOn = true;
+      m_powerState = 1;
+      return PARAM_NOT_FOUND;
+   }
 
+   // TODO delete this block once they actually make the fpga report correctly
+   m_poweredOn = true;
+   m_powerState = 1;
+   return 1;
+
+   if(res > 0){
+      m_poweredOn = true;
+      m_powerState = 1;
+   } else if(res == 0){
+      m_poweredOn = false;
+      m_powerState = 0;
+   } else {
+      m_poweredOn = false;
+      m_powerState = -1;
+   }
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get power state"}) : m_powerState;
+}
+
+void nsvCtrl::powerMonitoringThread()
+{
+   log<text_log>("Power monitoring thread started", logPrio::LOG_INFO);
+   
+   int loop_count = 0;
+   while (m_powerThreadRunning && !shutdown()) {
+      // Update all power rails
+      updateAllPowerRails();
+      
+      // Update legacy GMSL variables for backward compatibility
+      {
+         std::lock_guard<std::mutex> lock(m_powerMutex);
+         // Use only the explicitly configured device+channel if provided
+         if (!m_powerDevicePath.empty() && m_powerChannel >= 1 && m_powerChannel <= 3) {
+            bool foundConfigured = false;
+            for (const auto &rail : m_powerRails) {
+               if (rail.valid && rail.devicePath == m_powerDevicePath && rail.channel == m_powerChannel) {
+                  m_gmslVoltage = rail.voltage;
+                  m_gmslCurrent = rail.current;
+                  foundConfigured = true;
+                  break;
+               }
+            }
+            if (!foundConfigured) {
+               static bool warnedMissingConfiguredRail = false;
+               if (!warnedMissingConfiguredRail) {
+                  log<text_log>(
+                     std::string("Configured power_device_path '") + m_powerDevicePath +
+                     "' with power_channel " + std::to_string(m_powerChannel) +
+                     " not found among discovered rails; legacy INDI values will remain 0",
+                     logPrio::LOG_WARNING);
+                  warnedMissingConfiguredRail = true;
+               }
+               m_gmslVoltage = 0.0f;
+               m_gmslCurrent = 0.0f;
+            }
+         }
+      }
+      
+      // Log power data if enabled
+      logPowerData();
+      
+      // Debug logging every 100 loops (1 second at 100Hz)
+      loop_count++;
+      if (loop_count % 100 == 0) {
+         log<text_log>("Power thread running, loop count: " + std::to_string(loop_count) + 
+                      ", voltage: " + std::to_string(m_gmslVoltage) + 
+                      "V, current: " + std::to_string(m_gmslCurrent) + "A", logPrio::LOG_INFO);
+      }
+      
+      // Sleep for the specified update rate
+      std::this_thread::sleep_for(m_powerUpdateRate);
+   }
+   
+   log<text_log>("Power monitoring thread stopped", logPrio::LOG_INFO);
+}
+
+inline
+void nsvCtrl::initializePowerRails()
+{
+   // Clear existing rails
+   m_powerRails.clear();
+   
+   log<text_log>("Starting auto-discovery of INA3221 power sensors...", logPrio::LOG_INFO);
+   
+   // Auto-discover all INA3221 devices (follow symlinks robustly; avoid external find)
+   std::vector<std::string> devicePaths;
+   const std::string basePath = "/sys/bus/i2c/drivers/ina3221";
+   try {
+      namespace fs = std::filesystem;
+      if (fs::exists(basePath) && fs::is_directory(basePath)) {
+         for (const auto &dirEntry : fs::directory_iterator(basePath)) {
+            const std::string entryName = dirEntry.path().filename().string();
+            // Match entries like "0-0040", "1-0043", etc. and ensure it's a symlink
+            if (entryName.find('-') != std::string::npos &&
+                entryName.find('-') == entryName.rfind('-') &&
+                fs::is_symlink(dirEntry.symlink_status())) {
+               // Resolve the real device path
+               fs::path realDevicePath;
+               try {
+                  realDevicePath = fs::read_symlink(dirEntry.path());
+                  // If the symlink is relative, make it absolute based on parent
+                  if (realDevicePath.is_relative()) {
+                     realDevicePath = dirEntry.path().parent_path() / realDevicePath;
+                  }
+               } catch (...) {
+                  // If we can't resolve symlink, skip
+                  continue;
+               }
+
+               const fs::path hwmonRoot = realDevicePath / "hwmon";
+               if (fs::exists(hwmonRoot) && fs::is_directory(hwmonRoot)) {
+                  for (const auto &hwmonEntry : fs::directory_iterator(hwmonRoot)) {
+                     const std::string hwmonName = hwmonEntry.path().filename().string();
+                     if (fs::is_directory(hwmonEntry.status()) &&
+                         hwmonName.rfind("hwmon", 0) == 0) {
+                        const std::string hwmonDir = hwmonEntry.path().string();
+                        std::string normHwmon;
+                        try {
+                           normHwmon = std::filesystem::weakly_canonical(hwmonEntry.path()).string();
+                        } catch (...) {
+                           normHwmon = hwmonDir;
+                        }
+                        devicePaths.push_back(normHwmon);
+                        log<text_log>("Found INA3221 device: " + normHwmon, logPrio::LOG_INFO);
+                     }
+                  }
+               }
+            }
+         }
+      }
+   } catch (const std::exception &e) {
+      log<text_log>("Exception during auto-discovery: " + std::string(e.what()), logPrio::LOG_WARNING);
+   }
+   
+   // If auto-discovery failed or found no devices, fall back to configured path
+   if (devicePaths.empty()) {
+      if (!m_powerDevicePath.empty()) {
+         log<text_log>("Auto-discovery failed, using configured power device path: " + m_powerDevicePath, logPrio::LOG_WARNING);
+         devicePaths.push_back(m_powerDevicePath);
+      } else {
+         log<text_log>("No INA3221 devices found via auto-discovery and no power_device_path configured", logPrio::LOG_WARNING);
+         return;
+      }
+   }
+   
+   // Scan each device for power rails
+   for (const auto& devicePath : devicePaths) {
+      log<text_log>("Scanning device: " + devicePath, logPrio::LOG_INFO);
+      try {
+         namespace fs = std::filesystem;
+         if (m_powerChannel >= 1 && m_powerChannel <= 3) {
+            // Config overrides: add exactly one rail from the configured device path
+            const int channel = m_powerChannel;
+            const std::string labelFile = devicePath + "/in" + std::to_string(channel) + "_label";
+            std::ifstream labelStream(labelFile);
+            std::string railName;
+            if (labelStream.is_open()) {
+               std::getline(labelStream, railName);
+            }
+            if (railName.empty()) {
+               railName = "ch" + std::to_string(channel);
+            }
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Configured power rail: " + rail.name + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               }
+            }
+            m_powerRails.push_back(rail);
+            // Skip auto enumeration if channel is forced
+            continue;
+         }
+
+         std::vector<std::string> labelFiles;
+         for (const auto &entry : fs::directory_iterator(devicePath)) {
+            if (!entry.is_regular_file()) continue;
+            const std::string fname = entry.path().filename().string();
+            if (fname.rfind("in", 0) == 0 && fname.size() > 7 &&
+                fname.find("_label") == fname.size() - 6) {
+               labelFiles.push_back(entry.path().string());
+            }
+         }
+
+         if (labelFiles.empty()) {
+            log<text_log>("No label files found in " + devicePath, logPrio::LOG_WARNING);
+            continue;
+         }
+
+         for (const auto &labelFile : labelFiles) {
+            const std::string filename = std::filesystem::path(labelFile).filename().string();
+            const std::size_t posStart = 2; // after 'in'
+            const std::size_t posEnd = filename.find("_label");
+            if (posEnd == std::string::npos || posEnd <= posStart) continue;
+            int channel = -1;
+            try {
+               channel = std::stoi(filename.substr(posStart, posEnd - posStart));
+            } catch (...) {
+               continue;
+            }
+
+            std::ifstream labelStream(labelFile);
+            if (!labelStream.is_open()) {
+               log<text_log>("Cannot read label file: " + labelFile + " (open failed)", logPrio::LOG_WARNING);
+               continue;
+            }
+
+            std::string railName;
+            std::getline(labelStream, railName);
+            if (railName.empty()) continue;
+
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Discovered power rail: " + railName + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               } else {
+                  log<text_log>("Power rail " + railName + " files exist but are not readable (empty)", logPrio::LOG_WARNING);
+               }
+            } else {
+               log<text_log>("Power rail " + railName + " files not accessible", logPrio::LOG_WARNING);
+            }
+            m_powerRails.push_back(rail);
+         }
+      } catch (const std::exception &e) {
+         log<text_log>("Exception scanning device '" + devicePath + "': " + std::string(e.what()), logPrio::LOG_WARNING);
+      }
+   }
+   
+   log<text_log>("Auto-discovery complete: Found " + std::to_string(m_powerRails.size()) + " power rails", logPrio::LOG_INFO);
+   
+   // Log summary of discovered rails
+   for (const auto& rail : m_powerRails) {
+      if (rail.valid) {
+         log<text_log>("  ✓ " + rail.name + " (ch" + std::to_string(rail.channel) + ") - " + rail.devicePath, logPrio::LOG_INFO);
+      } else {
+         log<text_log>("  ✗ " + rail.name + " (ch" + std::to_string(rail.channel) + ") - INVALID", logPrio::LOG_WARNING);
+      }
+   }
+}
+
+inline
+void nsvCtrl::updateAllPowerRails()
+{
+   std::lock_guard<std::mutex> lock(m_powerMutex);
+   
+   for (auto& rail : m_powerRails) {
+      if (!rail.valid) continue;
+      
+      // Read voltage
+      std::ifstream vFile(rail.voltageFile);
+      if (vFile.is_open()) {
+         std::string voltageStr;
+         std::getline(vFile, voltageStr);
+         if (!voltageStr.empty()) {
+            try {
+               rail.voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+            } catch (const std::exception& e) {
+               // Silent error handling
+            }
+         }
+      } else {
+         // Log permission error only once per rail to avoid spam
+         static std::set<std::string> logged_voltage_errors;
+         if (logged_voltage_errors.find(rail.name) == logged_voltage_errors.end()) {
+            log<text_log>("Failed to open voltage file for rail '" + rail.name + "': " + rail.voltageFile + " (permission denied)", logPrio::LOG_WARNING);
+            logged_voltage_errors.insert(rail.name);
+         }
+      }
+      
+      // Read current
+      std::ifstream cFile(rail.currentFile);
+      if (cFile.is_open()) {
+         std::string currentStr;
+         std::getline(cFile, currentStr);
+         if (!currentStr.empty()) {
+            try {
+               rail.current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+            } catch (const std::exception& e) {
+               // Silent error handling
+            }
+         }
+      } else {
+         // Log permission error only once per rail to avoid spam
+         static std::set<std::string> logged_current_errors;
+         if (logged_current_errors.find(rail.name) == logged_current_errors.end()) {
+            log<text_log>("Failed to open current file for rail '" + rail.name + "': " + rail.currentFile + " (permission denied)", logPrio::LOG_WARNING);
+            logged_current_errors.insert(rail.name);
+         }
+      }
+   }
+}
+
+inline
+int nsvCtrl::startPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (m_powerLoggingEnabled) {
+      return 0; // Already logging
+   }
+   
+   // Generate log file path with timestamp in MagAOX telemetry directory
+   auto now = std::chrono::system_clock::now();
+   auto time_t = std::chrono::system_clock::to_time_t(now);
+   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+   
+   // Ensure telemetry directory exists
+   std::string telemDir = "/opt/MagAOX/telem";
+   if (access(telemDir.c_str(), F_OK) != 0) {
+      // Create directory if it doesn't exist
+      std::string mkdirCmd = "mkdir -p " + telemDir;
+      if (system(mkdirCmd.c_str()) != 0) {
+         log<software_error>({__FILE__, __LINE__, "Failed to create telemetry directory: " + telemDir});
+         return -1;
+      }
+   }
+   
+   std::stringstream ss;
+   ss << telemDir << "/nsvCtrl_power_" << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+   ss << "_" << std::setfill('0') << std::setw(3) << ms.count() << ".csv";
+   m_powerLogPath = ss.str();
+   
+   m_powerLogFile.open(m_powerLogPath, std::ios::out);
+   if (!m_powerLogFile.is_open()) {
+      log<software_error>({__FILE__, __LINE__, "Failed to open power log file: " + m_powerLogPath});
+      return -1;
+   }
+   
+   // Prepare to write header on first data write
+   m_powerHeaderWritten = false;
+   m_powerLoggingEnabled = true;
+   log<text_log>("Power logging started, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   
    return 0;
+}
+
+inline
+int nsvCtrl::stopPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLoggingEnabled) {
+      return 0; // Not logging
+   }
+   
+   m_powerLoggingEnabled = false;
+   
+   if (m_powerLogFile.is_open()) {
+      m_powerLogFile.close();
+      log<text_log>("Power logging stopped, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   }
+   
+   return 0;
+}
+
+inline
+void nsvCtrl::logPowerData()
+{
+   if (!m_powerLoggingEnabled) return;
+   
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLogFile.is_open()) return;
+   
+   // Get current system time in nanoseconds
+   auto now = std::chrono::high_resolution_clock::now();
+   auto duration = now.time_since_epoch();
+   auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+   
+   // Get camera timestamp (if available)
+   long camera_timestamp_s = 0;
+   long camera_timestamp_ns = 0;
+   
+   // Try to get camera timestamp from current image
+   if (m_currImageTimestamp.tv_sec != 0 || m_currImageTimestamp.tv_nsec != 0) {
+      camera_timestamp_s = m_currImageTimestamp.tv_sec;
+      camera_timestamp_ns = m_currImageTimestamp.tv_nsec;
+   }
+   
+   // Write header if this is the first write
+   if (!m_powerHeaderWritten) {
+      m_powerLogFile << "system_time_ns,camera_timestamp_s,camera_timestamp_ns";
+      for (const auto& rail : m_powerRails) {
+         if (rail.valid) {
+            m_powerLogFile << "," << rail.name << "_ch" << rail.channel << "_voltage_v," 
+                          << rail.name << "_ch" << rail.channel << "_current_a";
+         }
+      }
+      m_powerLogFile << "\n";
+      m_powerHeaderWritten = true;
+   }
+   
+   // Write data for all power rails
+   m_powerLogFile << nanoseconds << "," 
+                  << camera_timestamp_s << "," 
+                  << camera_timestamp_ns;
+   
+   for (const auto& rail : m_powerRails) {
+      if (rail.valid) {
+         m_powerLogFile << "," << std::fixed << std::setprecision(6) << rail.voltage 
+                        << "," << std::fixed << std::setprecision(6) << rail.current;
+      } else {
+         m_powerLogFile << ",0.000000,0.000000"; // Invalid rail
+      }
+   }
+   
+   m_powerLogFile << "\n";
+   m_powerLogFile.flush();
+}
+
+inline
+int nsvCtrl::getFPS()
+{
+   m_fps = getAndUpdateSingleControlVal("frame_rate") / 1000000.0; 
+   if(m_fps == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_fps < 0 ? log<software_error,-1>({__FILE__, __LINE__, "nsvCam failed to dequeue frame"}) : m_fps;
+}
+
+inline
+int nsvCtrl::setFPS()
+{
+   if(m_fpsSet > m_maxFPS || m_fpsSet < m_minFPS)
+      log<text_log>(std::to_string(m_fpsSet) + " fps out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("frame_rate", int(m_fpsSet * 1000000));
+   // need to dump camera buffers here when changing framerate otherwise screws up statistics...
+
+   reset_cam_statistics();
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting framerate: " + std::to_string(m_fpsSet)}) : log<text_log,1>({"set framerate: " + std::to_string(m_fpsSet)});
+}
+
+inline 
+int nsvCtrl::getExpTime()
+{
+   m_expTime = getAndUpdateSingleControlVal("exposure") / 1000000.0;
+   if(m_expTime == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_expTime < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get exposure time"}) : m_expTime;
+}
+
+inline 
+int nsvCtrl::setExpTime()
+{
+   if((m_expTimeSet * 1000000) > m_maxExpTime || (m_expTimeSet * 1000000) < m_minExpTime)
+      log<text_log>(std::to_string(m_expTimeSet) + " exp out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("exposure", int(m_expTimeSet * 1000000)); // convert s to us, use indi var
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   reset_cam_statistics();
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_expTimeSet)}) : log<text_log,1>({"set exposure: " + std::to_string(m_expTimeSet)});
 }
 
 inline
 int nsvCtrl::getEMGain()
 {
-   const std::string command = "v4l2-ctl --get-ctrl gain -d " + m_camPath;
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getEMGain"});
-      return -1;
+   m_emGain = getAndUpdateSingleControlVal("gain");
+   if(m_emGain == PARAM_NOT_FOUND){ 
+      return 1;
    }
-
-   m_emGain = std::stoi(result);
-   return 0;
+   return m_emGain < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain"}) : m_emGain;
 }
 
 inline
 int nsvCtrl::setEMGain()
 {
-   
-   int gain_to_set = m_emGainSet;  
+   if(m_emGainSet > m_maxEMGain || m_emGainSet < m_minEMGain)
+      log<text_log>(std::to_string(m_emGainSet) + " gain out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("gain", int(m_emGainSet));
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + std::to_string(m_emGainSet)});
+}
 
-   if(gain_to_set < 0)
-   {
-      gain_to_set = 0;
-      log<text_log>("Gain limited to 0", logPrio::LOG_WARNING);
+// IMX 455 uses blacklevel while IMX571 uses black_level
+inline
+int nsvCtrl::getBlacklevel()
+{
+   m_blacklevel = getAndUpdateSingleControlVal("blacklevel");
+   if(m_blacklevel < 0)
+     m_blacklevel = getAndUpdateSingleControlVal("black_level");
+   if(m_blacklevel == PARAM_NOT_FOUND){ 
+      return 1;
    }
-   
-   if(gain_to_set > m_maxEMGain)
-   {
-      gain_to_set = m_maxEMGain;
-      log<text_log>("Gain limited to maxGain = " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl gain=" + std::to_string(gain_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setEMGain:"});
-      return -1;
-   }
-
-   log<text_log>("Set Gain to: " + std::to_string(gain_to_set), logPrio::LOG_WARNING);
-   
-   return 0;
+   return m_blacklevel < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain black level"}) : m_blacklevel;
 }
 
 inline
-int nsvCtrl::setVCrop(int offset)
-{
-   int vCrop_to_set = offset;  
-
-   if(vCrop_to_set < 25)
-   {
-      vCrop_to_set = 25;
-      log<text_log>("vCrop limited to 25", logPrio::LOG_WARNING);
+int nsvCtrl::setBlacklevel()
+{ 
+   if(m_blacklevelSet > m_maxBlacklevel || m_blacklevelSet < m_minBlacklevel)
+      log<text_log>(std::to_string(m_blacklevelSet) + " black level out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("blacklevel", int(m_blacklevelSet));
+   if(ret < 0)
+      ret = writeSingleControlVal("black_level", int(m_blacklevelSet));
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
    }
-   
-   if(vCrop_to_set > 3699) //TODO make this m_maxvCrop?
-   {
-      vCrop_to_set = 3699;
-      log<text_log>("vCrop limited to 3699", logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl vcropoffset=" + std::to_string(vCrop_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setvCrop:"});
-      return -1;
-   }
-
-   log<text_log>("Set vcropoffset to: " + std::to_string(vCrop_to_set), logPrio::LOG_WARNING);
-   
-   return 0;
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting black level to" + std::to_string(m_blacklevelSet)}) : log<text_log,1>({"set black level: " + std::to_string(m_blacklevelSet)});
 }
 
 inline
 int nsvCtrl::getVCrop()
 {
-   const std::string command = "v4l2-ctl --get-ctrl vcropoffset -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getvCrop"});
-      return -1;
+   m_vCrop = getAndUpdateSingleControlVal("vcropoffset");
+   if(m_vCrop == PARAM_NOT_FOUND){ 
+      return 1;
    }
+   return m_vCrop < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get vcropoffset"}) : m_vCrop;
+}
 
-   m_vCrop = std::stoi(result);
-   return 0;
+inline
+int nsvCtrl::setVCrop(int offset)
+{ 
+   if(offset > m_maxVCrop || offset < m_minVCrop)
+      log<text_log>(std::to_string(offset) + " vropoffset out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("vcropoffset", offset);
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting vcrop to" + std::to_string(offset)}) : log<text_log,1>({"set vcrop to: " + std::to_string(ret)});
+}
+
+// ROI controls
+inline
+int nsvCtrl::getXStartPos()
+{
+   m_xStartPos = getAndUpdateSingleControlVal("roi_hor_start_pos");
+   if(m_xStartPos == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi x start pos"}) : m_xStartPos;
+}
+
+inline
+int nsvCtrl::setXStartPos(int pos)
+{ 
+   if(pos > m_maxXStartPos || pos < m_minXStartPos)
+      log<text_log>(std::to_string(pos) + " ROI start x pos out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("roi_hor_start_pos", pos);
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start x to" + std::to_string(pos)}) : log<text_log,1>({"set roi start x to: " + std::to_string(ret)});
+}
+
+inline
+int nsvCtrl::getYStartPos()
+{
+   m_yStartPos = getAndUpdateSingleControlVal("roi_ver_start_pos");
+   if(m_yStartPos == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return m_xStartPos < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get get roi y start pos"}) : m_yStartPos;
+}
+
+inline
+int nsvCtrl::setYStartPos(int pos)
+{ 
+   if(pos > m_maxYStartPos || pos < m_minYStartPos)
+      log<text_log>(std::to_string(pos) + " ROI start y pos out of bounds", logPrio::LOG_WARNING);
+   int ret = writeSingleControlVal("roi_ver_start_pos", pos);
+   if(ret == PARAM_NOT_FOUND){ 
+      return 1;
+   }
+   return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting roi start y to" + std::to_string(pos)}) : log<text_log,1>({"set roi start y to: " + std::to_string(pos)});
 }
 
 inline
 int nsvCtrl::setBitDepth(int bitDepth)
 {
-   if(bitDepth != 8 || bitDepth != 10 || bitDepth != 16)
-   {
-      log<text_log>("invalid input bitDepth. Resettting...", logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   const std::string command = "v4l2-ctl --set-fmt-video=pixelformat=RG" + std::to_string(bitDepth) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBitDepth:"});
-      return -1;
-   }
-
-   log<text_log>("Set bitDepth to: " + std::to_string(bitDepth), logPrio::LOG_WARNING);
    m_bitDepth = bitDepth;
-   
-   return 0;
-}
-
-inline
-int nsvCtrl::getBlacklevel()
-{
-   const std::string command = "v4l2-ctl --get-ctrl blacklevel -d " + m_camPath;
-   std::string result = cmdRes(command.c_str());
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from blacklevel"});
-      return -1;
-   }
-
-   m_blacklevel = std::stoi(result);
-   return 0;
-}
-
-inline
-int nsvCtrl::setBlacklevel()
-{
-   
-   int blacklevel_to_set = m_blacklevelSet;  
-
-   if(blacklevel_to_set < m_minBlacklevel)
-   {
-      blacklevel_to_set = m_minBlacklevel;
-      log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   }
-   
-   if(blacklevel_to_set > m_maxBlacklevel)
-   {
-      blacklevel_to_set = m_maxBlacklevel;
-      log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl blacklevel=" + std::to_string(blacklevel_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setBlacklevel:"});
-      return -1;
-   }
-
-   log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
-   
+   m_reconfig = true; // have to redo all the way from stopping stream, cameraSelect, etc when image format changes
    return 0;
 }
 
@@ -992,6 +1712,29 @@ inline
 int nsvCtrl::setCropMode()
 {
    return 0;
+}
+
+inline
+int nsvCtrl::set_preferred_stride(int stride)
+{
+   int res = writeSingleControlVal("preferred_stride", stride);  // 8-bit, 16-bit, 32-bit, 64-bit
+   if(res == PARAM_NOT_FOUND){
+      return PARAM_NOT_FOUND;
+   }
+   return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to set stride to" + std::to_string(stride)}) : log<text_log,1>({"set preferred_stride to: " + std::to_string(res)});
+}
+
+inline
+void nsvCtrl::reset_cam_statistics()
+{
+   prev_timestamp = {0,0};
+   running_mean = 0.0;
+   frame_count = 0;
+   buffer_discard = 0;
+   has_prev = false;
+   updateIfChanged( m_indiP_frame_timestamp_s, "value", prev_timestamp.tv_sec, INDI_OK); 
+   updateIfChanged( m_indiP_frame_timestamp_ns, "value", prev_timestamp.tv_nsec, INDI_OK);
+   updateIfChanged( m_indiP_mean_frame_time, "value", running_mean, INDI_OK); 
 }
 
 inline 
@@ -1094,106 +1837,6 @@ int nsvCtrl::setTempControl()
    return 0;   // todo
 }
 
-inline
-int nsvCtrl::getFPS()
-{
-   const std::string command = "v4l2-ctl --get-ctrl frame_rate -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getFPS"});
-      return -1;
-   }
-
-   m_fps = std::stoi(result);
-
-   return 0;
-}
-
-inline
-int nsvCtrl::setFPS()
-{
-   int fr_to_set = m_fpsSet; 
-
-   if(fr_to_set < m_minFPS)
-   {
-      fr_to_set = m_minFPS;
-      log<text_log>("FPS limited to min of: " + std::to_string(m_minFPS), logPrio::LOG_WARNING);
-   }
-   
-   if(fr_to_set > m_maxFPS)
-   {
-      fr_to_set = m_maxFPS;
-      log<text_log>("FPS limited to max of = " + std::to_string(m_maxFPS), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl frame_rate=" + std::to_string(fr_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-  
-   //getFPS(); pull framerate to see what it set
-
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setFPS setting FPS to: " + std::to_string(fr_to_set)});
-      return -1;
-   }
-
-   log<text_log>("Set FPS to: " + std::to_string(fr_to_set), logPrio::LOG_WARNING);
-   
-   return 0;
-}
-
-
-inline 
-int nsvCtrl::getExpTime()
-{
-   const std::string command = "v4l2-ctl --get-ctrl exposure -d " + m_camPath; 
-   std::string result = cmdRes(command.c_str());
-
-   if( result == "error") 
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from getExpTime"});
-      return -1;
-   }
-
-   m_expTime = std::stoi(result) / 1000000.0;  // convert us to s
-
-   return 0;
-}
-
-inline 
-int nsvCtrl::setExpTime()
-{
-   
-   int exp_to_set = m_expTimeSet * 1000000;  // convert s to us, use indi var
-
-   if(exp_to_set < m_minExpTime)
-   {
-      exp_to_set = m_minExpTime;
-      log<text_log>("Exp limited to min of: " + std::to_string(m_minExpTime), logPrio::LOG_WARNING);
-   }
-   
-   if(exp_to_set > m_maxExpTime)
-   {
-      exp_to_set = m_maxExpTime;
-      log<text_log>("Exp limited to max of = " + std::to_string(m_maxExpTime), logPrio::LOG_WARNING);
-   }
-   
-   const std::string command = "v4l2-ctl --set-ctrl exposure=" + std::to_string(exp_to_set) + " -d " + m_camPath; 
-   int result = std::system(command.c_str());
-
-   if( result != 0)
-   {
-      log<software_error>({__FILE__,__LINE__, "v4l2-ctl error from setExpTime setting Exp to: " + std::to_string(exp_to_set)});
-      return -1;
-   }
-
-   log<text_log>("Set Exp to: " + std::to_string(exp_to_set / 1000000.0), logPrio::LOG_WARNING);
-   
-   return 0;
-}
-
 inline 
 int nsvCtrl::checkNextROI()
 {
@@ -1205,7 +1848,7 @@ int nsvCtrl::setNextROI()
 { 
    if(m_poweredOn)
       m_reconfig = true; 
-
+   
    updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
 
    return 0;
@@ -1256,8 +1899,8 @@ int nsvCtrl::configureAcquisition()
    m_width = m_currentROI.w/m_currentROI.bin_x; //m_default_w
    m_height = m_currentROI.h/m_currentROI.bin_y; //m_default_h
    //m_dataType = _DATATYPE_INT16;  // depends on bitdepth of camera output. assume 16-bit 
-   m_dataType = IMAGESTRUCT_UINT16;
-   m_typeSize = imageStructDataType<IMAGESTRUCT_UINT16>::size;
+   m_dataType = _DATATYPE_UINT16;
+   //m_typeSize = imageStructDataType<IMAGESTRUCT_UINT16>::size;
 
    recordCamera(true);
 
@@ -1273,6 +1916,7 @@ float nsvCtrl::fps()
 inline
 int nsvCtrl::startAcquisition()
 {
+   resizeROIbufs(); // ensure new ROI is always up to date before starting stream
 
    if(startStreaming() == -1){
       state(stateCodes::ERROR);
@@ -1291,8 +1935,7 @@ int nsvCtrl::acquireAndCheckValid()
 {
    if(m_init)
    {
-      uint dmaTimeStamp[2];
-
+      
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
       if(m_current_frame == -1){ //fd is gone once powered off, so dequeue will fail
          /*
@@ -1314,15 +1957,31 @@ int nsvCtrl::acquireAndCheckValid()
          m_oldest_frame = 0; 
       }
 
-      time_t seconds = time(0); 
-      auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
+      // get timing information stored for the camera frame that was just dequeued
+      m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
+      m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
 
-      dmaTimeStamp[0] = seconds;  // timing info for cam
-      dmaTimeStamp[1] = nanoseconds.count();
+      // Power monitoring now handled by separate thread at 10Hz
 
-      m_currImageTimestamp.tv_sec = dmaTimeStamp[0];
-      m_currImageTimestamp.tv_nsec = dmaTimeStamp[1];
+      if (has_prev && buffer_discard == bufferCount) { // make sure we cycle through the buffer at least once before computing statistics.
+         int64_t sec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_sec) - static_cast<int64_t>(prev_timestamp.tv_sec);
+         int64_t nsec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_nsec) - static_cast<int64_t>(prev_timestamp.tv_nsec);
+         int64_t total_nsec = sec_diff * 1'000'000'000 + nsec_diff;
+         double delta_t = static_cast<double>(total_nsec) / 1e9;
 
+         frame_count++;
+         running_mean = ((frame_count - 1) * running_mean + delta_t) / (double)frame_count;
+
+         updateIfChanged( m_indiP_frame_timestamp_s, "value", prev_timestamp.tv_sec, INDI_OK); 
+         updateIfChanged( m_indiP_frame_timestamp_ns, "value", prev_timestamp.tv_nsec, INDI_OK);
+         updateIfChanged( m_indiP_mean_frame_time, "value", running_mean, INDI_OK); 
+     } else {
+         has_prev = true;
+     }
+     prev_timestamp.tv_sec = m_currImageTimestamp.tv_sec;
+     prev_timestamp.tv_nsec = m_currImageTimestamp.tv_nsec;
+     if(buffer_discard < bufferCount)
+        buffer_discard++;
    }
 
    return 0;
@@ -1332,7 +1991,7 @@ inline
 int nsvCtrl::loadImageIntoStream(void * dest)
 {
    //if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, buffers[m_current_frame], m_width, m_height, m_typeSize) == nullptr) return -1;
-   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return -1;
+   if( frameGrabber<nsvCtrl>::loadImageIntoStreamCopy(dest, ROIbuffers[m_current_frame], m_currentROI.w, m_currentROI.h, m_typeSize) == nullptr) return log<software_error,-1>({__FILE__, __LINE__, "grabbing subframe failed"});
    return 0;
 }
 
@@ -1340,7 +1999,7 @@ inline
 int nsvCtrl::writeROISubframe()
 {
    
-   uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]);
+   uint16_t* imagePtr = static_cast<uint16_t*>(buffers[m_current_frame]); // need to static cast for appriate camera bitdepth
    uint16_t* roiPtr = static_cast<uint16_t*>(ROIbuffers[m_current_frame]);
 
    // shouldn't have to threshold these here. Should have some indi blocker for invalid x and y...?
@@ -1361,7 +2020,7 @@ int nsvCtrl::writeROISubframe()
    int ROIIndex = 0;
    for(int i = 0; i < m_currentROI.h; i++){
       for(int j = 0; j < m_currentROI.w; j++){
-         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_full_w + (startX + j))];
+         roiPtr[ROIIndex] = static_cast<uint16_t*>(imagePtr)[((startY + i) * m_full_w + (startX + j))]; //m_full_w or should it be bytes_per_line?
          ROIIndex++;
       }
    }
@@ -1382,12 +2041,14 @@ int nsvCtrl::resizeROIbufs()
 
    int bufSize = m_currentROI.w * m_currentROI.h;
 
+   printf("roi w: %d h: %d, bufsize: %d\n", m_currentROI.w, m_currentROI.h, bufSize);
+
    for(int i = 0; i < (int)m_circBuffLength; i++){
 
       void* buffer = malloc(bufSize * sizeof(uint16_t));  // assuming 16-bit. verify w/ bufferSize in queryBuffer
       if (buffer == nullptr) {
          state(stateCodes::ERROR);
-         return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memroy allocation failed"});
+         return log<software_error,-1>({__FILE__, __LINE__, "resizeROIbufs memory allocation failed"});
       }
 
       ROIbuffers[i] = buffer;
@@ -1407,6 +2068,7 @@ int nsvCtrl::reconfig()
    printf("Reconfiguring camera . . .\n");
 
    // check for new mode
+   // if deprecating modes/ dynamically creating modes, should trigger this some other way
    if(m_nextMode != m_modeName)
    {
       if(m_init)
@@ -1466,15 +2128,14 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
 
    std::unique_lock<std::mutex> lock(m_indiMutex);
    m_vCrop = vc;
-   int rv = config.isSet("camera.vcropoffset") ? setVCrop(vc) : -1;
+   int rv = uses_vCrop ? setVCrop(m_vCrop) : -999;
    
    if(rv < 0)
    {
       log<software_error>({__FILE__, __LINE__, "Error setting vcropoffset!"});
       return -1;
    }
-
-   if(config.isSet("camera.vcropoffset")) 
+   if(uses_vCrop)
       getVCrop();
 
    updateIfChanged(m_indiP_vCrop, "target", vc);
@@ -1518,7 +2179,6 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_bitDepth)(const pcf::IndiProperty &ipRecv
 
    return 0;
 }
-
 
 INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
 {
@@ -1587,7 +2247,41 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
    return 0;
 }
 
-// piping through shell commands. Todo convert to ioctl v4l2 calls per parameter
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power_logging)(const pcf::IndiProperty &ipRecv)
+{
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_power_logging, ipRecv);
+   
+   if(!ipRecv.find("toggle")) return 0;
+   
+   if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::On, INDI_OK);
+      
+      if(startPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to start power logging"});
+         updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_ALERT);
+         return -1;
+      }
+      
+      log<text_log>("Power logging started", logPrio::LOG_INFO);
+   }
+   else
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_OK);
+      
+      if(stopPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to stop power logging"});
+         return -1;
+      }
+      
+      log<text_log>("Power logging stopped", logPrio::LOG_INFO);
+   }
+   
+   return 0;
+}
+
 std::string nsvCtrl::cmdRes(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -1597,9 +2291,6 @@ std::string nsvCtrl::cmdRes(const char* cmd) {
         result += buffer.data();
     }
 
-    // Check for errors, for example:
-      //    Cannot open device /dev/video5, exiting.
-      //    unknown control 'some_invalid_param_name'
     std::string str(cmd);
     if (result.find("Cannot open device") == 0 || result.find("unknown control") == 0) {
         log<software_error>({__FILE__,__LINE__, "v4l2-ctl cmdRes error executing " + str + ": " + result});
