@@ -80,6 +80,9 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
         uint64_t writetimeNsec;
         uint64_t atimeSec;
         uint64_t atimeNsec;
+
+        uint64_t txsendSec;
+        uint64_t txsendNsec;
     };
 #pragma pack(pop)
 
@@ -98,10 +101,13 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
         int64_t writetimeNsec{ 0 };
         int64_t atimeSec{ 0 };
         int64_t atimeNsec{ 0 };
+
+        int64_t txsendSec{ 0 };
+        int64_t txsendNsec{ 0 };
     };
 
     static constexpr uint32_t c_magic{ 0x53484D54 }; // "SHMT"
-    static constexpr uint16_t c_version{ 1 };
+    static constexpr uint16_t c_version{ 2 };
     static constexpr size_t   c_maxTargetName{ 256 };
 
   protected:
@@ -152,6 +158,16 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     pcf::IndiProperty m_indiP_sourceShmim;
     pcf::IndiProperty m_indiP_targetShmim;
     pcf::IndiProperty m_indiP_linkState;
+    pcf::IndiProperty m_indiP_timing;
+
+    std::mutex m_timingMutex;
+    double     m_lastSourceWriteUnix{ -1 };
+    double     m_lastTxSendUnix{ -1 };
+    double     m_lastRxRecvUnix{ -1 };
+    double     m_lastRxWriteUnix{ -1 };
+    double     m_lastLatencySrcToRecvMs{ 0 };
+    double     m_lastLatencySrcToWriteMs{ 0 };
+    double     m_lastLatencyRecvToWriteMs{ 0 };
 
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_sourceShmim );
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_targetShmim );
@@ -175,6 +191,8 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
 
     static uint64_t hostToNet64( uint64_t v );
     static uint64_t netToHost64( uint64_t v );
+    static double   unixSeconds( int64_t sec, int64_t nsec );
+    static double   unixSeconds( const timespec &ts );
 
     static bool sendAll( int fd, const void *data, size_t nBytes );
     static bool recvAll( int fd, void *data, size_t nBytes );
@@ -403,6 +421,40 @@ inline int shmimTCP::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
+    if( createROIndiNumber( m_indiP_timing, "timing", "shmimTCP timing", "shmimTCP" ) < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+    if( m_mode == modeT::transmit )
+    {
+        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "tx_send_unix", -1e12, 1e12, 0, "%0.9f" );
+
+        m_indiP_timing["src_write_unix"] = m_lastSourceWriteUnix;
+        m_indiP_timing["tx_send_unix"]   = m_lastTxSendUnix;
+    }
+    else
+    {
+        indi::addNumberElement( m_indiP_timing, "src_write_unix", -1e12, 1e12, 0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "rx_recv_unix", -1e12, 1e12, 0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "rx_write_unix", -1e12, 1e12, 0, "%0.9f" );
+        indi::addNumberElement( m_indiP_timing, "lat_src_to_recv_ms", -1e9, 1e9, 0, "%0.3f" );
+        indi::addNumberElement( m_indiP_timing, "lat_src_to_write_ms", -1e9, 1e9, 0, "%0.3f" );
+        indi::addNumberElement( m_indiP_timing, "lat_recv_to_write_ms", -1e9, 1e9, 0, "%0.3f" );
+
+        m_indiP_timing["src_write_unix"]       = m_lastSourceWriteUnix;
+        m_indiP_timing["rx_recv_unix"]         = m_lastRxRecvUnix;
+        m_indiP_timing["rx_write_unix"]        = m_lastRxWriteUnix;
+        m_indiP_timing["lat_src_to_recv_ms"]   = m_lastLatencySrcToRecvMs;
+        m_indiP_timing["lat_src_to_write_ms"]  = m_lastLatencySrcToWriteMs;
+        m_indiP_timing["lat_recv_to_write_ms"] = m_lastLatencyRecvToWriteMs;
+    }
+
+    if( registerIndiPropertyReadOnly( m_indiP_timing ) < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__ } );
+    }
+
     if( m_mode == modeT::transmit )
     {
         SHMIMMONITOR_APP_STARTUP;
@@ -492,6 +544,39 @@ inline int shmimTCP::appLogic()
     updateIfChanged( m_indiP_sourceShmim, "target", source, INDI_IDLE );
     updateIfChanged( m_indiP_targetShmim, "current", target, INDI_IDLE );
     updateIfChanged( m_indiP_targetShmim, "target", target, INDI_IDLE );
+
+    double srcWriteUnix;
+    double txSendUnix;
+    double rxRecvUnix;
+    double rxWriteUnix;
+    double latSrcRecvMs;
+    double latSrcWriteMs;
+    double latRecvWriteMs;
+    {
+        std::lock_guard<std::mutex> lock( m_timingMutex );
+        srcWriteUnix  = m_lastSourceWriteUnix;
+        txSendUnix    = m_lastTxSendUnix;
+        rxRecvUnix    = m_lastRxRecvUnix;
+        rxWriteUnix   = m_lastRxWriteUnix;
+        latSrcRecvMs  = m_lastLatencySrcToRecvMs;
+        latSrcWriteMs = m_lastLatencySrcToWriteMs;
+        latRecvWriteMs = m_lastLatencyRecvToWriteMs;
+    }
+
+    if( m_mode == modeT::transmit )
+    {
+        updateIfChanged( m_indiP_timing, "src_write_unix", srcWriteUnix, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "tx_send_unix", txSendUnix, INDI_IDLE );
+    }
+    else
+    {
+        updateIfChanged( m_indiP_timing, "src_write_unix", srcWriteUnix, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "rx_recv_unix", rxRecvUnix, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "rx_write_unix", rxWriteUnix, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "lat_src_to_recv_ms", latSrcRecvMs, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "lat_src_to_write_ms", latSrcWriteMs, INDI_IDLE );
+        updateIfChanged( m_indiP_timing, "lat_recv_to_write_ms", latRecvWriteMs, INDI_IDLE );
+    }
 
     if( m_mode == modeT::transmit )
     {
@@ -675,6 +760,17 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
         return 0;
     }
 
+    timespec txsendTs;
+    if( clock_gettime( CLOCK_REALTIME, &txsendTs ) < 0 )
+    {
+        txsendTs.tv_sec  = 0;
+        txsendTs.tv_nsec = 0;
+    }
+    headerHost.txsendSec  = txsendTs.tv_sec;
+    headerHost.txsendNsec = txsendTs.tv_nsec;
+    headerNet.txsendSec   = hostToNet64( static_cast<uint64_t>( headerHost.txsendSec ) );
+    headerNet.txsendNsec  = hostToNet64( static_cast<uint64_t>( headerHost.txsendNsec ) );
+
     bool ok = sendAll( m_txSockFd, &headerNet, sizeof( headerNet ) );
     if( ok )
     {
@@ -690,6 +786,12 @@ inline int shmimTCP::processImage( void *curr_src, const dev::shmimT &dummy )
         log<text_log>( "transmit socket dropped; scheduling reconnect", logPrio::LOG_WARNING );
         closeTxSocketLocked();
         scheduleReconnect();
+    }
+    else
+    {
+        std::lock_guard<std::mutex> tlock( m_timingMutex );
+        m_lastSourceWriteUnix = unixSeconds( headerHost.writetimeSec, headerHost.writetimeNsec );
+        m_lastTxSendUnix      = unixSeconds( headerHost.txsendSec, headerHost.txsendNsec );
     }
 
     return 0;
@@ -717,6 +819,16 @@ inline uint64_t shmimTCP::netToHost64( uint64_t v )
 
     return ( static_cast<uint64_t>( ntohl( lo ) ) << 32 ) | ntohl( hi );
 #endif
+}
+
+inline double shmimTCP::unixSeconds( int64_t sec, int64_t nsec )
+{
+    return static_cast<double>( sec ) + 1e-9 * static_cast<double>( nsec );
+}
+
+inline double shmimTCP::unixSeconds( const timespec &ts )
+{
+    return unixSeconds( static_cast<int64_t>( ts.tv_sec ), static_cast<int64_t>( ts.tv_nsec ) );
 }
 
 inline bool shmimTCP::sendAll( int fd, const void *data, size_t nBytes )
@@ -1128,6 +1240,8 @@ inline int shmimTCP::receiveClient( int clientFd )
         header.writetimeNsec = static_cast<int64_t>( netToHost64( netHeader.writetimeNsec ) );
         header.atimeSec      = static_cast<int64_t>( netToHost64( netHeader.atimeSec ) );
         header.atimeNsec     = static_cast<int64_t>( netToHost64( netHeader.atimeNsec ) );
+        header.txsendSec     = static_cast<int64_t>( netToHost64( netHeader.txsendSec ) );
+        header.txsendNsec    = static_cast<int64_t>( netToHost64( netHeader.txsendNsec ) );
 
         if( header.width == 0 || header.height == 0 || header.frameBytes == 0 )
         {
@@ -1182,6 +1296,14 @@ inline int shmimTCP::receiveClient( int clientFd )
             return 0;
         }
 
+        timespec rxRecvTs;
+        if( clock_gettime( CLOCK_REALTIME, &rxRecvTs ) < 0 )
+        {
+            rxRecvTs.tv_sec  = 0;
+            rxRecvTs.tv_nsec = 0;
+        }
+        double rxRecvUnix = unixSeconds( rxRecvTs );
+
         if( ensureTargetStream( targetName, header.width, header.height, header.depth, static_cast<uint8_t>( header.datatype ) ) <
             0 )
         {
@@ -1192,6 +1314,31 @@ inline int shmimTCP::receiveClient( int clientFd )
         {
             return -1;
         }
+
+        timespec rxWriteTs;
+        if( clock_gettime( CLOCK_REALTIME, &rxWriteTs ) < 0 )
+        {
+            rxWriteTs.tv_sec  = 0;
+            rxWriteTs.tv_nsec = 0;
+        }
+        double rxWriteUnix  = unixSeconds( rxWriteTs );
+        double srcWriteUnix = unixSeconds( header.writetimeSec, header.writetimeNsec );
+        double latSrcRecvMs  = -1;
+        double latSrcWriteMs = -1;
+
+        if( srcWriteUnix > 0 )
+        {
+            latSrcRecvMs  = 1e3 * ( rxRecvUnix - srcWriteUnix );
+            latSrcWriteMs = 1e3 * ( rxWriteUnix - srcWriteUnix );
+        }
+
+        std::lock_guard<std::mutex> tlock( m_timingMutex );
+        m_lastSourceWriteUnix     = srcWriteUnix;
+        m_lastRxRecvUnix          = rxRecvUnix;
+        m_lastRxWriteUnix         = rxWriteUnix;
+        m_lastLatencySrcToRecvMs  = latSrcRecvMs;
+        m_lastLatencySrcToWriteMs = latSrcWriteMs;
+        m_lastLatencyRecvToWriteMs = 1e3 * ( rxWriteUnix - rxRecvUnix );
     }
 
     return 0;
