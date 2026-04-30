@@ -166,6 +166,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     std::atomic<bool> m_rxThreadRunning{ false };
     std::atomic<bool> m_rxListening{ false };
     std::atomic<bool> m_rxClientConnected{ false };
+    std::atomic<bool> m_rxTargetMismatch{ false };
     int               m_listenFd{ -1 };
     int               m_clientFd{ -1 };
     std::vector<uint8_t> m_rxFrameBuffer;
@@ -761,7 +762,11 @@ inline int shmimTCP::appLogic()
     }
     else
     {
-        if( m_rxClientConnected )
+        if( m_rxClientConnected && m_rxTargetMismatch )
+        {
+            updateIfChanged( m_indiP_linkState, "state", "mismatched target", INDI_ALERT );
+        }
+        else if( m_rxClientConnected )
         {
             updateIfChanged( m_indiP_linkState, "state", "client connected", INDI_OK );
         }
@@ -1431,6 +1436,7 @@ inline void shmimTCP::receiveThreadExec()
         setsockopt( clientFd, SOL_SOCKET, SO_RCVTIMEO, &sotv, sizeof( sotv ) );
         setsockopt( clientFd, SOL_SOCKET, SO_SNDTIMEO, &sotv, sizeof( sotv ) );
 
+        m_rxTargetMismatch = false;
         m_clientFd          = clientFd;
         m_rxClientConnected = true;
         log<text_log>( "receiver accepted client", logPrio::LOG_NOTICE );
@@ -1441,11 +1447,13 @@ inline void shmimTCP::receiveThreadExec()
         ::close( clientFd );
         m_clientFd          = -1;
         m_rxClientConnected = false;
+        m_rxTargetMismatch  = false;
     }
 
     closeRxSockets();
     m_rxListening     = false;
     m_rxClientConnected = false;
+    m_rxTargetMismatch = false;
     m_rxThreadRunning = false;
 }
 
@@ -1545,12 +1553,6 @@ inline int shmimTCP::receiveClient( int clientFd )
             }
         }
 
-        if( targetName.empty() )
-        {
-            std::lock_guard<std::mutex> lock( m_paramMutex );
-            targetName = m_targetShmim;
-        }
-
         if( m_rxPayloadBuffer.size() != header.payloadBytes )
         {
             m_rxPayloadBuffer.resize( static_cast<size_t>( header.payloadBytes ) );
@@ -1560,6 +1562,27 @@ inline int shmimTCP::receiveClient( int clientFd )
         {
             return 0;
         }
+
+        std::string configuredTarget;
+        {
+            std::lock_guard<std::mutex> lock( m_paramMutex );
+            configuredTarget = m_targetShmim;
+        }
+
+        if( targetName.empty() || targetName != configuredTarget )
+        {
+            bool firstMismatch = !m_rxTargetMismatch.exchange( true );
+            if( firstMismatch )
+            {
+                std::string got = targetName.empty() ? "<empty>" : targetName;
+                log<text_log>( "dropping frame due to target mismatch: received [" + got + "] expected [" +
+                                   configuredTarget + "]",
+                               logPrio::LOG_WARNING );
+            }
+            continue;
+        }
+
+        m_rxTargetMismatch = false;
 
         const uint8_t *framePtr = nullptr;
 
