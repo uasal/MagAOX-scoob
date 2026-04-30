@@ -1857,19 +1857,24 @@ int siglentSDG::changeFreq( int channel,
    // we want to automatically set the pulse width when setting a new frequency
    if(m_waveform == "PULSE"){
       // we want to auto change the pulse duration, want either 0.000250 or 0.5%
-      double wdth250 = 1 / newFreq  - 0.000250; // Ideal puse width 250us, subtract from period to get width
-      double wdthLim = 0.5 / newFreq ;          // this is the limit for periods < 2 * 250us
-      double newWdth = wdth250;
+      if(newFreq == 0){
+         // something upstream is crashing, but let us not make a NAN
+         newWdth = 0.0;
+         log<text_log>("Ch. " + std::to_string(channel) + " WDTH defaulting to 0.0 for invalid freq: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
+      } else{
+         double wdth250 = 1 / newFreq  - 0.000250; // Ideal pulse width 250us, subtract from period to get width
+         double wdthLim = 0.5 / newFreq ;          // this is the limit for periods < 2 * 250us
+         double newWdth = wdth250;
 
-      if(wdthLim > wdth250){
-         // if keeping the ideal 250 pulse width gives a pulse is shorter than 50% of the period
-         // switch to the duty cycle limit
-         newWdth = wdthLim;
-         log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to duty cycle limit: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
-      }else{
-         log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to 250us ideal case: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
+         if(wdthLim > wdth250){
+            // if keeping the ideal 250 pulse width gives a pulse is shorter than 50% of the period
+            // switch to the duty cycle limit
+            newWdth = wdthLim;
+            log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to duty cycle limit: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
+         }else{
+            log<text_log>("Ch. " + std::to_string(channel) + " WDTH auto-changing to 250us ideal case: " + std::to_string(newWdth), logPrio::LOG_NOTICE);
+         }                                      
       }
-
       //changing pulse width
       changeWdth(channel, newWdth);
    }
