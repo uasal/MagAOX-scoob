@@ -186,6 +186,7 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     pcf::IndiProperty m_indiP_remoteHost;
     pcf::IndiProperty m_indiP_linkState;
     pcf::IndiProperty m_indiP_timing;
+    pcf::IndiProperty m_indiP_frameSize;
 
     std::mutex m_timingMutex;
     double     m_lastSourceWriteUnix{ -1 };
@@ -195,6 +196,10 @@ class shmimTCP : public MagAOXApp<true>, public dev::shmimMonitor<shmimTCP>
     double     m_lastLatencySrcToRecvMs{ 0 };
     double     m_lastLatencySrcToWriteMs{ 0 };
     double     m_lastLatencyRecvToWriteMs{ 0 };
+
+    std::mutex m_rxFrameSizeMutex;
+    double     m_lastRxWidth{ 0 };
+    double     m_lastRxHeight{ 0 };
 
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_sourceShmim );
     INDI_NEWCALLBACK_DECL( shmimTCP, m_indiP_targetShmim );
@@ -611,6 +616,24 @@ inline int shmimTCP::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__ } );
     }
 
+    if( m_mode == modeT::receive )
+    {
+        if( createROIndiNumber( m_indiP_frameSize, "frameSize", "received frame size", "shmimTCP" ) < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__ } );
+        }
+        indi::addNumberElement( m_indiP_frameSize, "width", 0.0, 1e7, 1.0, "%0.0f" );
+        indi::addNumberElement( m_indiP_frameSize, "height", 0.0, 1e7, 1.0, "%0.0f" );
+
+        m_indiP_frameSize["width"]         = m_lastRxWidth;
+        m_indiP_frameSize["height"]        = m_lastRxHeight;
+
+        if( registerIndiPropertyReadOnly( m_indiP_frameSize ) < 0 )
+        {
+            return log<software_error, -1>( { __FILE__, __LINE__ } );
+        }
+    }
+
     if( m_mode == modeT::transmit )
     {
         SHMIMMONITOR_APP_STARTUP;
@@ -721,6 +744,8 @@ inline int shmimTCP::appLogic()
     double latSrcRecvMs;
     double latSrcWriteMs;
     double latRecvWriteMs;
+    double rxWidth;
+    double rxHeight;
     {
         std::lock_guard<std::mutex> lock( m_timingMutex );
         srcWriteUnix  = m_lastSourceWriteUnix;
@@ -730,6 +755,11 @@ inline int shmimTCP::appLogic()
         latSrcRecvMs  = m_lastLatencySrcToRecvMs;
         latSrcWriteMs = m_lastLatencySrcToWriteMs;
         latRecvWriteMs = m_lastLatencyRecvToWriteMs;
+    }
+    {
+        std::lock_guard<std::mutex> lock( m_rxFrameSizeMutex );
+        rxWidth        = m_lastRxWidth;
+        rxHeight       = m_lastRxHeight;
     }
 
     if( m_mode == modeT::transmit )
@@ -745,6 +775,9 @@ inline int shmimTCP::appLogic()
         updateIfChanged( m_indiP_timing, "lat_src_to_recv_ms", latSrcRecvMs, INDI_IDLE );
         updateIfChanged( m_indiP_timing, "lat_src_to_write_ms", latSrcWriteMs, INDI_IDLE );
         updateIfChanged( m_indiP_timing, "lat_recv_to_write_ms", latRecvWriteMs, INDI_IDLE );
+
+        updateIfChanged( m_indiP_frameSize, "width", rxWidth, INDI_IDLE );
+        updateIfChanged( m_indiP_frameSize, "height", rxHeight, INDI_IDLE );
     }
 
     if( m_mode == modeT::transmit )
@@ -1647,6 +1680,12 @@ inline int shmimTCP::receiveClient( int clientFd )
         if( writeFrameToTarget( header, framePtr ) < 0 )
         {
             return -1;
+        }
+
+        {
+            std::lock_guard<std::mutex> slock( m_rxFrameSizeMutex );
+            m_lastRxWidth       = header.width;
+            m_lastRxHeight      = header.height;
         }
 
         timespec rxWriteTs;
