@@ -38,7 +38,7 @@ class AudibleAlerts(XDevice):
     _cb_handles : set
     _playback_requests : queue.Queue
     playback_text : properties.TextVector
-    soundboard_sw_prop : properties.SwitchVector
+    soundboard_sw_prop : properties.SwitchVector = None  # distinguish between initial startup and reload case
     default_voice : str = "en_GB-cori-high"  # overridden by personality when loaded
     mute : bool = True
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
@@ -238,8 +238,12 @@ class AudibleAlerts(XDevice):
                     Personality.from_path(fp)
                 except Exception:
                     self.log.exception(f"Unable to parse {fp} as a personality")
+                    raise
             except Exception:
                 self.log.exception(f"Unable to load {fp}")
+                continue
+            # if it all worked, this is a valid option
+            personality_shortnames.append(shortname)
         personality_shortnames.sort()
         return personality_shortnames
 
