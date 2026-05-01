@@ -72,8 +72,8 @@ class DynamicSpeech:
         )
 
     def to_speech(self, default_voice: Voice, indi_client: purepyindi2.client.IndiClient):
-        if self.custom_voice_text:
-            voice = load_voice(self.custom_voice_text)
+        if self.custom_voice_name:
+            voice = load_voice(self.custom_voice_name)
         else:
             voice = default_voice
         speech_text = self.markup
