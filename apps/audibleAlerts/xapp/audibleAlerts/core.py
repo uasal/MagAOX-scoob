@@ -72,7 +72,6 @@ class AudibleAlerts(XDevice):
             current_text = self.properties['speech_text']['current']
             if current_text is not None and len(current_text.strip()) != 0:
                 self.enqueue_speech_request(DynamicSpeech(current_text))
-                self.telem("speech_request", {"text": current_text})
         self.update_property(existing_property)  # ensure the request switch turns back off at the client
 
     def handle_reload_request(self, existing_property, new_message):
@@ -324,16 +323,19 @@ class AudibleAlerts(XDevice):
                     self.playback_text['file'] = req.path
                     self.playback_text['speech'] = ''
                     self.playback_text['voice'] = ''
+                    self.telem("play", {"file": req.path, "speech": "", "voice": ""})
                 elif isinstance(req, DynamicSpeech):
                     # apply substitutions
                     req = req.to_speech(self.current_voice, self.client)
                     self.playback_text['file'] = ''
                     self.playback_text['speech'] = req.text
                     self.playback_text['voice'] = req.voice.name
+                    self.telem("play", {"file": "", "speech": req.text, "voice": req.voice.name})
                 else:
                     raise RuntimeError(f"What is a {repr(req)}?")
                 self.update_property(self.playback_text)
                 self.log.debug("Playback request dispatched")
+                self.telem()
                 self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
             next_utterance = choice(self.personality.random_utterances)
