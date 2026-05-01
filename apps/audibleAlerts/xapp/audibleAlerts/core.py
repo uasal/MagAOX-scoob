@@ -175,7 +175,7 @@ class AudibleAlerts(XDevice):
         self.update_property(prop)
 
     def load_personality(self, personality_name):
-        personality_file = os.path.join(self.get_default_config_prefix(), "personalities", f"{personality_name}.toml")
+        personality_file = self.config.common_path_prefix / "config" / "personalities" / f"{personality_name}.toml"
         for cb, device_name, property_name, _ in self._cb_handles:
             try:
                 self.client.unregister_callback(cb, device_name=device_name, property_name=property_name)
@@ -223,7 +223,7 @@ class AudibleAlerts(XDevice):
         self.send_all_properties()
 
     def discover_personalities(self):
-        personalities_root = pathlib.Path(self.get_default_config_prefix()) / "personalities"
+        personalities_root = self.config.common_path_prefix / "config" / "personalities"
         self.log.debug(f"{personalities_root=}")
         personality_paths = list(personalities_root.glob('*.toml'))
         if len(personality_paths) == 0:

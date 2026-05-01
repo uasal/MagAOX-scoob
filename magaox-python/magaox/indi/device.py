@@ -160,10 +160,12 @@ class XDevice(Device):
 
     @classmethod
     def get_default_config_prefix(cls):
+        # needed before config is loaded, so only cls attributes
         return cls.prefix_dir + "/" + cls.config_dir + "/"
 
     @classmethod
     def get_default_config_path(cls):
+        # needed before config is loaded, so only cls attributes
         return cls.get_default_config_prefix() + cls.__name__ + ".conf"
 
     @property
