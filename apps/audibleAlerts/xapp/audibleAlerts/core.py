@@ -39,6 +39,7 @@ class AudibleAlerts(XDevice):
     _cb_handles : set
     _playback_requests : queue.Queue
     playback_text : properties.TextVector
+    personality_sw_prop : properties.SwitchVector = None  # distinguish between initial startup and reload case
     soundboard_sw_prop : properties.SwitchVector = None  # distinguish between initial startup and reload case
     mute : bool = False
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
@@ -226,16 +227,12 @@ class AudibleAlerts(XDevice):
                 shortname = fp.name.rsplit('.', 1)[0]
                 if '.' in shortname:
                     raise RuntimeError(f"Base name {shortname} must be valid INDI name (no '.'s)")
-                try:
-                    Personality.from_path(fp)
-                except Exception:
-                    self.log.exception(f"Unable to parse {fp} as a personality")
-                    raise
+                Personality.from_path(fp)
+                # if it all worked, this is a valid option
+                personality_shortnames.append(shortname)
             except Exception:
                 self.log.exception(f"Unable to load {fp}")
                 continue
-            # if it all worked, this is a valid option
-            personality_shortnames.append(shortname)
         personality_shortnames.sort()
         return personality_shortnames
 
@@ -256,7 +253,7 @@ class AudibleAlerts(XDevice):
         self.log.info("Connected.")
         self.log.debug(f"Caching synthesis output to {self.config.cache}")
         self.config.cache.mkdir(exist_ok=True)
-        self.load_personality(self.active_personality)
+        
 
         sv = properties.SwitchVector(
             name="mute",
@@ -266,14 +263,14 @@ class AudibleAlerts(XDevice):
         sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.ON if self.mute else constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_mute_toggle)
 
-        sv = properties.SwitchVector(
+        self.personality_sw_prop = properties.SwitchVector(
             name="personality",
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
         for pers in self.personality_ids:
-            sv.add_element(DefSwitch(name=pers, _value=constants.SwitchState.ON if self.active_personality == pers else constants.SwitchState.OFF))
-        self.add_property(sv, callback=self.handle_personality_switch)
+            self.personality_sw_prop.add_element(DefSwitch(name=pers, _value=constants.SwitchState.ON if self.active_personality == pers else constants.SwitchState.OFF))
+        self.add_property(self.personality_sw_prop, callback=self.handle_personality_switch)
 
         speech_text = properties.TextVector(name="speech_text", perm=constants.PropertyPerm.READ_WRITE)
         speech_text.add_element(DefText(
@@ -314,6 +311,8 @@ class AudibleAlerts(XDevice):
         )
         reload_request.add_element(DefSwitch(name="request", _value=constants.SwitchState.OFF))
         self.add_property(reload_request, callback=self.handle_reload_request)
+
+        self.load_personality(self.active_personality)
 
         self.log.info("Set up complete")
 
