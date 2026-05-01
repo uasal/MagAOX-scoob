@@ -9,6 +9,7 @@ version = "2025.11.30"
 dependencies = [
   "xconf",
   "purepyindi2",
+  "piper-tts>=1.4.2",
 ]
 authors = [
   {name = "Joseph D. Long", email = "me@joseph-long.com"},
