@@ -225,7 +225,7 @@ class AudibleAlerts(XDevice):
     def discover_personalities(self):
         personalities_root = pathlib.Path(self.get_default_config_prefix()) / "personalities"
         self.log.debug(f"{personalities_root=}")
-        personality_paths = personalities_root.glob('*.toml')
+        personality_paths = list(personalities_root.glob('*.toml'))
         if len(personality_paths) == 0:
             raise RuntimeError(f"No personality configs found in {personalities_root}, can't do anything")
         personality_shortnames = []
