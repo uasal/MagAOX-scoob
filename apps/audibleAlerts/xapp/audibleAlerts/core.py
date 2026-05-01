@@ -345,7 +345,7 @@ class AudibleAlerts(XDevice):
                 else:
                     raise RuntimeError(f"What is a {repr(req)}?")
                 playback_duration_sec = duration_from_audio_file(fp)
-                self.log.info(f"Playing: {repr(req)} ({playback_duration_sec} sec)")
+                self.log.info(f"Playing: {repr(req)} ({playback_duration_sec:1.1f} sec)")
                 self.playback_text.timestamp = datetime.datetime.now()
                 self.update_property(self.playback_text)
                 self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
