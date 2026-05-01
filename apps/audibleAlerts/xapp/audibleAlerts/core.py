@@ -1,24 +1,20 @@
 import queue
-import sys
 from typing import Optional, Union
 from random import choice
 import time
 from functools import partial
-from enum import Enum
 import logging
 import os
 import os.path
 import pathlib
-import pprint
 import re
 import xconf
-from xconf.contrib import DirectoryConfig
-from purepyindi2 import device, properties, constants, messages
-from purepyindi2.messages import DefNumber, DefSwitch, DefText
+from purepyindi2 import properties, constants, messages
+from purepyindi2.messages import DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
-from magaox.tts.core import PlaybackRequest, Speech, DynamicSpeech, Voice, get_or_create_speech_file, load_voice
+from magaox.tts.core import DynamicSpeech
 
-from .personality import Personality, Transition, Operation, SSML, Recording
+from .personality import Personality, Transition, Recording
 
 log = logging.getLogger(__name__)
 HERE = os.path.dirname(__file__)
@@ -333,10 +329,12 @@ class AudibleAlerts(XDevice):
                     self.telem("play", {"file": "", "speech": req.text, "voice": req.voice.name})
                 else:
                     raise RuntimeError(f"What is a {repr(req)}?")
+                # TODO: actually gauge playback time
+                playback_duration_sec = 5
                 self.update_property(self.playback_text)
+                end_utterance_ts = time.time() + playback_duration_sec
                 self.log.debug("Playback request dispatched")
-                self.telem()
-                self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
+                self.last_utterance_ts = end_utterance_ts  # update timestamp to prevent random utterances
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
             next_utterance = choice(self.personality.random_utterances)
             while next_utterance == self.last_utterance_chosen:
