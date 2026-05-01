@@ -1,3 +1,4 @@
+import datetime
 import queue
 from typing import Optional, Union
 from random import choice
@@ -12,7 +13,7 @@ import xconf
 from purepyindi2 import properties, constants, messages
 from purepyindi2.messages import DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
-from magaox.tts.core import DynamicSpeech, load_voice
+from magaox.tts.core import DynamicSpeech, get_or_create_speech_file, duration_from_audio_file
 
 from .personality import Personality, Transition, Recording
 
@@ -39,7 +40,7 @@ class AudibleAlerts(XDevice):
     _playback_requests : queue.Queue
     playback_text : properties.TextVector
     soundboard_sw_prop : properties.SwitchVector = None  # distinguish between initial startup and reload case
-    mute : bool = True
+    mute : bool = False
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
     per_transition_cooldown_ts : dict[Transition, float]
     last_utterance_ts : float = 0
@@ -322,27 +323,36 @@ class AudibleAlerts(XDevice):
             if self.mute:
                 self.log.debug(f"Would have played: {repr(req)}, but muted")
             else:
-                self.log.info(f"Playing: {repr(req)}")
+
                 if isinstance(req, Recording):
                     self.playback_text['file'] = req.path
                     self.playback_text['speech'] = ''
                     self.playback_text['voice'] = ''
                     self.telem("play", {"file": req.path, "speech": "", "voice": ""})
+                    fp = self.config.common_path_prefix / "config" / "personalities" / "data" / req.path
+                    if not fp.exists():
+                        log.error(f"{fp} doesn't exist, skipping")
+                        continue
                 elif isinstance(req, DynamicSpeech):
                     # apply substitutions
-                    req = req.to_speech(self._current_voice, self.client)
+                    new_req = req.to_speech(self._current_voice, self.client)
                     self.playback_text['file'] = ''
-                    self.playback_text['speech'] = req.text
-                    self.playback_text['voice'] = req.voice.name
-                    self.telem("play", {"file": "", "speech": req.text, "voice": req.voice.name})
+                    self.playback_text['speech'] = new_req.text
+                    self.playback_text['voice'] = new_req.voice.name
+                    self.telem("play", {"file": "", "speech": new_req.text, "voice": new_req.voice.name})
+                    can_cache = new_req.text == req.text
+                    fp = get_or_create_speech_file(new_req, can_cache)
                 else:
                     raise RuntimeError(f"What is a {repr(req)}?")
-                # TODO: actually gauge playback time
-                playback_duration_sec = 5
+                playback_duration_sec = duration_from_audio_file(fp)
+                self.log.info(f"Playing: {repr(req)} ({playback_duration_sec} sec)")
+                self.playback_text.timestamp = datetime.datetime.now()
                 self.update_property(self.playback_text)
-                self.log.debug("Playback request dispatched")
-                time.sleep(playback_duration_sec)
                 self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
+                self.log.debug("Playback request dispatched")
+
+                # give clients time to play it before we do another
+                time.sleep(playback_duration_sec)
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
             next_utterance = choice(self.personality.random_utterances)
             while next_utterance == self.last_utterance_chosen:

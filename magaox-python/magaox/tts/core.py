@@ -21,8 +21,9 @@ try:
         os.environ["PULSE_SERVER"] = f"unix:/run/user/{_current_uid}/pulse/native"
     from piper import PiperVoice
     from piper.download_voices import download_voice
+    import librosa
 except ImportError:
-    warnings.warn("Use 'pip install piper-tts' to get speech synthesis")
+    warnings.warn("Use 'pip install piper-tts librosa' to get speech synthesis")
 
 log = logging.getLogger(__name__)
 
@@ -152,3 +153,6 @@ def play_audio_file(audio_file: Path) -> None:
             subprocess.check_call(["paplay", audio_file.resolve().as_posix()])
         case 'Darwin':
             subprocess.check_call(["afplay", audio_file.resolve().as_posix()])
+
+def duration_from_audio_file(audio_file: Path) -> float:
+    return librosa.get_duration(path=audio_file)
