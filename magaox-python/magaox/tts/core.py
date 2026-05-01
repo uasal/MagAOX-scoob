@@ -60,15 +60,15 @@ class Speech:
 
 @dataclass(eq=True, frozen=True)
 class DynamicSpeech:
-    markup : str
+    text : str
     custom_voice_name : typing.Optional[str] = None
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({repr(self.markup)})"
+        return f"{self.__class__.__name__}({repr(self.text)})"
 
     def __eq__(self, other):
         return (
-            getattr(other, 'markup', None) == self.markup and
+            getattr(other, 'text', None) == self.text and
             getattr(other, 'custom_voice_name', None) == self.custom_voice_name
         )
 
@@ -77,9 +77,9 @@ class DynamicSpeech:
             voice = load_voice(self.custom_voice_name)
         else:
             voice = default_voice
-        speech_text = self.markup
+        speech_text = self.text
         if contains_substitutions(speech_text):
-            substitutables = re.findall(r"({[^}]+})", self.markup)
+            substitutables = re.findall(r"({[^}]+})", self.text)
             for sub in substitutables:
                 indi_id = sub[1:-1]
                 value = indi_client[indi_id]
