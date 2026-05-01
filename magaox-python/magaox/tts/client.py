@@ -1,0 +1,103 @@
+import dataclasses
+import datetime
+import pprint
+import threading
+import time
+import queue
+import logging
+import purepyindi2
+import pathlib
+
+import xconf
+
+from magaox.constants import DEFAULT_PREFIX
+from . import core
+from ..commands import Command
+
+log = logging.getLogger(__name__)
+
+RELOAD_WAIT_SEC = 5
+
+@xconf.config
+class IndiClientConfig:
+    hostname : str = xconf.field(default='localhost', help='Hostname to connect to for INDI client')
+    port : int = xconf.field(default=7624, help='Port to connect to for INDI client')
+
+@xconf.config
+class XAudioClient(Command):
+    indi : IndiClientConfig = xconf.field(default_factory=IndiClientConfig, help="Connection information")
+    audible_alerts_device_name : str = xconf.field(default='maggieo_x', help='Device publishing audible alerts')
+    recordings_path : pathlib.Path = xconf.field(
+        default=DEFAULT_PREFIX / "config" / "personalities",
+        help="Subdirectory of the default config path with audio recordings"
+    )
+
+    def __post_init__(self):
+        self._last_utterance_ts : datetime.datetime = datetime.datetime(1970, 1, 1)
+        self._playback_queue : queue.Queue = queue.Queue()
+        self._muted = False
+        if not self.recordings_path.exists():
+            raise FileNotFoundError(f"{self.recordings_path} does not exist")
+
+    @classmethod
+    def get_default_config_prefix(cls) -> pathlib.Path:
+        return DEFAULT_PREFIX / "config"
+
+    def main(self):
+        playback_thread = threading.Thread(target=self.do_audio_playback, name='XAudioClient-playback', daemon=True)
+        playback_thread.start()
+        while True:
+            try:
+                log.info("Starting XAudioClient...")
+                self.run_client()
+            except Exception as e:
+                log.exception(e)
+                time.sleep(RELOAD_WAIT_SEC)
+
+    def do_audio_playback(self):
+        log.info("Audio playback thread started")
+        while req := self._playback_queue.get():
+            log.debug(f"Audio playback request:\n{pprint.pformat(dataclasses.asdict(req))}")
+            if self._muted:
+                log.debug(f"Skipping because {self._muted=}")
+                continue
+            if isinstance(req, core.Speech):
+                core.play_speech(req)
+            elif isinstance(req, core.Recording):
+                core.play_audio_file(req)
+
+    def handle_audible_alert(self, msg: purepyindi2.messages.IndiDefSetDelMessage):
+        log.debug("\n" + pprint.pformat(dataclasses.asdict(msg)))
+        assert msg.device == self.audible_alerts_device_name
+        if msg.name == 'mute':
+            old_mute_state = self._muted
+            self._muted = msg['toggle']
+            log.debug(f"{msg.device}.mute.toggle updated. we had {old_mute_state}, now {self._muted}")
+        if msg.name == 'playback_request':
+            assert isinstance(msg, purepyindi2.messages.SetTextVector)
+            if msg.timestamp is not None and msg.timestamp > self._last_utterance_ts:
+                log.debug(f"{msg.device}.playback_request timestamp {msg.timestamp} is newer than {self._last_utterance_ts=}")
+                if len(msg['speech']):
+                    new_audible_alert = core.Speech(core.load_voice(msg['voice']), msg['speech'])
+                elif len(msg['file']):
+                    new_audible_alert = core.Recording(self.recordings_path / msg['file'])
+                self._playback_queue.put(new_audible_alert)
+                log.debug(f"Enqueued new {new_audible_alert}")
+
+    def handle_rule(self, msg: purepyindi2.messages.IndiDefSetDelMessage):
+        log.debug("\n" + pprint.pformat(dataclasses.asdict(msg)))
+
+    def run_client(self):
+        client = purepyindi2.IndiClient()
+        client.connect(self.indi.hostname, self.indi.port)
+        log.info("Connected")
+        client.register_callback(
+            self.handle_audible_alert,
+            self.audible_alerts_device_name,
+        )
+        log.info("Registered audible alerts callback")
+        client.get_properties_and_wait(self.audible_alerts_device_name)
+        log.info(f"Got properties from {self.audible_alerts_device_name}")
+        log.info("Running until exit")
+        while True:
+            time.sleep(1)

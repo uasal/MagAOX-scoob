@@ -1,3 +1,4 @@
+import queue
 import sys
 from typing import Optional, Union
 from random import choice
@@ -15,9 +16,9 @@ from xconf.contrib import DirectoryConfig
 from purepyindi2 import device, properties, constants, messages
 from purepyindi2.messages import DefNumber, DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
+from magaox.tts.core import PlaybackRequest, Speech, DynamicSpeech, Voice, get_or_create_speech_file, load_voice
 
 from .personality import Personality, Transition, Operation, SSML, Recording
-from .opentts_bridge import speak, ssml_to_wav
 
 log = logging.getLogger(__name__)
 HERE = os.path.dirname(__file__)
@@ -30,6 +31,7 @@ def drop_xml_tags(raw_xml):
 class AudibleAlertsConfig(BaseConfig):
     random_utterance_interval_sec : Union[float, int] = xconf.field(default=15 * 60, help="Seconds since last (real or random) utterance before a random utterance should play")
     cache : pathlib.Path = xconf.field(default=pathlib.Path("/tmp/audibleAlerts_cache"))
+    observers_device : str = xconf.field(default='observers', help="Observer controls device name")
 
 def contains_substitutions(text):
     return '{' in text or '}' in text
@@ -38,27 +40,24 @@ class AudibleAlerts(XDevice):
     config : AudibleAlertsConfig
     personality : Personality
     _cb_handles : set
-    _speech_requests : list[Union[SSML, Recording]]
-    soundboard_sw_prop : Optional[properties.SwitchVector] = None  # unset during setup until first personality is loaded
-    default_voice : str = "coqui-tts:en_ljspeech"  # overridden by personality when loaded
-    personalities : list[str] = ['onsky', 'lab_mode',]
-    active_personality : str = "lab_mode"
-    api_url : str = "http://localhost:5500/"
+    _playback_requests : queue.Queue
+    playback_text : properties.TextVector
+    soundboard_sw_prop : properties.SwitchVector
+    default_voice : str = "en_GB-cori-high"  # overridden by personality when loaded
     mute : bool = True
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
     per_transition_cooldown_ts : dict[Transition, float]
     last_utterance_ts : float = 0
     last_utterance_chosen : Optional[str] = None
-    observers_device : str = 'observers'
     last_walkup : Optional[dict[str,str]] = None
     last_walkup_ts : float = 0
     walkup_double_trigger_timeout_sec : float = 30
 
     def enqueue_speech_request(self, sr):
-        if any(sr == x for x in self._speech_requests):
-            log.warn(f"Duplicated speech request while already enqueued: {sr}")
+        if any(sr == x for x in self._playback_requests):
+            log.warning(f"Duplicated speech request while already enqueued: {sr}")
             return
-        self._speech_requests.append(sr)
+        self._playback_requests.put(sr)
 
     def handle_speech_text(self, existing_property, new_message):
         if 'target' in new_message and new_message['target'] != existing_property['current']:
@@ -67,13 +66,12 @@ class AudibleAlerts(XDevice):
             existing_property['target'] = new_message['target']
         self.update_property(existing_property)
 
-    def handle_speech_request(self, existing_property, new_message):
+    def handle_speak_request(self, existing_property, new_message):
         self.log.debug(f"{new_message['request']=}")
         if new_message['request'] is constants.SwitchState.ON:
             current_text = self.properties['speech_text']['current']
             if current_text is not None and len(current_text.strip()) != 0:
-                st = '<speak>' + current_text + '</speak>'
-                self.enqueue_speech_request(SSML(st))
+                self.enqueue_speech_request(DynamicSpeech(current_text))
                 self.telem("speech_request", {"text": current_text})
         self.update_property(existing_property)  # ensure the request switch turns back off at the client
 
@@ -152,25 +150,6 @@ class AudibleAlerts(XDevice):
             if new_message.device == 'labrules':
                 self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
 
-    def preprocess(self, speech):
-        if isinstance(speech, Recording):
-            return speech
-        speech_text = speech.markup
-        substitutables = re.findall(r"({[^}]+})", speech.markup)
-        for sub in substitutables:
-            indi_id = sub[1:-1]
-            value = self.client[indi_id]
-            if hasattr(value, 'value'):
-                value = value.value
-            self.log.debug(f"Replacing {repr(sub)} with {value=}")
-            if value is not None:
-                try:
-                    value = float(value)
-                    value = "{:.1f}".format(value)
-                except (TypeError, ValueError):
-                    value = str(value)
-                speech_text = speech_text.replace(sub, value)
-        return SSML(speech_text)
 
     def handle_personality_switch(self, prop : properties.IndiProperty, new_message):
         if not isinstance(new_message, messages.IndiNewMessage):
@@ -200,7 +179,7 @@ class AudibleAlerts(XDevice):
         self.update_property(prop)
 
     def load_personality(self, personality_name):
-        personality_file = os.path.join(HERE, "personalities", f"{personality_name}.xml")
+        personality_file = os.path.join(self.get_default_config_prefix(), "personalities", f"{personality_name}.toml")
         for cb, device_name, property_name, _ in self._cb_handles:
             try:
                 self.client.unregister_callback(cb, device_name=device_name, property_name=property_name)
@@ -238,12 +217,7 @@ class AudibleAlerts(XDevice):
                 self.log.debug(f"Registered reaction handler on {device_name=} {property_name=} {element_name=} using transition {t}")
                 for idx, utterance in enumerate(reaction.transitions[t]):
                     self.log.debug(f"{reaction.indi_id}: {t}: {utterance}")
-                    if isinstance(utterance, SSML):
-                        if not contains_substitutions(utterance.markup):
-                            result = ssml_to_wav(utterance.markup, self.default_voice, self.api_url, self.config.cache)
-                            self.log.debug(f"Caching synthesis to {result}")
-                        else:
-                            self.log.debug(f"Cannot pre-cache because there are substitutions to be made")
+
         if self.walkup_handler not in self.client.callbacks[self.observers_device]['operators']:
             self.client.register_callback(self.walkup_handler, self.observers_device, 'operators')
         if self.walkup_handler not in self.client.callbacks[self.observers_device]['observers']:
@@ -257,7 +231,19 @@ class AudibleAlerts(XDevice):
         self.latch_transitions = {}
         self.per_transition_cooldown_ts = {}
         self._cb_handles = set()
-        self._speech_requests = []
+        self._playback_requests = queue.Queue()
+        self.personalities = {}
+        for fp in (pathlib.Path(self.get_default_config_prefix()) / "personalities").glob('*.toml'):
+            try:
+                shortname = fp.name.rsplit('.', 1)
+                if '.' in shortname:
+                    raise RuntimeError(f"Base name must be valid INDI name (no '.'s)")
+                self.personalities[shortname] = Personality.from_path(fp)
+            except Exception as e:
+                self.log.exception(f"Unable to load {fp} (syntax problem?)")
+        shortnames = list(self.personalities.keys())
+        shortnames.sort()
+        self.active_personality = shortnames[0]
         self.last_walkup = {'observers': '', 'operators': ''}
 
         while self.client.status is not constants.ConnectionStatus.CONNECTED:
@@ -273,7 +259,7 @@ class AudibleAlerts(XDevice):
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
-        sv.add_element(DefSwitch(name=f"toggle", _value=constants.SwitchState.ON if self.mute else constants.SwitchState.OFF))
+        sv.add_element(DefSwitch(name="toggle", _value=constants.SwitchState.ON if self.mute else constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_mute_toggle)
 
         sv = properties.SwitchVector(
@@ -281,8 +267,7 @@ class AudibleAlerts(XDevice):
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
-        for pers in self.personalities:
-            print(f"{pers=}")
+        for pers in shortnames:
             sv.add_element(DefSwitch(name=pers, _value=constants.SwitchState.ON if self.active_personality == pers else constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_personality_switch)
 
@@ -302,7 +287,22 @@ class AudibleAlerts(XDevice):
             rule=constants.SwitchRule.ANY_OF_MANY,
         )
         speech_request.add_element(DefSwitch(name="request", _value=constants.SwitchState.OFF))
-        self.add_property(speech_request, callback=self.handle_speech_request)
+        self.add_property(speech_request, callback=self.handle_speak_request)
+
+        self.playback_text = properties.TextVector(name="playback", perm=constants.PropertyPerm.READ_ONLY)
+        self.playback_text.add_element(DefText(
+            name="speech",
+            _value="",
+        ))
+        self.playback_text.add_element(DefText(
+            name="voice",
+            _value="",
+        ))
+        self.playback_text.add_element(DefText(
+            name="file",
+            _value="",
+        ))
+        self.add_property(self.playback_text)
 
         reload_request = properties.SwitchVector(
             name="reload_personality",
@@ -314,14 +314,26 @@ class AudibleAlerts(XDevice):
         self.log.info("Set up complete")
 
     def loop(self):
-        while len(self._speech_requests):
-            speech = self.preprocess(self._speech_requests.pop(0))
+        while self._playback_requests.qsize() > 0:
+            req = self._playback_requests.get_nowait()
             if self.mute:
-                self.log.debug(f"Would have said: {repr(speech)}, but muted")
+                self.log.debug(f"Would have played: {repr(req)}, but muted")
             else:
-                self.log.info(f"Speaking: {repr(speech)}")
-                speak(speech, self.default_voice, self.api_url, self.config.cache)
-                self.log.debug("Speech complete")
+                self.log.info(f"Playing: {repr(req)}")
+                if isinstance(req, Recording):
+                    self.playback_text['file'] = req.path
+                    self.playback_text['speech'] = ''
+                    self.playback_text['voice'] = ''
+                elif isinstance(req, DynamicSpeech):
+                    # apply substitutions
+                    req = req.to_speech(self.current_voice, self.client)
+                    self.playback_text['file'] = ''
+                    self.playback_text['speech'] = req.text
+                    self.playback_text['voice'] = req.voice.name
+                else:
+                    raise RuntimeError(f"What is a {repr(req)}?")
+                self.update_property(self.playback_text)
+                self.log.debug("Playback request dispatched")
                 self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
             next_utterance = choice(self.personality.random_utterances)
@@ -333,7 +345,7 @@ class AudibleAlerts(XDevice):
                 self.log.debug(f"Would have said: {repr(next_utterance)}, but muted")
             else:
                 self.log.info(f"Randomly spouting off: {repr(next_utterance)}")
-                speak(next_utterance, self.default_voice, self.api_url, self.config.cache)
+                self.enqueue_speech_request(next_utterance)
 
 # Used to make the pyproject.toml just a little simpler,
 # with fewer repetitions of the app name:
