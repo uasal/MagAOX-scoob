@@ -12,7 +12,7 @@ import xconf
 from purepyindi2 import properties, constants, messages
 from purepyindi2.messages import DefSwitch, DefText
 from magaox.indi.device import XDevice, BaseConfig
-from magaox.tts.core import DynamicSpeech
+from magaox.tts.core import DynamicSpeech, load_voice
 
 from .personality import Personality, Transition, Recording
 
@@ -39,7 +39,6 @@ class AudibleAlerts(XDevice):
     _playback_requests : queue.Queue
     playback_text : properties.TextVector
     soundboard_sw_prop : properties.SwitchVector = None  # distinguish between initial startup and reload case
-    default_voice : str = "en_GB-cori-high"  # overridden by personality when loaded
     mute : bool = True
     latch_transitions : dict[Transition, constants.AnyIndiValue]  # store last value when triggering a transition so subsequent messages don't trigger too
     per_transition_cooldown_ts : dict[Transition, float]
@@ -50,9 +49,6 @@ class AudibleAlerts(XDevice):
     walkup_double_trigger_timeout_sec : float = 30
 
     def enqueue_speech_request(self, sr):
-        if any(sr == x for x in self._playback_requests):
-            log.warning(f"Duplicated speech request while already enqueued: {sr}")
-            return
         self._playback_requests.put(sr)
 
     def handle_speech_text(self, existing_property, new_message):
@@ -107,12 +103,10 @@ class AudibleAlerts(XDevice):
         if element_name not in new_message:
             return
         value = new_message[element_name]
-        if new_message.device == 'labrules':
-            self.log.debug(f"Judging reaction for {element_name} change to {repr(value)} using {transition}")
-            self.log.debug(f"before check {self.latch_transitions=}")
+        self.log.debug(f"Judging reaction for {element_name} change to {repr(value)} using {transition}")
+        self.log.debug(f"before check {self.latch_transitions=}")
         last_value = self.latch_transitions.get(transition)
-        if new_message.device == 'labrules':
-            self.log.debug(f"{new_message}\n{transition.compare(value)=}, last value was {last_value}, {value != last_value=} {(not transition.compare(last_value))=}")
+        self.log.debug(f"{transition.compare(value)=}, last value was {last_value}, {value != last_value=} {(not transition.compare(last_value))=}")
         if transition.compare(value) and (
             # if there's no operation, we fire on any change,
             # but make sure it's actually a change
@@ -120,30 +114,27 @@ class AudibleAlerts(XDevice):
             # don't fire if we already compared true on the last value:
             (not transition.compare(last_value))
         ):
+            self.log.debug(f"Latching {transition}")
             self.latch_transitions[transition] = value
-            if new_message.device == 'labrules':
-                self.log.debug(f"after update {self.latch_transitions=}")
-                self.log.debug(f"latched {transition=} with {value=}")
-            last_transition_ts = self.per_transition_cooldown_ts.get(transition, 0)
-            sec_since_trigger = time.time() - last_transition_ts
-            debounce_expired = sec_since_trigger > transition.debounce_sec
-            self.log.debug(f"Checking for debounce: {sec_since_trigger=} {debounce_expired=}")
-            if debounce_expired:
-                utterance = choice(utterance_choices)
-                self.log.debug(f"Submitting speech request: {utterance}")
-                self.enqueue_speech_request(utterance)
-            else:
-                self.log.debug(f"Would have spoken, but it's only been {sec_since_trigger=}")
+            self.log.debug(f"after update {self.latch_transitions=}")
+            self.log.debug(f"latched {transition=} with {value=}")
+            # last_transition_ts = self.per_transition_cooldown_ts.get(transition, 0)
+            # sec_since_trigger = time.time() - last_transition_ts
+            # debounce_expired = sec_since_trigger > transition.debounce_sec
+            # self.log.debug(f"Checking for debounce: {sec_since_trigger=} {debounce_expired=}")
+            # if debounce_expired:
+            utterance = choice(utterance_choices)
+            self.log.debug(f"Submitting speech request: {utterance}")
+            self.enqueue_speech_request(utterance)
+            # else:
+                # self.log.debug(f"Would have spoken, but it's only been {sec_since_trigger=}")
         elif transition.compare(last_value) and not transition.compare(value):
-            if new_message.device == 'labrules':
-                self.log.debug(f"un-latch {transition}, so next time we change to a value that compares True we trigger again. ({last_value=} {value=})")
-                self.log.debug(f"before {self.latch_transitions=}")
+            self.log.debug(f"un-latch {transition}, so next time we change to a value that compares True we trigger again. ({last_value=} {value=})")
+            self.log.debug(f"before del: {self.latch_transitions=}")
             del self.latch_transitions[transition]
-            if new_message.device == 'labrules':
-                self.log.debug(f"after {self.latch_transitions=}")
+            self.log.debug(f"after del: {self.latch_transitions=}")
         else:
-            if new_message.device == 'labrules':
-                self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
+            self.log.debug(f"Got {new_message.device}.{new_message.name} but {transition=} did not match")
 
 
     def handle_personality_switch(self, prop : properties.IndiProperty, new_message):
@@ -197,7 +188,7 @@ class AudibleAlerts(XDevice):
             self.soundboard_sw_prop.add_element(DefSwitch(name=btn_name, _value=constants.SwitchState.OFF))
         self.add_property(self.soundboard_sw_prop, callback=self.handle_soundboard_switch)
 
-        self.default_voice = self.personality.default_voice
+        self._current_voice = self.personality.default_voice
 
         for reaction in self.personality.reactions:
             device_name, property_name, element_name = reaction.indi_id.split('.')
@@ -214,10 +205,10 @@ class AudibleAlerts(XDevice):
                 for idx, utterance in enumerate(reaction.transitions[t]):
                     self.log.debug(f"{reaction.indi_id}: {t}: {utterance}")
 
-        if self.walkup_handler not in self.client.callbacks[self.observers_device]['operators']:
-            self.client.register_callback(self.walkup_handler, self.observers_device, 'operators')
-        if self.walkup_handler not in self.client.callbacks[self.observers_device]['observers']:
-            self.client.register_callback(self.walkup_handler, self.observers_device, 'observers')
+        if self.walkup_handler not in self.client.callbacks[self.config.observers_device]['operators']:
+            self.client.register_callback(self.walkup_handler, self.config.observers_device, 'operators')
+        if self.walkup_handler not in self.client.callbacks[self.config.observers_device]['observers']:
+            self.client.register_callback(self.walkup_handler, self.config.observers_device, 'observers')
         self.active_personality = personality_name
         self.telem("load_personality", {'name': personality_name})
         self.send_all_properties()
@@ -339,7 +330,7 @@ class AudibleAlerts(XDevice):
                     self.telem("play", {"file": req.path, "speech": "", "voice": ""})
                 elif isinstance(req, DynamicSpeech):
                     # apply substitutions
-                    req = req.to_speech(self.current_voice, self.client)
+                    req = req.to_speech(self._current_voice, self.client)
                     self.playback_text['file'] = ''
                     self.playback_text['speech'] = req.text
                     self.playback_text['voice'] = req.voice.name
@@ -349,9 +340,9 @@ class AudibleAlerts(XDevice):
                 # TODO: actually gauge playback time
                 playback_duration_sec = 5
                 self.update_property(self.playback_text)
-                end_utterance_ts = time.time() + playback_duration_sec
                 self.log.debug("Playback request dispatched")
-                self.last_utterance_ts = end_utterance_ts  # update timestamp to prevent random utterances
+                time.sleep(playback_duration_sec)
+                self.last_utterance_ts = time.time()  # update timestamp to prevent random utterances
         if time.time() - self.last_utterance_ts > self.config.random_utterance_interval_sec and len(self.personality.random_utterances):
             next_utterance = choice(self.personality.random_utterances)
             while next_utterance == self.last_utterance_chosen:

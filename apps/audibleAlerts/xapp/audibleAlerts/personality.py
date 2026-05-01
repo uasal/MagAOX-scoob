@@ -8,7 +8,7 @@ import tomllib
 
 import purepyindi2
 
-from magaox.tts.core import PlaybackRequest, Recording, DynamicSpeech
+from magaox.tts.core import PlaybackRequest, Recording, DynamicSpeech, Voice, load_voice
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class Reaction:
 @dataclass
 class Personality:
     reactions : list[Reaction]
-    default_voice : str
+    default_voice : Voice
     random_utterances : list[PlaybackRequest]
     soundboard : dict[str, PlaybackRequest]
     walkups : dict[str, list[PlaybackRequest]]
@@ -90,7 +90,7 @@ class Personality:
         with file_path.open('rb') as fh:
             root = tomllib.load(fh)
 
-        default_voice = root['default_voice']
+        default_voice = load_voice(root['default_voice'])
         for utterance in root['random_utterances']:
             random_utterances.append(action_dict_to_playback_request(utterance))
         for btn in root['soundboard']:
@@ -102,10 +102,11 @@ class Personality:
             for walkup_clip in root['walkups'][wup_email]:
                 walkups[email].append(Recording(walkup_clip))
 
-        transitions = {}
+        
 
         for react in root['react']:
             indi_id = react['indi_id']
+            transitions = {}
             for transition in react['transition']:
                 if 'low' in transition:
                     value = purepyindi2.parse_string_into_any_indi_value(transition['low'])

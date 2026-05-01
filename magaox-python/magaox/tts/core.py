@@ -42,7 +42,7 @@ class Voice:
     model : 'PiperVoice'
     name : str
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Speech:
     voice: Voice
     text: str
@@ -57,7 +57,7 @@ class Speech:
     def __eq__(self, other):
         return getattr(other, 'fingerprint', None) == self.fingerprint
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class DynamicSpeech:
     markup : str
     custom_voice_name : typing.Optional[str] = None
@@ -95,8 +95,7 @@ class DynamicSpeech:
     
         return Speech(voice, speech_text)
 
-
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Recording:
     path: str
 
