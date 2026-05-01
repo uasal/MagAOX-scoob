@@ -28,14 +28,14 @@ class XAudioClient(Command):
     indi : IndiClientConfig = xconf.field(default_factory=IndiClientConfig, help="Connection information")
     audible_alerts_device_name : str = xconf.field(default='maggieo_x', help='Device publishing audible alerts')
     recordings_path : pathlib.Path = xconf.field(
-        default=DEFAULT_PREFIX / "config" / "personalities",
+        default=DEFAULT_PREFIX / "config" / "personalities" / "data",
         help="Subdirectory of the default config path with audio recordings"
     )
 
     def __post_init__(self):
-        self._last_utterance_ts : datetime.datetime = datetime.datetime(1970, 1, 1)
+        self._last_utterance_ts : datetime.datetime = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
         self._playback_queue : queue.Queue = queue.Queue()
-        self._muted = False
+        self._muted = purepyindi2.OFF
         if not self.recordings_path.exists():
             raise FileNotFoundError(f"{self.recordings_path} does not exist")
 
@@ -57,32 +57,40 @@ class XAudioClient(Command):
     def do_audio_playback(self):
         log.info("Audio playback thread started")
         while req := self._playback_queue.get():
-            log.debug(f"Audio playback request:\n{pprint.pformat(dataclasses.asdict(req))}")
-            if self._muted:
+            self._last_utterance_ts = datetime.datetime.now(datetime.UTC)
+            log.debug(f"Audio playback request: {req}")
+            if self._muted is purepyindi2.ON:
                 log.debug(f"Skipping because {self._muted=}")
                 continue
             if isinstance(req, core.Speech):
                 core.play_speech(req)
             elif isinstance(req, core.Recording):
-                core.play_audio_file(req)
+                audio_file = self.recordings_path / req.path
+                if audio_file.exists():
+                    core.play_audio_file(audio_file)
+                else:
+                    log.error(f"{req.path} ({audio_file}) not found")
 
     def handle_audible_alert(self, msg: purepyindi2.messages.IndiDefSetDelMessage):
-        log.debug("\n" + pprint.pformat(dataclasses.asdict(msg)))
         assert msg.device == self.audible_alerts_device_name
         if msg.name == 'mute':
             old_mute_state = self._muted
             self._muted = msg['toggle']
             log.debug(f"{msg.device}.mute.toggle updated. we had {old_mute_state}, now {self._muted}")
-        if msg.name == 'playback_request':
-            assert isinstance(msg, purepyindi2.messages.SetTextVector)
+        if msg.name == 'playback':
+            log.debug("\n" + str(msg))
+            assert isinstance(msg, (purepyindi2.messages.SetTextVector, purepyindi2.messages.DefTextVector))
+            log.debug(f"{msg.timestamp=} {self._last_utterance_ts=}")
             if msg.timestamp is not None and msg.timestamp > self._last_utterance_ts:
                 log.debug(f"{msg.device}.playback_request timestamp {msg.timestamp} is newer than {self._last_utterance_ts=}")
-                if len(msg['speech']):
+                if msg['speech']:
                     new_audible_alert = core.Speech(core.load_voice(msg['voice']), msg['speech'])
-                elif len(msg['file']):
+                elif msg['file']:
                     new_audible_alert = core.Recording(self.recordings_path / msg['file'])
                 self._playback_queue.put(new_audible_alert)
                 log.debug(f"Enqueued new {new_audible_alert}")
+            else:
+                log.debug(f"Skipping request {msg['speech']=} {msg['file']=} because of {msg.timestamp=}")
 
     def handle_rule(self, msg: purepyindi2.messages.IndiDefSetDelMessage):
         log.debug("\n" + pprint.pformat(dataclasses.asdict(msg)))
