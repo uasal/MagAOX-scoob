@@ -158,6 +158,7 @@ class AudibleAlerts(XDevice):
         if active_personality is not None:
             self.log.info(f"Switching to {active_personality=}")
             self.load_personality(active_personality)
+            self.active_personality = active_personality
         prop[self.active_personality] = constants.SwitchState.ON
         self.update_property(prop)
 
@@ -221,24 +222,36 @@ class AudibleAlerts(XDevice):
         self.telem("load_personality", {'name': personality_name})
         self.send_all_properties()
 
+    def discover_personalities(self):
+        personalities_root = pathlib.Path(self.get_default_config_prefix()) / "personalities"
+        self.log.debug(f"{personalities_root=}")
+        personality_paths = personalities_root.glob('*.toml')
+        if len(personality_paths) == 0:
+            raise RuntimeError(f"No personality configs found in {personalities_root}, can't do anything")
+        personality_shortnames = []
+        for fp in personality_paths:
+            try:
+                shortname = fp.name.rsplit('.', 1)[0]
+                if '.' in shortname:
+                    raise RuntimeError(f"Base name {shortname} must be valid INDI name (no '.'s)")
+                try:
+                    Personality.from_path(fp)
+                except Exception:
+                    self.log.exception(f"Unable to parse {fp} as a personality")
+            except Exception:
+                self.log.exception(f"Unable to load {fp}")
+        personality_shortnames.sort()
+        return personality_shortnames
+
+
     def setup(self):
         self.last_utterance_ts = time.time()
         self.latch_transitions = {}
         self.per_transition_cooldown_ts = {}
         self._cb_handles = set()
         self._playback_requests = queue.Queue()
-        self.personalities = {}
-        for fp in (pathlib.Path(self.get_default_config_prefix()) / "personalities").glob('*.toml'):
-            try:
-                shortname = fp.name.rsplit('.', 1)
-                if '.' in shortname:
-                    raise RuntimeError(f"Base name must be valid INDI name (no '.'s)")
-                self.personalities[shortname] = Personality.from_path(fp)
-            except Exception as e:
-                self.log.exception(f"Unable to load {fp} (syntax problem?)")
-        shortnames = list(self.personalities.keys())
-        shortnames.sort()
-        self.active_personality = shortnames[0]
+        self.personality_ids = self.discover_personalities()
+        self.active_personality = self.personality_ids[0]
         self.last_walkup = {'observers': '', 'operators': ''}
 
         while self.client.status is not constants.ConnectionStatus.CONNECTED:
@@ -262,7 +275,7 @@ class AudibleAlerts(XDevice):
             rule=constants.SwitchRule.ONE_OF_MANY,
             perm=constants.PropertyPerm.READ_WRITE,
         )
-        for pers in shortnames:
+        for pers in self.personality_ids:
             sv.add_element(DefSwitch(name=pers, _value=constants.SwitchState.ON if self.active_personality == pers else constants.SwitchState.OFF))
         self.add_property(sv, callback=self.handle_personality_switch)
 
