@@ -11,6 +11,7 @@ import warnings
 import wave
 
 import purepyindi2
+import purepyindi2.client
 
 try:
     _platform = os.uname().sysname
@@ -70,7 +71,7 @@ class DynamicSpeech:
             getattr(other, 'custom_voice_name', None) == self.custom_voice_name
         )
 
-    def to_speech(self, default_voice: Voice, indi_client: purepyindi2.IndiClient):
+    def to_speech(self, default_voice: Voice, indi_client: purepyindi2.client.IndiClient):
         if self.custom_voice_text:
             voice = load_voice(self.custom_voice_text)
         else:
