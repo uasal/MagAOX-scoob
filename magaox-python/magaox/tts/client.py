@@ -25,6 +25,7 @@ class IndiClientConfig:
 
 @xconf.config
 class XAudioClient(Command):
+
     indi : IndiClientConfig = xconf.field(default_factory=IndiClientConfig, help="Connection information")
     audible_alerts_device_name : str = xconf.field(default='maggieo_x', help='Device publishing audible alerts')
     recordings_path : pathlib.Path = xconf.field(
@@ -46,6 +47,20 @@ class XAudioClient(Command):
     def main(self):
         playback_thread = threading.Thread(target=self.do_audio_playback, name='XAudioClient-playback', daemon=True)
         playback_thread.start()
+
+        # Connect to INDI but make the connection object by hand so
+        # we can hook in for logging
+        def log_connection(connection_status : purepyindi2.ConnectionStatus):
+            log.info(f"Connection status changed to {connection_status}")
+        conn = purepyindi2.transports.IndiTcpClientConnection(host=self.indi.hostname, port=self.indi.port, reconnect_automatically=True)
+        conn.add_callback(purepyindi2.constants.TransportEvent.connection, log_connection)
+        self._indi_client = purepyindi2.IndiClient(conn)
+        self._indi_client.connect()
+        self._indi_client.register_callback(
+            self.handle_audible_alert,
+            self.audible_alerts_device_name,
+        )
+        log.info("Registered audible alerts callback")
         while True:
             try:
                 log.info("Starting XAudioClient...")
@@ -73,6 +88,9 @@ class XAudioClient(Command):
 
     def handle_audible_alert(self, msg: purepyindi2.messages.IndiDefSetDelMessage):
         assert msg.device == self.audible_alerts_device_name
+        if isinstance(msg, purepyindi2.messages.DelProperty):
+            log.debug(f"Deletion request, not doing anything {msg}")
+            return
         if msg.name == 'mute':
             old_mute_state = self._muted
             self._muted = msg['toggle']
@@ -87,6 +105,9 @@ class XAudioClient(Command):
                     new_audible_alert = core.Speech(core.load_voice(msg['voice']), msg['speech'])
                 elif msg['file']:
                     new_audible_alert = core.Recording(self.recordings_path / msg['file'])
+                else:
+                    log.warning(f"Message lacked valid content but looked like an audio request: {msg}")
+                    return
                 self._playback_queue.put(new_audible_alert)
                 log.debug(f"Enqueued new {new_audible_alert}")
             else:
@@ -96,15 +117,10 @@ class XAudioClient(Command):
         log.debug("\n" + pprint.pformat(dataclasses.asdict(msg)))
 
     def run_client(self):
-        client = purepyindi2.IndiClient()
-        client.connect(self.indi.hostname, self.indi.port)
-        log.info("Connected")
-        client.register_callback(
-            self.handle_audible_alert,
-            self.audible_alerts_device_name,
-        )
-        log.info("Registered audible alerts callback")
-        client.get_properties_and_wait(self.audible_alerts_device_name)
+        if self._indi_client.connection.status is not purepyindi2.constants.ConnectionStatus.CONNECTED:
+            log.info(f"Connection status is {self._indi_client.connection.status}, standing by")
+            time.sleep(1)
+        self._indi_client.get_properties_and_wait(self.audible_alerts_device_name)
         log.info(f"Got properties from {self.audible_alerts_device_name}")
         log.info("Running until exit")
         while True:

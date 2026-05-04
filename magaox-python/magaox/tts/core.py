@@ -54,7 +54,7 @@ class Speech:
     @property
     def fingerprint(self) -> str:
         return hashlib.shake_128(f"{self.voice.name} {self.text}".encode("utf8")).hexdigest(10)
-    
+
     def __eq__(self, other):
         return getattr(other, 'fingerprint', None) == self.fingerprint
 
@@ -74,7 +74,11 @@ class DynamicSpeech:
 
     def to_speech(self, default_voice: Voice, indi_client: purepyindi2.client.IndiClient):
         if self.custom_voice_name:
-            voice = load_voice(self.custom_voice_name)
+            try:
+                voice = load_voice(self.custom_voice_name)
+            except ValueError as e:
+                voice = default_voice
+                log.warning(f"Got a request for a custom voice {self.custom_voice_name} but loading failed with {e}")
         else:
             voice = default_voice
         speech_text = self.text
@@ -93,7 +97,7 @@ class DynamicSpeech:
                     except (TypeError, ValueError):
                         value = str(value)
                     speech_text = speech_text.replace(sub, value)
-    
+
         return Speech(voice, speech_text)
 
 @dataclass(eq=True, frozen=True)
