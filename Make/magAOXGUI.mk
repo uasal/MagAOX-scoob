@@ -12,20 +12,13 @@
 
 
 
-#############################
-# The qt5 qmake
-#
-# On a system where qt5 qmake is the one in the bath, then no
-# argument is needed.  If not, then invoke with, e.g., `make QMAKE=qmake-qt5`
+# Verify qmake is available:
 
-QMAKE?=qmake
-
+QMAKE ?= qmake
 QMAKE_PATH := $(shell which qmake 2>/dev/null)
 
-$(info $(QMAKE_PATH))
-
 ifeq "$(QMAKE_PATH)" ""
-  QMAKE=qmake-qt5
+  $(error No qmake on PATH)
 endif
 
 
