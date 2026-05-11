@@ -723,7 +723,6 @@ void updateCameraControls() {
         printf("Error enumerating controls\n");
         return;
     }
-
 }
 
 // update current value based on string input

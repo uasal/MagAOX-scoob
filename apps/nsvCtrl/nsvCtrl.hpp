@@ -1487,7 +1487,7 @@ int nsvCtrl::startAcquisition()
 inline
 int nsvCtrl::acquireAndCheckValid()
 {
-   if(m_init)
+   if(m_init && m_poweredOn) // TODO verify poweredOn logic works
    {
       
       m_current_frame = dequeueBuffer(m_oldest_frame);  // cam forces you to read oldest frame in the buffer first
