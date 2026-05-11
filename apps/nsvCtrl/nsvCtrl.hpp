@@ -18,8 +18,13 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <map>
+#include <filesystem>
+#include <set>
+#include <thread>
+#include <mutex>
 
 #include <unistd.h>
 
@@ -107,6 +112,36 @@ protected:
    float m_gmslVoltage {0.0};
    float m_gmslCurrent {0.0};
    std::string m_powerDevicePath;         // Direct device path (e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6")
+   int m_powerChannel { -1 };             // Optional fixed channel (1..3) to use with m_powerDevicePath
+   int m_powerUpdateCounter = 0;          // Counter for rate limiting power updates
+   int m_powerUpdateInterval = 10;        // Update power every N frames (10Hz at 100fps = every 10 frames)
+   
+   // High-frequency power monitoring thread
+   std::thread m_powerThread;             // Separate thread for power monitoring
+   bool m_powerThreadRunning = false;     // Control flag for power thread
+   std::chrono::milliseconds m_powerUpdateRate{10}; // Update every 10ms (100Hz)
+   std::mutex m_powerMutex;               // Separate mutex for power data
+   
+   // Comprehensive power monitoring structure
+   struct PowerRail {
+      std::string name;           // e.g., "12V_A_GMSL1"
+      std::string devicePath;     // e.g., "/sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6"
+      int channel;                // e.g., 1, 2, 3, 7
+      std::string voltageFile;    // e.g., "in1_input"
+      std::string currentFile;    // e.g., "curr1_input"
+      float voltage = 0.0;
+      float current = 0.0;
+      bool valid = false;
+   };
+   
+   std::vector<PowerRail> m_powerRails;
+   
+   // Power logging variables
+   bool m_powerLoggingEnabled = false;
+   std::ofstream m_powerLogFile;
+   std::mutex m_powerLogMutex;
+   std::string m_powerLogPath;
+   bool m_powerHeaderWritten = false;
 
    std::string m_camID; // ID encoded in the camera (necessary to pair with path)
    std::string m_camPath; // dev/videoX
@@ -182,7 +217,17 @@ public:
 
    int getPowerStatus();
 
-   int getPowerMetrics();
+   // Power monitoring thread function
+   void powerMonitoringThread();
+   
+   // Power monitoring functions
+   void initializePowerRails();
+   void updateAllPowerRails();
+   
+   // Power logging functions
+   int startPowerLogging();
+   int stopPowerLogging();
+   void logPowerData();
 
    int setTempControl();
 
@@ -290,11 +335,13 @@ protected:
    pcf::IndiProperty m_indiP_power_status;
    pcf::IndiProperty m_indiP_gmsl_voltage;
    pcf::IndiProperty m_indiP_gmsl_current;
+   pcf::IndiProperty m_indiP_power_logging;
 
 public:
 
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power_logging);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power);
 
    /** \name Telemeter Interface
@@ -357,7 +404,6 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
    // Initialize power monitoring
    m_gmslVoltage = 0.0;
    m_gmslCurrent = 0.0;
-   m_gmslInterface = "";
 
    return;
 }
@@ -365,6 +411,15 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 inline
 nsvCtrl::~nsvCtrl() noexcept
 {
+   // Stop power monitoring thread
+   if (m_powerThreadRunning) {
+      m_powerThreadRunning = false;
+      if (m_powerThread.joinable()) {
+         m_powerThread.join();
+      }
+   }
+   
+   // Power monitoring uses direct file reading, no persistent streams to close
    return;
 }
 
@@ -377,6 +432,7 @@ void nsvCtrl::setupConfig()
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
    config.add("camera.power_device_path", "", "camera.power_device_path", argType::Optional, "camera", "power_device_path", false, "str", "Direct device path for power monitoring (e.g., /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6)");
+   config.add("camera.power_channel", "", "camera.power_channel", argType::Optional, "camera", "power_channel", false, "int", "Channel index (1-3) to read when using power_device_path");
 
    dev::stdCamera<nsvCtrl>::setupConfig(config);
    dev::frameGrabber<nsvCtrl>::setupConfig(config);
@@ -392,6 +448,7 @@ void nsvCtrl::loadConfig()
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
    config(m_powerDevicePath, "camera.power_device_path");
+   config(m_powerChannel, "camera.power_channel");
    dev::stdCamera<nsvCtrl>::loadConfig(config);
 
    m_configFile = "/tmp/nsv_";
@@ -495,6 +552,10 @@ int nsvCtrl::appStartup()
    indi::addNumberElement<float>( m_indiP_gmsl_current, "value", 0.0, 10.0, 0.0,  "%.3f", "GMSL interface current");
    registerIndiPropertyReadOnly( m_indiP_gmsl_current );
 
+   createStandardIndiToggleSw( m_indiP_power_logging, "power_logging", "Power Logging", "Enable/disable power data logging");
+   m_indiP_power_logging["toggle"].set(0);
+   registerIndiPropertyNew( m_indiP_power_logging, INDI_NEWCALLBACK(m_indiP_power_logging));
+
    /*
    createStandardIndiNumber<int>(m_indiP_frame_timestamp_s, "frame_timestamp_s", 0, 2147483647, 1, "%d");
    m_indiP_frame_timestamp_s["current"] = prev_timestamp.tv_sec;
@@ -522,6 +583,33 @@ int nsvCtrl::appStartup()
 
    m_powerState = 0;  
    //m_powerTargetState = 1;
+
+   // Initialize power monitoring
+   if (!m_powerDevicePath.empty()) {
+      // Determine channel to test (default to 1 if unspecified)
+      const int channel = (m_powerChannel >= 1 && m_powerChannel <= 3) ? m_powerChannel : 1;
+      const std::string currentFile = m_powerDevicePath + "/curr" + std::to_string(channel) + "_input";
+      const std::string voltageFile = m_powerDevicePath + "/in" + std::to_string(channel) + "_input";
+
+      std::ifstream testCurrent(currentFile);
+      std::ifstream testVoltage(voltageFile);
+
+      if (testCurrent.is_open() && testVoltage.is_open()) {
+         log<text_log>("Power monitoring initialized: " + m_powerDevicePath + " (ch" + std::to_string(channel) + ")", logPrio::LOG_INFO);
+
+         // Initialize all power rails (respects m_powerChannel if set)
+         initializePowerRails();
+
+         // Start power monitoring thread
+         m_powerThreadRunning = true;
+         m_powerThread = std::thread(&nsvCtrl::powerMonitoringThread, this);
+         log<text_log>("Power monitoring thread started at " + std::to_string(1000/m_powerUpdateRate.count()) + "Hz", logPrio::LOG_INFO);
+      } else {
+         log<text_log>("Power monitoring files not available: " + currentFile + ", " + voltageFile, logPrio::LOG_WARNING);
+      }
+   } else {
+      log<text_log>("No power_device_path configured, power monitoring disabled", logPrio::LOG_INFO);
+   }
 
    return 0;
 
@@ -587,6 +675,13 @@ int nsvCtrl::appLogic()
 
       //but don't wait for it, just go back around.
       if(!lock.owns_lock()) return 0;
+      
+      // Update power data inside INDI mutex to ensure it gets processed
+      {
+         std::lock_guard<std::mutex> powerLock(m_powerMutex);
+         updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
+         updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
+      }
    
       if(m_powerState == 0) return 0;
 
@@ -618,7 +713,7 @@ int nsvCtrl::appLogic()
          return 0;
       }
 
-      getPowerMetrics();
+      // Power data already updated above
 
       if(frameGrabber<nsvCtrl>::updateINDI() < 0)
       {
@@ -1028,66 +1123,417 @@ int nsvCtrl::getPowerStatus()
    return res < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get power state"}) : m_powerState;
 }
 
-inline
-int nsvCtrl::getPowerMetrics()
+void nsvCtrl::powerMonitoringThread()
 {
-   // Check if power device path is configured
-   if (m_powerDevicePath.empty()) {
-      log<text_log>("No power_device_path configured", logPrio::LOG_WARNING);
-      return -1;
+   log<text_log>("Power monitoring thread started", logPrio::LOG_INFO);
+   
+   int loop_count = 0;
+   while (m_powerThreadRunning && !shutdown()) {
+      // Update all power rails
+      updateAllPowerRails();
+      
+      // Update legacy GMSL variables for backward compatibility
+      {
+         std::lock_guard<std::mutex> lock(m_powerMutex);
+         // Use only the explicitly configured device+channel if provided
+         if (!m_powerDevicePath.empty() && m_powerChannel >= 1 && m_powerChannel <= 3) {
+            bool foundConfigured = false;
+            for (const auto &rail : m_powerRails) {
+               if (rail.valid && rail.devicePath == m_powerDevicePath && rail.channel == m_powerChannel) {
+                  m_gmslVoltage = rail.voltage;
+                  m_gmslCurrent = rail.current;
+                  foundConfigured = true;
+                  break;
+               }
+            }
+            if (!foundConfigured) {
+               static bool warnedMissingConfiguredRail = false;
+               if (!warnedMissingConfiguredRail) {
+                  log<text_log>(
+                     std::string("Configured power_device_path '") + m_powerDevicePath +
+                     "' with power_channel " + std::to_string(m_powerChannel) +
+                     " not found among discovered rails; legacy INDI values will remain 0",
+                     logPrio::LOG_WARNING);
+                  warnedMissingConfiguredRail = true;
+               }
+               m_gmslVoltage = 0.0f;
+               m_gmslCurrent = 0.0f;
+            }
+         }
+      }
+      
+      // Log power data if enabled
+      logPowerData();
+      
+      // Debug logging every 100 loops (1 second at 100Hz)
+      loop_count++;
+      if (loop_count % 100 == 0) {
+         log<text_log>("Power thread running, loop count: " + std::to_string(loop_count) + 
+                      ", voltage: " + std::to_string(m_gmslVoltage) + 
+                      "V, current: " + std::to_string(m_gmslCurrent) + "A", logPrio::LOG_INFO);
+      }
+      
+      // Sleep for the specified update rate
+      std::this_thread::sleep_for(m_powerUpdateRate);
    }
    
-   log<text_log>("Reading power from device path: " + m_powerDevicePath, logPrio::LOG_INFO);
+   log<text_log>("Power monitoring thread stopped", logPrio::LOG_INFO);
+}
+
+inline
+void nsvCtrl::initializePowerRails()
+{
+   // Clear existing rails
+   m_powerRails.clear();
    
-   // Read directly from the specified path, e.g. /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6
-   std::string currentFile = m_powerDevicePath + "/curr1_input";
-   std::string voltageFile = m_powerDevicePath + "/in1_input";
+   log<text_log>("Starting auto-discovery of INA3221 power sensors...", logPrio::LOG_INFO);
    
-   std::ifstream currentStream(currentFile);
-   std::ifstream voltageStream(voltageFile);
-   
-   if (!currentStream.is_open()) {
-      log<text_log>("Failed to open current file: " + currentFile, logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   if (!voltageStream.is_open()) {
-      log<text_log>("Failed to open voltage file: " + voltageFile, logPrio::LOG_WARNING);
-      return -1;
-   }
-   
-   std::string currentStr, voltageStr;
-   std::getline(currentStream, currentStr);
-   std::getline(voltageStream, voltageStr);
-   
-   if (currentStr.empty() || voltageStr.empty()) {
-      log<text_log>("Empty power data read from files", logPrio::LOG_WARNING);
-      return -1;
-   }
-   
+   // Auto-discover all INA3221 devices (follow symlinks robustly; avoid external find)
+   std::vector<std::string> devicePaths;
+   const std::string basePath = "/sys/bus/i2c/drivers/ina3221";
    try {
-      // Convert mA to A and mV to V
-      m_gmslCurrent = std::stof(currentStr) / 1000.0f;
-      m_gmslVoltage = std::stof(voltageStr) / 1000.0f;
+      namespace fs = std::filesystem;
+      if (fs::exists(basePath) && fs::is_directory(basePath)) {
+         for (const auto &dirEntry : fs::directory_iterator(basePath)) {
+            const std::string entryName = dirEntry.path().filename().string();
+            // Match entries like "0-0040", "1-0043", etc. and ensure it's a symlink
+            if (entryName.find('-') != std::string::npos &&
+                entryName.find('-') == entryName.rfind('-') &&
+                fs::is_symlink(dirEntry.symlink_status())) {
+               // Resolve the real device path
+               fs::path realDevicePath;
+               try {
+                  realDevicePath = fs::read_symlink(dirEntry.path());
+                  // If the symlink is relative, make it absolute based on parent
+                  if (realDevicePath.is_relative()) {
+                     realDevicePath = dirEntry.path().parent_path() / realDevicePath;
+                  }
+               } catch (...) {
+                  // If we can't resolve symlink, skip
+                  continue;
+               }
+
+               const fs::path hwmonRoot = realDevicePath / "hwmon";
+               if (fs::exists(hwmonRoot) && fs::is_directory(hwmonRoot)) {
+                  for (const auto &hwmonEntry : fs::directory_iterator(hwmonRoot)) {
+                     const std::string hwmonName = hwmonEntry.path().filename().string();
+                     if (fs::is_directory(hwmonEntry.status()) &&
+                         hwmonName.rfind("hwmon", 0) == 0) {
+                        const std::string hwmonDir = hwmonEntry.path().string();
+                        std::string normHwmon;
+                        try {
+                           normHwmon = std::filesystem::weakly_canonical(hwmonEntry.path()).string();
+                        } catch (...) {
+                           normHwmon = hwmonDir;
+                        }
+                        devicePaths.push_back(normHwmon);
+                        log<text_log>("Found INA3221 device: " + normHwmon, logPrio::LOG_INFO);
+                     }
+                  }
+               }
+            }
+         }
+      }
+   } catch (const std::exception &e) {
+      log<text_log>("Exception during auto-discovery: " + std::string(e.what()), logPrio::LOG_WARNING);
+   }
+   
+   // If auto-discovery failed or found no devices, fall back to configured path
+   if (devicePaths.empty()) {
+      if (!m_powerDevicePath.empty()) {
+         log<text_log>("Auto-discovery failed, using configured power device path: " + m_powerDevicePath, logPrio::LOG_WARNING);
+         devicePaths.push_back(m_powerDevicePath);
+      } else {
+         log<text_log>("No INA3221 devices found via auto-discovery and no power_device_path configured", logPrio::LOG_WARNING);
+         return;
+      }
+   }
+   
+   // Scan each device for power rails
+   for (const auto& devicePath : devicePaths) {
+      log<text_log>("Scanning device: " + devicePath, logPrio::LOG_INFO);
+      try {
+         namespace fs = std::filesystem;
+         if (m_powerChannel >= 1 && m_powerChannel <= 3) {
+            // Config overrides: add exactly one rail from the configured device path
+            const int channel = m_powerChannel;
+            const std::string labelFile = devicePath + "/in" + std::to_string(channel) + "_label";
+            std::ifstream labelStream(labelFile);
+            std::string railName;
+            if (labelStream.is_open()) {
+               std::getline(labelStream, railName);
+            }
+            if (railName.empty()) {
+               railName = "ch" + std::to_string(channel);
+            }
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Configured power rail: " + rail.name + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               }
+            }
+            m_powerRails.push_back(rail);
+            // Skip auto enumeration if channel is forced
+            continue;
+         }
+
+         std::vector<std::string> labelFiles;
+         for (const auto &entry : fs::directory_iterator(devicePath)) {
+            if (!entry.is_regular_file()) continue;
+            const std::string fname = entry.path().filename().string();
+            if (fname.rfind("in", 0) == 0 && fname.size() > 7 &&
+                fname.find("_label") == fname.size() - 6) {
+               labelFiles.push_back(entry.path().string());
+            }
+         }
+
+         if (labelFiles.empty()) {
+            log<text_log>("No label files found in " + devicePath, logPrio::LOG_WARNING);
+            continue;
+         }
+
+         for (const auto &labelFile : labelFiles) {
+            const std::string filename = std::filesystem::path(labelFile).filename().string();
+            const std::size_t posStart = 2; // after 'in'
+            const std::size_t posEnd = filename.find("_label");
+            if (posEnd == std::string::npos || posEnd <= posStart) continue;
+            int channel = -1;
+            try {
+               channel = std::stoi(filename.substr(posStart, posEnd - posStart));
+            } catch (...) {
+               continue;
+            }
+
+            std::ifstream labelStream(labelFile);
+            if (!labelStream.is_open()) {
+               log<text_log>("Cannot read label file: " + labelFile + " (open failed)", logPrio::LOG_WARNING);
+               continue;
+            }
+
+            std::string railName;
+            std::getline(labelStream, railName);
+            if (railName.empty()) continue;
+
+            PowerRail rail;
+            rail.name = railName;
+            rail.devicePath = devicePath;
+            rail.channel = channel;
+            rail.voltageFile = devicePath + "/in" + std::to_string(channel) + "_input";
+            rail.currentFile = devicePath + "/curr" + std::to_string(channel) + "_input";
+            rail.valid = false;
+
+            std::ifstream vFile(rail.voltageFile);
+            std::ifstream cFile(rail.currentFile);
+            if (vFile.good() && cFile.good()) {
+               std::string testValue;
+               std::getline(vFile, testValue);
+               if (!testValue.empty()) {
+                  rail.valid = true;
+                  log<text_log>("Discovered power rail: " + railName + " (ch" + std::to_string(channel) + ") at " + devicePath, logPrio::LOG_INFO);
+               } else {
+                  log<text_log>("Power rail " + railName + " files exist but are not readable (empty)", logPrio::LOG_WARNING);
+               }
+            } else {
+               log<text_log>("Power rail " + railName + " files not accessible", logPrio::LOG_WARNING);
+            }
+            m_powerRails.push_back(rail);
+         }
+      } catch (const std::exception &e) {
+         log<text_log>("Exception scanning device '" + devicePath + "': " + std::string(e.what()), logPrio::LOG_WARNING);
+      }
+   }
+   
+   log<text_log>("Auto-discovery complete: Found " + std::to_string(m_powerRails.size()) + " power rails", logPrio::LOG_INFO);
+   
+   // Log summary of discovered rails
+   for (const auto& rail : m_powerRails) {
+      if (rail.valid) {
+         log<text_log>("  ✓ " + rail.name + " (ch" + std::to_string(rail.channel) + ") - " + rail.devicePath, logPrio::LOG_INFO);
+      } else {
+         log<text_log>("  ✗ " + rail.name + " (ch" + std::to_string(rail.channel) + ") - INVALID", logPrio::LOG_WARNING);
+      }
+   }
+}
+
+inline
+void nsvCtrl::updateAllPowerRails()
+{
+   std::lock_guard<std::mutex> lock(m_powerMutex);
+   
+   for (auto& rail : m_powerRails) {
+      if (!rail.valid) continue;
       
-      // Log the values with high precision
-      char current_buf[32], voltage_buf[32];
-      snprintf(current_buf, sizeof(current_buf), "%.6f", m_gmslCurrent);
-      snprintf(voltage_buf, sizeof(voltage_buf), "%.6f", m_gmslVoltage);
+      // Read voltage
+      std::ifstream vFile(rail.voltageFile);
+      if (vFile.is_open()) {
+         std::string voltageStr;
+         std::getline(vFile, voltageStr);
+         if (!voltageStr.empty()) {
+            try {
+               rail.voltage = std::stof(voltageStr) / 1000.0f; // Convert mV to V
+            } catch (const std::exception& e) {
+               // Silent error handling
+            }
+         }
+      } else {
+         // Log permission error only once per rail to avoid spam
+         static std::set<std::string> logged_voltage_errors;
+         if (logged_voltage_errors.find(rail.name) == logged_voltage_errors.end()) {
+            log<text_log>("Failed to open voltage file for rail '" + rail.name + "': " + rail.voltageFile + " (permission denied)", logPrio::LOG_WARNING);
+            logged_voltage_errors.insert(rail.name);
+         }
+      }
       
-      log<text_log>("Power data: current=" + std::string(current_buf) + "A, voltage=" + std::string(voltage_buf) + "V", logPrio::LOG_INFO);
-      
-      // Update INDI properties
-      updateIfChanged(m_indiP_gmsl_voltage, "value", m_gmslVoltage, INDI_OK);
-      updateIfChanged(m_indiP_gmsl_current, "value", m_gmslCurrent, INDI_OK);
-      
-      log<text_log>("INDI properties updated successfully", logPrio::LOG_INFO);
-      
-      return 0;
-   } catch (const std::exception& e) {
-      log<text_log>("Error parsing power data: " + e.what(), logPrio::LOG_WARNING);
+      // Read current
+      std::ifstream cFile(rail.currentFile);
+      if (cFile.is_open()) {
+         std::string currentStr;
+         std::getline(cFile, currentStr);
+         if (!currentStr.empty()) {
+            try {
+               rail.current = std::stof(currentStr) / 1000.0f; // Convert mA to A
+            } catch (const std::exception& e) {
+               // Silent error handling
+            }
+         }
+      } else {
+         // Log permission error only once per rail to avoid spam
+         static std::set<std::string> logged_current_errors;
+         if (logged_current_errors.find(rail.name) == logged_current_errors.end()) {
+            log<text_log>("Failed to open current file for rail '" + rail.name + "': " + rail.currentFile + " (permission denied)", logPrio::LOG_WARNING);
+            logged_current_errors.insert(rail.name);
+         }
+      }
+   }
+}
+
+inline
+int nsvCtrl::startPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (m_powerLoggingEnabled) {
+      return 0; // Already logging
+   }
+   
+   // Generate log file path with timestamp in MagAOX telemetry directory
+   auto now = std::chrono::system_clock::now();
+   auto time_t = std::chrono::system_clock::to_time_t(now);
+   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+   
+   // Ensure telemetry directory exists
+   std::string telemDir = "/opt/MagAOX/telem";
+   if (access(telemDir.c_str(), F_OK) != 0) {
+      // Create directory if it doesn't exist
+      std::string mkdirCmd = "mkdir -p " + telemDir;
+      if (system(mkdirCmd.c_str()) != 0) {
+         log<software_error>({__FILE__, __LINE__, "Failed to create telemetry directory: " + telemDir});
+         return -1;
+      }
+   }
+   
+   std::stringstream ss;
+   ss << telemDir << "/nsvCtrl_power_" << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+   ss << "_" << std::setfill('0') << std::setw(3) << ms.count() << ".csv";
+   m_powerLogPath = ss.str();
+   
+   m_powerLogFile.open(m_powerLogPath, std::ios::out);
+   if (!m_powerLogFile.is_open()) {
+      log<software_error>({__FILE__, __LINE__, "Failed to open power log file: " + m_powerLogPath});
       return -1;
    }
+   
+   // Prepare to write header on first data write
+   m_powerHeaderWritten = false;
+   m_powerLoggingEnabled = true;
+   log<text_log>("Power logging started, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   
+   return 0;
+}
+
+inline
+int nsvCtrl::stopPowerLogging()
+{
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLoggingEnabled) {
+      return 0; // Not logging
+   }
+   
+   m_powerLoggingEnabled = false;
+   
+   if (m_powerLogFile.is_open()) {
+      m_powerLogFile.close();
+      log<text_log>("Power logging stopped, file: " + m_powerLogPath, logPrio::LOG_INFO);
+   }
+   
+   return 0;
+}
+
+inline
+void nsvCtrl::logPowerData()
+{
+   if (!m_powerLoggingEnabled) return;
+   
+   std::lock_guard<std::mutex> lock(m_powerLogMutex);
+   
+   if (!m_powerLogFile.is_open()) return;
+   
+   // Get current system time in nanoseconds
+   auto now = std::chrono::high_resolution_clock::now();
+   auto duration = now.time_since_epoch();
+   auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+   
+   // Get camera timestamp (if available)
+   long camera_timestamp_s = 0;
+   long camera_timestamp_ns = 0;
+   
+   // Try to get camera timestamp from current image
+   if (m_currImageTimestamp.tv_sec != 0 || m_currImageTimestamp.tv_nsec != 0) {
+      camera_timestamp_s = m_currImageTimestamp.tv_sec;
+      camera_timestamp_ns = m_currImageTimestamp.tv_nsec;
+   }
+   
+   // Write header if this is the first write
+   if (!m_powerHeaderWritten) {
+      m_powerLogFile << "system_time_ns,camera_timestamp_s,camera_timestamp_ns";
+      for (const auto& rail : m_powerRails) {
+         if (rail.valid) {
+            m_powerLogFile << "," << rail.name << "_ch" << rail.channel << "_voltage_v," 
+                          << rail.name << "_ch" << rail.channel << "_current_a";
+         }
+      }
+      m_powerLogFile << "\n";
+      m_powerHeaderWritten = true;
+   }
+   
+   // Write data for all power rails
+   m_powerLogFile << nanoseconds << "," 
+                  << camera_timestamp_s << "," 
+                  << camera_timestamp_ns;
+   
+   for (const auto& rail : m_powerRails) {
+      if (rail.valid) {
+         m_powerLogFile << "," << std::fixed << std::setprecision(6) << rail.voltage 
+                        << "," << std::fixed << std::setprecision(6) << rail.current;
+      } else {
+         m_powerLogFile << ",0.000000,0.000000"; // Invalid rail
+      }
+   }
+   
+   m_powerLogFile << "\n";
+   m_powerLogFile.flush();
 }
 
 inline
@@ -1515,6 +1961,8 @@ int nsvCtrl::acquireAndCheckValid()
       m_currImageTimestamp.tv_sec = cameraTimestamp.seconds;
       m_currImageTimestamp.tv_nsec = cameraTimestamp.nanoseconds;
 
+      // Power monitoring now handled by separate thread at 10Hz
+
       if (has_prev && buffer_discard == bufferCount) { // make sure we cycle through the buffer at least once before computing statistics.
          int64_t sec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_sec) - static_cast<int64_t>(prev_timestamp.tv_sec);
          int64_t nsec_diff = static_cast<int64_t>(m_currImageTimestamp.tv_nsec) - static_cast<int64_t>(prev_timestamp.tv_nsec);
@@ -1794,6 +2242,41 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
       printf("powered off, state changed to POWEROFF\n");
       
       log<text_log>("powered off from INDI");
+   }
+   
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power_logging)(const pcf::IndiProperty &ipRecv)
+{
+   INDI_VALIDATE_CALLBACK_PROPS(m_indiP_power_logging, ipRecv);
+   
+   if(!ipRecv.find("toggle")) return 0;
+   
+   if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On)
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::On, INDI_OK);
+      
+      if(startPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to start power logging"});
+         updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_ALERT);
+         return -1;
+      }
+      
+      log<text_log>("Power logging started", logPrio::LOG_INFO);
+   }
+   else
+   {
+      updateSwitchIfChanged(m_indiP_power_logging, "toggle", pcf::IndiElement::Off, INDI_OK);
+      
+      if(stopPowerLogging() < 0)
+      {
+         log<software_error>({__FILE__, __LINE__, "Failed to stop power logging"});
+         return -1;
+      }
+      
+      log<text_log>("Power logging stopped", logPrio::LOG_INFO);
    }
    
    return 0;
