@@ -304,7 +304,11 @@ inline void multiIndiManager::connectClient()
                 {
                     candidate->addSubscriber( sub );
                 }
-                candidate->onConnect();
+
+                for( auto *sub : subs )
+                {
+                    _dispatchOnConnect( sub );
+                }
             }
         }
 
