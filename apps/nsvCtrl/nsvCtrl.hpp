@@ -155,12 +155,12 @@ protected:
 
    int m_vCrop; ///< camera vcropoffset, used in sliced mode
 
-   int m_xStartPos;
-   int m_yStartPos;
-
    float m_minEMGain; // no min defined in stdCamera. Can assume 0?
    int m_minVCrop;
    int m_maxVCrop;
+
+   int m_xStartPos;
+   int m_yStartPos;
    int m_maxYStartPos;
    int m_minYStartPos;
    int m_maxXStartPos;
@@ -326,6 +326,8 @@ public:
    //INDI:
 protected:
 
+   pcf::IndiProperty m_indiP_sensor_roi_x;
+   pcf::IndiProperty m_indiP_sensor_roi_y; 
    pcf::IndiProperty m_indiP_vCrop; ///< Property for camera frame vertical crop offset
    pcf::IndiProperty m_indiP_bitDepth; ///< Property for camera bit depth
    pcf::IndiProperty m_indiP_frame_timestamp_s;
@@ -339,6 +341,9 @@ protected:
 
 public:
 
+   
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_sensor_roi_x);
+   INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_sensor_roi_y);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_vCrop);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_bitDepth);
    INDI_NEWCALLBACK_DECL(nsvCtrl, m_indiP_power_logging);
@@ -391,11 +396,10 @@ nsvCtrl::nsvCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 
    m_maxYStartPos = 9999999;
    m_maxXStartPos = 99999999;
+   m_yStartPos = 0;
    m_xStartPos = 0;
-
    m_minYStartPos = 0;
    m_minXStartPos = 0;
-   m_yStartPos = 0;
 
    // fps, expsoure, black level, gain, 
    // roi start pos, ver start pos, end pos, etc.
@@ -428,7 +432,7 @@ void nsvCtrl::setupConfig()
 {
  
    config.add("camera.camID", "", "camera.camID", argType::Required, "camera","camID", false, "str", "v4l2 Card Type identifyer for camera.");
-   config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
+   //config.add("camera.vcropoffset", "", "camera.vcropoffset", argType::Required, "camera", "vcropoffset", false, "int", "vertical crop offset for camera");
    config.add("camera.bitDepth", "", "camera.bitDepth", argType::Required, "camera", "bitDepth", false, "int", "pixel bit depth");
    config.add("camera.power", "", "camera.power", argType::Optional, "camera", "power", false, "bool", "camera power"); // TODO make toggle
    config.add("camera.power_device_path", "", "camera.power_device_path", argType::Optional, "camera", "power_device_path", false, "str", "Direct device path for power monitoring (e.g., /sys/bus/i2c/drivers/ina3221/8-0040/hwmon/hwmon6)");
@@ -444,7 +448,7 @@ inline
 void nsvCtrl::loadConfig()
 {
    config(m_camID, "camera.camID");
-   config(m_vCrop, "camera.vcropoffset");
+   //config(m_vCrop, "camera.vcropoffset");
    config(m_bitDepth, "camera.bitDepth");
    config(m_power, "camera.power");
    config(m_powerDevicePath, "camera.power_device_path");
@@ -504,15 +508,30 @@ inline
 int nsvCtrl::appStartup()
 {
    // register new indi properties
+   /*
    if(config.isSet("camera.vcropoffset"))
    {
       getVCrop();
    }
+   */
+   /*
    createStandardIndiNumber<int>(m_indiP_vCrop, "vcropoffset", 25, 3699, 1, "%d");
    m_indiP_vCrop["current"] = m_vCrop;
    m_indiP_vCrop["target"] = m_vCrop;
    registerIndiPropertyNew(m_indiP_vCrop, INDI_NEWCALLBACK(m_indiP_vCrop));
+   */ 
 
+   // startx and starty may not be defined for 571, vcrop offset is also defined in 571 but not 455. Assume new neutralino software fixes this
+   createStandardIndiNumber<int>(m_indiP_sensor_roi_x, "sensor_roi_start_x", m_minXStartPos, m_maxXStartPos, 16, "%d");  
+   m_indiP_sensor_roi_x["current"] = m_xStartPos;
+   m_indiP_sensor_roi_x["target"] = m_xStartPos;
+   registerIndiPropertyNew(m_indiP_sensor_roi_x, INDI_NEWCALLBACK(m_indiP_sensor_roi_x)); 
+
+   createStandardIndiNumber<int>(m_indiP_sensor_roi_y, "sensor_roi_start_y", m_minYStartPos, m_maxYStartPos, 2, "%d");
+   m_indiP_sensor_roi_y["current"] = m_yStartPos;
+   m_indiP_sensor_roi_y["target"] = m_yStartPos;
+   registerIndiPropertyNew(m_indiP_sensor_roi_y, INDI_NEWCALLBACK(m_indiP_sensor_roi_y)); 
+   
    createStandardIndiNumber<int>(m_indiP_bitDepth, "bitDepth", 10, 16, 2, "%d");
    m_indiP_bitDepth["current"] = m_bitDepth;
    m_indiP_bitDepth["target"] = m_bitDepth;
@@ -757,7 +776,7 @@ int nsvCtrl::onPowerOff()
    stopStreaming();
    requestBuffers(0);
    closeCamera();
-   turn_off_power();
+   //turn_off_power();
    sleep(3);
 
    if(stdCamera<nsvCtrl>::onPowerOff() < 0)
@@ -802,7 +821,7 @@ int nsvCtrl::appShutdown()
       stopStreaming();
       requestBuffers(0);
       closeCamera();
-      turn_off_power();
+      //turn_off_power();
       m_init = false;
    }
       
@@ -966,6 +985,7 @@ int nsvCtrl::setReadoutMode()
    // height_align
    // size_align
    // preferred_stride 
+   sleep(1);
    set_preferred_stride(32);
 
    // now update local variables.  some redundancy with CameraControl struct
@@ -986,11 +1006,13 @@ int nsvCtrl::setReadoutMode()
       m_maxFPS = fr->second.maximum / 1000000;
    } 
 
+   /* deprecating in hopes that Neutralino maintains the black_level convention...
    auto bl = camera_controls.find("blacklevel"); 
    if(bl != camera_controls.end()){
       m_minBlacklevel = bl->second.minimum; 
       m_maxBlacklevel = bl->second.maximum;
    }
+   */
 
    auto blv = camera_controls.find("black_level");
    if(blv != camera_controls.end()){
@@ -1010,6 +1032,8 @@ int nsvCtrl::setReadoutMode()
       m_maxExpTime = xp->second.maximum;
    } 
 
+   // only on 571 sliced modes (waiting for firmware support for proper ROIs)
+   /* 
    auto vc = camera_controls.find("vcropoffset");
    if(vc != camera_controls.end()){
       uses_vCrop = true;
@@ -1024,11 +1048,13 @@ int nsvCtrl::setReadoutMode()
    } else {
       uses_vCrop = false;
    }
+   */
 
    auto hs = camera_controls.find("roi_hor_start_pos");
    if(hs != camera_controls.end()){
       m_minXStartPos = hs->second.minimum;  
       m_maxXStartPos = hs->second.maximum;
+      // TODO add step size hs->second.step 
    } 
 
    auto vs = camera_controls.find("roi_ver_start_pos");
@@ -1606,17 +1632,14 @@ int nsvCtrl::setEMGain()
    return ret < 0 ? log<software_error>({__FILE__,__LINE__, "error setting exposure to" + std::to_string(m_emGainSet)}) : log<text_log,1>({"set gain: " + std::to_string(m_emGainSet)});
 }
 
-// IMX 455 uses blacklevel while IMX571 uses black_level
 inline
 int nsvCtrl::getBlacklevel()
 {
-   m_blacklevel = getAndUpdateSingleControlVal("blacklevel");
-   if(m_blacklevel < 0)
-     m_blacklevel = getAndUpdateSingleControlVal("black_level");
+   m_blacklevel = getAndUpdateSingleControlVal("black_level");
    if(m_blacklevel == PARAM_NOT_FOUND){ 
       return 1;
    }
-   return m_blacklevel < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get gain black level"}) : m_blacklevel;
+   return m_blacklevel < 0 ? log<software_error,-1>({__FILE__, __LINE__, "failed to get black_level"}) : m_blacklevel;
 }
 
 inline
@@ -1624,9 +1647,7 @@ int nsvCtrl::setBlacklevel()
 { 
    if(m_blacklevelSet > m_maxBlacklevel || m_blacklevelSet < m_minBlacklevel)
       log<text_log>(std::to_string(m_blacklevelSet) + " black level out of bounds", logPrio::LOG_WARNING);
-   int ret = writeSingleControlVal("blacklevel", int(m_blacklevelSet));
-   if(ret < 0)
-      ret = writeSingleControlVal("black_level", int(m_blacklevelSet));
+   int ret = writeSingleControlVal("black_level", int(m_blacklevelSet));
    if(ret == PARAM_NOT_FOUND){ 
       return 1;
    }
@@ -1670,7 +1691,7 @@ inline
 int nsvCtrl::setXStartPos(int pos)
 { 
    if(pos > m_maxXStartPos || pos < m_minXStartPos)
-      log<text_log>(std::to_string(pos) + " ROI start x pos out of bounds", logPrio::LOG_WARNING);
+      log<text_log>(std::to_string(pos) + " ROI start X pos out of bounds", logPrio::LOG_WARNING);
    int ret = writeSingleControlVal("roi_hor_start_pos", pos);
    if(ret == PARAM_NOT_FOUND){ 
       return 1;
@@ -1692,7 +1713,7 @@ inline
 int nsvCtrl::setYStartPos(int pos)
 { 
    if(pos > m_maxYStartPos || pos < m_minYStartPos)
-      log<text_log>(std::to_string(pos) + " ROI start y pos out of bounds", logPrio::LOG_WARNING);
+      log<text_log>(std::to_string(pos) + " ROI start Y pos out of bounds", logPrio::LOG_WARNING);
    int ret = writeSingleControlVal("roi_ver_start_pos", pos);
    if(ret == PARAM_NOT_FOUND){ 
       return 1;
@@ -2104,6 +2125,78 @@ int nsvCtrl::recordTelem( const telem_stdcam * )
    return recordCamera(true);
 }
 
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_sensor_roi_x)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_sensor_roi_x.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+   {
+      vc = ipRecv["current"].get<int>();
+   }
+
+   if (ipRecv.find("target"))
+   {
+      vc = ipRecv["target"].get<int>();
+   }
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_xStartPos = vc;
+   int rv = setXStartPos(m_xStartPos);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting sensor roi x position!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_sensor_roi_x, "target", vc);
+   updateIfChanged(m_indiP_sensor_roi_x, "current", m_xStartPos);
+
+   return 0;
+}
+
+INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_sensor_roi_y)(const pcf::IndiProperty &ipRecv)
+{
+   if (ipRecv.getName() != m_indiP_sensor_roi_y.getName())
+   {
+      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
+      return -1;
+   }
+
+   int vc = 0;
+
+   if (ipRecv.find("current"))
+   {
+      vc = ipRecv["current"].get<int>();
+   }
+
+   if (ipRecv.find("target"))
+   {
+      vc = ipRecv["target"].get<int>();
+   }
+
+   std::unique_lock<std::mutex> lock(m_indiMutex);
+   m_yStartPos = vc;
+   int rv = setYStartPos(m_yStartPos);
+   
+   if(rv < 0)
+   {
+      log<software_error>({__FILE__, __LINE__, "Error setting sensor roi y start position!"});
+      return -1;
+   }
+
+   updateIfChanged(m_indiP_sensor_roi_y, "target", vc);
+   updateIfChanged(m_indiP_sensor_roi_y, "current", m_yStartPos);
+
+   return 0;
+}
+
 INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_vCrop)(const pcf::IndiProperty &ipRecv)
 {
    if (ipRecv.getName() != m_indiP_vCrop.getName())
@@ -2190,7 +2283,7 @@ INDI_NEWCALLBACK_DEFN(nsvCtrl, m_indiP_power)(const pcf::IndiProperty &ipRecv)
    {
       updateSwitchIfChanged(m_indiP_power, "toggle", pcf::IndiElement::On, INDI_IDLE);
       
-      turn_on_power();
+      //turn_on_power();
       sleep(6);
       m_powerCycles += 1;
       m_power = true;
