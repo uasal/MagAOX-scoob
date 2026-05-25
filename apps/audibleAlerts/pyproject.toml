@@ -18,7 +18,7 @@ authors = [
 
 [project.scripts]
 audibleAlerts = "xapp.audibleAlerts:main"
-audibleAlertsClient = "xapp.audibleAlerts:main"
+audibleAlertsClient = "xapp.audibleAlerts:XAudioClient.run"
 
 [tool.setuptools.packages.find]
 where = ["."]
