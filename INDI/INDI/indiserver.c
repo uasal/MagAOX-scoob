@@ -1635,7 +1635,7 @@ static void newClient()
     cp->gzfiwr = NULL;
     // If cmd-line had -z, then trigger check whether client can do zlib
     cp->gzwchk = use_is_zlib;        // Default is 0 => no check
-    cp->gzfird = gzdopen(cp->s, "r");
+    cp->gzfird = use_is_zlib ? gzdopen(cp->s, "r") : NULL;
     cp->lp     = newLilXML();
     cp->msgq   = newFQ(1);
     cp->props  = (Property*) malloc(1);
@@ -1926,6 +1926,12 @@ static int readFromClient(ClInfo *cp)
     {
         if (nr < 0)
         {
+            /* EAGAIN/EWOULDBLOCK: no data ready on non-blocking socket —
+             * not an error; select() will fire again when data arrives.
+             */
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return (0);
+
             fprintf(stderr, "%s: Client %d: read: %s\n"
                           , indi_tstamp(NULL), cp->s, strerror(errno)
                    );
