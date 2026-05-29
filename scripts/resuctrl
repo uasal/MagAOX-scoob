@@ -290,8 +290,8 @@ function verb_reset {
   && return 1
 
   SH="sudo -H -n"
-  ug="root:xsup"
-  ugxsup="xsup:xsup"
+  ug="root:magaox"
+  ugxsup="xsup:magaox"
   dM=775
   fM=660
 
