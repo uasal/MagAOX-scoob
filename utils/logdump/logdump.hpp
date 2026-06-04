@@ -9,6 +9,12 @@
 
 #include <iostream>
 #include <cstring>
+#include <cctype>
+#include <string>
+#include <vector>
+#include <filesystem>
+#include <algorithm>
+#include <zlib.h>
 
 #include <mx/ioutils/fileUtils.hpp>
 
@@ -59,6 +65,7 @@ protected:
    logPrioT m_level {logPrio::LOG_DEFAULT};
 
    std::vector<eventCodeT> m_codes;
+   bool m_ndjsonMode {false};
 
    void printLogBuff( const logPrioT & lvl,
                       const eventCodeT & ec,
@@ -68,6 +75,11 @@ protected:
    void printLogJson( const msgLenT & len,
                       bufferPtrT & logBuff
                     );
+   int dumpNdjson(std::vector<std::string> & logs);
+   int gettimesNdjson(std::vector<std::string> & logs);
+   static std::string extractQuotedValue(const std::string &line, const std::string &key);
+   std::vector<std::string> findNdjsonLogs(const std::string &prefix);
+   void printNdjsonLine(const std::string &line);
 
 public:
    virtual void setupConfig();
@@ -153,8 +165,6 @@ void logdump::loadConfig()
    }
 
    config(m_codes, "code");
-
-   std::cerr << m_codes.size() << "\n";
 }
 
 int logdump::execute()
@@ -179,6 +189,23 @@ int logdump::execute()
       logs = mx::ioutils::getFileNames( m_dir, m_prefixes[0], "", m_ext);
    }
 
+   if(m_ext == ".ndjson.gz" || m_ext == "ndjson.gz") m_ndjsonMode = true;
+   if(m_file != "" && m_file.size() >= 10 && m_file.substr(m_file.size()-10) == ".ndjson.gz") m_ndjsonMode = true;
+
+   if(m_file == "" && m_prefixes.size() == 1)
+   {
+      auto pyLogs = findNdjsonLogs(m_prefixes[0]);
+      if(logs.size() == 0 && pyLogs.size() > 0)
+      {
+         logs = pyLogs;
+         m_ndjsonMode = true;
+      }
+      else if(m_ndjsonMode)
+      {
+         logs = pyLogs;
+      }
+   }
+
    ///\todo if follow is set, then should nfiles default to 1 unless explicitly set?
    if(m_nfiles == 0)
    {
@@ -189,7 +216,17 @@ int logdump::execute()
 
    if(m_time)
    {
+      if(m_ndjsonMode) return gettimesNdjson(logs);
       return gettimes(logs);
+   }
+
+   if(m_ndjsonMode)
+   {
+      if(m_follow)
+      {
+         std::cerr << "logdump: follow mode is not supported for compressed ndjson logs; dumping available records.\n";
+      }
+      return dumpNdjson(logs);
    }
 
    bool firstRun = true; //for only showing latest entries on first run when following.
@@ -522,6 +559,166 @@ int logdump::gettimes(std::vector<std::string> & logs)
       double t = ts.time_s + ts.time_ns/1e9;
 
       std::cout << fname << " " << ts0.ISO8601DateTimeStrX() << "Z " << ts.ISO8601DateTimeStrX() << "Z " << t-t0 << " " << nRecords << std::endl;
+   }
+
+   return 0;
+}
+
+inline
+std::string logdump::extractQuotedValue(const std::string &line, const std::string &key)
+{
+   std::string keyPattern = "\"" + key + "\"";
+   auto pos = line.find(keyPattern);
+   if(pos == std::string::npos) return "";
+   pos += keyPattern.size();
+
+   auto colonPos = line.find(':', pos);
+   if(colonPos == std::string::npos) return "";
+   pos = colonPos + 1;
+   while(pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos]))) ++pos;
+   if(pos >= line.size() || line[pos] != '"') return "";
+   ++pos;
+
+   std::string out;
+   bool escaped = false;
+   for(size_t i = pos; i < line.size(); ++i)
+   {
+      char c = line[i];
+      if(escaped)
+      {
+         out.push_back(c);
+         escaped = false;
+         continue;
+      }
+      if(c == '\\')
+      {
+         escaped = true;
+         continue;
+      }
+      if(c == '"')
+      {
+         break;
+      }
+      out.push_back(c);
+   }
+   return out;
+}
+
+inline
+std::vector<std::string> logdump::findNdjsonLogs(const std::string &prefix)
+{
+   std::vector<std::string> logs;
+   namespace fs = std::filesystem;
+   fs::path appDir = fs::path(m_dir) / prefix;
+   if(!fs::exists(appDir) || !fs::is_directory(appDir)) return logs;
+
+   const std::string start = prefix + "_";
+   const std::string ending = ".ndjson.gz";
+   for(const auto &entry : fs::directory_iterator(appDir))
+   {
+      if(!entry.is_regular_file()) continue;
+      std::string fname = entry.path().filename().string();
+      if(fname.rfind(start, 0) != 0) continue;
+      if(fname.size() < ending.size()) continue;
+      if(fname.substr(fname.size() - ending.size()) != ending) continue;
+      logs.push_back(entry.path().string());
+   }
+   std::sort(logs.begin(), logs.end());
+   return logs;
+}
+
+inline
+void logdump::printNdjsonLine(const std::string &line)
+{
+   if(m_jsonMode)
+   {
+      std::cout << line << std::endl;
+      return;
+   }
+
+   std::string ts = extractQuotedValue(line, "ts");
+   std::string prio = extractQuotedValue(line, "prio");
+   std::string msg = extractQuotedValue(line, "message");
+
+   if(ts.empty() && prio.empty() && msg.empty())
+   {
+      std::cout << line << std::endl;
+      return;
+   }
+
+   if(!ts.empty()) std::cout << ts;
+   if(!prio.empty()) std::cout << (ts.empty() ? "" : " ") << prio;
+   if(!msg.empty()) std::cout << ((ts.empty() && prio.empty()) ? "" : " ") << msg;
+   std::cout << std::endl;
+}
+
+int logdump::dumpNdjson(std::vector<std::string> & logs)
+{
+   if(logs.size() == 0) return 0;
+   if(m_nfiles == 0) m_nfiles = logs.size();
+   if(m_nfiles > logs.size()) m_nfiles = logs.size();
+
+   for(size_t i = logs.size() - m_nfiles; i < logs.size(); ++i)
+   {
+      std::string fname = logs[i];
+      std::cerr << fname << "\n";
+
+      gzFile fin = gzopen(fname.c_str(), "rb");
+      if(!fin)
+      {
+         std::cerr << "logdump: failed to open " << fname << "\n";
+         continue;
+      }
+
+      char buff[16384];
+      while(gzgets(fin, buff, sizeof(buff)) != nullptr)
+      {
+         std::string line(buff);
+         while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+         if(line.empty()) continue;
+         printNdjsonLine(line);
+      }
+
+      gzclose(fin);
+   }
+
+   return 0;
+}
+
+int logdump::gettimesNdjson(std::vector<std::string> & logs)
+{
+   if(logs.size() == 0) return 0;
+   if(m_nfiles == 0) m_nfiles = logs.size();
+   if(m_nfiles > logs.size()) m_nfiles = logs.size();
+
+   for(size_t i = logs.size() - m_nfiles; i < logs.size(); ++i)
+   {
+      std::string fname = logs[i];
+      gzFile fin = gzopen(fname.c_str(), "rb");
+      if(!fin)
+      {
+         std::cerr << "logdump: failed to open " << fname << "\n";
+         continue;
+      }
+
+      std::string firstLine;
+      std::string lastLine;
+      uint32_t nRecords = 0;
+      char buff[16384];
+      while(gzgets(fin, buff, sizeof(buff)) != nullptr)
+      {
+         std::string line(buff);
+         while(!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+         if(line.empty()) continue;
+         if(firstLine.empty()) firstLine = line;
+         lastLine = line;
+         ++nRecords;
+      }
+      gzclose(fin);
+
+      std::string ts0 = extractQuotedValue(firstLine, "ts");
+      std::string ts1 = extractQuotedValue(lastLine, "ts");
+      std::cout << fname << " " << ts0 << " " << ts1 << " 0 " << nRecords << std::endl;
    }
 
    return 0;
