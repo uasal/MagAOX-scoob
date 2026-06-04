@@ -12,13 +12,19 @@
 
 
 
-# Verify qmake is available:
+# Resolve a qmake binary. Rocky 9's qt5-devel ships only qmake-qt5, while
+# Ubuntu's qtchooser provides plain qmake.
 
 QMAKE ?= qmake
-QMAKE_PATH := $(shell which qmake 2>/dev/null)
+QMAKE_PATH := $(shell which $(QMAKE) 2>/dev/null)
 
 ifeq "$(QMAKE_PATH)" ""
-  $(error No qmake on PATH)
+  QMAKE := qmake-qt5
+  QMAKE_PATH := $(shell which $(QMAKE) 2>/dev/null)
+endif
+
+ifeq "$(QMAKE_PATH)" ""
+  $(error No qmake found on PATH (are the Qt development libraries installed?))
 endif
 
 
