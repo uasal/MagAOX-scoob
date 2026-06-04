@@ -14,7 +14,7 @@ jobs:
       options: --user root
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
@@ -38,7 +38,7 @@ jobs:
       options: --user root
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
