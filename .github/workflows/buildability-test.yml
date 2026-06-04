@@ -18,8 +18,8 @@ jobs:
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
+        shell: bash -l {0}
         run: |
-          source /etc/profile.d/*.sh
           conda activate $INSTRUMENT_CONDA_ENV
           source /opt/rh/gcc-toolset-14/enable
           make all_clean
@@ -42,8 +42,8 @@ jobs:
       - name: Configure Git Safe Directory
         run: git config --global --add safe.directory "$(pwd)"
       - name: Build MagAO-X software
+        shell: bash -l {0}
         run: |
-          source /etc/profile.d/*.sh
           conda activate $INSTRUMENT_CONDA_ENV
           source /opt/rh/gcc-toolset-14/enable
           make all_clean
