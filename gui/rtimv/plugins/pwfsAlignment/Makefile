@@ -1,2 +1,2 @@
 TARGET=pwfsAlignment
-include ../../../Make/rtimvPlugin.mk
+include ../../../../Make/rtimvPlugin.mk

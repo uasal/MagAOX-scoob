@@ -1,2 +1,2 @@
 TARGET=warnings
-include ../../../Make/rtimvPlugin.mk
+include ../../../../Make/rtimvPlugin.mk

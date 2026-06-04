@@ -1,2 +1,2 @@
 TARGET=indiDictionary
-include ../../../Make/rtimvPlugin.mk
+include ../../../../Make/rtimvPlugin.mk

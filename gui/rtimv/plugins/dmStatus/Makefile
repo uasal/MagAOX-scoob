@@ -1,2 +1,2 @@
 TARGET=dmStatus
-include ../../../Make/rtimvPlugin.mk
+include ../../../../Make/rtimvPlugin.mk
