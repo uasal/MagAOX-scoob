@@ -134,6 +134,7 @@ apps/resurrector/test/test_resurrector
 
 #s
 apps/shmimIntegrator/shmimIntegrator
+apps/shmimTCP/shmimTCP
 apps/siglentSDG/siglentSDG
 apps/siglentSDG/tests/siglentSDG_test
 apps/smc100ccCtrl/smc100ccCtrl
