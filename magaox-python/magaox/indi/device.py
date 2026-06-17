@@ -1,5 +1,6 @@
 import datetime
 from datetime import timezone
+import inspect
 import gzip
 import glob
 import json
@@ -425,10 +426,27 @@ class XDevice(Device):
     def __del__(self):
         self._telem_file.close()
 
+    @classmethod
+    def _get_indiserver_ctrl_path(cls):
+        import configparser
+        role = os.environ.get("MAGAOX_ROLE", "")
+        if not role:
+            return None
+        conf_path = os.path.join(cls.prefix_dir, cls.config_dir, f"is{role}.conf")
+        try:
+            cp = configparser.ConfigParser()
+            cp.read(conf_path)
+            return cp.get("indiserver", "f", fallback=None)
+        except Exception:
+            return None
+
     def __init__(self, name, config, *args, verbose=False, all_verbose=False, **kwargs):
         self._startup_time = datetime.datetime.now(timezone.utc)
         fifos_root = self.prefix_dir + "/drivers/fifos"
-        super().__init__(name, *args, connection_class=partial(transports.IndiFifoConnection, name=name, fifos_root=fifos_root), **kwargs)
+        conn_kwargs = dict(name=name, fifos_root=fifos_root)
+        if 'indiserver_ctrl_path' in inspect.signature(transports.IndiFifoConnection.__init__).parameters:
+            conn_kwargs['indiserver_ctrl_path'] = self._get_indiserver_ctrl_path()
+        super().__init__(name, *args, connection_class=partial(transports.IndiFifoConnection, **conn_kwargs), **kwargs)
         self.config = config
         self._hb_fd = None
         self._hb_last_time = 0
