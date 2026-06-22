@@ -13,14 +13,18 @@ local/
 **/.*~
 **/*.stash
 **/*-swp
+
+#Qt:
 **/res/
 ui*.h
-
 **/bin/
 **/moc/
 **/moc_*
 makefile.*GUI
 gui/**/makefile.*
+
+#Agents:
+.codex
 
 #Ignore any old folders
 **/old/
@@ -60,6 +64,7 @@ apps/bmcCtrl/bmcCtrl
 apps/cacaoInterface/cacaoInterface
 apps/cameraSim/cameraSim
 apps/closedLoopIndi/closedLoopIndi
+apps/cred2Ctrl/cred2Ctrl
 
 #d
 apps/dmMode/dmMode
@@ -74,6 +79,7 @@ apps/filterWheelCtrl/filterWheelCtrl
 apps/flipperCtrl/flipperCtrl
 
 apps/magAOXMaths/magAOXMaths
+apps/flowRPM/flowRPM
 
 #g/gui
 gui/rtimv/plugins/cameraStatus/makefile.cameraStatus
@@ -104,6 +110,7 @@ apps/koolanceCtrl/koolanceCtrl
 apps/loPredCtrl/loPredCtrl
 
 #m
+apps/magAOXMaths/magAOXMaths
 apps/mcp3008Ctrl/mcp3008Ctrl
 apps/modalFilter/modalFilter
 apps/modalGainOpt/modalGainOpt
@@ -177,9 +184,12 @@ apps/xt1121Ctrl/xt1121Ctrl
 
 apps/xt1121DCDU/xt1121DCDU
 
+apps/xInstGraph/xInstGraph
+
 #z
 apps/zaberCtrl/zaberCtrl
 apps/zaberLowLevel/zaberLowLevel
+apps/zaberLowLevelBinary/zaberLowLevelBinary
 apps/zylaCtrl/zylaCtrl
 
 
