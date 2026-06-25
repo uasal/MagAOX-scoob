@@ -93,7 +93,7 @@
 #endif
 
 #ifndef MAGAOX_cpusetPath
-   /// The absolute path the the cpuset mount point
+   /// The absolute path to the cpuset mount point
    /**
      */
    #define MAGAOX_cpusetPath "/opt/MagAOX/cpuset/"

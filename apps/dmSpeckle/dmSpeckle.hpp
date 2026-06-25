@@ -399,7 +399,7 @@ int dmSpeckle::loadConfigImpl( mx::app::appConfigurator &_config )
 
     if( opMode == "arbcube" )
     {
-        m_opMode = ARBCUBE;   
+        m_opMode = ARBCUBE;
     }
     else
     {
@@ -409,7 +409,7 @@ int dmSpeckle::loadConfigImpl( mx::app::appConfigurator &_config )
         _config( m_separation, "dm.separation" );
         _config( m_angle, "dm.angle" );
         _config( m_angleOffset, "dm.angleOffset" );
-    
+
 
     _config( m_amp, "dm.amp" );
 
@@ -639,11 +639,12 @@ int dmSpeckle::generateSpeckles()
     if( m_opMode == ARBCUBE )
     {
         mx::fits::fitsFile<float> ff;
-        if( ff.read( m_shapes, m_fileName ) < 0 )
+        mx::error_t errc = ff.read( m_shapes, m_fileName ) ;
+        if( errc != mx::error_t::noerror )
         {
             return log<software_critical, -1>( { __FILE__, __LINE__, "no file with that name" } );
         }
-        
+
         if( m_shapes.rows() != m_width || m_shapes.cols() != m_height )
         {
             return log<software_critical, -1>( { __FILE__, __LINE__, "shape cube is not the right size" } );

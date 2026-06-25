@@ -3,6 +3,7 @@
 *.o
 *.a
 *.so
+*.log
 doc/output
 local/
 !local/common.example.mk
@@ -12,14 +13,18 @@ local/
 **/.*~
 **/*.stash
 **/*-swp
+
+#Qt:
 **/res/
 ui*.h
-
 **/bin/
 **/moc/
 **/moc_*
 makefile.*GUI
 gui/**/makefile.*
+
+#Agents:
+.codex
 
 #Ignore any old folders
 **/old/
@@ -33,6 +38,9 @@ doc/www/
 
 #ignore test executables
 **/tests/*_test
+
+#Carcich temporary files
+x.x
 
 ##########################################
 #Executables and app specifics to ignore:
@@ -56,12 +64,14 @@ apps/bmcCtrl/bmcCtrl
 apps/cacaoInterface/cacaoInterface
 apps/cameraSim/cameraSim
 apps/closedLoopIndi/closedLoopIndi
+apps/cred2Ctrl/cred2Ctrl
 
 #d
 apps/dmMode/dmMode
 apps/dmModulator/dmModulator
 apps/dmPokeCenter/dmPokeCenter
 apps/dmPokeXCorr/dmPokeXCorr
+apps/dmRecon/dmRecon
 apps/dmSpeckle/dmSpeckle
 
 #f
@@ -69,6 +79,7 @@ apps/filterWheelCtrl/filterWheelCtrl
 apps/flipperCtrl/flipperCtrl
 
 apps/magAOXMaths/magAOXMaths
+apps/flowRPM/flowRPM
 
 #g/gui
 gui/rtimv/plugins/cameraStatus/makefile.cameraStatus
@@ -80,6 +91,7 @@ gui/rtimv/plugins/acquisition/makefile.acquisition
 #h
 apps/hoPredCtrl/hoPredCtrl
 apps/hsfwCtrl/hsfwCtrl
+apps/hwpTracker/hwpTracker
 
 #i
 INDI/INDI/evalINDI
@@ -94,8 +106,13 @@ apps/kcubeCtrl/kcubeCtrl
 apps/kTracker/kTracker
 apps/koolanceCtrl/koolanceCtrl
 
+#l
+apps/loPredCtrl/loPredCtrl
+
 #m
+apps/magAOXMaths/magAOXMaths
 apps/mcp3008Ctrl/mcp3008Ctrl
+apps/modalFilter/modalFilter
 apps/modalGainOpt/modalGainOpt
 apps/modalPSDs/modalPSDs
 apps/mwfsMonitor/mwfsMonitor
@@ -103,6 +120,7 @@ apps/mzmqServer/mzmqServer
 apps/mzmqClient/mzmqClient
 
 #n
+apps/nnReconstructor/nnReconstructor
 apps/nsvCtrl/nsvCtrl
 
 #o
@@ -125,6 +143,8 @@ apps/photonCounter
 #r
 apps/rhusbMon/rhusbMon
 apps/refRMS/refRMS
+apps/resurrector/resurrector_indi
+apps/resurrector/test/test_resurrector
 
 #s
 apps/shmimIntegrator/shmimIntegrator
@@ -132,7 +152,9 @@ apps/siglentSDG/siglentSDG
 apps/siglentSDG/tests/siglentSDG_test
 apps/smc100ccCtrl/smc100ccCtrl
 apps/sshDigger/sshDigger
+apps/sparkleClock/sparkleClock
 apps/stateRuleEngine/stateRuleEngine
+apps/strehlEstimator/strehlEstimator
 apps/streamCircBuff/streamCircBuff
 apps/streamWriter/streamWriter
 
@@ -143,8 +165,6 @@ apps/t2wOffloader/t2wOffloader
 apps/timeSeriesSimulator/timeSeriesSimulator
 apps/tcsInterface/tcsInterface
 apps/trippLitePDU/trippLitePDU
-apps/trippLitePDU/tests/
-
 apps/ttmModulator/ttmModulator
 
 #u
@@ -153,6 +173,7 @@ apps/userGainCtrl/userGainCtrl
 
 #w
 apps/w2tcsOffloader/w2tcsOffloader
+apps/wooferTweeterRecon/wooferTweeterRecon
 
 #x
 apps/xindiserver/tests/remoteDriver_test
@@ -164,10 +185,20 @@ apps/xt1121Ctrl/xt1121Ctrl
 
 apps/xt1121DCDU/xt1121DCDU
 
+apps/xInstGraph/xInstGraph
+
 #z
 apps/zaberCtrl/zaberCtrl
 apps/zaberLowLevel/zaberLowLevel
+apps/zaberLowLevelBinary/zaberLowLevelBinary
 apps/zylaCtrl/zylaCtrl
+
+
+#libMagAOX/...
+libMagAOX/logger/tests/catch2_tests
+libMagAOX/logger/tests/gen_entropy_tests
+libMagAOX/logger/tests/generated_entropy_test_e1_n2
+libMagAOX/logger/tests/generated_tests
 
 ##########################################
 #Executables and util specifics to ignore:
@@ -186,6 +217,7 @@ utils/doc
 
 ###########################3
 #test files to ignore
+tests/.fftw_wisdom.float
 tests/singleTest
 tests/testMagAOX
 tests/testMagAOXsetuid
@@ -209,13 +241,20 @@ vm/config/
 vm/
 *.swp
 
+setup/qhyccd_container/sdk_linux64_22.02.17.tgz
+
 # Python caches, etc
 *.egg-info
 __pycache__
-libMagAOX/doc/diag/Makefile
-libMagAOX/doc/diag/xwcapp_fsm.drawio
-libMagAOX/doc/diag/xwcapp.drawio
-libMagAOX/doc/diag/xwcapps_connections.drawio
-libMagAOX/doc/diag/png/xwcapp_fsm.png
-libMagAOX/doc/diag/png/xwcapp.png
-libMagAOX/doc/diag/png/xwcapps_connections.png
+installed_python_interface_timestamp.txt
+magaox-python/build
+
+
+# Coverage files
+**/*.gcno
+**/*.gcda
+*.info
+coverage_report/
+
+# Valgrind logs
+tests/valgrind/logs/*

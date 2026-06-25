@@ -1,34 +1,13 @@
 ######################################################################
 # project file for pwrGUI
 ######################################################################
-
-TEMPLATE = app
 TARGET = pwrGUI
-DESTDIR = bin/
-DEPENDPATH += ./ ../../lib
 
-INCLUDEPATH += ../../lib ../../widgets ../../widgets/xWidgets
-
-MOC_DIR = moc/
-OBJECTS_DIR = obj/
-RCC_DIR = res/
-UI_DIR = ../../widgets/pwr
-
-CONFIG(release, debug|release) {
-    CONFIG += optimize_full
-}
-CONFIG += c++14
-CONFIG += qwt
-exists( $$(CONDA_PREFIX)/include ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/include
-}
-exists( $$(CONDA_PREFIX)/lib ) {
-    INCLUDEPATH += $$(CONDA_PREFIX)/lib
-}
-
-MAKEFILE = makefile.pwrGUI
+include(../magaoxQtApp.pri)
 
 # Input
+INCLUDEPATH += ../../widgets/pwr
+
 HEADERS += ../../widgets/xWidgets/app.hpp \
            ../../widgets/xWidgets/xWidget.hpp \
            ../../widgets/pwr/pwr.hpp \
@@ -42,8 +21,6 @@ FORMS += ../../widgets/pwr/pwr.ui
 
 LIBS += ../../../INDI/libcommon/libcommon.a \
         ../../../INDI/liblilxml/liblilxml.a
-
-LIBS += -lmxlib
 
 RESOURCES += ../../resources/magaox.qrc
 RESOURCES += ../../resources/MagAOXStyleSheets/MagAOXStyle.qrc

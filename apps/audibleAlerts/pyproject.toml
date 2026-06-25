@@ -3,19 +3,26 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audibleAlerts"
+name = "xapp-audibleAlerts"
 description =  "Audible alerting and text-to-speech for MagAO-X"
-version = "2023.12.21"
+version = "2025.11.30"
 dependencies = [
   "xconf",
   "purepyindi2",
+  "piper-tts>=1.4.2",
+  "librosa>=0.11.0",
 ]
 authors = [
   {name = "Joseph D. Long", email = "me@joseph-long.com"},
 ]
 
 [project.scripts]
-audibleAlerts = "audibleAlerts:core.AudibleAlerts.console_app"
+audibleAlerts = "xapp.audibleAlerts:main"
+audibleAlertsClient = "xapp.audibleAlerts:XAudioClient.run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xapp*"]
 
 [tool.setuptools.package-data]
-audibleAlerts = ["**/*"]
+"xapp.audibleAlerts" = ["personalities/*"]
