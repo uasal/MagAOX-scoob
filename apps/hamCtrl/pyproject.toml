@@ -11,7 +11,8 @@ dependencies = [
     "purepyindi2",
 ]
 authors = [
-    {name = "Stephanie F. Rinaldi", email = "srinaldi@arizona.edu"}
+    {name = "Stephanie F. Rinaldi", email = "srinaldi@arizona.edu"},
+    {name = "Adam Schilperoort", email = "adamschilperoort@arizona.edu"}
 ]
 
 [project.scripts]
