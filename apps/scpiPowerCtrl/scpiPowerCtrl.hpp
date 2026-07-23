@@ -77,8 +77,10 @@ protected:
     };
 
     std::vector<ChannelLimits> m_channelLimits;
-    std::vector<float> m_channelVoltages;
-    std::vector<float> m_channelCurrents;
+    std::vector<float> m_channelVoltages;        ///< Measured channel voltages (MEAS:VOLT?).
+    std::vector<float> m_channelCurrents;        ///< Measured channel currents (MEAS:CURR?).
+    std::vector<float> m_channelSetVoltages;     ///< Active device voltage setpoints (VOLT?).
+    std::vector<float> m_channelSetCurrents;     ///< Active device current setpoints (CURR?).
     std::vector<float> m_channelTargetVoltages;
     std::vector<float> m_channelTargetCurrents;
     int m_numChannels = 4; ///< The number of channels on the device -- abandoning dynamic, hard-coding 3 for now
@@ -245,6 +247,11 @@ public:
     int setChannelLowCurr(int channel, double lowCurr);
 
     int applyChannelSetpoint(int channel, bool isCurrent, double requestedValue);
+    int handleSetpointCallback(pcf::IndiProperty &localProp,
+                               const pcf::IndiProperty &ipRecv,
+                               int channel,
+                               bool isCurrent,
+                               const std::string &desc);
     int forceAllOutputsOff();
     int applyConfiguredSetpoints();
     
@@ -283,6 +290,14 @@ protected:
    pcf::IndiProperty m_indiP_outlet2curr;
    pcf::IndiProperty m_indiP_outlet3curr; 
    pcf::IndiProperty m_indiP_outlet4curr;
+   pcf::IndiProperty m_indiP_outlet1volt_meas;
+   pcf::IndiProperty m_indiP_outlet2volt_meas;
+   pcf::IndiProperty m_indiP_outlet3volt_meas;
+   pcf::IndiProperty m_indiP_outlet4volt_meas;
+   pcf::IndiProperty m_indiP_outlet1curr_meas;
+   pcf::IndiProperty m_indiP_outlet2curr_meas;
+   pcf::IndiProperty m_indiP_outlet3curr_meas;
+   pcf::IndiProperty m_indiP_outlet4curr_meas;
 
    // Telemetry control
    pcf::IndiProperty m_indiP_telemetryToggle;
@@ -389,6 +404,8 @@ void scpiPowerCtrl::loadConfig()
     m_channelLimits.resize(m_numChannels);
     m_channelVoltages.resize(m_numChannels);
     m_channelCurrents.resize(m_numChannels);
+    m_channelSetVoltages.resize(m_numChannels, 0.0f);
+    m_channelSetCurrents.resize(m_numChannels, 0.0f);
     m_channelTargetVoltages.resize(m_numChannels, 0.0f);
     m_channelTargetCurrents.resize(m_numChannels, 0.0f);
 
@@ -411,9 +428,12 @@ void scpiPowerCtrl::loadConfig()
         if (m_channelTargetCurrents[i] > ch.currHighLimit) m_channelTargetCurrents[i] = ch.currHighLimit;
         if (m_channelTargetCurrents[i] < ch.currLowLimit) m_channelTargetCurrents[i] = ch.currLowLimit;
 
-        // Before first measurement poll, publish defaults as current placeholders.
-        m_channelVoltages[i] = m_channelTargetVoltages[i];
-        m_channelCurrents[i] = m_channelTargetCurrents[i];
+        // Initialize desired and active setpoint mirrors from configured defaults.
+        m_channelSetVoltages[i] = m_channelTargetVoltages[i];
+        m_channelSetCurrents[i] = m_channelTargetCurrents[i];
+        // Measured values come from MEAS:* polling, keep zero until first read.
+        m_channelVoltages[i] = 0.0f;
+        m_channelCurrents[i] = 0.0f;
     }
 
     /*  expecting this format
@@ -462,44 +482,108 @@ int scpiPowerCtrl::appStartup()
     //}
     
     createStandardIndiNumber<float>(m_indiP_outlet1volt, "ch_1_volt", -240.0, 240.0, 0.001, "%0.3f");
-    m_indiP_outlet1volt["current"] = m_channelVoltages[0];
+    m_indiP_outlet1volt["current"] = m_channelSetVoltages[0];
     m_indiP_outlet1volt["target"] = m_channelTargetVoltages[0];
     registerIndiPropertyNew(m_indiP_outlet1volt, INDI_NEWCALLBACK(m_indiP_outlet1volt));
 
     createStandardIndiNumber<float>(m_indiP_outlet1curr, "ch_1_curr", 0, 1000, 0.001, "%0.3f");
-    m_indiP_outlet1curr["current"] = m_channelCurrents[0];
+    m_indiP_outlet1curr["current"] = m_channelSetCurrents[0];
     m_indiP_outlet1curr["target"] = m_channelTargetCurrents[0];
     registerIndiPropertyNew(m_indiP_outlet1curr, INDI_NEWCALLBACK(m_indiP_outlet1curr));
+    createROIndiNumber(m_indiP_outlet1volt_meas, "ch_1_volt_meas");
+    m_indiP_outlet1volt_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet1volt_meas["current"].setMin(-240.0);
+    m_indiP_outlet1volt_meas["current"].setMax(240.0);
+    m_indiP_outlet1volt_meas["current"].setStep(0.001);
+    m_indiP_outlet1volt_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet1volt_meas["current"] = m_channelVoltages[0];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet1volt_meas) < 0) return log<text_log,-1>("Error registering ch_1_volt_meas", logPrio::LOG_CRITICAL);
+    createROIndiNumber(m_indiP_outlet1curr_meas, "ch_1_curr_meas");
+    m_indiP_outlet1curr_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet1curr_meas["current"].setMin(0);
+    m_indiP_outlet1curr_meas["current"].setMax(1000);
+    m_indiP_outlet1curr_meas["current"].setStep(0.001);
+    m_indiP_outlet1curr_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet1curr_meas["current"] = m_channelCurrents[0];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet1curr_meas) < 0) return log<text_log,-1>("Error registering ch_1_curr_meas", logPrio::LOG_CRITICAL);
 
     createStandardIndiNumber<float>(m_indiP_outlet2volt, "ch_2_volt", -240.0, 240.0, 0.001, "%0.3f");
-    m_indiP_outlet2volt["current"] = m_channelVoltages[1];
+    m_indiP_outlet2volt["current"] = m_channelSetVoltages[1];
     m_indiP_outlet2volt["target"] = m_channelTargetVoltages[1];
     registerIndiPropertyNew(m_indiP_outlet2volt, INDI_NEWCALLBACK(m_indiP_outlet2volt));
 
     createStandardIndiNumber<float>(m_indiP_outlet2curr, "ch_2_curr", 0, 1000, 0.001, "%0.3f");
-    m_indiP_outlet2curr["current"] = m_channelCurrents[1];
+    m_indiP_outlet2curr["current"] = m_channelSetCurrents[1];
     m_indiP_outlet2curr["target"] = m_channelTargetCurrents[1];
     registerIndiPropertyNew(m_indiP_outlet2curr, INDI_NEWCALLBACK(m_indiP_outlet2curr));
+    createROIndiNumber(m_indiP_outlet2volt_meas, "ch_2_volt_meas");
+    m_indiP_outlet2volt_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet2volt_meas["current"].setMin(-240.0);
+    m_indiP_outlet2volt_meas["current"].setMax(240.0);
+    m_indiP_outlet2volt_meas["current"].setStep(0.001);
+    m_indiP_outlet2volt_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet2volt_meas["current"] = m_channelVoltages[1];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet2volt_meas) < 0) return log<text_log,-1>("Error registering ch_2_volt_meas", logPrio::LOG_CRITICAL);
+    createROIndiNumber(m_indiP_outlet2curr_meas, "ch_2_curr_meas");
+    m_indiP_outlet2curr_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet2curr_meas["current"].setMin(0);
+    m_indiP_outlet2curr_meas["current"].setMax(1000);
+    m_indiP_outlet2curr_meas["current"].setStep(0.001);
+    m_indiP_outlet2curr_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet2curr_meas["current"] = m_channelCurrents[1];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet2curr_meas) < 0) return log<text_log,-1>("Error registering ch_2_curr_meas", logPrio::LOG_CRITICAL);
 
     createStandardIndiNumber<float>(m_indiP_outlet3volt, "ch_3_volt", -240.0, 240.0, 0.001, "%0.3f");
-    m_indiP_outlet3volt["current"] = m_channelVoltages[2];
+    m_indiP_outlet3volt["current"] = m_channelSetVoltages[2];
     m_indiP_outlet3volt["target"] = m_channelTargetVoltages[2];
     registerIndiPropertyNew(m_indiP_outlet3volt, INDI_NEWCALLBACK(m_indiP_outlet3volt));
 
     createStandardIndiNumber<float>(m_indiP_outlet3curr, "ch_3_curr", 0, 1000, 0.001, "%0.3f");
-    m_indiP_outlet3curr["current"] = m_channelCurrents[2];
+    m_indiP_outlet3curr["current"] = m_channelSetCurrents[2];
     m_indiP_outlet3curr["target"] = m_channelTargetCurrents[2];
     registerIndiPropertyNew(m_indiP_outlet3curr, INDI_NEWCALLBACK(m_indiP_outlet3curr));
+    createROIndiNumber(m_indiP_outlet3volt_meas, "ch_3_volt_meas");
+    m_indiP_outlet3volt_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet3volt_meas["current"].setMin(-240.0);
+    m_indiP_outlet3volt_meas["current"].setMax(240.0);
+    m_indiP_outlet3volt_meas["current"].setStep(0.001);
+    m_indiP_outlet3volt_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet3volt_meas["current"] = m_channelVoltages[2];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet3volt_meas) < 0) return log<text_log,-1>("Error registering ch_3_volt_meas", logPrio::LOG_CRITICAL);
+    createROIndiNumber(m_indiP_outlet3curr_meas, "ch_3_curr_meas");
+    m_indiP_outlet3curr_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet3curr_meas["current"].setMin(0);
+    m_indiP_outlet3curr_meas["current"].setMax(1000);
+    m_indiP_outlet3curr_meas["current"].setStep(0.001);
+    m_indiP_outlet3curr_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet3curr_meas["current"] = m_channelCurrents[2];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet3curr_meas) < 0) return log<text_log,-1>("Error registering ch_3_curr_meas", logPrio::LOG_CRITICAL);
 
     createStandardIndiNumber<float>(m_indiP_outlet4volt, "ch_4_volt", -240.0, 240.0, 0.001, "%0.3f");
-    m_indiP_outlet4volt["current"] = m_channelVoltages[3];
+    m_indiP_outlet4volt["current"] = m_channelSetVoltages[3];
     m_indiP_outlet4volt["target"] = m_channelTargetVoltages[3];
     registerIndiPropertyNew(m_indiP_outlet4volt, INDI_NEWCALLBACK(m_indiP_outlet4volt));
 
     createStandardIndiNumber<float>(m_indiP_outlet4curr, "ch_4_curr", 0, 1000, 0.001, "%0.3f");
-    m_indiP_outlet4curr["current"] = m_channelCurrents[3];
+    m_indiP_outlet4curr["current"] = m_channelSetCurrents[3];
     m_indiP_outlet4curr["target"] = m_channelTargetCurrents[3];
     registerIndiPropertyNew(m_indiP_outlet4curr, INDI_NEWCALLBACK(m_indiP_outlet4curr));
+    createROIndiNumber(m_indiP_outlet4volt_meas, "ch_4_volt_meas");
+    m_indiP_outlet4volt_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet4volt_meas["current"].setMin(-240.0);
+    m_indiP_outlet4volt_meas["current"].setMax(240.0);
+    m_indiP_outlet4volt_meas["current"].setStep(0.001);
+    m_indiP_outlet4volt_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet4volt_meas["current"] = m_channelVoltages[3];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet4volt_meas) < 0) return log<text_log,-1>("Error registering ch_4_volt_meas", logPrio::LOG_CRITICAL);
+    createROIndiNumber(m_indiP_outlet4curr_meas, "ch_4_curr_meas");
+    m_indiP_outlet4curr_meas.add(pcf::IndiElement("current"));
+    m_indiP_outlet4curr_meas["current"].setMin(0);
+    m_indiP_outlet4curr_meas["current"].setMax(1000);
+    m_indiP_outlet4curr_meas["current"].setStep(0.001);
+    m_indiP_outlet4curr_meas["current"].setFormat("%0.3f");
+    m_indiP_outlet4curr_meas["current"] = m_channelCurrents[3];
+    if(registerIndiPropertyReadOnly(m_indiP_outlet4curr_meas) < 0) return log<text_log,-1>("Error registering ch_4_curr_meas", logPrio::LOG_CRITICAL);
     
     // Telemetry toggle switch
     m_indiP_telemetryToggle = pcf::IndiProperty(pcf::IndiProperty::Switch);
@@ -590,18 +674,12 @@ int scpiPowerCtrl::appLogic()
     {
         {
            std::unique_lock<std::mutex> lock(m_indiMutex);
-           int rv = forceAllOutputsOff();
+           // Preserve live instrument output state across reconnects/app restarts.
+           // This keeps behavior consistent with other MagAO-X outlet controllers.
+           int rv = updateOutletStates();
            if(rv < 0)
            {
-              log<software_error>({__FILE__, __LINE__, "Failed forcing outputs off at startup."});
-              state(stateCodes::NOTCONNECTED);
-              return 0;
-           }
-
-           rv = applyConfiguredSetpoints();
-           if(rv < 0)
-           {
-              log<software_error>({__FILE__, __LINE__, "Failed applying startup channel defaults."});
+              log<software_error>({__FILE__, __LINE__, "Failed to synchronize outlet states after connect."});
               state(stateCodes::NOTCONNECTED);
               return 0;
            }
@@ -690,17 +768,33 @@ int scpiPowerCtrl::updateOutletState( int outletNum )
     updateIfChanged(m_indiP_status, "value", m_status);
 
     if( outletNum == 0 ) {
-        updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
-        updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+        updateIfChanged(m_indiP_outlet1volt, "current", m_channelSetVoltages[0]);
+        updateIfChanged(m_indiP_outlet1volt, "target", m_channelTargetVoltages[0]);
+        updateIfChanged(m_indiP_outlet1curr, "current", m_channelSetCurrents[0]);
+        updateIfChanged(m_indiP_outlet1curr, "target", m_channelTargetCurrents[0]);
+        updateIfChanged(m_indiP_outlet1volt_meas, "current", m_channelVoltages[0]);
+        updateIfChanged(m_indiP_outlet1curr_meas, "current", m_channelCurrents[0]);
     } else if( outletNum == 1 ) {
-        updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
-        updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+        updateIfChanged(m_indiP_outlet2volt, "current", m_channelSetVoltages[1]);
+        updateIfChanged(m_indiP_outlet2volt, "target", m_channelTargetVoltages[1]);
+        updateIfChanged(m_indiP_outlet2curr, "current", m_channelSetCurrents[1]);
+        updateIfChanged(m_indiP_outlet2curr, "target", m_channelTargetCurrents[1]);
+        updateIfChanged(m_indiP_outlet2volt_meas, "current", m_channelVoltages[1]);
+        updateIfChanged(m_indiP_outlet2curr_meas, "current", m_channelCurrents[1]);
     } else if( outletNum == 2) {
-        updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
-        updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+        updateIfChanged(m_indiP_outlet3volt, "current", m_channelSetVoltages[2]);
+        updateIfChanged(m_indiP_outlet3volt, "target", m_channelTargetVoltages[2]);
+        updateIfChanged(m_indiP_outlet3curr, "current", m_channelSetCurrents[2]);
+        updateIfChanged(m_indiP_outlet3curr, "target", m_channelTargetCurrents[2]);
+        updateIfChanged(m_indiP_outlet3volt_meas, "current", m_channelVoltages[2]);
+        updateIfChanged(m_indiP_outlet3curr_meas, "current", m_channelCurrents[2]);
     } else if( outletNum == 3) {
-        updateIfChanged(m_indiP_outlet4volt, "current", m_channelVoltages[3]);
-        updateIfChanged(m_indiP_outlet4curr, "current", m_channelCurrents[3]);
+        updateIfChanged(m_indiP_outlet4volt, "current", m_channelSetVoltages[3]);
+        updateIfChanged(m_indiP_outlet4volt, "target", m_channelTargetVoltages[3]);
+        updateIfChanged(m_indiP_outlet4curr, "current", m_channelSetCurrents[3]);
+        updateIfChanged(m_indiP_outlet4curr, "target", m_channelTargetCurrents[3]);
+        updateIfChanged(m_indiP_outlet4volt_meas, "current", m_channelVoltages[3]);
+        updateIfChanged(m_indiP_outlet4curr_meas, "current", m_channelCurrents[3]);
     }
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
@@ -738,14 +832,30 @@ int scpiPowerCtrl::updateOutletStates()
     }
     */
 
-    updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
-    updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
-    updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
-    updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
-    updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
-    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
-    updateIfChanged(m_indiP_outlet4volt, "current", m_channelVoltages[3]);
-    updateIfChanged(m_indiP_outlet4curr, "current", m_channelCurrents[3]);
+    updateIfChanged(m_indiP_outlet1volt, "current", m_channelSetVoltages[0]);
+    updateIfChanged(m_indiP_outlet1volt, "target", m_channelTargetVoltages[0]);
+    updateIfChanged(m_indiP_outlet1curr, "current", m_channelSetCurrents[0]);
+    updateIfChanged(m_indiP_outlet1curr, "target", m_channelTargetCurrents[0]);
+    updateIfChanged(m_indiP_outlet2volt, "current", m_channelSetVoltages[1]);
+    updateIfChanged(m_indiP_outlet2volt, "target", m_channelTargetVoltages[1]);
+    updateIfChanged(m_indiP_outlet2curr, "current", m_channelSetCurrents[1]);
+    updateIfChanged(m_indiP_outlet2curr, "target", m_channelTargetCurrents[1]);
+    updateIfChanged(m_indiP_outlet3volt, "current", m_channelSetVoltages[2]);
+    updateIfChanged(m_indiP_outlet3volt, "target", m_channelTargetVoltages[2]);
+    updateIfChanged(m_indiP_outlet3curr, "current", m_channelSetCurrents[2]);
+    updateIfChanged(m_indiP_outlet3curr, "target", m_channelTargetCurrents[2]);
+    updateIfChanged(m_indiP_outlet4volt, "current", m_channelSetVoltages[3]);
+    updateIfChanged(m_indiP_outlet4volt, "target", m_channelTargetVoltages[3]);
+    updateIfChanged(m_indiP_outlet4curr, "current", m_channelSetCurrents[3]);
+    updateIfChanged(m_indiP_outlet4curr, "target", m_channelTargetCurrents[3]);
+    updateIfChanged(m_indiP_outlet1volt_meas, "current", m_channelVoltages[0]);
+    updateIfChanged(m_indiP_outlet1curr_meas, "current", m_channelCurrents[0]);
+    updateIfChanged(m_indiP_outlet2volt_meas, "current", m_channelVoltages[1]);
+    updateIfChanged(m_indiP_outlet2curr_meas, "current", m_channelCurrents[1]);
+    updateIfChanged(m_indiP_outlet3volt_meas, "current", m_channelVoltages[2]);
+    updateIfChanged(m_indiP_outlet3curr_meas, "current", m_channelCurrents[2]);
+    updateIfChanged(m_indiP_outlet4volt_meas, "current", m_channelVoltages[3]);
+    updateIfChanged(m_indiP_outlet4curr_meas, "current", m_channelCurrents[3]);
 
     dev::outletController<scpiPowerCtrl>::updateINDI();
 
@@ -967,17 +1077,52 @@ int scpiPowerCtrl::updateChannel(int channel)
         return log<text_log,-1>("Could not select outlet channel " + std::to_string(channel), logPrio::LOG_WARNING);
     }
 
-    std::string volt, curr;
-    bool ok_v = send_scpi("MEAS:VOLT?\n", volt);
-    bool ok_c = send_scpi("MEAS:CURR?\n", curr);
+    auto trimResponse = [](std::string &s)
+    {
+        const size_t first = s.find_first_not_of(" \n\r\t");
+        if(first == std::string::npos)
+        {
+            s.clear();
+            return;
+        }
+        const size_t last = s.find_last_not_of(" \n\r\t");
+        s = s.substr(first, last - first + 1);
+    };
 
-    if (ok_v && ok_c) {
-        volt.erase(volt.find_last_not_of(" \n\r\t") + 1);
-        curr.erase(curr.find_last_not_of(" \n\r\t") + 1);
+    auto parseResponse = [&](std::string &raw, float &dest) -> bool
+    {
+        trimResponse(raw);
+        if(raw.empty()) return false;
+        try
+        {
+            dest = std::stof(raw);
+            return true;
+        }
+        catch(...)
+        {
+            return false;
+        }
+    };
 
-        m_channelVoltages[channel] = std::stof(volt);
-        m_channelCurrents[channel] = std::stof(curr);
-    } else {
+    std::string setVolt, setCurr, measVolt, measCurr;
+    float polledSetVolt = m_channelSetVoltages[channel];
+    float polledSetCurr = m_channelSetCurrents[channel];
+    bool gotSetVolt = send_scpi("VOLT?\n", setVolt) && parseResponse(setVolt, polledSetVolt);
+    bool gotSetCurr = send_scpi("CURR?\n", setCurr) && parseResponse(setCurr, polledSetCurr);
+
+    // Some supplies report 0 for VOLT?/CURR? while OUTP is off.
+    // Preserve requested setpoints in that state so ch_*_{volt,curr}.current
+    // continues reflecting editable setpoints prior to enabling output.
+    if(m_outletStates[channel] == OUTLET_STATE_ON)
+    {
+        if(gotSetVolt) m_channelSetVoltages[channel] = polledSetVolt;
+        if(gotSetCurr) m_channelSetCurrents[channel] = polledSetCurr;
+    }
+
+    bool ok_v = send_scpi("MEAS:VOLT?\n", measVolt) && parseResponse(measVolt, m_channelVoltages[channel]);
+    bool ok_c = send_scpi("MEAS:CURR?\n", measCurr) && parseResponse(measCurr, m_channelCurrents[channel]);
+
+    if (!(ok_v && ok_c)) {
         log<software_error>({__FILE__, __LINE__, "Failed to read voltage/current from channel " + std::to_string(channel + 1)});
         return -1;
     }
@@ -1006,8 +1151,13 @@ int scpiPowerCtrl::applyChannelSetpoint(int channel, bool isCurrent, double requ
     int rv = (isCurrent ? setChannelAmps(channel, value) : setChannelVolts(channel, value));
     if (rv < 0) return rv;
 
-    if (isCurrent) m_channelTargetCurrents[channel] = static_cast<float>(value);
-    else m_channelTargetVoltages[channel] = static_cast<float>(value);
+    if (isCurrent) {
+        m_channelTargetCurrents[channel] = static_cast<float>(value);
+        m_channelSetCurrents[channel] = static_cast<float>(value);
+    } else {
+        m_channelTargetVoltages[channel] = static_cast<float>(value);
+        m_channelSetVoltages[channel] = static_cast<float>(value);
+    }
     return 0;
 }
 
@@ -1018,6 +1168,58 @@ int scpiPowerCtrl::applyConfiguredSetpoints()
         if (applyChannelSetpoint(ch, false, m_channelTargetVoltages[ch]) < 0) return -1;
         if (applyChannelSetpoint(ch, true, m_channelTargetCurrents[ch]) < 0) return -1;
     }
+    return 0;
+}
+
+int scpiPowerCtrl::handleSetpointCallback(pcf::IndiProperty &localProp,
+                                          const pcf::IndiProperty &ipRecv,
+                                          int channel,
+                                          bool isCurrent,
+                                          const std::string &desc)
+{
+    if(localProp.createUniqueKey() != ipRecv.createUniqueKey())
+    {
+        log<software_error>({__FILE__, __LINE__, "wrong INDI property received for " + desc});
+        return -1;
+    }
+
+    double requested = isCurrent ? static_cast<double>(m_channelTargetCurrents[channel])
+                                 : static_cast<double>(m_channelTargetVoltages[channel]);
+    if(indiTargetUpdate(localProp, requested, ipRecv, true) < 0)
+    {
+        log<software_error>({__FILE__, __LINE__, "No target/current element provided for " + desc});
+        return -1;
+    }
+
+    std::unique_lock<std::mutex> lock(m_indiMutex);
+    int rv = applyChannelSetpoint(channel, isCurrent, requested);
+    if(rv < 0)
+    {
+        log<software_error>({__FILE__, __LINE__, "Error setting " + desc});
+        if(isCurrent)
+        {
+            updateIfChanged(localProp, "target", m_channelTargetCurrents[channel], INDI_IDLE);
+            updateIfChanged(localProp, "current", m_channelSetCurrents[channel], INDI_IDLE);
+        }
+        else
+        {
+            updateIfChanged(localProp, "target", m_channelTargetVoltages[channel], INDI_IDLE);
+            updateIfChanged(localProp, "current", m_channelSetVoltages[channel], INDI_IDLE);
+        }
+        return -1;
+    }
+
+    if(isCurrent)
+    {
+        updateIfChanged(localProp, "target", m_channelTargetCurrents[channel], INDI_IDLE);
+        updateIfChanged(localProp, "current", m_channelSetCurrents[channel], INDI_IDLE);
+    }
+    else
+    {
+        updateIfChanged(localProp, "target", m_channelTargetVoltages[channel], INDI_IDLE);
+        updateIfChanged(localProp, "current", m_channelSetVoltages[channel], INDI_IDLE);
+    }
+
     return 0;
 }
 
@@ -1204,202 +1406,42 @@ bool scpiPowerCtrl::send_scpi(const std::string& cmd, std::string& response) {
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1volt)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet1volt.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(0, false, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 1 volts!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet1volt, "target", m_channelTargetVoltages[0]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet1volt, ipRecv, 0, false, "channel 1 volts");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2volt)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet2volt.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(1, false, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 2 volts!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet2volt, "target", m_channelTargetVoltages[1]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet2volt, ipRecv, 1, false, "channel 2 volts");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3volt)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet3volt.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(2, false, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 3 volts!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet3volt, "target", m_channelTargetVoltages[2]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet3volt, ipRecv, 2, false, "channel 3 volts");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4volt)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet4volt.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(3, false, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 4 volts!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet4volt, "target", m_channelTargetVoltages[3]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet4volt, ipRecv, 3, false, "channel 4 volts");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet1curr)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet1curr.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(0, true, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 1 current!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet1curr, "target", m_channelTargetCurrents[0]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet1curr, ipRecv, 0, true, "channel 1 current");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet2curr)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet2curr.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(1, true, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 2 current!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet2curr, "target", m_channelTargetCurrents[1]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet2curr, ipRecv, 1, true, "channel 2 current");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet3curr)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet3curr.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(2, true, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 3 current!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet3curr, "target", m_channelTargetCurrents[2]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet3curr, ipRecv, 2, true, "channel 3 current");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_outlet4curr)(const pcf::IndiProperty &ipRecv)
 {
-   if (ipRecv.getName() != m_indiP_outlet4curr.getName())
-   {
-      log<software_error>({__FILE__, __LINE__, "wrong INDI property received."});
-      return -1;
-   }
-
-   if (!ipRecv.find("target")) return 0;
-   double vc = ipRecv["target"].get<double>();
-
-   std::unique_lock<std::mutex> lock(m_indiMutex);
-   int rv = applyChannelSetpoint(3, true, vc);
-   
-   if(rv < 0)
-   {
-      log<software_error>({__FILE__, __LINE__, "Error setting channel 4 current!"});
-      return -1;
-   }
-
-   updateIfChanged(m_indiP_outlet4curr, "target", m_channelTargetCurrents[3]);
-
-   return 0;
+   return handleSetpointCallback(m_indiP_outlet4curr, ipRecv, 3, true, "channel 4 current");
 }
 
 INDI_NEWCALLBACK_DEFN(scpiPowerCtrl, m_indiP_telemetryToggle)(const pcf::IndiProperty &ipRecv)

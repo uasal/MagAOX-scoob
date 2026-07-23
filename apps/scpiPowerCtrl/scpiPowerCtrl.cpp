@@ -64,18 +64,23 @@ void MagAOX::app::scpiPowerCtrl::pollLoop()
                     }
                 }
 
-                // Push INDI updates quickly
-                updateIfChanged(m_indiP_outlet1volt, "current", m_channelVoltages[0]);
-                updateIfChanged(m_indiP_outlet1curr, "current", m_channelCurrents[0]);
+                // Push measurement INDI updates quickly.
+                updateIfChanged(m_indiP_outlet1volt_meas, "current", m_channelVoltages[0]);
+                updateIfChanged(m_indiP_outlet1curr_meas, "current", m_channelCurrents[0]);
                 if(m_numChannels > 1)
                 {
-                    updateIfChanged(m_indiP_outlet2volt, "current", m_channelVoltages[1]);
-                    updateIfChanged(m_indiP_outlet2curr, "current", m_channelCurrents[1]);
+                    updateIfChanged(m_indiP_outlet2volt_meas, "current", m_channelVoltages[1]);
+                    updateIfChanged(m_indiP_outlet2curr_meas, "current", m_channelCurrents[1]);
                 }
                 if(m_numChannels > 2)
                 {
-                    updateIfChanged(m_indiP_outlet3volt, "current", m_channelVoltages[2]);
-                    updateIfChanged(m_indiP_outlet3curr, "current", m_channelCurrents[2]);
+                    updateIfChanged(m_indiP_outlet3volt_meas, "current", m_channelVoltages[2]);
+                    updateIfChanged(m_indiP_outlet3curr_meas, "current", m_channelCurrents[2]);
+                }
+                if(m_numChannels > 3)
+                {
+                    updateIfChanged(m_indiP_outlet4volt_meas, "current", m_channelVoltages[3]);
+                    updateIfChanged(m_indiP_outlet4curr_meas, "current", m_channelCurrents[3]);
                 }
                 dev::outletController<scpiPowerCtrl>::updateINDI();
 
