@@ -81,7 +81,8 @@ apps_rtc = \
 	psfAcq \
 	strehlEstimator \
 	modalFilter \
-	dmRecon
+	dmRecon \
+	iefcCtrl
 pythonapps_rtc = \
 	efcControl
 
@@ -130,6 +131,7 @@ all_buildable_apps = \
 	dmPokeCenter \
 	dmPokeXCorr \
 	dmSpeckle \
+	iefcCtrl \
 	filterWheelCtrl \
 	flipperCtrl \
 	flowRPM \

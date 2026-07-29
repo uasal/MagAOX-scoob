@@ -1,0 +1,24 @@
+# Sample MagAO-X config for iefcCtrl
+# Install as /opt/MagAOX/config/iefcCtrl.conf (or role-specific path)
+
+[iefc]
+camsci=camsci
+dmChannel=dm01disp07
+fsmChannel=dm00disp01
+shutter=camscishutter
+exptime=camsciexptime
+outdir=./ref_psf
+setupdir=./ref_psf
+caldir=./cal_a
+# Path to the standalone lina binary used for calibrate/run:
+camsciOnceBin=/home/adams/lina_test/lina_cpp/examples/iefc_shm_camsci/build/iefc_camsci_once
+nFrames=5
+waitFrames=1
+delay_s=0.05
+fsmAmp_nm=1000
+nDark=20
+nPsf=20
+exptimes=0.5,1,2,5
+regCond=-2.5
+probeAmp=1e-9
+iters=3
