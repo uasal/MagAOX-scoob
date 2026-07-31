@@ -1,17 +1,22 @@
 # Sample MagAO-X config for iefcCtrl
-# Install as /opt/MagAOX/config/iefcCtrl.conf (or role-specific path)
+# Install as /opt/MagAOX/config/iefc.conf (process name from proclist)
 
 [iefc]
+# Milk / ImageStreamIO names (also exposed as INDI text props under group "shmims")
 camsci=camsci
 dmChannel=dm01disp07
 fsmChannel=dm00disp01
+# shutterShmim INDI text = milk name below; shutter INDI toggle = open/closed (On=closed)
 shutter=camscishutter
 exptime=camsciexptime
+gain=camscigain
+# Live camera exposure (INDI: exptime) and ref-PSF exposure (INDI: psf_exptime).
+# Both write the same milk channel named above.
+psf_exptime=1.0
+
 outdir=./ref_psf
 setupdir=./ref_psf
 caldir=./cal_a
-# Path to the standalone lina binary used for calibrate/run:
-camsciOnceBin=/home/adams/lina_test/lina_cpp/examples/iefc_shm_camsci/build/iefc_camsci_once
 nFrames=5
 waitFrames=1
 delay_s=0.05
@@ -20,5 +25,14 @@ nDark=20
 nPsf=20
 exptimes=0.5,1,2,5
 regCond=-2.5
-probeAmp=1e-9
+calib_probe_amp=5e-9
+calib_mode_amp=2e-9
+cl_probe_amp=1e-9
 iters=3
+contrast_avg_n=10
+# Full-frame response cube is O(nmodes*nprobes*npix) — often many GB. Keep off unless needed.
+save_response_full=false
+
+[shmims]
+camsci_sub_norm=camsci_sub_norm
+contrast_avg=contrast_avg

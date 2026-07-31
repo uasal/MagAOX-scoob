@@ -1,0 +1,1 @@
+Vendored SHM-only IEFC slice of the LINA C++ library for MagAOX `iefcCtrl`. It provides shared-memory camera/DM I/O, calibration, closed-loop run, and package orchestration helpers — not the full LINA tree (no ControlModel, props, or CUDA).
