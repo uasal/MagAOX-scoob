@@ -3,9 +3,9 @@
 
 [iefc]
 # Milk / ImageStreamIO names (also exposed as INDI text props under group "shmims")
-camsci=camsci
-dmChannel=dm01disp07
-fsmChannel=dm00disp01
+shm_cam_input=camsci
+dm_shmim=dm01disp07
+fsm_shmim=dm00disp01
 # shutterShmim INDI text = milk name below; shutter INDI toggle = open/closed (On=closed)
 shutter=camscishutter
 exptime=camsciexptime
@@ -14,25 +14,38 @@ gain=camscigain
 # Both write the same milk channel named above.
 psf_exptime=1.0
 
-outdir=./ref_psf
-setupdir=./ref_psf
-caldir=./cal_a
+# Paths (alphabetically grouped under dir_*):
+#   dir_cal — calibration package (response/control matrices from doCalibrate; used by doRun)
+#   dir_psf — ref-PSF / dark / Imax package (written by doRefPsf/doDarkLibrary; read by calibrate/run)
+dir_cal=./cal_a
+dir_psf=./ref_psf
+
 nFrames=5
-waitFrames=1
-delay_s=0.05
+# Camera settle after DM write: use ONE of these (mutually exclusive).
+# Frame delay wins if both are non-zero.
+cam_n_frame_delay=1
+cam_r_delay=0.0
+
 fsmAmp_nm=1000
 nDark=20
 nPsf=20
 exptimes=0.5,1,2,5
-regCond=-2.5
-calib_probe_amp=5e-9
-calib_mode_amp=2e-9
+
+# Calibration
+cal_reg_cond=-2.5
+cal_probe_amp=5e-9
+cal_mode_amp=2e-9
+
+# Closed-loop run (cl_*)
 cl_probe_amp=1e-9
-iters=3
+cl_iters=3
+cl_loop_gain=1.0
+cl_leakage=0.0
+
 contrast_avg_n=10
 # Full-frame response cube is O(nmodes*nprobes*npix) — often many GB. Keep off unless needed.
 save_response_full=false
 
 [shmims]
-camsci_sub_norm=camsci_sub_norm
+shm_cam_sub_norm=camsci_sub_norm
 contrast_avg=contrast_avg

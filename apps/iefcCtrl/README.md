@@ -33,24 +33,28 @@ creates FIFOs but never appears in `getINDI` / GUIs.
 
 See `iefcCtrl.conf.sample`. Important:
 
-- Shmim names (loaded from config, also writable via INDI group `shmims`):
-  `camsci`, `dmChannel`, `fsmChannel`, `shutterShmim` (config key `shutter`),
-  `exptime` / `exptimeShmim`, `gain` / `gainShmim`, `camsci_sub_norm`
-- paths: `outdir`, `setupdir`, `caldir`
-- amplitudes: `calib_probe_amp`, `calib_mode_amp` (calibration), `cl_probe_amp` (closed loop)
+- Shmim names (config + INDI group `shmims`):
+  `shm_cam_input`, `dm_shmim`, `fsm_shmim`, `shutterShmim` (config key `shutter`),
+  `exptime` / `exptimeShmim`, `gain` / `gainShmim`, `shm_cam_sub_norm`
+- Paths (`dir_*`):
+  - `dir_psf` — ref-PSF / dark / Imax package (doRefPsf / doDarkLibrary write here; calibrate/run read it)
+  - `dir_cal` — calibration package (response/control matrices)
+- Camera settle (mutually exclusive): `cam_n_frame_delay` **or** `cam_r_delay`
+- Calibration amps: `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
+- Closed-loop (`cl_*`): `cl_probe_amp`, `cl_iters`, `cl_loop_gain`, `cl_leakage`
 
 ## INDI properties (shmims)
 
 | Property | Role |
 |----------|------|
-| `camsci` | Science-camera ImageStreamIO name |
-| `dmChannel` | IEFC DM write channel (e.g. `dm01disp07`) |
-| `fsmChannel` | FSM DMcomb channel (e.g. `dm00disp01`) |
+| `shm_cam_input` | Science-camera ImageStreamIO name (default milk value `camsci`) |
+| `dm_shmim` | IEFC DM write channel (e.g. `dm01disp07`) |
+| `fsm_shmim` | FSM DMcomb channel (e.g. `dm00disp01`) |
 | `shutterShmim` | Shutter scalar shmim name (milk: 1=closed, 0=open) |
 | `shutter` | Shutter toggle (On=closed, Off=open; matches stdCamera) |
 | `exptimeShmim` | Exposure-time scalar shmim (name only) |
 | `gainShmim` | Camera-gain scalar shmim (name only) |
-| `camsci_sub_norm` | Continuous dark-sub + Imax-normalized camsci stream |
+| `shm_cam_sub_norm` | Continuous dark-sub + Imax-normalized camera stream |
 | `contrastAvgShmim` | Scalar stream name for running-average contrast (default `contrast_avg`) |
 
 Changing a shmim name closes open streams; the next job reopens with the new name.
@@ -61,22 +65,23 @@ writing the shutter milk scalar.
 
 | Property | Role |
 |----------|------|
-| `nFrames` | Frames averaged per camsci grab (refPSF / darks / calibrate / run) |
-| `waitFrames` | New camsci frames to skip after DM write before averaging |
-| `delay_s` | Optional wall-clock settle after DM write |
+| `nFrames` | Frames averaged per camera grab (refPSF / darks / calibrate / run) |
+| `cam_n_frame_delay` | Skip N new camera frames after DM write (XOR `cam_r_delay`) |
+| `cam_r_delay` | Wall-clock settle [s] after DM write (used only if `cam_n_frame_delay==0`) |
 | `exptime` | Live exposure [s]; writes milk `exptimeShmim` when idle |
 | `psf_exptime` | Exposure [s] for `doRefPsf` (same milk channel; applied at job start) |
-| `outdir` / `setupdir` / `caldir` | Paths |
+| `dir_cal` | Calibration package directory |
+| `dir_psf` | Ref-PSF / dark / Imax package directory |
 
 ## Requests
 
 | Switch | Action |
 |--------|--------|
-| `doRefPsf` | Park FSM at `fsmRefTip/Tilt_nm`, poke tip/tilt, dark + PSF → `outdir` |
-| `doDarkLibrary` | Dark library at `exptimes` CSV → `outdir/darks/` |
-| `doCalibrate` | Native in-process calibration → FITS package in `caldir` (masked + full response, control); matrices cached in memory |
-| `doRun` | Closed-loop run using in-memory control/response (loads `caldir` once if cache empty) |
-| `clearDm` | Zero the configured `dmChannel` (e.g. `dm01disp07`) |
+| `doRefPsf` | Park FSM at `fsmRefTip/Tilt_nm`, poke tip/tilt, dark + PSF → `dir_psf` |
+| `doDarkLibrary` | Dark library at `exptimes` CSV → `dir_psf/darks/` |
+| `doCalibrate` | Native in-process calibration → FITS package in `dir_cal` (masked + full response, control); matrices cached in memory |
+| `doRun` | Closed-loop run using in-memory control/response (loads `dir_cal` once if cache empty) |
+| `clearDm` | Zero the configured `dm_shmim` (e.g. `dm01disp07`) |
 | `stop` | Abort in-progress job (calibrate/run/refPSF/dark library); restores DM where applicable and returns to idle |
 
 ## INDI properties (progress / RO)
@@ -84,24 +89,25 @@ writing the shutter milk scalar.
 | Property | Role |
 |----------|------|
 | `status` | Text job status |
-| `calibMode` | Current calibration mode (1…N while measuring; 0 idle) |
-| `nCalibModes` | Total calib modes (Hadamard / FITS cube) for the active job |
+| `cal_mode` | Current calibration mode (1…N while measuring; 0 idle) |
+| `n_cal_modes` | Total calib modes (Hadamard / FITS cube) for the active job |
 | `Imax_ref` | Last ref-PSF peak |
 | `contrast` | Last closed-loop contrast |
-| `calib_probe_amp` | Probe amplitude used during calibration [m] |
-| `calib_mode_amp` | Mode poke amplitude during calibration [m] |
+| `cal_probe_amp` | Probe amplitude used during calibration [m] |
+| `cal_mode_amp` | Mode poke amplitude during calibration [m] |
 | `cl_probe_amp` | Probe amplitude during closed-loop run [m] |
+| `cl_iters` / `cl_loop_gain` / `cl_leakage` | Closed-loop run parameters |
 | `contrast_avg_n` | Frames in running contrast average |
 | `contrast_avg` | RO: current running-average contrast |
 
 ## Continuous stream
 
-While `iefcCtrl` is running, a dedicated thread waits on the `camsci` semaphore (not
+While `iefcCtrl` is running, a dedicated thread waits on the `shm_cam_input` semaphore (not
 the MagAOX `loopPause` timer — which defaults to 1 s) and for every new frame
-dark-subtracts + normalizes by `Imax_ref`, writing `camsci_sub_norm`.
+dark-subtracts + normalizes by `Imax_ref`, writing `shm_cam_sub_norm`.
 
 On the same frames, contrast is computed as the mean of positive NI pixels inside the control mask
-(calibration mask if available, else `caldir` `wfs_mask`, else the default half-annulus).
+(calibration mask if available, else `dir_cal` `wfs_mask`, else the default half-annulus).
 A running average over `contrast_avg_n` frames is written to the `contrast_avg` scalar shmim and published as INDI `contrast_avg`.
 
 ## Calibration package (FITS)

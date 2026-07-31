@@ -4,7 +4,7 @@
   * All of refPSF, darkLibrary, calibrate, and run execute natively in-process against
   * milk ImageStreamIO shmims via the vendored lina IEFC library. No external binary.
   *
-  * Shared INDI numbers (nFrames, waitFrames, delay_s, exptime, …) are reused across
+  * Shared INDI numbers (nFrames, cam_n_frame_delay / cam_r_delay, exptime, …) are reused across
   * all actions. Request switches trigger one-shot worker jobs.
   *
   * \ingroup iefcCtrl_files
@@ -88,20 +88,20 @@ class iefcCtrl : public MagAOXApp<true>
     /** \name Configurable defaults (config file / CLI)
       *@{
       */
-    std::string m_camsciName{ "camsci" };
-    std::string m_dmChan{ "dm01disp07" };
-    std::string m_fsmChan{ "dm00disp01" };
+    std::string m_shmCamInput{ "camsci" };
+    std::string m_dmShmim{ "dm01disp07" };
+    std::string m_fsmShmim{ "dm00disp01" };
     std::string m_shutterName{ "camscishutter" };
     std::string m_exptimeName{ "camsciexptime" };
     std::string m_gainName{ "camscigain" };
 
-    std::string m_outdir{ "./iefc_out" };
-    std::string m_setupdir{ "./ref_psf" };
-    std::string m_caldir{ "./cal_a" };
+    std::string m_dirPsf{ "./ref_psf" };  ///< Ref-PSF / dark / Imax package (write+read)
+    std::string m_dirCal{ "./cal_a" };    ///< Calibration package (response/control matrices)
 
     unsigned m_nFrames{ 5 };
-    unsigned m_waitFrames{ 1 };
-    float m_delay_s{ 0.05f };
+    /// Camera settle after DM write: use frame delay OR wall-clock delay (mutually exclusive).
+    unsigned m_camNFrameDelay{ 1 };  ///< Skip this many new camsci frames (0 = use cam_r_delay)
+    float m_camRDelay{ 0.0f };      ///< Wall-clock settle [s] (used only when cam_n_frame_delay==0)
 
     float m_fsmAmp_nm{ 1000.0f };
     float m_fsmTip_nm{ 1000.0f };
@@ -118,15 +118,15 @@ class iefcCtrl : public MagAOXApp<true>
     float m_psfExptime{ 1.0f };   ///< Exposure used for doRefPsf (same milk channel)
     bool m_setExptime{ false };   ///< True after INDI exptime was set (calibrate/run)
 
-    float m_regCond{ -2.5f };
+    float m_calRegCond{ -2.5f };
     float m_clProbeAmp{ 1e-9f };     ///< Closed-loop probe amp [m] (INDI cl_probe_amp)
-    float m_calibProbeAmp{ 5e-9f };  ///< Calib probe amp [m] (INDI calib_probe_amp)
-    float m_calibAmp{ 2e-9f };       ///< Calib mode poke amp [m] (INDI calib_mode_amp)
-    unsigned m_iters{ 3 };
-    float m_loopGain{ 1.0f };
-    float m_leakage{ 0.0f };
+    float m_calProbeAmp{ 5e-9f };  ///< Calib probe amp [m] (INDI cal_probe_amp)
+    float m_calModeAmp{ 2e-9f };       ///< Calib mode poke amp [m] (INDI cal_mode_amp)
+    unsigned m_clIters{ 3 };
+    float m_clLoopGain{ 1.0f };
+    float m_clLeakage{ 0.0f };
 
-    std::string m_subNormName{ "camsci_sub_norm" };
+    std::string m_shmCamSubNorm{ "camsci_sub_norm" };
     std::string m_contrastAvgName{ "contrast_avg" };
     unsigned m_contrastAvgN{ 10 }; ///< Frames in running contrast average
     bool m_saveResponseFull{ false }; ///< Full-frame response cube (GB-scale; off by default)
@@ -163,7 +163,7 @@ class iefcCtrl : public MagAOXApp<true>
     double m_cachedGain{ 0.0 };
     ///@}
 
-    /** \name camsci_sub_norm continuous stream
+    /** \name shm_cam_sub_norm continuous stream
       *@{
       */
     IMAGE m_subNorm{};
@@ -208,14 +208,14 @@ class iefcCtrl : public MagAOXApp<true>
     /** \name INDI — shmim names (repointable)
       *@{
       */
-    pcf::IndiProperty m_indiP_camsci;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camsci);
+    pcf::IndiProperty m_indiP_shmCamInput;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmCamInput);
 
-    pcf::IndiProperty m_indiP_dmChannel;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmChannel);
+    pcf::IndiProperty m_indiP_dmShmim;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmShmim);
 
-    pcf::IndiProperty m_indiP_fsmChannel;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_fsmChannel);
+    pcf::IndiProperty m_indiP_fsmShmim;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_fsmShmim);
 
     pcf::IndiProperty m_indiP_shutterShmim;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shutterShmim );
@@ -227,12 +227,12 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_exptimeShmim;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_exptimeShmim);
 
-    /// Milk name for camera-gain scalar (not loopGain).
+    /// Milk name for camera-gain scalar (not cl_loop_gain).
     pcf::IndiProperty m_indiP_gainShmim;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_gainShmim);
 
-    pcf::IndiProperty m_indiP_subNorm;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_subNorm);
+    pcf::IndiProperty m_indiP_shmCamSubNorm;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmCamSubNorm);
 
     pcf::IndiProperty m_indiP_contrastAvgShmim;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_contrastAvgShmim);
@@ -244,11 +244,11 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_nFrames;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_nFrames);
 
-    pcf::IndiProperty m_indiP_waitFrames;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_waitFrames);
+    pcf::IndiProperty m_indiP_camNFrameDelay;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camNFrameDelay);
 
-    pcf::IndiProperty m_indiP_delay_s;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_delay_s);
+    pcf::IndiProperty m_indiP_camRDelay;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camRDelay);
 
     pcf::IndiProperty m_indiP_exptime;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_exptime);
@@ -257,14 +257,11 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_psfExptime;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfExptime);
 
-    pcf::IndiProperty m_indiP_outdir;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_outdir);
+    pcf::IndiProperty m_indiP_dirPsf;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dirPsf);
 
-    pcf::IndiProperty m_indiP_setupdir;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_setupdir);
-
-    pcf::IndiProperty m_indiP_caldir;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_caldir);
+    pcf::IndiProperty m_indiP_dirCal;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dirCal);
     ///@}
 
     /** \name INDI — ref PSF / FSM
@@ -298,26 +295,26 @@ class iefcCtrl : public MagAOXApp<true>
     /** \name INDI — calibrate / run
       *@{
       */
-    pcf::IndiProperty m_indiP_regCond;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_regCond);
+    pcf::IndiProperty m_indiP_calRegCond;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calRegCond);
 
-    pcf::IndiProperty m_indiP_calibProbeAmp;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calibProbeAmp);
+    pcf::IndiProperty m_indiP_calProbeAmp;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calProbeAmp);
 
-    pcf::IndiProperty m_indiP_calibModeAmp;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calibModeAmp);
+    pcf::IndiProperty m_indiP_calModeAmp;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calModeAmp);
 
     pcf::IndiProperty m_indiP_clProbeAmp;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clProbeAmp);
 
-    pcf::IndiProperty m_indiP_iters;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_iters);
+    pcf::IndiProperty m_indiP_clIters;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clIters);
 
-    pcf::IndiProperty m_indiP_loopGain;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_loopGain);
+    pcf::IndiProperty m_indiP_clLoopGain;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clLoopGain);
 
-    pcf::IndiProperty m_indiP_leakage;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_leakage);
+    pcf::IndiProperty m_indiP_clLeakage;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clLeakage);
 
     pcf::IndiProperty m_indiP_contrastAvgN;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_contrastAvgN);
@@ -348,8 +345,8 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_Imax_ref; ///< RO number
     pcf::IndiProperty m_indiP_contrast; ///< RO number (last closed-loop iter)
     pcf::IndiProperty m_indiP_contrastAvg; ///< RO running average published to shmim
-    pcf::IndiProperty m_indiP_calibMode;   ///< RO: current calib mode (1..N, 0 idle)
-    pcf::IndiProperty m_indiP_nCalibModes; ///< RO: total calib modes in package / run
+    pcf::IndiProperty m_indiP_calMode;   ///< RO: current calib mode (1..N, 0 idle)
+    pcf::IndiProperty m_indiP_nCalModes; ///< RO: total calib modes in package / run
     ///@}
 
   public:
@@ -406,16 +403,16 @@ class iefcCtrl : public MagAOXApp<true>
     /// Publish psfExptime INDI and write the same milk channel (camsciexptime).
     int setPsfExptimeValue( double seconds );
 
-    /// Cache setup (dark + Imax) for continuous camsci_sub_norm.
+    /// Cache setup (dark + Imax) for continuous shm_cam_sub_norm.
     void updateLiveNormFromSetup( const lina::SetupData &setup );
 
-    /// Ensure camsci_sub_norm shmim exists matching camsci geometry.
+    /// Ensure shm_cam_sub_norm shmim exists matching camera geometry.
     int ensureSubNormStream( uint32_t w, uint32_t h );
 
     /// If a new camsci frame is available, dark-sub + normalize and publish.
     int processSubNormFrame();
 
-    /// Ensure control mask available for continuous contrast (cal cache / caldir / default).
+    /// Ensure control mask available for continuous contrast (cal cache / dir_cal / default).
     int ensureContrastMask( uint32_t w, uint32_t h );
 
     /// Ensure scalar contrast_avg shmim exists.
@@ -429,6 +426,9 @@ class iefcCtrl : public MagAOXApp<true>
 
     /// Cooperative cancel predicate for lina calibrate/run/grab.
     lina::StopCheck makeStopCheck();
+
+    /// Resolve mutually exclusive camera settle: frame count XOR wall-clock delay.
+    void resolveCamSettle( std::size_t &wait_frames, double &delay_s ) const;
 };
 
 iefcCtrl::iefcCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
@@ -437,12 +437,13 @@ iefcCtrl::iefcCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
 
 void iefcCtrl::setupConfig()
 {
-    config.add( "iefc.camsci", "", "iefc.camsci", argType::Required, "iefc", "camsci", false,
-                "string", "Camera shmim name (default camsci)." );
-    config.add( "iefc.dmChannel", "", "iefc.dmChannel", argType::Required, "iefc", "dmChannel",
-                false, "string", "IEFC DM channel (default dm01disp07)." );
-    config.add( "iefc.fsmChannel", "", "iefc.fsmChannel", argType::Required, "iefc", "fsmChannel",
-                false, "string", "FSM DMcomb channel (default dm00disp01)." );
+    config.add( "iefc.shm_cam_input", "", "iefc.shm_cam_input", argType::Required, "iefc",
+                "shm_cam_input", false, "string",
+                "Science-camera ImageStreamIO name (default camsci)." );
+    config.add( "iefc.dm_shmim", "", "iefc.dm_shmim", argType::Required, "iefc", "dm_shmim", false,
+                "string", "IEFC DM channel shmim (default dm01disp07)." );
+    config.add( "iefc.fsm_shmim", "", "iefc.fsm_shmim", argType::Required, "iefc", "fsm_shmim", false,
+                "string", "FSM DMcomb channel shmim (default dm00disp01)." );
     config.add( "iefc.shutter", "", "iefc.shutter", argType::Required, "iefc", "shutter", false,
                 "string", "Shutter scalar shmim name (INDI shutterShmim; default camscishutter)." );
     config.add( "iefc.exptime", "", "iefc.exptime", argType::Required, "iefc", "exptime", false,
@@ -467,18 +468,32 @@ void iefcCtrl::setupConfig()
                 false,
                 "string",
                 "Alias for iefc.gain (camera-gain shmim name)." );
-    config.add( "iefc.outdir", "", "iefc.outdir", argType::Required, "iefc", "outdir", false,
-                "string", "Default output directory for ref-PSF / darks." );
-    config.add( "iefc.setupdir", "", "iefc.setupdir", argType::Required, "iefc", "setupdir", false,
-                "string", "Ref-PSF / dark-library directory used by calibrate/run." );
-    config.add( "iefc.caldir", "", "iefc.caldir", argType::Required, "iefc", "caldir", false,
-                "string", "Calibration package directory (response/control)." );
+    config.add( "iefc.dir_cal", "", "iefc.dir_cal", argType::Required, "iefc", "dir_cal", false,
+                "string", "Calibration package dir (response/control matrices)." );
+    config.add( "iefc.dir_psf", "", "iefc.dir_psf", argType::Required, "iefc", "dir_psf", false,
+                "string",
+                "Ref-PSF / dark-library / Imax package (written by doRefPsf/doDarkLibrary; "
+                "read by calibrate/run)." );
     config.add( "iefc.nFrames", "", "iefc.nFrames", argType::Required, "iefc", "nFrames", false,
                 "unsigned", "Frames to average per grab (shared)." );
-    config.add( "iefc.waitFrames", "", "iefc.waitFrames", argType::Required, "iefc", "waitFrames",
-                false, "unsigned", "Frames to skip after DM write (shared)." );
-    config.add( "iefc.delay_s", "", "iefc.delay_s", argType::Required, "iefc", "delay_s", false,
-                "float", "Wall-clock settle after DM write [s]." );
+    config.add( "iefc.cam_n_frame_delay",
+                "",
+                "iefc.cam_n_frame_delay",
+                argType::Required,
+                "iefc",
+                "cam_n_frame_delay",
+                false,
+                "unsigned",
+                "Skip N new camera frames after DM write (mutually exclusive with cam_r_delay)." );
+    config.add( "iefc.cam_r_delay",
+                "",
+                "iefc.cam_r_delay",
+                argType::Required,
+                "iefc",
+                "cam_r_delay",
+                false,
+                "float",
+                "Wall-clock settle [s] after DM write (used only when cam_n_frame_delay==0)." );
     config.add( "iefc.fsmAmp_nm", "", "iefc.fsmAmp_nm", argType::Required, "iefc", "fsmAmp_nm",
                 false, "float", "Default tip+tilt poke amplitude [nm]." );
     config.add( "iefc.nDark", "", "iefc.nDark", argType::Required, "iefc", "nDark", false,
@@ -496,18 +511,64 @@ void iefcCtrl::setupConfig()
                 "Exposure [s] applied to camsciexptime during doRefPsf (default = exptime)." );
     config.add( "iefc.exptimes", "", "iefc.exptimes", argType::Required, "iefc", "exptimes", false,
                 "string", "CSV exposure times for dark-library." );
-    config.add( "iefc.regCond", "", "iefc.regCond", argType::Required, "iefc", "regCond", false,
-                "float", "beta_reg regularization for run." );
-    config.add( "iefc.cl_probe_amp", "", "iefc.cl_probe_amp", argType::Required, "iefc", "cl_probe_amp", false,
-                "float", "Closed-loop probe amplitude [m]." );
-    config.add( "iefc.calib_probe_amp", "", "iefc.calib_probe_amp", argType::Required, "iefc", "calib_probe_amp", false,
-                "float", "Calibration probe amplitude [m]." );
-    config.add( "iefc.calib_mode_amp", "", "iefc.calib_mode_amp", argType::Required, "iefc", "calib_mode_amp", false,
-                "float", "Calibration mode poke amplitude [m]." );
-    config.add( "iefc.iters", "", "iefc.iters", argType::Required, "iefc", "iters", false,
+    config.add( "iefc.cal_reg_cond",
+                "",
+                "iefc.cal_reg_cond",
+                argType::Required,
+                "iefc",
+                "cal_reg_cond",
+                false,
+                "float",
+                "beta_reg regularization when building the control matrix." );
+    config.add( "iefc.cal_probe_amp",
+                "",
+                "iefc.cal_probe_amp",
+                argType::Required,
+                "iefc",
+                "cal_probe_amp",
+                false,
+                "float",
+                "Calibration probe amplitude [m]." );
+    config.add( "iefc.cal_mode_amp",
+                "",
+                "iefc.cal_mode_amp",
+                argType::Required,
+                "iefc",
+                "cal_mode_amp",
+                false,
+                "float",
+                "Calibration mode poke amplitude [m]." );
+    config.add( "iefc.cl_probe_amp", "", "iefc.cl_probe_amp", argType::Required, "iefc", "cl_probe_amp",
+                false, "float", "Closed-loop probe amplitude [m]." );
+    config.add( "iefc.cl_iters", "", "iefc.cl_iters", argType::Required, "iefc", "cl_iters", false,
                 "unsigned", "Closed-loop iterations per run." );
-    config.add( "shmims.camsci_sub_norm", "", "shmims.camsci_sub_norm", argType::Required, "shmims", "camsci_sub_norm", false,
-                "string", "Dark-sub + Imax-normalized camsci stream name." );
+    config.add( "iefc.cl_loop_gain",
+                "",
+                "iefc.cl_loop_gain",
+                argType::Required,
+                "iefc",
+                "cl_loop_gain",
+                false,
+                "float",
+                "Closed-loop gain." );
+    config.add( "iefc.cl_leakage",
+                "",
+                "iefc.cl_leakage",
+                argType::Required,
+                "iefc",
+                "cl_leakage",
+                false,
+                "float",
+                "Closed-loop leakage." );
+    config.add( "shmims.shm_cam_sub_norm",
+                "",
+                "shmims.shm_cam_sub_norm",
+                argType::Required,
+                "shmims",
+                "shm_cam_sub_norm",
+                false,
+                "string",
+                "Dark-sub + Imax-normalized camera stream name." );
     config.add( "shmims.contrast_avg", "", "shmims.contrast_avg", argType::Required, "shmims", "contrast_avg", false,
                 "string", "Running-average contrast scalar stream name." );
     config.add( "iefc.contrast_avg_n", "", "iefc.contrast_avg_n", argType::Required, "iefc", "contrast_avg_n", false,
@@ -518,20 +579,19 @@ void iefcCtrl::setupConfig()
 
 void iefcCtrl::loadConfig()
 {
-    config( m_camsciName, "iefc.camsci" );
-    config( m_dmChan, "iefc.dmChannel" );
-    config( m_fsmChan, "iefc.fsmChannel" );
+    config( m_shmCamInput, "iefc.shm_cam_input" );
+    config( m_dmShmim, "iefc.dm_shmim" );
+    config( m_fsmShmim, "iefc.fsm_shmim" );
     config( m_shutterName, "iefc.shutter" );
     config( m_exptimeName, "iefc.exptime" );
     config( m_exptimeName, "iefc.exptimeShmim" ); // alias overrides if set
     config( m_gainName, "iefc.gain" );
     config( m_gainName, "iefc.gainShmim" ); // alias overrides if set
-    config( m_outdir, "iefc.outdir" );
-    config( m_setupdir, "iefc.setupdir" );
-    config( m_caldir, "iefc.caldir" );
+    config( m_dirCal, "iefc.dir_cal" );
+    config( m_dirPsf, "iefc.dir_psf" );
     config( m_nFrames, "iefc.nFrames" );
-    config( m_waitFrames, "iefc.waitFrames" );
-    config( m_delay_s, "iefc.delay_s" );
+    config( m_camNFrameDelay, "iefc.cam_n_frame_delay" );
+    config( m_camRDelay, "iefc.cam_r_delay" );
     config( m_fsmAmp_nm, "iefc.fsmAmp_nm" );
     m_fsmTip_nm = m_fsmAmp_nm;
     m_fsmTilt_nm = m_fsmAmp_nm;
@@ -539,15 +599,25 @@ void iefcCtrl::loadConfig()
     config( m_nPsf, "iefc.nPsf" );
     config( m_psfExptime, "iefc.psf_exptime" );
     config( m_exptimesCsv, "iefc.exptimes" );
-    config( m_regCond, "iefc.regCond" );
+    config( m_calRegCond, "iefc.cal_reg_cond" );
+    config( m_calProbeAmp, "iefc.cal_probe_amp" );
+    config( m_calModeAmp, "iefc.cal_mode_amp" );
     config( m_clProbeAmp, "iefc.cl_probe_amp" );
-    config( m_calibProbeAmp, "iefc.calib_probe_amp" );
-    config( m_calibAmp, "iefc.calib_mode_amp" );
-    config( m_iters, "iefc.iters" );
-    config( m_subNormName, "shmims.camsci_sub_norm" );
+    config( m_clIters, "iefc.cl_iters" );
+    config( m_clLoopGain, "iefc.cl_loop_gain" );
+    config( m_clLeakage, "iefc.cl_leakage" );
+    config( m_shmCamSubNorm, "shmims.shm_cam_sub_norm" );
     config( m_contrastAvgName, "shmims.contrast_avg" );
     config( m_contrastAvgN, "iefc.contrast_avg_n" );
     config( m_saveResponseFull, "iefc.save_response_full" );
+
+    // Enforce mutual exclusivity: frame delay wins if both are set.
+    if( m_camNFrameDelay > 0 && m_camRDelay > 0.0f )
+    {
+        log<text_log>( "cam_n_frame_delay and cam_r_delay both set; using frame delay only",
+                       logPrio::LOG_WARNING );
+        m_camRDelay = 0.0f;
+    }
 }
 
 int iefcCtrl::appStartup()
@@ -557,24 +627,25 @@ int iefcCtrl::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__, "sem_init failed" } );
     }
 
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_camsci, "camsci", "Science camera shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_dmChannel, "dmChannel", "IEFC DM channel shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_fsmChannel, "fsmChannel", "FSM channel shmim", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamInput, "shm_cam_input", "Science camera input shmim", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_dmShmim, "dm_shmim", "IEFC DM channel shmim", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_fsmShmim, "fsm_shmim", "FSM channel shmim", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shutterShmim, "shutterShmim", "Shutter scalar shmim", "shmims" );
     CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_shutter, "shutter" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_exptimeShmim, "exptimeShmim", "Exposure-time scalar shmim", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_gainShmim, "gainShmim", "Camera-gain scalar shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_subNorm, "camsci_sub_norm", "Dark-sub+norm camsci stream", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamSubNorm, "shm_cam_sub_norm", "Dark-sub+norm camera stream", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_contrastAvgShmim, "contrastAvgShmim", "Running-avg contrast shmim name", "shmims" );
 
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_nFrames, "nFrames", 1, 10000, 1, "%u", "Frames to average", "shared" );
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_waitFrames, "waitFrames", 0, 1000, 1, "%u", "Frames to skip after DM", "shared" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_delay_s, "delay_s", 0, 10, 0.01, "%0.3f", "DM settle [s]", "shared" );
+    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_camNFrameDelay, "cam_n_frame_delay", 0, 1000, 1, "%u",
+                                 "Skip N camsci frames after DM (XOR cam_r_delay)", "shared" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camRDelay, "cam_r_delay", 0, 10, 0.01, "%0.3f",
+                                 "Wall-clock settle after DM [s] (XOR cam_n_frame_delay)", "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_exptime, "exptime", 0, 1000, 0.1, "%0.3f", "Live exposure [s] → camsciexptime", "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfExptime, "psf_exptime", 0, 1000, 0.1, "%0.3f", "Ref-PSF exposure [s] → camsciexptime", "refPsf" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_outdir, "outdir", "Output directory", "paths" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_setupdir, "setupdir", "Ref-PSF / dark library dir", "paths" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_caldir, "caldir", "Calibration package dir", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_dirCal, "dir_cal", "Calibration package dir (response/control)", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_dirPsf, "dir_psf", "Ref-PSF / dark / Imax package dir", "paths" );
 
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_fsmAmp_nm, "fsmAmp_nm", -1e5, 1e5, 1, "%0.1f", "Tip+tilt poke [nm]", "refPsf" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_fsmTip_nm, "fsmTip_nm", -1e5, 1e5, 1, "%0.1f", "Tip poke [nm]", "refPsf" );
@@ -585,13 +656,13 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_nPsf, "nPsf", 1, 10000, 1, "%u", "PSF frames", "refPsf" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_exptimes, "exptimes", "Dark-library CSV exposures", "refPsf" );
 
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_regCond, "regCond", -20, 0, 0.1, "%0.2f", "beta_reg", "run" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calibProbeAmp, "calib_probe_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib probe amp [m]", "calibrate" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calibModeAmp, "calib_mode_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib mode amp [m]", "calibrate" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calRegCond, "cal_reg_cond", -20, 0, 0.1, "%0.2f", "beta_reg for control matrix", "calibrate" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calProbeAmp, "cal_probe_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib probe amp [m]", "calibrate" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calModeAmp, "cal_mode_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib mode amp [m]", "calibrate" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clProbeAmp, "cl_probe_amp", 0, 1e-6, 1e-10, "%0.3e", "Closed-loop probe amp [m]", "run" );
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_iters, "iters", 1, 1000, 1, "%u", "Run iterations", "run" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_loopGain, "loopGain", 0, 2, 0.05, "%0.2f", "Loop gain", "run" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_leakage, "leakage", 0, 1, 0.01, "%0.2f", "Leakage", "run" );
+    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_clIters, "cl_iters", 1, 1000, 1, "%u", "Closed-loop iterations", "run" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clLoopGain, "cl_loop_gain", 0, 2, 0.05, "%0.2f", "Closed-loop gain", "run" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clLeakage, "cl_leakage", 0, 1, 0.01, "%0.2f", "Closed-loop leakage", "run" );
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_contrastAvgN, "contrast_avg_n", 1, 10000, 1, "%u", "Contrast avg window [frames]", "contrast" );
 
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_doRefPsf, "doRefPsf" );
@@ -617,21 +688,21 @@ int iefcCtrl::appStartup()
     m_indiP_contrastAvg.add( pcf::IndiElement( "current" ) );
     m_indiP_contrastAvg["current"].set( 0.0 );
 
-    REG_INDI_NEWPROP_NOCB( m_indiP_calibMode, "calibMode", pcf::IndiProperty::Number );
-    m_indiP_calibMode.add( pcf::IndiElement( "current" ) );
-    m_indiP_calibMode["current"].set( 0.0 );
+    REG_INDI_NEWPROP_NOCB( m_indiP_calMode, "cal_mode", pcf::IndiProperty::Number );
+    m_indiP_calMode.add( pcf::IndiElement( "current" ) );
+    m_indiP_calMode["current"].set( 0.0 );
 
-    REG_INDI_NEWPROP_NOCB( m_indiP_nCalibModes, "nCalibModes", pcf::IndiProperty::Number );
-    m_indiP_nCalibModes.add( pcf::IndiElement( "current" ) );
-    m_indiP_nCalibModes["current"].set( 0.0 );
+    REG_INDI_NEWPROP_NOCB( m_indiP_nCalModes, "n_cal_modes", pcf::IndiProperty::Number );
+    m_indiP_nCalModes.add( pcf::IndiElement( "current" ) );
+    m_indiP_nCalModes["current"].set( 0.0 );
 
     // Seed current/target from config (before INDI starts — use setValue, not updateIfChanged)
-    m_indiP_camsci["current"].setValue( m_camsciName );
-    m_indiP_camsci["target"].setValue( m_camsciName );
-    m_indiP_dmChannel["current"].setValue( m_dmChan );
-    m_indiP_dmChannel["target"].setValue( m_dmChan );
-    m_indiP_fsmChannel["current"].setValue( m_fsmChan );
-    m_indiP_fsmChannel["target"].setValue( m_fsmChan );
+    m_indiP_shmCamInput["current"].setValue( m_shmCamInput );
+    m_indiP_shmCamInput["target"].setValue( m_shmCamInput );
+    m_indiP_dmShmim["current"].setValue( m_dmShmim );
+    m_indiP_dmShmim["target"].setValue( m_dmShmim );
+    m_indiP_fsmShmim["current"].setValue( m_fsmShmim );
+    m_indiP_fsmShmim["target"].setValue( m_fsmShmim );
     m_indiP_shutterShmim["current"].setValue( m_shutterName );
     m_indiP_shutterShmim["target"].setValue( m_shutterName );
     // Seed shutter toggle Off (open) before INDI is up — use setSwitchState, not update*
@@ -640,26 +711,24 @@ int iefcCtrl::appStartup()
     m_indiP_exptimeShmim["target"].setValue( m_exptimeName );
     m_indiP_gainShmim["current"].setValue( m_gainName );
     m_indiP_gainShmim["target"].setValue( m_gainName );
-    m_indiP_subNorm["current"].setValue( m_subNormName );
-    m_indiP_subNorm["target"].setValue( m_subNormName );
+    m_indiP_shmCamSubNorm["current"].setValue( m_shmCamSubNorm );
+    m_indiP_shmCamSubNorm["target"].setValue( m_shmCamSubNorm );
     m_indiP_contrastAvgShmim["current"].setValue( m_contrastAvgName );
     m_indiP_contrastAvgShmim["target"].setValue( m_contrastAvgName );
     m_indiP_nFrames["current"].setValue( m_nFrames );
     m_indiP_nFrames["target"].setValue( m_nFrames );
-    m_indiP_waitFrames["current"].setValue( m_waitFrames );
-    m_indiP_waitFrames["target"].setValue( m_waitFrames );
-    m_indiP_delay_s["current"].setValue( m_delay_s );
-    m_indiP_delay_s["target"].setValue( m_delay_s );
+    m_indiP_camNFrameDelay["current"].setValue( m_camNFrameDelay );
+    m_indiP_camNFrameDelay["target"].setValue( m_camNFrameDelay );
+    m_indiP_camRDelay["current"].setValue( m_camRDelay );
+    m_indiP_camRDelay["target"].setValue( m_camRDelay );
     m_indiP_exptime["current"].setValue( m_exptime );
     m_indiP_exptime["target"].setValue( m_exptime );
     m_indiP_psfExptime["current"].setValue( m_psfExptime );
     m_indiP_psfExptime["target"].setValue( m_psfExptime );
-    m_indiP_outdir["current"].setValue( m_outdir );
-    m_indiP_outdir["target"].setValue( m_outdir );
-    m_indiP_setupdir["current"].setValue( m_setupdir );
-    m_indiP_setupdir["target"].setValue( m_setupdir );
-    m_indiP_caldir["current"].setValue( m_caldir );
-    m_indiP_caldir["target"].setValue( m_caldir );
+    m_indiP_dirCal["current"].setValue( m_dirCal );
+    m_indiP_dirCal["target"].setValue( m_dirCal );
+    m_indiP_dirPsf["current"].setValue( m_dirPsf );
+    m_indiP_dirPsf["target"].setValue( m_dirPsf );
     m_indiP_fsmAmp_nm["current"].setValue( m_fsmAmp_nm );
     m_indiP_fsmAmp_nm["target"].setValue( m_fsmAmp_nm );
     m_indiP_fsmTip_nm["current"].setValue( m_fsmTip_nm );
@@ -676,20 +745,20 @@ int iefcCtrl::appStartup()
     m_indiP_nPsf["target"].setValue( m_nPsf );
     m_indiP_exptimes["current"].setValue( m_exptimesCsv );
     m_indiP_exptimes["target"].setValue( m_exptimesCsv );
-    m_indiP_regCond["current"].setValue( m_regCond );
-    m_indiP_regCond["target"].setValue( m_regCond );
-    m_indiP_calibProbeAmp["current"].setValue( m_calibProbeAmp );
-    m_indiP_calibProbeAmp["target"].setValue( m_calibProbeAmp );
-    m_indiP_calibModeAmp["current"].setValue( m_calibAmp );
-    m_indiP_calibModeAmp["target"].setValue( m_calibAmp );
+    m_indiP_calRegCond["current"].setValue( m_calRegCond );
+    m_indiP_calRegCond["target"].setValue( m_calRegCond );
+    m_indiP_calProbeAmp["current"].setValue( m_calProbeAmp );
+    m_indiP_calProbeAmp["target"].setValue( m_calProbeAmp );
+    m_indiP_calModeAmp["current"].setValue( m_calModeAmp );
+    m_indiP_calModeAmp["target"].setValue( m_calModeAmp );
     m_indiP_clProbeAmp["current"].setValue( m_clProbeAmp );
     m_indiP_clProbeAmp["target"].setValue( m_clProbeAmp );
-    m_indiP_iters["current"].setValue( m_iters );
-    m_indiP_iters["target"].setValue( m_iters );
-    m_indiP_loopGain["current"].setValue( m_loopGain );
-    m_indiP_loopGain["target"].setValue( m_loopGain );
-    m_indiP_leakage["current"].setValue( m_leakage );
-    m_indiP_leakage["target"].setValue( m_leakage );
+    m_indiP_clIters["current"].setValue( m_clIters );
+    m_indiP_clIters["target"].setValue( m_clIters );
+    m_indiP_clLoopGain["current"].setValue( m_clLoopGain );
+    m_indiP_clLoopGain["target"].setValue( m_clLoopGain );
+    m_indiP_clLeakage["current"].setValue( m_clLeakage );
+    m_indiP_clLeakage["target"].setValue( m_clLeakage );
     m_indiP_contrastAvgN["current"].setValue( m_contrastAvgN );
     m_indiP_contrastAvgN["target"].setValue( m_contrastAvgN );
 
@@ -699,7 +768,7 @@ int iefcCtrl::appStartup()
 
     state( stateCodes::READY );
 
-    log<text_log>( "iefcCtrl started (native jobs + camsci_sub_norm frame thread)" );
+    log<text_log>( "iefcCtrl started (native jobs + shm_cam_sub_norm frame thread)" );
     return 0;
 }
 
@@ -715,7 +784,7 @@ int iefcCtrl::appLogic()
         state( stateCodes::READY );
     }
 
-    // camsci_sub_norm / contrast_avg run on m_subNormThread (semaphore-driven).
+    // shm_cam_sub_norm / contrast_avg run on m_subNormThread (semaphore-driven).
     return 0;
 }
 
@@ -760,13 +829,13 @@ void iefcCtrl::subNormExec()
 {
     // Frame-driven: wait on camsci semaphore so we keep up with the camera,
     // independent of MagAOX loopPause (often 1s by default).
-    log<text_log>( "camsci_sub_norm thread started" );
+    log<text_log>( "shm_cam_sub_norm thread started" );
     int sem = -1;
     while( !m_subNormShutdown.load() )
     {
         if( !m_camsciOpen )
         {
-            if( ImageStreamIO_openIm( &m_camsci, m_camsciName.c_str() ) != IMAGESTREAMIO_SUCCESS )
+            if( ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) != IMAGESTREAMIO_SUCCESS )
             {
                 mx::sys::milliSleep( 200 );
                 continue;
@@ -796,7 +865,7 @@ void iefcCtrl::subNormExec()
 
         processSubNormFrame();
     }
-    log<text_log>( "camsci_sub_norm thread stopped" );
+    log<text_log>( "shm_cam_sub_norm thread stopped" );
 }
 
 void iefcCtrl::workerExec()
@@ -842,7 +911,7 @@ void iefcCtrl::workerExec()
             setStatus( "idle" );
         }
         m_busy = 0;
-        updateIfChanged( m_indiP_calibMode, "current", 0.0 );
+        updateIfChanged( m_indiP_calMode, "current", 0.0 );
     }
 }
 
@@ -897,6 +966,20 @@ lina::StopCheck iefcCtrl::makeStopCheck()
     return [this]() { return m_stopRequested.load() || m_workerShutdown.load(); };
 }
 
+void iefcCtrl::resolveCamSettle( std::size_t &wait_frames, double &delay_s ) const
+{
+    if( m_camNFrameDelay > 0 )
+    {
+        wait_frames = m_camNFrameDelay;
+        delay_s = 0.0;
+    }
+    else
+    {
+        wait_frames = 0;
+        delay_s = static_cast<double>( m_camRDelay );
+    }
+}
+
 void iefcCtrl::setStatus( const std::string &s )
 {
     m_status = s;
@@ -912,10 +995,10 @@ int iefcCtrl::openCamsci()
 {
     if( m_camsciOpen )
         return 0;
-    if( ImageStreamIO_openIm( &m_camsci, m_camsciName.c_str() ) != IMAGESTREAMIO_SUCCESS )
+    if( ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) != IMAGESTREAMIO_SUCCESS )
     {
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_camsciName } );
+            { __FILE__, __LINE__, "failed to open " + m_shmCamInput } );
     }
     m_camsciOpen = true;
     m_camsciSem = ImageStreamIO_getsemwaitindex( &m_camsci, 0 );
@@ -926,10 +1009,10 @@ int iefcCtrl::openDm()
 {
     if( m_dmOpen )
         return 0;
-    if( ImageStreamIO_openIm( &m_dm, m_dmChan.c_str() ) != IMAGESTREAMIO_SUCCESS )
+    if( ImageStreamIO_openIm( &m_dm, m_dmShmim.c_str() ) != IMAGESTREAMIO_SUCCESS )
     {
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_dmChan } );
+            { __FILE__, __LINE__, "failed to open " + m_dmShmim } );
     }
     m_dmOpen = true;
     return 0;
@@ -939,10 +1022,10 @@ int iefcCtrl::openFsm()
 {
     if( m_fsmOpen )
         return 0;
-    if( ImageStreamIO_openIm( &m_fsm, m_fsmChan.c_str() ) != IMAGESTREAMIO_SUCCESS )
+    if( ImageStreamIO_openIm( &m_fsm, m_fsmShmim.c_str() ) != IMAGESTREAMIO_SUCCESS )
     {
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_fsmChan } );
+            { __FILE__, __LINE__, "failed to open " + m_fsmShmim } );
     }
     m_fsmOpen = true;
     return 0;
@@ -1332,7 +1415,7 @@ int iefcCtrl::ensureSubNormStream( uint32_t w, uint32_t h )
     }
 
     // Prefer attaching to an existing stream; create if missing/mismatched.
-    if( ImageStreamIO_openIm( &m_subNorm, m_subNormName.c_str() ) == IMAGESTREAMIO_SUCCESS )
+    if( ImageStreamIO_openIm( &m_subNorm, m_shmCamSubNorm.c_str() ) == IMAGESTREAMIO_SUCCESS )
     {
         const uint32_t ow = m_subNorm.md->size[0];
         const uint32_t oh = ( m_subNorm.md->naxis > 1 ) ? m_subNorm.md->size[1] : 1;
@@ -1346,7 +1429,7 @@ int iefcCtrl::ensureSubNormStream( uint32_t w, uint32_t h )
 
     uint32_t imsize[3] = { w, h, 0 };
     if( ImageStreamIO_createIm_gpu( &m_subNorm,
-                                    m_subNormName.c_str(),
+                                    m_shmCamSubNorm.c_str(),
                                     2,
                                     imsize,
                                     _DATATYPE_FLOAT,
@@ -1358,10 +1441,10 @@ int iefcCtrl::ensureSubNormStream( uint32_t w, uint32_t h )
                                     0 ) != IMAGESTREAMIO_SUCCESS )
     {
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to create " + m_subNormName } );
+            { __FILE__, __LINE__, "failed to create " + m_shmCamSubNorm } );
     }
     m_subNormCreated = true;
-    log<text_log>( "created shmim " + m_subNormName + " " + std::to_string( w ) + "x" +
+    log<text_log>( "created shmim " + m_shmCamSubNorm + " " + std::to_string( w ) + "x" +
                    std::to_string( h ) );
     return 0;
 }
@@ -1369,7 +1452,7 @@ int iefcCtrl::ensureSubNormStream( uint32_t w, uint32_t h )
 int iefcCtrl::processSubNormFrame()
 {
     // Lazy-load setup for continuous norm if not yet available.
-    if( !m_haveLiveNorm && !m_setupdir.empty() && !m_busy.load() )
+    if( !m_haveLiveNorm && !m_dirPsf.empty() && !m_busy.load() )
     {
         try
         {
@@ -1382,14 +1465,14 @@ int iefcCtrl::processSubNormFrame()
             }
             std::size_t ncam = 0;
             if( !m_camsciOpen &&
-                ImageStreamIO_openIm( &m_camsci, m_camsciName.c_str() ) == IMAGESTREAMIO_SUCCESS )
+                ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) == IMAGESTREAMIO_SUCCESS )
             {
                 m_camsciOpen = true;
                 m_camsciSem = ImageStreamIO_getsemwaitindex( &m_camsci, 0 );
             }
             if( m_camsciOpen )
                 ncam = static_cast<std::size_t>( m_camsci.md->size[0] );
-            auto setup = lina::load_setup_dir( m_setupdir, ncam, live_exptime );
+            auto setup = lina::load_setup_dir( m_dirPsf, ncam, live_exptime );
             updateLiveNormFromSetup( setup );
         }
         catch( ... )
@@ -1404,7 +1487,7 @@ int iefcCtrl::processSubNormFrame()
     // Quiet attach: appLogic runs continuously; do not spam logs if camsci is down.
     if( !m_camsciOpen )
     {
-        if( ImageStreamIO_openIm( &m_camsci, m_camsciName.c_str() ) != IMAGESTREAMIO_SUCCESS )
+        if( ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) != IMAGESTREAMIO_SUCCESS )
             return 0;
         m_camsciOpen = true;
         m_camsciSem = ImageStreamIO_getsemwaitindex( &m_camsci, 0 );
@@ -1429,14 +1512,14 @@ int iefcCtrl::processSubNormFrame()
                            ? ( (double *)m_exptimeShm.array.raw )[0]
                            : (double)( (float *)m_exptimeShm.array.raw )[0];
     }
-    if( !m_setupdir.empty() &&
+    if( !m_dirPsf.empty() &&
         ( m_liveDarkExptime < 0.0 ||
           std::fabs( live_exptime - m_liveDarkExptime ) > lina::kDarkExptimeMatchTol ) &&
         !m_busy.load() )
     {
         try
         {
-            auto setup = lina::load_setup_dir( m_setupdir, w, live_exptime );
+            auto setup = lina::load_setup_dir( m_dirPsf, w, live_exptime );
             updateLiveNormFromSetup( setup );
         }
         catch( ... )
@@ -1552,13 +1635,13 @@ int iefcCtrl::ensureContrastMask( uint32_t w, uint32_t h )
         }
     }
 
-    // Try caldir package wfs_mask only (avoid requiring full modes package).
-    if( !m_caldir.empty() )
+    // Try dir_cal package wfs_mask only (avoid requiring full modes package).
+    if( !m_dirCal.empty() )
     {
         try
         {
             lina::PackagePaths pkg;
-            pkg.dir = m_caldir;
+            pkg.dir = m_dirCal;
             auto m = lina::load_fits_double( pkg.wfs_mask_path() );
             if( m.rows() == w && m.cols() == h )
             {
@@ -1650,12 +1733,12 @@ int iefcCtrl::updateContrastAverage( double contrast )
 int iefcCtrl::doRefPsf()
 {
     setStatus( "refPsf: starting" );
-    log<text_log>( "doRefPsf outdir=" + m_outdir + " psf_exptime=" +
+    log<text_log>( "doRefPsf dir_psf=" + m_dirPsf + " psf_exptime=" +
                    std::to_string( m_psfExptime ) + " s" );
 
     if( openCamsci() < 0 || openFsm() < 0 || openShutter() < 0 || openExptime() < 0 )
         return -1;
-    if( ensureDir( m_outdir ) < 0 )
+    if( ensureDir( m_dirPsf ) < 0 )
         return -1;
 
     // Apply PSF exposure to camsciexptime before dark + PSF averages.
@@ -1689,11 +1772,17 @@ int iefcCtrl::doRefPsf()
         return -1;
     mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
 
+    std::size_t settle_frames = 0;
+    double settle_s = 0.0;
+    resolveCamSettle( settle_frames, settle_s );
+
     std::vector<float> dark;
     uint32_t w = 0, h = 0;
-    if( grabMeanCamsci( m_nDark, m_waitFrames, dark, w, h ) < 0 )
+    if( settle_s > 0.0 )
+        mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
+    if( grabMeanCamsci( m_nDark, static_cast<unsigned>( settle_frames ), dark, w, h ) < 0 )
         return -1;
-    if( saveFitsF32( m_outdir + "/dark_avg.fits", dark, w, h ) < 0 )
+    if( saveFitsF32( m_dirPsf + "/dark_avg.fits", dark, w, h ) < 0 )
         return -1;
 
     setStatus( "refPsf: opening shutter / PSF" );
@@ -1702,7 +1791,9 @@ int iefcCtrl::doRefPsf()
     mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
 
     std::vector<float> psf;
-    if( grabMeanCamsci( m_nPsf, m_waitFrames, psf, w, h ) < 0 )
+    if( settle_s > 0.0 )
+        mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
+    if( grabMeanCamsci( m_nPsf, static_cast<unsigned>( settle_frames ), psf, w, h ) < 0 )
         return -1;
 
     std::vector<float> psf_sub( psf.size() );
@@ -1714,16 +1805,16 @@ int iefcCtrl::doRefPsf()
             peak = psf_sub[i];
     }
 
-    if( saveFitsF32( m_outdir + "/ref_psf_avg.fits", psf, w, h ) < 0 )
+    if( saveFitsF32( m_dirPsf + "/ref_psf_avg.fits", psf, w, h ) < 0 )
         return -1;
-    if( saveFitsF32( m_outdir + "/ref_psf_dark_sub.fits", psf_sub, w, h ) < 0 )
+    if( saveFitsF32( m_dirPsf + "/ref_psf_dark_sub.fits", psf_sub, w, h ) < 0 )
         return -1;
 
     std::ostringstream cfg;
     cfg << "# Reference PSF package (iefcCtrl)\n"
-        << "camsci=" << m_camsciName << "\n"
-        << "dm_channel=" << m_dmChan << "\n"
-        << "fsm_channel=" << m_fsmChan << "\n"
+        << "camsci=" << m_shmCamInput << "\n"
+        << "dm_channel=" << m_dmShmim << "\n"
+        << "fsm_channel=" << m_fsmShmim << "\n"
         << "shutter_shm=" << m_shutterName << "\n"
         << "exptime_shm=" << m_exptimeName << "\n"
         << "gain_shm=" << m_gainName << "\n"
@@ -1738,20 +1829,21 @@ int iefcCtrl::doRefPsf()
         << "ndark=" << m_nDark << "\n"
         << "npsf=" << m_nPsf << "\n"
         << "nframes=" << m_nFrames << "\n"
-        << "wait_frames=" << m_waitFrames << "\n"
+        << "cam_n_frame_delay=" << m_camNFrameDelay << "\n"
+        << "cam_r_delay=" << m_camRDelay << "\n"
         << "dark_file=dark_avg.fits\n"
         << "ref_psf_file=ref_psf_avg.fits\n"
         << "ref_psf_dark_sub_file=ref_psf_dark_sub.fits\n";
-    if( writeConfigTxt( m_outdir + "/config.txt", cfg.str() ) < 0 )
+    if( writeConfigTxt( m_dirPsf + "/config.txt", cfg.str() ) < 0 )
         return -1;
 
     updateIfChanged( m_indiP_Imax_ref, "current", static_cast<double>( peak ) );
 
-    // Seed continuous camsci_sub_norm from this ref-PSF package.
+    // Seed continuous shm_cam_sub_norm from this ref-PSF package.
     {
         lina::SetupData setup;
         setup.loaded = true;
-        setup.dir = m_outdir;
+        setup.dir = m_dirPsf;
         setup.dark = lina::Array2D<double>( w, h, 0.0 ); // rows=size[0], cols=size[1]
         for( size_t i = 0; i < dark.size(); ++i )
             setup.dark.data()[i] = static_cast<double>( dark[i] );
@@ -1764,10 +1856,6 @@ int iefcCtrl::doRefPsf()
     setStatus( "refPsf: restoring FSM home" );
     writeFsmTipTiltPiston( ref_tip_m, ref_tilt_m, ref_pist_m );
 
-    // Keep setupdir in sync if user used outdir as the setup package.
-    if( m_setupdir.empty() )
-        m_setupdir = m_outdir;
-
     log<text_log>( "doRefPsf done Imax_ref=" + std::to_string( peak ) );
     setStatus( "refPsf: done" );
     return 0;
@@ -1778,9 +1866,9 @@ int iefcCtrl::doDarkLibrary()
     setStatus( "darkLibrary: starting" );
     if( openCamsci() < 0 || openShutter() < 0 || openExptime() < 0 )
         return -1;
-    if( ensureDir( m_outdir ) < 0 )
+    if( ensureDir( m_dirPsf ) < 0 )
         return -1;
-    if( ensureDir( m_outdir + "/darks" ) < 0 )
+    if( ensureDir( m_dirPsf + "/darks" ) < 0 )
         return -1;
 
     std::vector<double> times;
@@ -1816,7 +1904,7 @@ int iefcCtrl::doDarkLibrary()
     if( setShutterClosed( true ) < 0 )
         return -1;
 
-    std::ofstream manifest( m_outdir + "/dark_library.txt" );
+    std::ofstream manifest( m_dirPsf + "/dark_library.txt" );
     manifest << "# dark library: exptime  relative_path  ndark\n";
 
     for( size_t i = 0; i < times.size(); ++i )
@@ -1843,16 +1931,23 @@ int iefcCtrl::doDarkLibrary()
 
         std::vector<float> dark;
         uint32_t w = 0, h = 0;
-        if( grabMeanCamsci( m_nDark, m_waitFrames, dark, w, h ) < 0 )
-            return -1;
+        {
+            std::size_t settle_frames = 0;
+            double settle_s = 0.0;
+            resolveCamSettle( settle_frames, settle_s );
+            if( settle_s > 0.0 )
+                mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
+            if( grabMeanCamsci( m_nDark, static_cast<unsigned>( settle_frames ), dark, w, h ) < 0 )
+                return -1;
+        }
 
         char rel[64];
         std::snprintf( rel, sizeof( rel ), "darks/dark_%03zu.fits", i );
-        if( saveFitsF32( m_outdir + "/" + rel, dark, w, h ) < 0 )
+        if( saveFitsF32( m_dirPsf + "/" + rel, dark, w, h ) < 0 )
             return -1;
         manifest << std::setprecision( 17 ) << reported << "  " << rel << "  " << m_nDark
                  << "\n";
-        log<text_log>( "darkLibrary: wrote " + m_outdir + "/" + rel + " (requested=" +
+        log<text_log>( "darkLibrary: wrote " + m_dirPsf + "/" + rel + " (requested=" +
                        std::to_string( times[i] ) + " s, camera=" +
                        std::to_string( reported ) + " s)" );
     }
@@ -1865,14 +1960,14 @@ int iefcCtrl::doDarkLibrary()
     if( setExptimeValue( exptime_start ) < 0 )
         return -1;
     setStatus( "darkLibrary: done" );
-    log<text_log>( "doDarkLibrary wrote " + m_outdir + "/dark_library.txt" );
+    log<text_log>( "doDarkLibrary wrote " + m_dirPsf + "/dark_library.txt" );
     return 0;
 }
 
 int iefcCtrl::doClearDm()
 {
-    setStatus( "clearDm: zeroing " + m_dmChan );
-    log<text_log>( "clearDm: writing zeros to " + m_dmChan );
+    setStatus( "clearDm: zeroing " + m_dmShmim );
+    log<text_log>( "clearDm: writing zeros to " + m_dmShmim );
 
     if( openDm() < 0 )
         return -1;
@@ -1909,7 +2004,7 @@ int iefcCtrl::doClearDm()
         ImageStreamIO_sempost( &m_dm, -1 );
     }
 
-    log<text_log>( "clearDm: zeroed " + m_dmChan + " (" + std::to_string( w ) + "x" +
+    log<text_log>( "clearDm: zeroed " + m_dmShmim + " (" + std::to_string( w ) + "x" +
                    std::to_string( h ) + ")" );
     setStatus( "clearDm: done" );
     return 0;
@@ -1920,8 +2015,8 @@ int iefcCtrl::doCalibrate()
     setStatus( "calibrate: starting" );
     try
     {
-        lina::ShmimStream camsci( m_camsciName );
-        lina::ShmimStream dm( m_dmChan );
+        lina::ShmimStream camsci( m_shmCamInput );
+        lina::ShmimStream dm( m_dmShmim );
 
         if( m_setExptime )
         {
@@ -1938,22 +2033,21 @@ int iefcCtrl::doCalibrate()
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_nFrames;
-        in.wait_frames = m_waitFrames;
-        in.delay_s = m_delay_s;
-        in.calib_probe_amp = m_calibProbeAmp;
-        in.calib_amp = m_calibAmp;
-        in.reg_cond = m_regCond;
+        resolveCamSettle( in.wait_frames, in.delay_s );
+        in.calib_probe_amp = m_calProbeAmp;
+        in.calib_amp = m_calModeAmp;
+        in.reg_cond = m_calRegCond;
 
-        if( m_setupdir.empty() )
-            return log<software_error, -1>( { __FILE__, __LINE__, "setupdir required" } );
-        auto setup = lina::load_setup_dir( m_setupdir, camsci.rows(), live_exptime );
+        if( m_dirPsf.empty() )
+            return log<software_error, -1>( { __FILE__, __LINE__, "dir_psf required" } );
+        auto setup = lina::load_setup_dir( m_dirPsf, camsci.rows(), live_exptime );
         lina::apply_setup( in, setup, live_exptime );
         lina::generate_modes( in );
         updateLiveNormFromSetup( setup );
 
         const unsigned nmodes = static_cast<unsigned>( in.calib_modes.rows() );
-        updateIfChanged( m_indiP_nCalibModes, "current", static_cast<double>( nmodes ) );
-        updateIfChanged( m_indiP_calibMode, "current", 0.0 );
+        updateIfChanged( m_indiP_nCalModes, "current", static_cast<double>( nmodes ) );
+        updateIfChanged( m_indiP_calMode, "current", 0.0 );
         log<text_log>( "calibrate: " + std::to_string( nmodes ) + " calib modes, " +
                        std::to_string( in.probe_modes.rows() ) + " probes" );
 
@@ -1974,9 +2068,9 @@ int iefcCtrl::doCalibrate()
             nullptr, // no dark sub during calib (difference images)
             in.wait_frames,
             [this]( std::size_t mode, std::size_t nmodes_cb ) {
-                updateIfChanged( m_indiP_nCalibModes, "current",
+                updateIfChanged( m_indiP_nCalModes, "current",
                                  static_cast<double>( nmodes_cb ) );
-                updateIfChanged( m_indiP_calibMode, "current", static_cast<double>( mode ) );
+                updateIfChanged( m_indiP_calMode, "current", static_cast<double>( mode ) );
                 if( mode == 0 )
                 {
                     setStatus( "calibrate: measuring response (0/" +
@@ -1997,7 +2091,7 @@ int iefcCtrl::doCalibrate()
             makeStopCheck() );
         dm.zero();
 
-        updateIfChanged( m_indiP_calibMode, "current", static_cast<double>( nmodes ) );
+        updateIfChanged( m_indiP_calMode, "current", static_cast<double>( nmodes ) );
         setStatus( "calibrate: computing control matrix (beta_reg)" );
         log<text_log>( "calibrate: beta_reg on response "
                        + std::to_string( cal.response_masked.rows() ) + "x"
@@ -2023,7 +2117,7 @@ int iefcCtrl::doCalibrate()
 
         setStatus( "calibrate: writing package" );
         lina::PackagePaths pkg;
-        pkg.dir = m_caldir;
+        pkg.dir = m_dirCal;
         const lina::Array2D<double> *full_ptr =
             ( m_saveResponseFull && cal.response_full.size() > 0 ) ? &cal.response_full
                                                                   : nullptr;
@@ -2031,7 +2125,7 @@ int iefcCtrl::doCalibrate()
 
         updateIfChanged( m_indiP_Imax_ref, "current", setup.Imax_ref );
         setStatus( "calibrate: done" );
-        log<text_log>( "calibrate wrote package to " + m_caldir +
+        log<text_log>( "calibrate wrote package to " + m_dirCal +
                        " (control cached in memory)" );
 
         return 0;
@@ -2040,13 +2134,13 @@ int iefcCtrl::doCalibrate()
     {
         try
         {
-            lina::ShmimStream dm( m_dmChan );
+            lina::ShmimStream dm( m_dmShmim );
             dm.zero();
         }
         catch( ... )
         {
         }
-        updateIfChanged( m_indiP_calibMode, "current", 0.0 );
+        updateIfChanged( m_indiP_calMode, "current", 0.0 );
         setStatus( "calibrate: stopped" );
         log<text_log>( "calibrate stopped by user; DM cleared, matrix not saved" );
         return 0;
@@ -2064,8 +2158,8 @@ int iefcCtrl::doRun()
     setStatus( "run: starting" );
     try
     {
-        lina::ShmimStream camsci( m_camsciName );
-        lina::ShmimStream dm( m_dmChan );
+        lina::ShmimStream camsci( m_shmCamInput );
+        lina::ShmimStream dm( m_dmShmim );
 
         if( m_setExptime )
         {
@@ -2082,13 +2176,12 @@ int iefcCtrl::doRun()
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_nFrames;
-        in.wait_frames = m_waitFrames;
-        in.delay_s = m_delay_s;
-        in.reg_cond = m_regCond;
+        resolveCamSettle( in.wait_frames, in.delay_s );
+        in.reg_cond = m_calRegCond;
         in.run_probe_amp = m_clProbeAmp;
-        in.num_iters = m_iters;
-        in.gain = m_loopGain;
-        in.leakage = m_leakage;
+        in.num_iters = m_clIters;
+        in.gain = m_clLoopGain;
+        in.leakage = m_clLeakage;
 
         lina::Array2D<double> control;
         lina::SetupData setupData;
@@ -2116,11 +2209,11 @@ int iefcCtrl::doRun()
         {
             setStatus( "run: loading calibration package" );
             lina::PackagePaths pkg;
-            pkg.dir = m_caldir;
+            pkg.dir = m_dirCal;
             lina::load_modes_from_package( in, pkg );
 
-            if( !m_setupdir.empty() )
-                setupData = lina::load_setup_dir( m_setupdir, camsci.rows(), live_exptime );
+            if( !m_dirPsf.empty() )
+                setupData = lina::load_setup_dir( m_dirPsf, camsci.rows(), live_exptime );
             else
                 setupData = lina::load_setup_from_package( pkg, camsci.rows(), live_exptime );
             if( !setupData.loaded )
@@ -2150,18 +2243,18 @@ int iefcCtrl::doRun()
                 m_cachedGain = setupData.gain;
                 m_haveCalibration = true;
             }
-            log<text_log>( "run: loaded calibration package into memory from " + m_caldir );
+            log<text_log>( "run: loaded calibration package into memory from " + m_dirCal );
         }
         else
         {
             log<text_log>( "run: using in-memory calibration matrices" );
-            // Refresh dark for current live exptime from setupdir when available.
-            if( !m_setupdir.empty() )
+            // Refresh dark for current live exptime from dir_psf when available.
+            if( !m_dirPsf.empty() )
             {
                 try
                 {
                     auto live_setup =
-                        lina::load_setup_dir( m_setupdir, camsci.rows(), live_exptime );
+                        lina::load_setup_dir( m_dirPsf, camsci.rows(), live_exptime );
                     setupData.dark = live_setup.dark;
                     setupData.dark_exptime = live_setup.dark_exptime;
                     if( live_setup.Imax_ref > 0.0 )
@@ -2169,7 +2262,7 @@ int iefcCtrl::doRun()
                 }
                 catch( const std::exception &e )
                 {
-                    log<text_log>( std::string( "run: setupdir dark refresh skipped: " ) +
+                    log<text_log>( std::string( "run: dir_psf dark refresh skipped: " ) +
                                        e.what(),
                                    logPrio::LOG_WARNING );
                 }
@@ -2181,9 +2274,9 @@ int iefcCtrl::doRun()
         m_liveContrastMask = in.control_mask;
         m_haveContrastMask = true;
 
-        updateIfChanged( m_indiP_nCalibModes, "current",
+        updateIfChanged( m_indiP_nCalModes, "current",
                          static_cast<double>( in.calib_modes.rows() ) );
-        updateIfChanged( m_indiP_calibMode, "current", 0.0 );
+        updateIfChanged( m_indiP_calMode, "current", 0.0 );
 
         lina::IefcData data;
         auto current = dm.grab_latest();
@@ -2224,68 +2317,68 @@ int iefcCtrl::doRun()
 
 // ----------------- INDI callbacks -----------------
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camsci )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmCamInput )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camsci, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmCamInput, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_camsci, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_shmCamInput, target, ipRecv, false ) < 0 )
         return -1;
-    if( target.empty() || target == m_camsciName )
+    if( target.empty() || target == m_shmCamInput )
         return 0;
     if( m_busy.load() )
     {
-        log<text_log>( "cannot change camsci while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_camsci, "current", m_camsciName );
-        updateIfChanged( m_indiP_camsci, "target", m_camsciName );
+        log<text_log>( "cannot change shm_cam_input while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_shmCamInput, "current", m_shmCamInput );
+        updateIfChanged( m_indiP_shmCamInput, "target", m_shmCamInput );
         return 0;
     }
-    log<text_log>( "camsci shmim: " + m_camsciName + " -> " + target );
-    m_camsciName = target;
-    updateIfChanged( m_indiP_camsci, "current", m_camsciName );
+    log<text_log>( "shm_cam_input: " + m_shmCamInput + " -> " + target );
+    m_shmCamInput = target;
+    updateIfChanged( m_indiP_shmCamInput, "current", m_shmCamInput );
     closeStreams();
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dmChannel )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dmShmim )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dmChannel, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dmShmim, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_dmChannel, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_dmShmim, target, ipRecv, false ) < 0 )
         return -1;
-    if( target.empty() || target == m_dmChan )
+    if( target.empty() || target == m_dmShmim )
         return 0;
     if( m_busy.load() )
     {
-        log<text_log>( "cannot change dmChannel while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_dmChannel, "current", m_dmChan );
-        updateIfChanged( m_indiP_dmChannel, "target", m_dmChan );
+        log<text_log>( "cannot change dm_shmim while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_dmShmim, "current", m_dmShmim );
+        updateIfChanged( m_indiP_dmShmim, "target", m_dmShmim );
         return 0;
     }
-    log<text_log>( "dmChannel: " + m_dmChan + " -> " + target );
-    m_dmChan = target;
-    updateIfChanged( m_indiP_dmChannel, "current", m_dmChan );
+    log<text_log>( "dm_shmim: " + m_dmShmim + " -> " + target );
+    m_dmShmim = target;
+    updateIfChanged( m_indiP_dmShmim, "current", m_dmShmim );
     closeStreams();
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_fsmChannel )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_fsmShmim )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_fsmChannel, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_fsmShmim, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_fsmChannel, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_fsmShmim, target, ipRecv, false ) < 0 )
         return -1;
-    if( target.empty() || target == m_fsmChan )
+    if( target.empty() || target == m_fsmShmim )
         return 0;
     if( m_busy.load() )
     {
-        log<text_log>( "cannot change fsmChannel while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_fsmChannel, "current", m_fsmChan );
-        updateIfChanged( m_indiP_fsmChannel, "target", m_fsmChan );
+        log<text_log>( "cannot change fsm_shmim while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_fsmShmim, "current", m_fsmShmim );
+        updateIfChanged( m_indiP_fsmShmim, "target", m_fsmShmim );
         return 0;
     }
-    log<text_log>( "fsmChannel: " + m_fsmChan + " -> " + target );
-    m_fsmChan = target;
-    updateIfChanged( m_indiP_fsmChannel, "current", m_fsmChan );
+    log<text_log>( "fsm_shmim: " + m_fsmShmim + " -> " + target );
+    m_fsmShmim = target;
+    updateIfChanged( m_indiP_fsmShmim, "current", m_fsmShmim );
     closeStreams();
     return 0;
 }
@@ -2381,24 +2474,24 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_gainShmim )( const pcf::IndiProperty &i
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_subNorm )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmCamSubNorm )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_subNorm, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmCamSubNorm, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_subNorm, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_shmCamSubNorm, target, ipRecv, false ) < 0 )
         return -1;
-    if( target.empty() || target == m_subNormName )
+    if( target.empty() || target == m_shmCamSubNorm )
         return 0;
     if( m_busy.load() )
     {
-        log<text_log>( "cannot change camsci_sub_norm while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_subNorm, "current", m_subNormName );
-        updateIfChanged( m_indiP_subNorm, "target", m_subNormName );
+        log<text_log>( "cannot change shm_cam_sub_norm while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_shmCamSubNorm, "current", m_shmCamSubNorm );
+        updateIfChanged( m_indiP_shmCamSubNorm, "target", m_shmCamSubNorm );
         return 0;
     }
-    log<text_log>( "camsci_sub_norm: " + m_subNormName + " -> " + target );
-    m_subNormName = target;
-    updateIfChanged( m_indiP_subNorm, "current", m_subNormName );
+    log<text_log>( "shm_cam_sub_norm: " + m_shmCamSubNorm + " -> " + target );
+    m_shmCamSubNorm = target;
+    updateIfChanged( m_indiP_shmCamSubNorm, "current", m_shmCamSubNorm );
     if( m_subNormCreated )
     {
         ImageStreamIO_closeIm( &m_subNorm );
@@ -2448,30 +2541,47 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_nFrames )( const pcf::IndiProperty &ipR
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_waitFrames )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camNFrameDelay )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_waitFrames, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camNFrameDelay, ipRecv );
     unsigned target;
-    if( indiTargetUpdate( m_indiP_waitFrames, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_camNFrameDelay, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_waitFrames )
-        log<text_log>( "waitFrames: " + std::to_string( m_waitFrames ) + " -> " +
+    if( target != m_camNFrameDelay )
+        log<text_log>( "cam_n_frame_delay: " + std::to_string( m_camNFrameDelay ) + " -> " +
                        std::to_string( target ) );
-    m_waitFrames = target;
-    updateIfChanged( m_indiP_waitFrames, "current", m_waitFrames );
+    m_camNFrameDelay = target;
+    updateIfChanged( m_indiP_camNFrameDelay, "current", m_camNFrameDelay );
+    // Mutual exclusivity: enabling frame delay clears wall-clock delay.
+    if( m_camNFrameDelay > 0 && m_camRDelay > 0.0f )
+    {
+        m_camRDelay = 0.0f;
+        updateIfChanged( m_indiP_camRDelay, "current", m_camRDelay );
+        updateIfChanged( m_indiP_camRDelay, "target", m_camRDelay );
+        log<text_log>( "cam_r_delay cleared (using cam_n_frame_delay)" );
+    }
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_delay_s )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camRDelay )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_delay_s, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camRDelay, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_delay_s, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_camRDelay, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_delay_s )
-        log<text_log>( "delay_s: " + std::to_string( m_delay_s ) + " -> " + std::to_string( target ) );
-    m_delay_s = target;
-    updateIfChanged( m_indiP_delay_s, "current", m_delay_s );
+    if( target != m_camRDelay )
+        log<text_log>( "cam_r_delay: " + std::to_string( m_camRDelay ) + " -> " +
+                       std::to_string( target ) );
+    m_camRDelay = target;
+    updateIfChanged( m_indiP_camRDelay, "current", m_camRDelay );
+    // Mutual exclusivity: enabling wall-clock delay clears frame delay.
+    if( m_camRDelay > 0.0f && m_camNFrameDelay > 0 )
+    {
+        m_camNFrameDelay = 0;
+        updateIfChanged( m_indiP_camNFrameDelay, "current", m_camNFrameDelay );
+        updateIfChanged( m_indiP_camNFrameDelay, "target", m_camNFrameDelay );
+        log<text_log>( "cam_n_frame_delay cleared (using cam_r_delay)" );
+    }
     return 0;
 }
 
@@ -2518,42 +2628,29 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfExptime )( const pcf::IndiProperty &
     return setPsfExptimeValue( m_psfExptime );
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_outdir )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dirPsf )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_outdir, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dirPsf, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_outdir, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_dirPsf, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_outdir )
-        log<text_log>( "outdir: " + m_outdir + " -> " + target );
-    m_outdir = target;
-    updateIfChanged( m_indiP_outdir, "current", m_outdir );
+    if( target != m_dirPsf )
+        log<text_log>( "dir_psf: " + m_dirPsf + " -> " + target );
+    m_dirPsf = target;
+    updateIfChanged( m_indiP_dirPsf, "current", m_dirPsf );
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_setupdir )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dirCal )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_setupdir, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dirCal, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_setupdir, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_dirCal, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_setupdir )
-        log<text_log>( "setupdir: " + m_setupdir + " -> " + target );
-    m_setupdir = target;
-    updateIfChanged( m_indiP_setupdir, "current", m_setupdir );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_caldir )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_caldir, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_caldir, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_caldir )
-        log<text_log>( "caldir: " + m_caldir + " -> " + target );
-    m_caldir = target;
-    updateIfChanged( m_indiP_caldir, "current", m_caldir );
+    if( target != m_dirCal )
+        log<text_log>( "dir_cal: " + m_dirCal + " -> " + target );
+    m_dirCal = target;
+    updateIfChanged( m_indiP_dirCal, "current", m_dirCal );
     return 0;
 }
 
@@ -2673,44 +2770,44 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_exptimes )( const pcf::IndiProperty &ip
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_regCond )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calRegCond )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_regCond, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calRegCond, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_regCond, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_calRegCond, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_regCond )
-        log<text_log>( "regCond: " + std::to_string( m_regCond ) + " -> " + std::to_string( target ) );
-    m_regCond = target;
-    updateIfChanged( m_indiP_regCond, "current", m_regCond );
+    if( target != m_calRegCond )
+        log<text_log>( "cal_reg_cond: " + std::to_string( m_calRegCond ) + " -> " + std::to_string( target ) );
+    m_calRegCond = target;
+    updateIfChanged( m_indiP_calRegCond, "current", m_calRegCond );
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calibProbeAmp )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calProbeAmp )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calibProbeAmp, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calProbeAmp, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_calibProbeAmp, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_calProbeAmp, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_calibProbeAmp )
-        log<text_log>( "calib_probe_amp: " + std::to_string( m_calibProbeAmp ) + " -> " +
+    if( target != m_calProbeAmp )
+        log<text_log>( "cal_probe_amp: " + std::to_string( m_calProbeAmp ) + " -> " +
                        std::to_string( target ) );
-    m_calibProbeAmp = target;
-    updateIfChanged( m_indiP_calibProbeAmp, "current", m_calibProbeAmp );
+    m_calProbeAmp = target;
+    updateIfChanged( m_indiP_calProbeAmp, "current", m_calProbeAmp );
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calibModeAmp )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calModeAmp )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calibModeAmp, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calModeAmp, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_calibModeAmp, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_calModeAmp, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_calibAmp )
-        log<text_log>( "calib_mode_amp: " + std::to_string( m_calibAmp ) + " -> " +
+    if( target != m_calModeAmp )
+        log<text_log>( "cal_mode_amp: " + std::to_string( m_calModeAmp ) + " -> " +
                        std::to_string( target ) );
-    m_calibAmp = target;
-    updateIfChanged( m_indiP_calibModeAmp, "current", m_calibAmp );
+    m_calModeAmp = target;
+    updateIfChanged( m_indiP_calModeAmp, "current", m_calModeAmp );
     return 0;
 }
 
@@ -2758,44 +2855,44 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_contrastAvgN )( const pcf::IndiProperty
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_iters )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clIters )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_iters, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clIters, ipRecv );
     unsigned target;
-    if( indiTargetUpdate( m_indiP_iters, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_clIters, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_iters )
-        log<text_log>( "iters: " + std::to_string( m_iters ) + " -> " + std::to_string( target ) );
-    m_iters = target;
-    updateIfChanged( m_indiP_iters, "current", m_iters );
+    if( target != m_clIters )
+        log<text_log>( "cl_iters: " + std::to_string( m_clIters ) + " -> " + std::to_string( target ) );
+    m_clIters = target;
+    updateIfChanged( m_indiP_clIters, "current", m_clIters );
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_loopGain )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clLoopGain )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_loopGain, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clLoopGain, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_loopGain, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_clLoopGain, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_loopGain )
-        log<text_log>( "loopGain: " + std::to_string( m_loopGain ) + " -> " +
+    if( target != m_clLoopGain )
+        log<text_log>( "cl_loop_gain: " + std::to_string( m_clLoopGain ) + " -> " +
                        std::to_string( target ) );
-    m_loopGain = target;
-    updateIfChanged( m_indiP_loopGain, "current", m_loopGain );
+    m_clLoopGain = target;
+    updateIfChanged( m_indiP_clLoopGain, "current", m_clLoopGain );
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_leakage )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clLeakage )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_leakage, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clLeakage, ipRecv );
     float target;
-    if( indiTargetUpdate( m_indiP_leakage, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_clLeakage, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_leakage )
-        log<text_log>( "leakage: " + std::to_string( m_leakage ) + " -> " +
+    if( target != m_clLeakage )
+        log<text_log>( "cl_leakage: " + std::to_string( m_clLeakage ) + " -> " +
                        std::to_string( target ) );
-    m_leakage = target;
-    updateIfChanged( m_indiP_leakage, "current", m_leakage );
+    m_clLeakage = target;
+    updateIfChanged( m_indiP_clLeakage, "current", m_clLeakage );
     return 0;
 }
 
