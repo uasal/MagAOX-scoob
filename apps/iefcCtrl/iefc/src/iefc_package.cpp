@@ -452,20 +452,20 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
 
     const std::string psf_sub_name =
         cfg_s(cfg, "ref_psf_dark_sub_file", "ref_psf_dark_sub.fits");
-    s.Imax_ref = cfg_d(cfg, "Imax_ref", cfg_d(cfg, "peak_dark_sub", 0.0));
+    s.Imax_ref = cfg_d(cfg, "psf_max_ref", cfg_d(cfg, "Imax_ref", cfg_d(cfg, "peak_dark_sub", 0.0)));
     if (!(s.Imax_ref > 0.0)) {
         const auto psf_sub = load_fits_double(join_path(dir, psf_sub_name));
         s.Imax_ref = image_max(psf_sub);
     }
     if (!(s.Imax_ref > 0.0)) {
         throw std::runtime_error(
-            "setupdir Imax_ref <= 0; check config.txt / ref_psf_dark_sub.fits in " + dir);
+            "setupdir psf_max_ref/Imax_ref <= 0; check config.txt / ref_psf_dark_sub.fits in " + dir);
     }
 
     std::cout << "setupdir=" << dir << "\n"
               << "  dark        = " << s.dark_path_used << "  mean=" << image_mean(s.dark)
               << "  (dark exptime=" << s.dark_exptime << ")\n"
-              << "  Imax_ref    = " << s.Imax_ref << "  (psf exptime=" << s.psf_exptime
+              << "  psf_max_ref = " << s.Imax_ref << "  (psf exptime=" << s.psf_exptime
               << ")\n"
               << "  gain        = " << s.gain << "\n";
     return s;
@@ -478,7 +478,7 @@ SetupData load_setup_from_package(const PackagePaths& pkg, std::size_t expect_nc
         cfg_d(cfg, "cal_psf_exp", cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0)));
     const double psf_gain =
         cfg_d(cfg, "cal_psf_gain", cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0)));
-    const double imax = cfg_d(cfg, "Imax_ref", 0.0);
+    const double imax = cfg_d(cfg, "psf_max_ref", cfg_d(cfg, "Imax_ref", 0.0));
     const std::string setupdir = cfg_s(cfg, "setupdir", "");
 
     if (!setupdir.empty() && target_exptime > 0.0) {
@@ -515,13 +515,13 @@ SetupData load_setup_from_package(const PackagePaths& pkg, std::size_t expect_nc
     }
     if (!s.loaded) return {};
     if (!(s.Imax_ref > 0.0)) {
-        std::cerr << "warning: calib package has dark but Imax_ref missing/<=0\n";
+        std::cerr << "warning: calib package has dark but psf_max_ref/Imax_ref missing/<=0\n";
         s.Imax_ref = 1.0;
     }
     if (expect_ncam && (s.dark.rows() != expect_ncam || s.dark.cols() != expect_ncam)) {
         throw std::runtime_error("package dark size mismatch vs camsci");
     }
-    std::cout << "loaded setup from calib package: Imax_ref=" << s.Imax_ref
+    std::cout << "loaded setup from calib package: psf_max_ref=" << s.Imax_ref
               << " dark mean=" << image_mean(s.dark) << "\n";
     return s;
 }
@@ -707,7 +707,8 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
     cfg["dh_rotation"] = std::to_string(in.dh_rot);
     cfg["nprobes"] = std::to_string(in.probe_modes.rows());
     cfg["nmodes"] = std::to_string(in.calib_modes.rows());
-    cfg["Imax_ref"] = std::to_string(in.ref_params.Imax);
+    cfg["psf_max_ref"] = std::to_string(in.ref_params.Imax);
+    cfg["Imax_ref"] = std::to_string(in.ref_params.Imax); // legacy
     cfg["psf_exptime"] = std::to_string(in.ref_params.exp_time);
     cfg["psf_gain"] = std::to_string(in.ref_params.gain);
     cfg["format"] = "fits";
