@@ -9,12 +9,15 @@
 #include <cerrno>
 #include <cmath>
 #include <cstdint>
+#include <dirent.h>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 
 #if defined(LINA_USE_EIGEN_SVD) || defined(LINA_USE_EIGEN)
 #include <Eigen/Dense>
@@ -182,14 +185,93 @@ void log_matrix_size(const std::string& label, const Array2D<double>& m) {
 
 } // namespace
 
+Array2D<double> cube_to_response_full(const FitsCube& cube,
+                                      std::size_t nmodes,
+                                      std::size_t nprobes) {
+    if (nmodes == 0 || nprobes == 0)
+        throw std::runtime_error("cube_to_response_full: nmodes/nprobes must be >0");
+    if (cube.nplanes != nmodes * nprobes) {
+        throw std::runtime_error(
+            "cube_to_response_full: nplanes (" + std::to_string(cube.nplanes) +
+            ") != nmodes*nprobes (" + std::to_string(nmodes * nprobes) + ")");
+    }
+    const std::size_t npix = static_cast<std::size_t>(cube.rows) *
+                             static_cast<std::size_t>(cube.cols);
+    if (cube.data.cols() != npix && cube.data.size() != cube.nplanes * npix) {
+        // FitsCube stores planes as rows of data with cols=npix
+    }
+    if (cube.data.rows() != cube.nplanes || cube.data.cols() != npix) {
+        throw std::runtime_error("cube_to_response_full: unexpected cube data layout");
+    }
+    Array2D<double> out(nmodes, nprobes * npix, 0.0);
+    for (std::size_t i = 0; i < nmodes; ++i) {
+        for (std::size_t p = 0; p < nprobes; ++p) {
+            const std::size_t plane = i * nprobes + p;
+            for (std::size_t idx = 0; idx < npix; ++idx) {
+                out(i, p * npix + idx) = cube.data(plane, idx);
+            }
+        }
+    }
+    return out;
+}
+
+Array2D<double> load_response_full(const PackagePaths& pkg,
+                                   std::size_t ncam,
+                                   std::size_t nmodes,
+                                   std::size_t nprobes) {
+    const auto cube = load_fits_cube(pkg.response_full_path());
+    if (cube.rows != ncam || cube.cols != ncam) {
+        throw std::runtime_error(
+            "response_full.fits ncam mismatch: got " + std::to_string(cube.rows) + "x" +
+            std::to_string(cube.cols) + ", expected " + std::to_string(ncam) + "x" +
+            std::to_string(ncam));
+    }
+    return cube_to_response_full(cube, nmodes, nprobes);
+}
+
 std::string PackagePaths::response_path() const { return join_path(dir, response); }
 std::string PackagePaths::response_full_path() const { return join_path(dir, response_full); }
 std::string PackagePaths::control_path() const { return join_path(dir, control); }
+std::string PackagePaths::control_reg_tag( double reg_cond )
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision( 6 ) << reg_cond;
+    return oss.str();
+}
+std::string PackagePaths::control_path_for_reg( double reg_cond ) const
+{
+    return join_path( dir, "control_matrix_reg_" + control_reg_tag( reg_cond ) + ".fits" );
+}
 std::string PackagePaths::probes_path() const { return join_path(dir, probes); }
 std::string PackagePaths::calib_modes_path() const { return join_path(dir, calib_modes); }
 std::string PackagePaths::wfs_mask_path() const { return join_path(dir, wfs_mask); }
 std::string PackagePaths::config_path() const { return join_path(dir, config); }
 std::string PackagePaths::dark_path() const { return join_path(dir, dark); }
+
+void clear_control_reg_files( const std::string &dir )
+{
+    if( dir.empty() )
+        return;
+    DIR *d = opendir( dir.c_str() );
+    if( !d )
+        return;
+    const std::string prefix = "control_matrix_reg_";
+    const std::string suffix = ".fits";
+    while( dirent *ent = readdir( d ) )
+    {
+        const std::string name = ent->d_name;
+        if( name.size() <= prefix.size() + suffix.size() )
+            continue;
+        if( name.compare( 0, prefix.size(), prefix ) != 0 )
+            continue;
+        if( name.compare( name.size() - suffix.size(), suffix.size(), suffix ) != 0 )
+            continue;
+        const std::string path = join_path( dir, name );
+        if( ::unlink( path.c_str() ) == 0 )
+            std::cout << "removed stale " << path << "\n";
+    }
+    closedir( d );
+}
 
 Array2D<double> transpose(const Array2D<double>& a) {
     Array2D<double> out(a.cols(), a.rows(), 0.0);
@@ -337,8 +419,8 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
                                  "): " + dir);
     }
 
-    s.psf_exptime = cfg_d(cfg, "exptime", 1.0);
-    s.gain = cfg_d(cfg, "gain", 0.0);
+    s.psf_exptime = cfg_d(cfg, "cal_psf_exp", cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0)));
+    s.gain = cfg_d(cfg, "cal_psf_gain", cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0)));
 
     std::string dark_path;
     double matched_t = -1.0;
@@ -392,8 +474,10 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
 SetupData load_setup_from_package(const PackagePaths& pkg, std::size_t expect_ncam,
                                   double target_exptime) {
     const auto cfg = read_config(pkg.config_path());
-    const double psf_exptime = cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0));
-    const double psf_gain = cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0));
+    const double psf_exptime =
+        cfg_d(cfg, "cal_psf_exp", cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0)));
+    const double psf_gain =
+        cfg_d(cfg, "cal_psf_gain", cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0)));
     const double imax = cfg_d(cfg, "Imax_ref", 0.0);
     const std::string setupdir = cfg_s(cfg, "setupdir", "");
 
@@ -544,6 +628,9 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
                   const Array2D<double>* response_full) {
     ensure_dir(pkg.dir);
 
+    // New response invalidates any prior per-reg control matrices in this package.
+    clear_control_reg_files( pkg.dir );
+
     const std::size_t nmodes = in.calib_modes.rows();
     const std::size_t nprobes = in.probe_modes.rows();
     const std::size_t nmeas = response_masked.cols();
@@ -562,14 +649,20 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
          {"RESPONSE_LAYOUT", "'nmodes_nmeas'"}});
     log_matrix_size("response_masked", response_masked);
 
-    save_matrix(
-        pkg.control_path(), control,
+    const FitsHeader control_hdr =
         {{"KIND", "'control_matrix'"},
          {"NMODES", std::to_string(nmodes)},
          {"NPROBES", std::to_string(nprobes)},
          {"NMEAS", std::to_string(nmeas)},
-         {"RESPONSE_LAYOUT", "'nmodes_nmeas'"}});
+         {"REGCOND", PackagePaths::control_reg_tag( in.reg_cond )},
+         {"RESPONSE_LAYOUT", "'nmodes_nmeas'"}};
+
+    // Canonical per-reg file + legacy control_matrix.fits alias for this reg.
+    const std::string tagged = pkg.control_path_for_reg( in.reg_cond );
+    save_matrix( tagged, control, control_hdr );
+    save_matrix( pkg.control_path(), control, control_hdr );
     log_matrix_size("control_matrix", control);
+    std::cout << "wrote " << tagged << " (reg_cond=" << in.reg_cond << ")\n";
 
     if (response_full) {
         const auto cube = response_full_to_cube(*response_full, in.ncam);
@@ -620,7 +713,8 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
     cfg["format"] = "fits";
     cfg["response_file"] = pkg.response;
     cfg["response_full_file"] = pkg.response_full;
-    cfg["control_file"] = pkg.control;
+    cfg["control_file"] = "control_matrix_reg_" + PackagePaths::control_reg_tag( in.reg_cond ) + ".fits";
+    cfg["control_file_legacy"] = pkg.control;
     if (setup.loaded) {
         cfg["setupdir"] = setup.dir;
         cfg["dark_file"] = pkg.dark;
@@ -629,7 +723,7 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
     write_config(pkg.config_path(), cfg);
     std::cout << "wrote " << pkg.config_path() << "\n";
     std::cout << "wrote " << pkg.response_path() << "\n";
-    std::cout << "wrote " << pkg.control_path() << " (reg_cond=" << in.reg_cond << ")\n";
+    std::cout << "wrote " << pkg.control_path() << " (legacy alias)\n";
     if (response_full) {
         std::cout << "wrote " << pkg.response_full_path() << "\n";
     }

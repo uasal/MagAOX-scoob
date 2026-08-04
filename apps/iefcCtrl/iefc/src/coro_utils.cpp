@@ -64,6 +64,8 @@ ContrastResult compute_contrast(const Array2D<double>& ni_im,
         throw std::invalid_argument("mask size mismatch");
     }
 
+    // Contrast = mean of NI pixels that are inside the mask AND strictly > 0.
+    // Divisor is that positive count only (≤0 and off-mask pixels are excluded).
     double sum = 0.0;
     std::size_t count = 0;
     std::size_t n_mask = 0;
@@ -97,6 +99,8 @@ ContrastResult compute_contrast(const Array2D<double>& ni_im,
         throw std::invalid_argument("mask size mismatch");
     }
 
+    // Contrast = mean of NI pixels that are inside the mask AND strictly > 0.
+    // Divisor is that positive count only (≤0 and off-mask pixels are excluded).
     double sum = 0.0;
     std::size_t count = 0;
     std::size_t n_mask = 0;

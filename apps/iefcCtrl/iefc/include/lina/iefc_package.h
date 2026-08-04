@@ -54,12 +54,20 @@ struct PackagePaths {
     std::string response_path() const;
     std::string response_full_path() const;
     std::string control_path() const;
+    /// Per-reg control matrix: control_matrix_reg_<±X.XXXXXX>.fits
+    std::string control_path_for_reg( double reg_cond ) const;
     std::string probes_path() const;
     std::string calib_modes_path() const;
     std::string wfs_mask_path() const;
     std::string config_path() const;
     std::string dark_path() const;
+
+    /// Stable filename tag for a regularization value (fixed 6 decimals).
+    static std::string control_reg_tag( double reg_cond );
 };
+
+/// Remove control_matrix_reg_*.fits under dir (call when response is replaced).
+void clear_control_reg_files( const std::string &dir );
 
 struct SetupData {
     bool loaded = false;
@@ -85,6 +93,17 @@ Array2D<double> beta_reg_cpu(const Array2D<double>& S, double beta);
 void save_matrix(const std::string& path, const Array2D<double>& m,
                  const FitsHeader& header = {});
 Array2D<double> load_matrix(const std::string& path);
+
+/// Inverse of response_full_to_cube packing: planes are (mode, probe) major.
+Array2D<double> cube_to_response_full(const FitsCube& cube,
+                                      std::size_t nmodes,
+                                      std::size_t nprobes);
+
+/// Load dir_cal/response_full.fits into (nmodes, nprobes*ncam*ncam).
+Array2D<double> load_response_full(const PackagePaths& pkg,
+                                   std::size_t ncam,
+                                   std::size_t nmodes,
+                                   std::size_t nprobes);
 
 void write_config(const std::string& path, const ConfigMap& cfg);
 ConfigMap read_config(const std::string& path);

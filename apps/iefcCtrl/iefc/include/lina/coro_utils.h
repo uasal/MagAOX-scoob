@@ -26,9 +26,9 @@ Array2D<double> normalize_coro_im(const Array2D<double>& raw_im,
                                   const Array2D<double>& dark_im);
 
 struct ContrastResult {
-    double contrast = 0.0;
-    std::size_t n_mask = 0;
-    std::size_t n_positive = 0;
+    double contrast = 0.0;       ///< mean of (mask ∩ NI > 0); 0 if none
+    std::size_t n_mask = 0;      ///< pixels inside mask (any sign)
+    std::size_t n_positive = 0;  ///< pixels that entered the mean (mask ∩ NI > 0)
 };
 
 ContrastResult compute_contrast(const Array2D<double>& ni_im,

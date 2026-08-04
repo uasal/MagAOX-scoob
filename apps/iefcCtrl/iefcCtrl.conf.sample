@@ -8,17 +8,27 @@ dm_shmim=dm01disp07
 fsm_shmim=dm00disp01
 # shutterShmim INDI text = milk name below; shutter INDI toggle = open/closed (On=closed)
 shutter=camscishutter
-exptime=camsciexptime
-gain=camscigain
-# Live camera exposure (INDI: exptime) and ref-PSF exposure (INDI: psf_exptime).
-# Both write the same milk channel named above.
-psf_exptime=1.0
+cam_exp_shmim=camsciexptime
+cam_gain_shmim=camscigain
+
+# Live camera exposure / gain (INDI: cam_exp, cam_gain) write the milk channels above.
+cam_exp=1.0
+cam_gain=0.0
+# Ref-PSF exposure / gain (INDI: cal_psf_exp, cal_psf_gain) applied at start of doRefPsf.
+cal_psf_exp=1.0
+cal_psf_gain=0.0
 
 # Paths (alphabetically grouped under dir_*):
 #   dir_cal — calibration package (response/control matrices from doCalibrate; used by doRun)
 #   dir_psf — ref-PSF / dark / Imax package (written by doRefPsf/doDarkLibrary; read by calibrate/run)
 dir_cal=./cal_a
 dir_psf=./ref_psf
+# External FITS mask for loadWfsMask (sets control+contrast; remasks dir_cal if present).
+# Empty → falls back to dir_cal/wfs_mask.fits on loadWfsMask.
+#wfs_mask_path=./my_wfs_mask.fits
+# Saturation-check region for calibrate (raw ADU before dark/normalize). Published to iefc_sat_mask.
+#sat_mask_path=./sat_mask.fits
+sat_thresh=55000
 
 nFrames=5
 # Camera settle after DM write: use ONE of these (mutually exclusive).
@@ -42,10 +52,14 @@ cl_iters=3
 cl_loop_gain=1.0
 cl_leakage=0.0
 
+# Average this many NI frames, then compute contrast (mask ∩ NI>0 mean).
+# Larger N → slower contrast_avg update cadence.
 contrast_avg_n=10
-# Full-frame response cube is O(nmodes*nprobes*npix) — often many GB. Keep off unless needed.
-save_response_full=false
+# Full-frame response cube (multi-GB). Keep true to remask via loadWfsMask after restart.
+save_response_full=true
 
 [shmims]
 shm_cam_sub_norm=camsci_sub_norm
 contrast_avg=contrast_avg
+iefc_mask=iefc_mask
+iefc_sat_mask=iefc_sat_mask

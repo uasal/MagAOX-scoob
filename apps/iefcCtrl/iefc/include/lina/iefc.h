@@ -44,6 +44,17 @@ struct IefcData {
     std::vector<std::size_t> n_contrast_positive;
 };
 
+/// Abort if any raw pixel under sat_mask is >= sat_thresh (ADU). No-op if mask empty
+/// or sat_thresh <= 0.
+void check_saturation(const Array2D<double>& raw,
+                      const Array2D<std::uint8_t>& sat_mask,
+                      double sat_thresh);
+
+/// Remask a full-frame response (nmodes, nprobes*npix) → (nmodes, nprobes*nmask).
+Array2D<double> mask_response_full(const Array2D<double>& response_full,
+                                   const Array2D<std::uint8_t>& mask,
+                                   std::size_t nprobes);
+
 std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t ncamsci,
                                                     Stream2D& dm,
@@ -55,7 +66,9 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     double dm_scale = 1e-6,
                                                     const Array2D<double>* dark_im = nullptr,
                                                     std::size_t wait_frames = 1,
-                                                    const StopCheck& stop = {});
+                                                    const StopCheck& stop = {},
+                                                    const Array2D<std::uint8_t>* sat_mask = nullptr,
+                                                    double sat_thresh = 0.0);
 
 struct CalibrateResult {
     Array2D<double> response_masked; // (nmodes, nprobes * nmask)
@@ -68,6 +81,7 @@ struct CalibrateResult {
 /// subtraction is applied (Imax/exp/gain normalization still is).
 /// If keep_full_response is false (default), response_full is left empty — full-frame
 /// storage is O(nmodes*nprobes*npix) and can be many GB for large camsci.
+/// Raw frames are checked against sat_mask (if non-null) before normalize/mask.
 /// Throws Cancelled if stop() returns true; DM restored to entry command.
 CalibrateResult calibrate(Stream2D& camsci,
                           std::size_t ncamsci,
@@ -85,7 +99,9 @@ CalibrateResult calibrate(Stream2D& camsci,
                           std::size_t wait_frames = 1,
                           const std::function<void(std::size_t, std::size_t)>& progress = {},
                           bool keep_full_response = false,
-                          const StopCheck& stop = {});
+                          const StopCheck& stop = {},
+                          const Array2D<std::uint8_t>* sat_mask = nullptr,
+                          double sat_thresh = 0.0);
 
 void run(IefcData& iefc_data,
          Stream2D& camsci,
