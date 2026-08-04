@@ -517,8 +517,12 @@ class iefcCtrl : public MagAOXApp<true>
     /// Absolute path helper for logs (falls back to input on failure).
     static std::string absPath( const std::string &path );
 
-    /// Accumulate one NI frame; every contrast_avg_n frames, contrast(mean image) → shmim/INDI.
+    /// Accumulate one NI frame. Every contrast_avg_n frames: publish mean →
+    /// shm_cam_sub_norm and contrast(mean ∩ mask) → contrast_avg.
     int updateContrastFromNi( const lina::Array2D<double> &ni );
+
+    /// Publish a float image to shm_cam_sub_norm (creates stream if needed).
+    int publishSubNorm( const lina::Array2D<double> &im );
 
     /// Reset the NI-frame accumulator (e.g. when contrast_avg_n changes).
     void resetContrastAccumulator();
@@ -1751,8 +1755,6 @@ int iefcCtrl::processSubNormFrame()
     const uint32_t w = m_camsci.md->size[0];
     const uint32_t h = ( m_camsci.md->naxis > 1 ) ? m_camsci.md->size[1] : 1;
     const size_t npix = static_cast<size_t>( w ) * static_cast<size_t>( h );
-    if( ensureSubNormStream( w, h ) < 0 )
-        return -1;
 
     // Refresh exposure-matched dark when live exptime changes.
     double live_exptime = m_camExp;
@@ -1842,18 +1844,8 @@ int iefcCtrl::processSubNormFrame()
         return 0;
     }
 
-    m_subNorm.md->write = 1;
-    float *dst = (float *)m_subNorm.array.raw;
-    for( size_t i = 0; i < npix; ++i )
-        dst[i] = static_cast<float>( ni.data()[i] );
-    if( ImageStreamIO_UpdateIm( &m_subNorm ) != IMAGESTREAMIO_SUCCESS )
-    {
-        m_subNorm.md->cnt0++;
-        m_subNorm.md->write = 0;
-        ImageStreamIO_sempost( &m_subNorm, -1 );
-    }
-
-    // Block-average NI frames, then contrast = mean of (mask ∩ NI>0) / n_positive.
+    // Single pipeline: accumulate NI; every contrast_avg_n frames publish the
+    // block mean to shm_cam_sub_norm and compute contrast from that same mean.
     if( ensureContrastMask( w, h ) == 0 )
         updateContrastFromNi( ni );
     return 0;
@@ -2454,6 +2446,28 @@ int iefcCtrl::ensureContrastAvgStream()
     return 0;
 }
 
+int iefcCtrl::publishSubNorm( const lina::Array2D<double> &im )
+{
+    if( im.rows() == 0 || im.cols() == 0 )
+        return -1;
+    const uint32_t w = static_cast<uint32_t>( im.rows() );
+    const uint32_t h = static_cast<uint32_t>( im.cols() );
+    if( ensureSubNormStream( w, h ) < 0 )
+        return -1;
+
+    m_subNorm.md->write = 1;
+    float *dst = (float *)m_subNorm.array.raw;
+    for( size_t i = 0; i < im.size(); ++i )
+        dst[i] = static_cast<float>( im.data()[i] );
+    if( ImageStreamIO_UpdateIm( &m_subNorm ) != IMAGESTREAMIO_SUCCESS )
+    {
+        m_subNorm.md->cnt0++;
+        m_subNorm.md->write = 0;
+        ImageStreamIO_sempost( &m_subNorm, -1 );
+    }
+    return 0;
+}
+
 int iefcCtrl::updateContrastFromNi( const lina::Array2D<double> &ni )
 {
     lina::Array2D<double> mean;
@@ -2488,6 +2502,9 @@ int iefcCtrl::updateContrastFromNi( const lina::Array2D<double> &ni )
     }
     if( !ready )
         return 0;
+
+    // Same block-averaged NI image → sub_norm shmim and contrast scalar.
+    (void)publishSubNorm( mean );
 
     try
     {
