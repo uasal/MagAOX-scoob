@@ -190,6 +190,7 @@ class iefcCtrl : public MagAOXApp<true>
     double m_liveGain{ 0.0 };
     double m_liveDarkExptime{ -1.0 };
     bool m_haveLiveNorm{ false };
+    std::atomic<bool> m_imaxRefManual{ false }; ///< True after INDI Imax_ref set; preserve across dark reloads
     ///@}
 
     /** \name Continuous contrast (avg N NI frames, then mean of mask ∩ NI>0)
@@ -1615,16 +1616,21 @@ int iefcCtrl::setCalPsfGainValue( double gain )
 
 void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
 {
-    if( !setup.loaded || !( setup.Imax_ref > 0.0 ) || setup.dark.size() == 0 )
+    if( !setup.loaded || setup.dark.size() == 0 )
+        return;
+    // When Imax was set manually via INDI, keep it; still require a positive Imax
+    // from setup only when we would adopt it.
+    if( !m_imaxRefManual && !( setup.Imax_ref > 0.0 ) )
         return;
     {
         std::lock_guard<std::mutex> lock( m_subNormMutex );
         m_liveDark = setup.dark;
-        m_liveImaxRef = setup.Imax_ref;
+        if( !m_imaxRefManual )
+            m_liveImaxRef = setup.Imax_ref;
         m_livePsfExptime = ( setup.psf_exptime > 0.0 ) ? setup.psf_exptime : 1.0;
         m_liveGain = setup.gain;
         m_liveDarkExptime = setup.dark_exptime;
-        m_haveLiveNorm = true;
+        m_haveLiveNorm = ( m_liveImaxRef > 0.0 );
     }
     if( setup.dark_from_library )
     {
@@ -2072,14 +2078,17 @@ int iefcCtrl::setImaxRefValue( double imax )
     {
         std::lock_guard<std::mutex> lock( m_subNormMutex );
         m_liveImaxRef = imax;
+        m_imaxRefManual = true;
         // Keep m_haveLiveNorm if dark already loaded — only the scale changed.
         if( m_liveDark.size() > 0 )
             m_haveLiveNorm = true;
     }
+    // Discard NI block built under the previous scale.
+    resetContrastAccumulator();
     updateIfChanged( m_indiP_Imax_ref, "current", imax );
     updateIfChanged( m_indiP_Imax_ref, "target", imax );
     log<text_log>( "Imax_ref set manually to " + formatSci( imax ) +
-                   " (NI normalization scale updated)" );
+                   " (NI + contrast_avg now use this scale)" );
     return 0;
 }
 
@@ -2748,6 +2757,7 @@ int iefcCtrl::doRefPsf()
 
     // Seed continuous shm_cam_sub_norm from this ref-PSF package.
     {
+        m_imaxRefManual = false; // refPSF measurement replaces any manual override
         lina::SetupData setup;
         setup.loaded = true;
         setup.dir = m_dirPsf;
@@ -2759,6 +2769,7 @@ int iefcCtrl::doRefPsf()
         setup.dark_exptime = m_calPsfExp;
         setup.gain = m_calPsfGain;
         updateLiveNormFromSetup( setup );
+        resetContrastAccumulator();
     }
 
     setStatus( "refPsf: restoring FSM home" );
@@ -3030,7 +3041,9 @@ int iefcCtrl::doCalibrate()
         auto setup = lina::load_setup_dir( m_dirPsf, camsci.rows(), live_exptime );
         lina::apply_setup( in, setup, live_exptime );
         lina::generate_modes( in );
+        m_imaxRefManual = false; // calibrate adopts package Imax_ref
         updateLiveNormFromSetup( setup );
+        resetContrastAccumulator();
 
         // Prefer user-loaded / cached WFS mask over default annulus.
         {
@@ -3113,7 +3126,13 @@ int iefcCtrl::doCalibrate()
             /*keep_full_response=*/true, // required for loadWfsMask remask
             makeStopCheck(),
             sat_ptr,
-            static_cast<double>( m_satThresh ) );
+            static_cast<double>( m_satThresh ),
+            [this]( std::size_t cal_mode ) {
+                log<text_log>( "calibrate: saturation warning cal_mode=" +
+                                   std::to_string( cal_mode ) + " (raw>=" +
+                                   std::to_string( m_satThresh ) + " ADU in sat_mask)",
+                               logPrio::LOG_WARNING );
+            } );
         dm.zero();
 
         updateIfChanged( m_indiP_calMode, "current", static_cast<double>( nmodes ) );
@@ -3309,7 +3328,7 @@ int iefcCtrl::doRun()
                         lina::load_setup_dir( m_dirPsf, camsci.rows(), live_exptime );
                     setupData.dark = live_setup.dark;
                     setupData.dark_exptime = live_setup.dark_exptime;
-                    if( live_setup.Imax_ref > 0.0 )
+                    if( live_setup.Imax_ref > 0.0 && !m_imaxRefManual )
                         setupData.Imax_ref = live_setup.Imax_ref;
                 }
                 catch( const std::exception &e )
@@ -3319,6 +3338,14 @@ int iefcCtrl::doRun()
                                    logPrio::LOG_WARNING );
                 }
             }
+        }
+
+        // Prefer manual INDI Imax_ref for NI / closed-loop contrast when set.
+        if( m_imaxRefManual )
+        {
+            std::lock_guard<std::mutex> lock( m_subNormMutex );
+            if( m_liveImaxRef > 0.0 )
+                setupData.Imax_ref = m_liveImaxRef;
         }
 
         lina::apply_setup( in, setupData, live_exptime );
@@ -3345,8 +3372,16 @@ int iefcCtrl::doRun()
 
         if( !data.contrasts.empty() )
             updateIfChanged( m_indiP_contrast, "current", data.contrasts.back() );
-        updateIfChanged( m_indiP_Imax_ref, "current", setupData.Imax_ref );
-        updateIfChanged( m_indiP_Imax_ref, "target", setupData.Imax_ref );
+        {
+            double imax_pub = setupData.Imax_ref;
+            {
+                std::lock_guard<std::mutex> lock( m_subNormMutex );
+                if( m_imaxRefManual && m_liveImaxRef > 0.0 )
+                    imax_pub = m_liveImaxRef;
+            }
+            updateIfChanged( m_indiP_Imax_ref, "current", imax_pub );
+            updateIfChanged( m_indiP_Imax_ref, "target", imax_pub );
+        }
 
         for( size_t i = 0; i < data.contrasts.size(); ++i )
             log<text_log>( "run iter" + std::to_string( i ) + " contrast=" +

@@ -46,22 +46,19 @@ void restore_dm_meters(Stream2D& dm, const Array2D<double>& command_m, double dm
 
 } // namespace
 
-void check_saturation(const Array2D<double>& raw,
+bool check_saturation(const Array2D<double>& raw,
                       const Array2D<std::uint8_t>& sat_mask,
                       double sat_thresh) {
     if (sat_mask.size() == 0 || !(sat_thresh > 0.0))
-        return;
+        return false;
     if (sat_mask.size() != raw.size()) {
         throw std::runtime_error("sat_mask size does not match camera image");
     }
     for (std::size_t i = 0; i < raw.size(); ++i) {
-        if (sat_mask.data()[i] && raw.data()[i] >= sat_thresh) {
-            throw std::runtime_error(
-                "saturation detected in sat_mask region (raw>=" +
-                std::to_string(sat_thresh) + " ADU at linear index " +
-                std::to_string(i) + ")");
-        }
+        if (sat_mask.data()[i] && raw.data()[i] >= sat_thresh)
+            return true;
     }
+    return false;
 }
 
 Array2D<double> mask_response_full(const Array2D<double>& response_full,
@@ -108,7 +105,8 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t wait_frames,
                                                     const StopCheck& stop,
                                                     const Array2D<std::uint8_t>* sat_mask,
-                                                    double sat_thresh) {
+                                                    double sat_thresh,
+                                                    const SaturationWarnFn& sat_warn) {
     const std::size_t nprobes = probe_modes.rows();
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
 
@@ -146,8 +144,8 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
             dm.write(write_pos);
             sleep_interruptible(delay_s, stop);
             Array2D<double> im_pos = camsci.grab_mean(ncamsci, wait_frames, stop);
-            if (sat_mask)
-                check_saturation(im_pos, *sat_mask, sat_thresh);
+            if (sat_mask && check_saturation(im_pos, *sat_mask, sat_thresh) && sat_warn)
+                sat_warn();
 
             Array2D<double> write_neg = cmd_neg;
             for (std::size_t idx = 0; idx < write_neg.size(); ++idx) {
@@ -156,8 +154,8 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
             dm.write(write_neg);
             sleep_interruptible(delay_s, stop);
             Array2D<double> im_neg = camsci.grab_mean(ncamsci, wait_frames, stop);
-            if (sat_mask)
-                check_saturation(im_neg, *sat_mask, sat_thresh);
+            if (sat_mask && check_saturation(im_neg, *sat_mask, sat_thresh) && sat_warn)
+                sat_warn();
 
             // Flux-normalize each frame, then form the differential probe response.
             // Dark cancels in (pos-neg); callers may still pass dark_im (e.g. closed loop)
@@ -206,7 +204,8 @@ CalibrateResult calibrate(Stream2D& camsci,
                           bool keep_full_response,
                           const StopCheck& stop,
                           const Array2D<std::uint8_t>* sat_mask,
-                          double sat_thresh) {
+                          double sat_thresh,
+                          const SaturationWarn& sat_warn) {
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
     const std::size_t nprobes = probe_modes.rows();
     const std::size_t nmodes = calibration_modes.rows();
@@ -237,6 +236,7 @@ CalibrateResult calibrate(Stream2D& camsci,
                 progress(i + 1, nmodes);
             }
             Array2D<double> response(nprobes, image_size, 0.0);
+            bool sat_warned_this_mode = false;
             for (int s : {-1, 1}) {
                 throw_if_stopped(stop);
                 Array2D<double> calib_mode(nact, nact, 0.0);
@@ -265,7 +265,13 @@ CalibrateResult calibrate(Stream2D& camsci,
                 const auto probed = measure_probe_response(
                     camsci, ncamsci, dm, im_params, ref_params, probe_modes, probe_amplitude,
                     delay_s, dm_scale, /*dark_im=*/nullptr, wait_frames, stop, sat_mask,
-                    sat_thresh);
+                    sat_thresh,
+                    [&]() {
+                        if (!sat_warn || sat_warned_this_mode)
+                            return;
+                        sat_warned_this_mode = true;
+                        sat_warn(i + 1);
+                    });
 
                 for (std::size_t p = 0; p < nprobes; ++p) {
                     if (probed[p].size() != image_size) {

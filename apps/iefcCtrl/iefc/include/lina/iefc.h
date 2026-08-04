@@ -44,9 +44,9 @@ struct IefcData {
     std::vector<std::size_t> n_contrast_positive;
 };
 
-/// Abort if any raw pixel under sat_mask is >= sat_thresh (ADU). No-op if mask empty
-/// or sat_thresh <= 0.
-void check_saturation(const Array2D<double>& raw,
+/// Return true if any raw pixel under sat_mask is >= sat_thresh (ADU).
+/// No-op (false) if mask empty or sat_thresh <= 0. Size mismatch throws.
+bool check_saturation(const Array2D<double>& raw,
                       const Array2D<std::uint8_t>& sat_mask,
                       double sat_thresh);
 
@@ -54,6 +54,12 @@ void check_saturation(const Array2D<double>& raw,
 Array2D<double> mask_response_full(const Array2D<double>& response_full,
                                    const Array2D<std::uint8_t>& mask,
                                    std::size_t nprobes);
+
+/// Optional warning when raw saturation is detected (does not abort).
+using SaturationWarnFn = std::function<void()>;
+
+/// Calibrate-level sat warning with 1-based mode index (same as INDI cal_mode).
+using SaturationWarn = std::function<void(std::size_t cal_mode_1based)>;
 
 std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t ncamsci,
@@ -68,7 +74,8 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t wait_frames = 1,
                                                     const StopCheck& stop = {},
                                                     const Array2D<std::uint8_t>* sat_mask = nullptr,
-                                                    double sat_thresh = 0.0);
+                                                    double sat_thresh = 0.0,
+                                                    const SaturationWarnFn& sat_warn = {});
 
 struct CalibrateResult {
     Array2D<double> response_masked; // (nmodes, nprobes * nmask)
@@ -81,7 +88,8 @@ struct CalibrateResult {
 /// subtraction is applied (Imax/exp/gain normalization still is).
 /// If keep_full_response is false (default), response_full is left empty — full-frame
 /// storage is O(nmodes*nprobes*npix) and can be many GB for large camsci.
-/// Raw frames are checked against sat_mask (if non-null) before normalize/mask.
+/// Raw frames are checked against sat_mask (if non-null) before normalize/mask;
+/// saturation triggers sat_warn (if set) and continues — it does not abort.
 /// Throws Cancelled if stop() returns true; DM restored to entry command.
 CalibrateResult calibrate(Stream2D& camsci,
                           std::size_t ncamsci,
@@ -101,7 +109,8 @@ CalibrateResult calibrate(Stream2D& camsci,
                           bool keep_full_response = false,
                           const StopCheck& stop = {},
                           const Array2D<std::uint8_t>* sat_mask = nullptr,
-                          double sat_thresh = 0.0);
+                          double sat_thresh = 0.0,
+                          const SaturationWarn& sat_warn = {});
 
 void run(IefcData& iefc_data,
          Stream2D& camsci,

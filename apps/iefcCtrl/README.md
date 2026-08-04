@@ -80,7 +80,7 @@ writing the shutter milk scalar.
 | `dir_psf` | Ref-PSF / dark / Imax package directory |
 | `wfs_mask_path` | External FITS path for `loadWfsMask` (control+contrast; empty → `dir_cal/wfs_mask.fits`) |
 | `sat_mask_path` | FITS region for raw-ADU saturation checks during calibrate |
-| `sat_thresh` | Raw ADU threshold inside `sat_mask` (≥ aborts calibrate); default 55000 |
+| `sat_thresh` | Raw ADU threshold inside `sat_mask` (≥ logs a warning, does not abort); default 55000 |
 
 ## Requests
 
@@ -124,10 +124,11 @@ does not exist yet, a warning is logged and the mask is kept for the next `doCal
 `doCalibrate` uses a previously loaded mask instead of the default annulus.
 
 During calibrate, raw `camsci` frames (before dark/normalize/mask) are checked against
-`sat_mask_path` / `sat_thresh` when a sat mask is loaded; the mask is also published to
-`iefc_sat_mask`. `Imax_ref` accepts an INDI target for manual NI scale changes (updates
-live `shm_cam_sub_norm` normalization immediately); refPSF/calibrate still overwrite it
-when they finish.
+`sat_mask_path` / `sat_thresh` when a sat mask is loaded; saturation logs a warning with
+`cal_mode` and continues. The mask is also published to `iefc_sat_mask`. `Imax_ref`
+accepts an INDI target for manual NI scale changes (updates live `shm_cam_sub_norm` /
+`contrast_avg` immediately and is preserved across dark reloads); refPSF/calibrate still
+overwrite it when they finish.
 
 Every `contrast_avg_n` of those NI frames are averaged into one image; contrast is then
 the mean of pixels that are inside the **WFS/control** mask **and** strictly greater than zero
