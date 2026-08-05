@@ -76,6 +76,7 @@ class iefcCtrl : public MagAOXApp<true>
         RefPsf,
         DarkLibrary,
         Calibrate,
+        CalReload, ///< Load response/control/modes from cal_dir into memory
         Run,
         DmReset,
         RecomputeControl, ///< beta_reg from cached response with current cal_reg_cond
@@ -367,6 +368,9 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_calibrate;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calibrate);
 
+    pcf::IndiProperty m_indiP_calReload;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calReload);
+
     pcf::IndiProperty m_indiP_clRun;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clRun);
 
@@ -382,6 +386,7 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_status;   ///< RO text
     pcf::IndiProperty m_indiP_contrast; ///< RO number (last closed-loop iter)
     pcf::IndiProperty m_indiP_contrastAvg; ///< RO running average published to shmim
+    pcf::IndiProperty m_indiP_contrastPosPixels; ///< RO % of DH-mask pixels with NI > 0
     pcf::IndiProperty m_indiP_calMode;   ///< RO: current calib mode (1..N, 0 idle)
     pcf::IndiProperty m_indiP_nCalModes; ///< RO: total calib modes in package / run
     ///@}
@@ -426,6 +431,7 @@ class iefcCtrl : public MagAOXApp<true>
     int doRefPsf();
     int doDarkLibrary();
     int doCalibrate();
+    int doCalReload(); ///< Load response/control/modes/mask from cal_dir into memory
     int doRun();
     int doDmReset();
     int doRecomputeControl(); ///< Load or build control for current cal_reg_cond
@@ -510,7 +516,8 @@ class iefcCtrl : public MagAOXApp<true>
     static std::string absPath( const std::string &path );
 
     /// Accumulate one NI frame. Every cl_contrast_avg_n frames: publish mean →
-    /// shm_cam_sub_norm and contrast(mean ∩ mask) → contrast_avg.
+    /// shm_cam_sub_norm and contrast(mean ∩ mask) → contrast_avg; also
+    /// % of mask pixels with NI>0 → contrast_pos_pixels.
     int updateContrastFromNi( const lina::Array2D<double> &ni );
 
     /// Publish a float image to shm_cam_sub_norm (creates stream if needed).
@@ -827,6 +834,7 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_psfTakeRef, "psf_take_ref" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibBuild, "dark_lib_build" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calibrate, "calibrate" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calReload, "cal_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_clRun, "cl_run" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dmReset, "dm_reset" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dhMaskReload, "dh_mask_reload" );
@@ -843,6 +851,10 @@ int iefcCtrl::appStartup()
     REG_INDI_NEWPROP_NOCB( m_indiP_contrastAvg, "contrast_avg", pcf::IndiProperty::Number );
     m_indiP_contrastAvg.add( pcf::IndiElement( "current" ) );
     m_indiP_contrastAvg["current"].set( 0.0 );
+
+    REG_INDI_NEWPROP_NOCB( m_indiP_contrastPosPixels, "contrast_pos_pixels", pcf::IndiProperty::Number );
+    m_indiP_contrastPosPixels.add( pcf::IndiElement( "current" ) );
+    m_indiP_contrastPosPixels["current"].set( 0.0 );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_calMode, "cal_mode", pcf::IndiProperty::Number );
     m_indiP_calMode.add( pcf::IndiElement( "current" ) );
@@ -1121,6 +1133,8 @@ int iefcCtrl::runJob( Job j )
             return doDarkLibrary();
         case Job::Calibrate:
             return doCalibrate();
+        case Job::CalReload:
+            return doCalReload();
         case Job::Run:
             return doRun();
         case Job::DmReset:
@@ -2516,6 +2530,11 @@ int iefcCtrl::updateContrastFromNi( const lina::Array2D<double> &ni )
         if( ensureContrastAvgStream() == 0 )
             writeScalar( m_contrastAvg, cr.contrast );
         updateIfChanged( m_indiP_contrastAvg, "current", cr.contrast );
+        const double pos_pct =
+            cr.n_mask == 0 ? 0.0
+                           : 100.0 * static_cast<double>( cr.n_positive ) /
+                                 static_cast<double>( cr.n_mask );
+        updateIfChanged( m_indiP_contrastPosPixels, "current", pos_pct );
     }
     catch( ... )
     {
@@ -3053,6 +3072,214 @@ int iefcCtrl::doRecomputeControl()
     setStatus( "idle" );
     log<text_log>( "control ready for cal_reg_cond=" + formatSci( m_calRegCond ) );
     return 0;
+}
+
+int iefcCtrl::doCalReload()
+{
+    setStatus( "cal_reload: starting" );
+    if( m_calDir.empty() )
+    {
+        setStatus( "cal_reload: failed" );
+        return log<software_error, -1>( { __FILE__, __LINE__, "cal_dir is empty" } );
+    }
+
+    try
+    {
+        lina::PackagePaths pkg;
+        pkg.dir = m_calDir;
+
+        struct stat st {};
+        if( ::stat( pkg.response_path().c_str(), &st ) != 0 || !S_ISREG( st.st_mode ) )
+        {
+            setStatus( "cal_reload: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "cal_reload: missing " + absPath( pkg.response_path() ) } );
+        }
+
+        setStatus( "cal_reload: loading modes / mask" );
+        // Geometry must match package FITS cubes / mask; prefer live shmims, else config.txt.
+        std::size_t ncam = 0;
+        std::size_t nact = 0;
+        try
+        {
+            lina::ShmimStream camsci( m_shmCamInput );
+            ncam = camsci.rows();
+        }
+        catch( const std::exception &e )
+        {
+            log<text_log>( std::string( "cal_reload: camsci unavailable (" ) + e.what() +
+                               "); will use package config",
+                           logPrio::LOG_WARNING );
+        }
+        try
+        {
+            lina::ShmimStream dm( m_shmDm );
+            nact = dm.rows();
+        }
+        catch( const std::exception &e )
+        {
+            log<text_log>( std::string( "cal_reload: shm_dm unavailable (" ) + e.what() +
+                               "); will use package config",
+                           logPrio::LOG_WARNING );
+        }
+        if( ncam == 0 || nact == 0 )
+        {
+            try
+            {
+                const auto cfg = lina::read_config( pkg.config_path() );
+                if( ncam == 0 )
+                    ncam = lina::cfg_z( cfg, "ncamsci", 0 );
+                if( nact == 0 )
+                    nact = lina::cfg_z( cfg, "nact", 0 );
+            }
+            catch( const std::exception &e )
+            {
+                setStatus( "cal_reload: failed" );
+                return log<software_error, -1>(
+                    { __FILE__, __LINE__,
+                      std::string( "cal_reload: cannot resolve ncam/nact: " ) + e.what() } );
+            }
+        }
+        if( ncam == 0 || nact == 0 )
+        {
+            setStatus( "cal_reload: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "cal_reload: ncam/nact unknown (open camsci+shm_dm or provide cal_dir/config.txt)" } );
+        }
+
+        auto in = lina::default_loop_inputs( ncam, nact );
+        lina::load_modes_from_package( in, pkg );
+        if( in.control_mask.size() == 0 )
+        {
+            setStatus( "cal_reload: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__, "cal_reload: package has empty control mask" } );
+        }
+
+        double live_exptime = m_camExp;
+        if( openCamExp() == 0 )
+        {
+            const double v = readScalarValue( m_camExpShm );
+            if( std::isfinite( v ) )
+                live_exptime = v;
+        }
+
+        lina::SetupData setupData;
+        if( !m_psfDir.empty() )
+        {
+            try
+            {
+                setupData = lina::load_setup_dir( m_psfDir, ncam, live_exptime );
+            }
+            catch( const std::exception &e )
+            {
+                log<text_log>( std::string( "cal_reload: psf_dir setup skipped: " ) + e.what(),
+                               logPrio::LOG_WARNING );
+            }
+        }
+        if( !setupData.loaded )
+        {
+            try
+            {
+                setupData = lina::load_setup_from_package( pkg, ncam, live_exptime );
+            }
+            catch( const std::exception &e )
+            {
+                log<text_log>( std::string( "cal_reload: package dark/setup skipped: " ) +
+                                   e.what(),
+                               logPrio::LOG_WARNING );
+            }
+        }
+
+        setStatus( "cal_reload: loading response matrix" );
+        auto response = lina::load_matrix( pkg.response_path() );
+        log<text_log>( "cal_reload: response " + std::to_string( response.rows() ) + "x" +
+                       std::to_string( response.cols() ) + " from " +
+                       absPath( pkg.response_path() ) );
+
+        // Force disk/build path for current cal_reg_cond (ignore stale memory).
+        {
+            std::lock_guard<std::mutex> lock( m_calMutex );
+            m_haveCalibration = false;
+            m_cachedControl = {};
+            m_cachedRegCond = std::numeric_limits<float>::quiet_NaN();
+            m_cachedResponse = {};
+            m_cachedResponseFull = {};
+        }
+
+        lina::Array2D<double> control;
+        if( loadOrBuildControl( response, m_calRegCond, control ) < 0 )
+        {
+            setStatus( "cal_reload: failed" );
+            return -1;
+        }
+
+        lina::Array2D<double> response_full;
+        bool have_full = false;
+        try
+        {
+            response_full = lina::load_response_full( pkg, ncam, in.calib_modes.rows(),
+                                                      in.probe_modes.rows() );
+            have_full = response_full.size() > 0;
+            log<text_log>( "cal_reload: loaded response_full for remask support" );
+        }
+        catch( const std::exception &e )
+        {
+            log<text_log>( std::string( "cal_reload: response_full not loaded (" ) + e.what() +
+                               "); dh_mask_reload remask after this load may need recalibrate",
+                           logPrio::LOG_WARNING );
+        }
+
+        {
+            std::lock_guard<std::mutex> lock( m_calMutex );
+            m_cachedResponse = std::move( response );
+            if( have_full )
+                m_cachedResponseFull = std::move( response_full );
+            // control + reg set by loadOrBuildControl
+            m_cachedProbeModes = in.probe_modes;
+            m_cachedCalibModes = in.calib_modes;
+            m_cachedMask = in.control_mask;
+            if( setupData.loaded )
+            {
+                m_cachedDark = setupData.dark;
+                m_cachedImaxRef = setupData.Imax_ref;
+                m_cachedPsfExptime = setupData.psf_exptime;
+                m_cachedGain = setupData.gain;
+            }
+            m_haveCalibration = true;
+            m_haveUserDhMask = false;
+        }
+
+        m_liveContrastMask = in.control_mask;
+        m_haveContrastMask = true;
+        (void)publishDhMask( in.control_mask );
+        if( setupData.loaded )
+            updateLiveNormFromSetup( setupData );
+        resetContrastAccumulator();
+
+        updateIfChanged( m_indiP_nCalModes, "current",
+                         static_cast<double>( in.calib_modes.rows() ) );
+        updateIfChanged( m_indiP_calMode, "current", 0.0 );
+        if( setupData.loaded && setupData.Imax_ref > 0.0 && !m_imaxRefManual )
+        {
+            updateIfChanged( m_indiP_psfMaxRef, "current", setupData.Imax_ref );
+            updateIfChanged( m_indiP_psfMaxRef, "target", setupData.Imax_ref );
+        }
+
+        setStatus( "cal_reload: done" );
+        log<text_log>( "cal_reload: loaded package from " + absPath( m_calDir ) +
+                       " (control for cal_reg_cond=" + formatSci( m_calRegCond ) +
+                       ", nmodes=" + std::to_string( in.calib_modes.rows() ) + ")" );
+        return 0;
+    }
+    catch( const std::exception &e )
+    {
+        setStatus( "cal_reload: failed" );
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "cal_reload: " ) + e.what() } );
+    }
 }
 
 int iefcCtrl::doCalibrate()
@@ -4184,6 +4411,20 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calibrate )( const pcf::IndiProperty &i
         updateSwitchIfChanged( m_indiP_calibrate, "request", pcf::IndiElement::On, INDI_BUSY );
         queueJob( Job::Calibrate );
         clearRequest( m_indiP_calibrate );
+    }
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calReload )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calReload, ipRecv );
+    if( !ipRecv.find( "request" ) )
+        return -1;
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        updateSwitchIfChanged( m_indiP_calReload, "request", pcf::IndiElement::On, INDI_BUSY );
+        queueJob( Job::CalReload );
+        clearRequest( m_indiP_calReload );
     }
     return 0;
 }
