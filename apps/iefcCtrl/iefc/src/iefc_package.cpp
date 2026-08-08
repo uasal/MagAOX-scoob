@@ -76,55 +76,6 @@ double image_max(const Array2D<double>& im) {
     return m;
 }
 
-struct DarkLibraryEntry {
-    double exptime = 0.0;
-    std::string relpath;
-};
-
-std::vector<DarkLibraryEntry> load_dark_library_manifest(const std::string& setup_dir) {
-    const std::string path = join_path(setup_dir, "dark_library.txt");
-    std::ifstream in(path);
-    if (!in) return {};
-    std::vector<DarkLibraryEntry> entries;
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::stringstream ss(line);
-        DarkLibraryEntry e;
-        if (!(ss >> e.exptime >> e.relpath)) continue;
-        entries.push_back(e);
-    }
-    return entries;
-}
-
-std::string pick_dark_from_library(const std::string& setup_dir, double target_exptime,
-                                   double* matched_exptime = nullptr,
-                                   double* match_err = nullptr) {
-    const auto entries = load_dark_library_manifest(setup_dir);
-    if (entries.empty()) return {};
-    std::size_t best = 0;
-    double best_err = std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-        // Closest match in absolute exptime (handles cam rounding e.g. 0.100000000012).
-        const double err = std::fabs(entries[i].exptime - target_exptime);
-        if (err < best_err) {
-            best_err = err;
-            best = i;
-        }
-    }
-    if (matched_exptime) *matched_exptime = entries[best].exptime;
-    if (match_err) *match_err = best_err;
-    std::cout << "dark library: " << entries.size() << " entries; target exptime="
-              << target_exptime << " -> closest " << entries[best].exptime
-              << " (err=" << best_err << " s, " << entries[best].relpath << ")\n";
-    if (best_err > kDarkExptimeMatchTol) {
-        std::cerr << "warning: nearest dark exptime " << entries[best].exptime
-                  << " differs by " << best_err << " s from requested " << target_exptime
-                  << " (tol=" << kDarkExptimeMatchTol << " s)\n";
-    }
-    return join_path(setup_dir, entries[best].relpath);
-}
-
 bool ends_with(const std::string& s, const std::string& suffix) {
     return s.size() >= suffix.size() &&
            s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -403,8 +354,136 @@ LoopInputs default_loop_inputs(std::size_t ncam, std::size_t nact) {
     return in;
 }
 
+std::vector<DarkLibraryEntry> load_dark_library_manifest(const std::string& lib_dir) {
+    const std::string path = join_path(lib_dir, "dark_library.txt");
+    std::ifstream in(path);
+    if (!in) return {};
+    std::vector<DarkLibraryEntry> entries;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::stringstream ss(line);
+        DarkLibraryEntry e;
+        if (!(ss >> e.exptime >> e.relpath)) continue;
+        // Optional v2 columns (ignored by older writers / partial lines).
+        if (ss >> e.ndark) {
+            if (ss >> e.cam_name) {
+                if (e.cam_name == "-") e.cam_name.clear();
+                unsigned w = 0, h = 0, bd = 0;
+                int rx = 0, ry = 0;
+                if (ss >> w >> h) {
+                    e.width = w;
+                    e.height = h;
+                    if (ss >> bd) e.bitdepth = bd;
+                    if (ss >> rx >> ry) {
+                        e.roi_x = rx;
+                        e.roi_y = ry;
+                    }
+                    // v3: roi_width roi_height gain blacklevel
+                    // v2: gain blacklevel
+                    double a = std::numeric_limits<double>::quiet_NaN();
+                    double b = std::numeric_limits<double>::quiet_NaN();
+                    double c = std::numeric_limits<double>::quiet_NaN();
+                    double d = std::numeric_limits<double>::quiet_NaN();
+                    if (ss >> a >> b) {
+                        if (ss >> c >> d) {
+                            e.roi_width = static_cast<unsigned>( a );
+                            e.roi_height = static_cast<unsigned>( b );
+                            e.gain = c;
+                            e.blacklevel = d;
+                        } else {
+                            e.gain = a;
+                            e.blacklevel = b;
+                        }
+                    }
+                }
+            }
+        }
+        entries.push_back(e);
+    }
+    return entries;
+}
+
+std::vector<DarkLibraryEntry>
+filter_dark_library_entries(const std::vector<DarkLibraryEntry>& entries,
+                            const DarkMatchFilter& filter) {
+    std::vector<DarkLibraryEntry> out;
+    out.reserve(entries.size());
+    for (const auto& e : entries) {
+        if (!filter.cam_name.empty() && !e.cam_name.empty() && e.cam_name != filter.cam_name)
+            continue;
+        // Legacy v1 rows (empty cam_name) still match any filter.cam_name.
+        if (filter.width > 0 && e.width > 0 && e.width != filter.width) continue;
+        if (filter.height > 0 && e.height > 0 && e.height != filter.height) continue;
+        if (std::isfinite(filter.gain) && std::isfinite(e.gain) &&
+            std::fabs(e.gain - filter.gain) > filter.gain_tol)
+            continue;
+        if (std::isfinite(filter.blacklevel) && std::isfinite(e.blacklevel) &&
+            std::fabs(e.blacklevel - filter.blacklevel) > filter.blacklevel_tol)
+            continue;
+        out.push_back(e);
+    }
+    return out;
+}
+
+std::string pick_dark_from_library(const std::string& lib_dir, double target_exptime,
+                                   const DarkMatchFilter& filter, DarkLibraryEntry* matched,
+                                   double* match_err) {
+    auto entries = filter_dark_library_entries(load_dark_library_manifest(lib_dir), filter);
+    if (entries.empty()) return {};
+    std::size_t best = 0;
+    double best_err = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        const double err = std::fabs(entries[i].exptime - target_exptime);
+        if (err < best_err) {
+            best_err = err;
+            best = i;
+        }
+    }
+    if (matched) *matched = entries[best];
+    if (match_err) *match_err = best_err;
+    std::cout << "dark library: " << entries.size() << " matching entries; target exptime="
+              << target_exptime << " -> closest " << entries[best].exptime
+              << " (err=" << best_err << " s, " << entries[best].relpath << ")\n";
+    if (best_err > kDarkExptimeMatchTol) {
+        std::cerr << "warning: nearest dark exptime " << entries[best].exptime
+                  << " differs by " << best_err << " s from requested " << target_exptime
+                  << " (tol=" << kDarkExptimeMatchTol << " s)\n";
+    }
+    return join_path(lib_dir, entries[best].relpath);
+}
+
+void write_dark_library_manifest(const std::string& lib_dir,
+                                 const std::vector<DarkLibraryEntry>& entries) {
+    ensure_dir(lib_dir);
+    const std::string path = join_path(lib_dir, "dark_library.txt");
+    std::ofstream out(path);
+    if (!out) throw std::runtime_error("failed to write " + path);
+    out << "# dark_library_format=3\n";
+    out << "# exptime relative_path ndark cam_name width height bitdepth roi_x roi_y "
+           "roi_width roi_height gain blacklevel\n";
+    out << std::setprecision(17);
+    for (const auto& e : entries) {
+        out << e.exptime << "  " << e.relpath << "  " << e.ndark << "  "
+            << (e.cam_name.empty() ? "-" : e.cam_name) << "  " << e.width << "  " << e.height
+            << "  " << e.bitdepth << "  " << e.roi_x << "  " << e.roi_y << "  "
+            << e.roi_width << "  " << e.roi_height << "  ";
+        if (std::isfinite(e.gain))
+            out << e.gain;
+        else
+            out << "nan";
+        out << "  ";
+        if (std::isfinite(e.blacklevel))
+            out << e.blacklevel;
+        else
+            out << "nan";
+        out << "\n";
+    }
+}
+
 SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
-                         double target_exptime) {
+                         double target_exptime, const std::string& dark_lib_path,
+                         const DarkMatchFilter& dark_filter) {
     if (dir.empty()) return {};
     SetupData s;
     s.loaded = true;
@@ -419,14 +498,31 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
                                  "): " + dir);
     }
 
-    s.psf_exptime = cfg_d(cfg, "cal_psf_exp", cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0)));
-    s.gain = cfg_d(cfg, "cal_psf_gain", cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0)));
+    s.psf_exptime = cfg_d(cfg, "cam_exp", cfg_d(cfg, "cal_psf_exp",
+                        cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0))));
+    s.gain = cfg_d(cfg, "cam_gain", cfg_d(cfg, "cal_psf_gain",
+                   cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0))));
 
     std::string dark_path;
     double matched_t = -1.0;
     double match_err = -1.0;
+    DarkLibraryEntry matched;
+    DarkMatchFilter filter = dark_filter;
+    if (!std::isfinite(filter.gain) && std::isfinite(s.gain))
+        filter.gain = s.gain;
+
     if (target_exptime > 0.0) {
-        dark_path = pick_dark_from_library(dir, target_exptime, &matched_t, &match_err);
+        if (!dark_lib_path.empty()) {
+            dark_path = pick_dark_from_library(dark_lib_path, target_exptime, filter,
+                                              &matched, &match_err);
+        }
+        if (dark_path.empty()) {
+            // Legacy: dark_library.txt inside the ref-PSF / setup directory.
+            dark_path =
+                pick_dark_from_library(dir, target_exptime, filter, &matched, &match_err);
+        }
+        if (!dark_path.empty())
+            matched_t = matched.exptime;
     }
     if (dark_path.empty()) {
         const std::string dark_name = cfg_s(cfg, "dark_file", "dark_avg.fits");
@@ -472,18 +568,55 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
 }
 
 SetupData load_setup_from_package(const PackagePaths& pkg, std::size_t expect_ncam,
-                                  double target_exptime) {
+                                  double target_exptime, const std::string& dark_lib_path,
+                                  const DarkMatchFilter& dark_filter) {
     const auto cfg = read_config(pkg.config_path());
     const double psf_exptime =
-        cfg_d(cfg, "cal_psf_exp", cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0)));
+        cfg_d(cfg, "cam_exp", cfg_d(cfg, "cal_psf_exp",
+              cfg_d(cfg, "psf_exptime", cfg_d(cfg, "exptime", 1.0))));
     const double psf_gain =
-        cfg_d(cfg, "cal_psf_gain", cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0)));
+        cfg_d(cfg, "cam_gain", cfg_d(cfg, "cal_psf_gain",
+              cfg_d(cfg, "psf_gain", cfg_d(cfg, "gain", 0.0))));
     const double imax = cfg_d(cfg, "psf_max_ref", cfg_d(cfg, "Imax_ref", 0.0));
     const std::string setupdir = cfg_s(cfg, "setupdir", "");
 
+    // Prefer dedicated dark library when provided.
+    if (!dark_lib_path.empty() && target_exptime > 0.0) {
+        try {
+            DarkMatchFilter filter = dark_filter;
+            if (!std::isfinite(filter.gain)) filter.gain = psf_gain;
+            DarkLibraryEntry matched;
+            double match_err = -1.0;
+            const std::string dark_path = pick_dark_from_library(
+                dark_lib_path, target_exptime, filter, &matched, &match_err);
+            if (!dark_path.empty()) {
+                SetupData s;
+                s.loaded = true;
+                s.dir = setupdir.empty() ? pkg.dir : setupdir;
+                s.dark = load_fits_double(dark_path);
+                s.dark_path_used = dark_path;
+                s.dark_exptime = matched.exptime;
+                s.dark_from_library = true;
+                s.dark_match_err = match_err;
+                s.Imax_ref = imax > 0.0 ? imax : 1.0;
+                s.psf_exptime = psf_exptime;
+                s.gain = psf_gain;
+                if (expect_ncam &&
+                    (s.dark.rows() != expect_ncam || s.dark.cols() != expect_ncam)) {
+                    throw std::runtime_error("dark library size mismatch vs camsci");
+                }
+                return s;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "warning: dark_lib_path load failed (" << e.what()
+                      << "); falling back\n";
+        }
+    }
+
     if (!setupdir.empty() && target_exptime > 0.0) {
         try {
-            SetupData s = load_setup_dir(setupdir, expect_ncam, target_exptime);
+            SetupData s =
+                load_setup_dir(setupdir, expect_ncam, target_exptime, dark_lib_path, dark_filter);
             if (imax > 0.0) s.Imax_ref = imax;
             s.psf_exptime = psf_exptime;
             s.gain = psf_gain;
@@ -506,7 +639,7 @@ SetupData load_setup_from_package(const PackagePaths& pkg, std::size_t expect_nc
         s.loaded = true;
     } catch (...) {
         if (!setupdir.empty()) {
-            s = load_setup_dir(setupdir, expect_ncam, target_exptime);
+            s = load_setup_dir(setupdir, expect_ncam, target_exptime, dark_lib_path, dark_filter);
             s.psf_exptime = psf_exptime;
             if (imax > 0.0) s.Imax_ref = imax;
             s.gain = psf_gain;

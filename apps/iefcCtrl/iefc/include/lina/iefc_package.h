@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -69,6 +70,34 @@ struct PackagePaths {
 /// Remove control_matrix_reg_*.fits under dir (call when response is replaced).
 void clear_control_reg_files( const std::string &dir );
 
+/// One row from dark_library.txt (v1: exptime+path; v2 adds optional metadata columns).
+struct DarkLibraryEntry {
+    double exptime = 0.0;
+    std::string relpath;
+    unsigned ndark = 0;
+    std::string cam_name;
+    unsigned width = 0;
+    unsigned height = 0;
+    unsigned bitdepth = 0;
+    int roi_x = 0;
+    int roi_y = 0;
+    unsigned roi_width = 0;
+    unsigned roi_height = 0;
+    double gain = std::numeric_limits<double>::quiet_NaN();
+    double blacklevel = std::numeric_limits<double>::quiet_NaN();
+};
+
+/// Optional filters when selecting a dark (empty / NaN / 0 = don't filter that field).
+struct DarkMatchFilter {
+    std::string cam_name;
+    unsigned width = 0;
+    unsigned height = 0;
+    double gain = std::numeric_limits<double>::quiet_NaN();
+    double blacklevel = std::numeric_limits<double>::quiet_NaN();
+    double gain_tol = 1e-3;
+    double blacklevel_tol = 1.0;
+};
+
 struct SetupData {
     bool loaded = false;
     std::string dir;
@@ -85,6 +114,25 @@ struct SetupData {
 
 /// Absolute exptime tolerance [s] for library match warnings / refresh.
 inline constexpr double kDarkExptimeMatchTol = 1e-4;
+
+/// Parse dark_library.txt (backward compatible with exptime+relpath-only lines).
+std::vector<DarkLibraryEntry> load_dark_library_manifest( const std::string &lib_dir );
+
+/// Entries matching filter (cam_name / geometry / gain when set).
+std::vector<DarkLibraryEntry>
+filter_dark_library_entries( const std::vector<DarkLibraryEntry> &entries,
+                             const DarkMatchFilter &filter );
+
+/// Closest-exptime dark path under lib_dir; empty if none match filter.
+std::string pick_dark_from_library( const std::string &lib_dir,
+                                    double target_exptime,
+                                    const DarkMatchFilter &filter = {},
+                                    DarkLibraryEntry *matched = nullptr,
+                                    double *match_err = nullptr );
+
+/// Write dark_library.txt (format v3 with metadata columns).
+void write_dark_library_manifest( const std::string &lib_dir,
+                                  const std::vector<DarkLibraryEntry> &entries );
 
 using ConfigMap = std::map<std::string, std::string>;
 
@@ -113,13 +161,19 @@ std::string cfg_s(const ConfigMap& cfg, const char* key, const std::string& fall
 
 LoopInputs default_loop_inputs(std::size_t ncam, std::size_t nact);
 
+/// Load ref-PSF package (Imax + config). Dark comes from dark_lib_path when set,
+/// else dir/dark_library.txt, else dir/dark_avg.fits.
 SetupData load_setup_dir(const std::string& dir,
                          std::size_t expect_ncam = 0,
-                         double target_exptime = -1.0);
+                         double target_exptime = -1.0,
+                         const std::string& dark_lib_path = {},
+                         const DarkMatchFilter& dark_filter = {});
 
 SetupData load_setup_from_package(const PackagePaths& pkg,
                                   std::size_t expect_ncam,
-                                  double target_exptime = -1.0);
+                                  double target_exptime = -1.0,
+                                  const std::string& dark_lib_path = {},
+                                  const DarkMatchFilter& dark_filter = {});
 
 void apply_setup(LoopInputs& in, const SetupData& s, double live_exptime = -1.0);
 

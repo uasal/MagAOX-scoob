@@ -14,6 +14,7 @@
 #define iefcCtrl_hpp
 
 #include <atomic>
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <chrono>
@@ -73,8 +74,8 @@ class iefcCtrl : public MagAOXApp<true>
     enum class Job : int
     {
         Idle = 0,
-        RefPsf,
-        DarkLibrary,
+        ReloadPsfRef,
+        DarkLibLoad, ///< Index/validate dark_lib_path for cam_name
         Calibrate,
         CalReload, ///< Load response/control/modes from cal_dir into memory
         Run,
@@ -94,13 +95,11 @@ class iefcCtrl : public MagAOXApp<true>
       */
     std::string m_shmCamInput{ "camsci" };
     std::string m_shmDm{ "dm01disp07" };
-    std::string m_shmFsm{ "dm00disp01" };
-    std::string m_shutterName{ "camscishutter" };
-    std::string m_camExpShmim{ "camsciexptime" };
-    std::string m_camGainShmim{ "camscigain" };
 
-    std::string m_psfDir{ "./ref_psf" };  ///< Ref-PSF / dark / Imax package (write+read)
+    std::string m_psfDir{ "./ref_psf" };  ///< Ref-PSF / Imax package (write+read)
     std::string m_calDir{ "./cal_a" };    ///< Calibration package (response/control matrices)
+    std::string m_darkLibPath; ///< External dark library dir (dark_library.txt from darkCtrl)
+    std::string m_camName{ "camsci" }; ///< INDI device name of the science camera (exptime/emgain)
     std::string m_dhMaskPath; ///< External FITS mask path for dh_mask_reload (full path or filename)
     std::string m_satMaskPath; ///< FITS sat-check region for calibrate (raw ADU)
     float m_satThresh{ 55000.0f }; ///< Raw ADU threshold inside sat_mask (≥ → abort cal)
@@ -110,20 +109,14 @@ class iefcCtrl : public MagAOXApp<true>
     unsigned m_camNFrameDelay{ 1 };  ///< Skip this many new camsci frames (0 = use cam_r_delay)
     float m_camRDelay{ 0.0f };      ///< Wall-clock settle [s] (used only when cam_n_frame_delay==0)
 
-    float m_psfFsmPokeTip{ 1000.0f };
-    float m_psfFsmPokeTilt{ 1000.0f };
-    float m_psfFsmRefTip{ 0.0f };
-    float m_psfFsmRefTilt{ 0.0f };
-    float m_psfFsmRefPiston{ 0.0f };
-    unsigned m_darkNImages{ 20 };
-    unsigned m_psfNFrames{ 20 };
-    float m_settle_s{ 0.5f };
-
-    std::string m_darkExptimesCsv{ "0.5,1,2,5" };
-    float m_camExp{ 1.0f };       ///< Target exposure [s]; writes cam_exp_shmim when set
-    float m_camGain{ 0.0f };      ///< Target gain; writes cam_gain_shmim when set
+    float m_camExp{ 1.0f };       ///< Target exposure [s]; sends cam_name.exptime when set
+    float m_camGain{ 0.0f };      ///< Target gain; sends cam_name.emgain when set
     bool m_setCamExp{ false };    ///< True after INDI cam_exp was set (calibrate/run)
     bool m_setCamGain{ false };   ///< True after INDI cam_gain was set (calibrate/run)
+
+    /// Remote currents from cam_name.exptime / emgain SET callbacks.
+    double m_remoteExp{ std::numeric_limits<double>::quiet_NaN() };
+    double m_remoteGain{ std::numeric_limits<double>::quiet_NaN() };
 
     float m_calRegCond{ -2.5f };
     float m_clProbeAmp{ 1e-9f };     ///< Closed-loop probe amp [m] (INDI cl_probe_amp)
@@ -214,16 +207,8 @@ class iefcCtrl : public MagAOXApp<true>
       */
     IMAGE m_camsci{};
     IMAGE m_dm{};
-    IMAGE m_fsm{};
-    IMAGE m_shutter{};
-    IMAGE m_camExpShm{};
-    IMAGE m_camGainShm{};
     bool m_camsciOpen{ false };
     bool m_dmOpen{ false };
-    bool m_fsmOpen{ false };
-    bool m_shutterOpen{ false };
-    bool m_camExpOpen{ false };
-    bool m_camGainOpen{ false };
     int m_camsciSem{ -1 };
     ///@}
 
@@ -235,23 +220,6 @@ class iefcCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_shmDm;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmDm);
-
-    pcf::IndiProperty m_indiP_shmFsm;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmFsm);
-
-    pcf::IndiProperty m_indiP_shmShutter;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmShutter );
-
-    pcf::IndiProperty m_indiP_shutter; // toggle: On=closed, Off=open
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shutter );
-
-    /// Milk name for exposure-time scalar (not the numeric exposure value).
-    pcf::IndiProperty m_indiP_camExpShmim;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camExpShmim);
-
-    /// Milk name for camera-gain scalar (not cl_loop_gain).
-    pcf::IndiProperty m_indiP_camGainShmim;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camGainShmim);
 
     pcf::IndiProperty m_indiP_shmCamSubNorm;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmCamSubNorm);
@@ -284,11 +252,23 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_camGain;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camGain);
 
+    /// Remote SET subscriptions on cam_name.exptime / emgain.
+    pcf::IndiProperty m_indiP_remoteExptime;
+    INDI_SETCALLBACK_DECL( iefcCtrl, m_indiP_remoteExptime );
+    pcf::IndiProperty m_indiP_remoteEmgain;
+    INDI_SETCALLBACK_DECL( iefcCtrl, m_indiP_remoteEmgain );
+
     pcf::IndiProperty m_indiP_psfDir;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfDir);
 
     pcf::IndiProperty m_indiP_calDir;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calDir);
+
+    pcf::IndiProperty m_indiP_darkLibPath;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkLibPath);
+
+    pcf::IndiProperty m_indiP_camName;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camName);
 
     pcf::IndiProperty m_indiP_dhMaskPath;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskPath);
@@ -301,31 +281,6 @@ class iefcCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_psfMaxRef; ///< current/target — manual set overrides until cal/refPSF
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfMaxRef);
-    ///@}
-
-    /** \name INDI — ref PSF / FSM
-      *@{
-      */
-    pcf::IndiProperty m_indiP_psfFsmPokeTip;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfFsmPokeTip);
-
-    pcf::IndiProperty m_indiP_psfFsmPokeTilt;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfFsmPokeTilt);
-
-    pcf::IndiProperty m_indiP_psfFsmRefTip;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfFsmRefTip);
-
-    pcf::IndiProperty m_indiP_psfFsmRefTilt;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfFsmRefTilt);
-
-    pcf::IndiProperty m_indiP_darkNImages;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkNImages);
-
-    pcf::IndiProperty m_indiP_psfNFrames;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfNFrames);
-
-    pcf::IndiProperty m_indiP_darkExptimes;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkExptimes);
     ///@}
 
     /** \name INDI — calibrate / run
@@ -359,14 +314,14 @@ class iefcCtrl : public MagAOXApp<true>
     /** \name INDI — requests + status
       *@{
       */
-    pcf::IndiProperty m_indiP_psfTakeRef;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_psfTakeRef);
-
-    pcf::IndiProperty m_indiP_darkLibBuild;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkLibBuild);
+    pcf::IndiProperty m_indiP_reloadPsfRef;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_reloadPsfRef);
 
     pcf::IndiProperty m_indiP_calibrate;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calibrate);
+
+    pcf::IndiProperty m_indiP_darkLibLoad;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkLibLoad);
 
     pcf::IndiProperty m_indiP_calReload;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calReload);
@@ -412,14 +367,9 @@ class iefcCtrl : public MagAOXApp<true>
 
     int openCamsci();
     int openDm();
-    int openFsm();
-    int openShutter();
-    int openCamExp();
-    int openCamGain();
     void closeStreams();
 
     int writeScalar( IMAGE &im, double value );
-    int writeFsmTipTiltPiston( double tip_m, double tilt_m, double piston_m );
     int grabMeanCamsci( unsigned nframes, unsigned wait_frames, std::vector<float> &out,
                         uint32_t &w, uint32_t &h );
 
@@ -428,10 +378,13 @@ class iefcCtrl : public MagAOXApp<true>
                      uint32_t h );
     int writeConfigTxt( const std::string &path, const std::string &body );
 
-    int doRefPsf();
-    int doDarkLibrary();
+    int doReloadPsfRef();
     int doCalibrate();
     int doCalReload(); ///< Load response/control/modes/mask from cal_dir into memory
+    int doDarkLibLoad(); ///< Index dark_lib_path for cam_name (validate library)
+
+    /// Dark-library match filter for current cam_name / live gain.
+    lina::DarkMatchFilter darkFilter( double gain = std::numeric_limits<double>::quiet_NaN() ) const;
     int doRun();
     int doDmReset();
     int doRecomputeControl(); ///< Load or build control for current cal_reg_cond
@@ -463,23 +416,17 @@ class iefcCtrl : public MagAOXApp<true>
                             float reg,
                             lina::Array2D<double> &control_out );
 
-    /// Write shutter milk scalar and publish INDI toggle (On=closed).
-    int setShutterClosed( bool closed );
-
-    /// Publish INDI shutter toggle from a known closed/open state (no SHM write).
-    void publishShutterIndi( bool closed );
-
-    /// Write cam_exp milk scalar and update INDI cam_exp current (not target).
+    /// Send cam_name.exptime target via INDI NEW; update local cam_exp current.
     int setCamExpValue( double seconds );
 
-    /// Write cam_gain milk scalar and update INDI cam_gain current (not target).
+    /// Send cam_name.emgain target via INDI NEW; update local cam_gain current.
     int setCamGainValue( double gain );
 
-    /// Read a scalar IMAGE (float/double/int) as double; returns NaN on unsupported type.
-    static double readScalarValue( const IMAGE &im );
+    /// Best-known live exposure [s] from remote SET, else local target.
+    double liveCamExp() const;
 
-    /// Quietly open cam_exp / cam_gain shmims if present and mirror values into INDI current.
-    void syncCamExpGainCurrent();
+    /// Best-known live gain from remote SET, else local target.
+    double liveCamGain() const;
 
     /// Cache setup (dark + Imax) for continuous shm_cam_sub_norm.
     void updateLiveNormFromSetup( const lina::SetupData &setup );
@@ -550,28 +497,6 @@ void iefcCtrl::setupConfig()
                 "Science-camera ImageStreamIO name (default camsci)." );
     config.add( "iefc.shm_dm", "", "iefc.shm_dm", argType::Required, "iefc", "shm_dm", false,
                 "string", "IEFC DM channel shmim (default dm01disp07)." );
-    config.add( "iefc.shm_fsm", "", "iefc.shm_fsm", argType::Required, "iefc", "shm_fsm", false,
-                "string", "FSM DMcomb channel shmim (default dm00disp01)." );
-    config.add( "iefc.shm_shutter", "", "iefc.shm_shutter", argType::Required, "iefc", "shm_shutter", false,
-                "string", "Shutter scalar shmim name (INDI shm_shutter; default camscishutter)." );
-    config.add( "iefc.cam_exp_shmim",
-                "",
-                "iefc.cam_exp_shmim",
-                argType::Required,
-                "iefc",
-                "cam_exp_shmim",
-                false,
-                "string",
-                "Exposure-time scalar shmim name (default camsciexptime)." );
-    config.add( "iefc.cam_gain_shmim",
-                "",
-                "iefc.cam_gain_shmim",
-                argType::Required,
-                "iefc",
-                "cam_gain_shmim",
-                false,
-                "string",
-                "Camera-gain scalar shmim name (default camscigain)." );
     config.add( "iefc.cam_exp",
                 "",
                 "iefc.cam_exp",
@@ -580,7 +505,7 @@ void iefcCtrl::setupConfig()
                 "cam_exp",
                 false,
                 "float",
-                "Target camera exposure [s]; writes cam_exp_shmim when set (current tracks shmim)." );
+                "Target camera exposure [s]; sends cam_name.exptime when set (current tracks remote)." );
     config.add( "iefc.cam_gain",
                 "",
                 "iefc.cam_gain",
@@ -589,13 +514,22 @@ void iefcCtrl::setupConfig()
                 "cam_gain",
                 false,
                 "float",
-                "Target camera gain; writes cam_gain_shmim when set (current tracks shmim)." );
+                "Target camera gain; sends cam_name.emgain when set (current tracks remote)." );
     config.add( "iefc.cal_dir", "", "iefc.cal_dir", argType::Required, "iefc", "cal_dir", false,
                 "string", "Calibration package dir (response/control matrices)." );
     config.add( "iefc.psf_dir", "", "iefc.psf_dir", argType::Required, "iefc", "psf_dir", false,
                 "string",
-                "Ref-PSF / dark-library / Imax package (written by doRefPsf/doDarkLibrary; "
-                "read by calibrate/run)." );
+                "Ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref/calibrate/cl_run)." );
+    config.add( "iefc.dark_lib_path", "", "iefc.dark_lib_path", argType::Required, "iefc", "dark_lib_path", false,
+                "string", "Dark library directory (dark_library.txt from darkCtrl)." );
+    config.add( "iefc.cam_name",
+                "",
+                "iefc.cam_name",
+                argType::Required,
+                "iefc",
+                "cam_name",
+                false,
+                "string", "INDI device name of the science camera." );
     config.add( "iefc.dh_mask_path",
                 "",
                 "iefc.dh_mask_path",
@@ -643,20 +577,6 @@ void iefcCtrl::setupConfig()
                 false,
                 "float",
                 "Wall-clock settle [s] after DM write (used only when cam_n_frame_delay==0)." );
-    config.add( "iefc.psf_fsm_poke_tip", "", "iefc.psf_fsm_poke_tip", argType::Required, "iefc", "psf_fsm_poke_tip",
-                false, "float", "FSM tip poke amplitude [nm] for psf_take_ref." );
-    config.add( "iefc.psf_fsm_poke_tilt", "", "iefc.psf_fsm_poke_tilt", argType::Required, "iefc", "psf_fsm_poke_tilt",
-                false, "float", "FSM tilt poke amplitude [nm] for psf_take_ref." );
-    config.add( "iefc.psf_fsm_ref_tip", "", "iefc.psf_fsm_ref_tip", argType::Required, "iefc", "psf_fsm_ref_tip",
-                false, "float", "FSM home tip [nm] for psf_take_ref." );
-    config.add( "iefc.psf_fsm_ref_tilt", "", "iefc.psf_fsm_ref_tilt", argType::Required, "iefc", "psf_fsm_ref_tilt",
-                false, "float", "FSM home tilt [nm] for psf_take_ref." );
-    config.add( "iefc.dark_n_images", "", "iefc.dark_n_images", argType::Required, "iefc", "dark_n_images", false,
-                "unsigned", "Dark frames for ref-PSF / dark-library." );
-    config.add( "iefc.psf_n_frames", "", "iefc.psf_n_frames", argType::Required, "iefc", "psf_n_frames", false, "unsigned",
-                "PSF frames for ref-PSF." );
-    config.add( "iefc.dark_exptimes", "", "iefc.dark_exptimes", argType::Required, "iefc", "dark_exptimes", false,
-                "string", "CSV exposure times for dark-library." );
     config.add( "iefc.cal_reg_cond",
                 "",
                 "iefc.cal_reg_cond",
@@ -732,27 +652,18 @@ void iefcCtrl::loadConfig()
 {
     config( m_shmCamInput, "iefc.shm_cam_input" );
     config( m_shmDm, "iefc.shm_dm" );
-    config( m_shmFsm, "iefc.shm_fsm" );
-    config( m_shutterName, "iefc.shm_shutter" );
-    config( m_camExpShmim, "iefc.cam_exp_shmim" );
-    config( m_camGainShmim, "iefc.cam_gain_shmim" );
     config( m_camExp, "iefc.cam_exp" );
     config( m_camGain, "iefc.cam_gain" );
     config( m_calDir, "iefc.cal_dir" );
     config( m_psfDir, "iefc.psf_dir" );
+    config( m_darkLibPath, "iefc.dark_lib_path" );
+    config( m_camName, "iefc.cam_name" );
     config( m_dhMaskPath, "iefc.dh_mask_path" );
     config( m_satMaskPath, "iefc.sat_mask_path" );
     config( m_satThresh, "iefc.sat_thresh" );
     config( m_calNImages, "iefc.cal_n_images" );
     config( m_camNFrameDelay, "iefc.cam_n_frame_delay" );
     config( m_camRDelay, "iefc.cam_r_delay" );
-    config( m_psfFsmPokeTip, "iefc.psf_fsm_poke_tip" );
-    config( m_psfFsmPokeTilt, "iefc.psf_fsm_poke_tilt" );
-    config( m_psfFsmRefTip, "iefc.psf_fsm_ref_tip" );
-    config( m_psfFsmRefTilt, "iefc.psf_fsm_ref_tilt" );
-    config( m_darkNImages, "iefc.dark_n_images" );
-    config( m_psfNFrames, "iefc.psf_n_frames" );
-    config( m_darkExptimesCsv, "iefc.dark_exptimes" );
     config( m_calRegCond, "iefc.cal_reg_cond" );
     config( m_calProbeAmp, "iefc.cal_probe_amp" );
     config( m_calModeAmp, "iefc.cal_mode_amp" );
@@ -785,11 +696,6 @@ int iefcCtrl::appStartup()
 
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamInput, "shm_cam_input", "Science camera input shmim", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDm, "shm_dm", "IEFC DM channel shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmFsm, "shm_fsm", "FSM channel shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmShutter, "shm_shutter", "Shutter scalar shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TOGGLESWITCH( m_indiP_shutter, "shutter" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_camExpShmim, "cam_exp_shmim", "Exposure-time scalar shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_camGainShmim, "cam_gain_shmim", "Camera-gain scalar shmim", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamSubNorm, "shm_cam_sub_norm", "Dark-sub+norm camera stream", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmContrastAvg, "shm_contrast_avg", "Running-avg contrast shmim name", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDhMask, "shm_dh_mask", "WFS/control mask image shmim", "shmims" );
@@ -801,25 +707,20 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camRDelay, "cam_r_delay", 0, 10, 0.01, "%0.3f",
                                  "Wall-clock settle after DM [s] (XOR cam_n_frame_delay)", "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camExp, "cam_exp", 0, 1000, 0.1, "%0.3f",
-                                 "Target exposure [s] → cam_exp_shmim (current tracks shmim)", "shared" );
+                                 "Target exposure [s] → cam_name.exptime (current tracks remote)",
+                                 "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camGain, "cam_gain", -100, 100, 0.1, "%0.3f",
-                                 "Target gain → cam_gain_shmim (current tracks shmim)", "shared" );
+                                 "Target gain → cam_name.emgain (current tracks remote)", "shared" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_calDir, "cal_dir", "Calibration package dir (response/control)", "paths" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_psfDir, "psf_dir", "Ref-PSF / dark / Imax package dir", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_psfDir, "psf_dir", "Ref-PSF package from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_darkLibPath, "dark_lib_path", "Dark library directory (from darkCtrl)", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_camName, "cam_name", "INDI science-camera device name", "camera" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_dhMaskPath, "dh_mask_path", "External WFS/control mask FITS path", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_satMaskPath, "sat_mask_path", "Saturation-check mask FITS path", "paths" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_satThresh, "sat_thresh", 0, 1e7, 1, "%0.1f",
                                 "Raw ADU sat threshold in sat_mask", "calibrate" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfMaxRef, "psf_max_ref", 0, 1e12, 1, "%0.6g",
                                 "Ref-PSF peak / NI normalization", "shared" );
-
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfFsmPokeTip, "psf_fsm_poke_tip", -1e5, 1e5, 1, "%0.1f", "Tip poke [nm]", "refPsf" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfFsmPokeTilt, "psf_fsm_poke_tilt", -1e5, 1e5, 1, "%0.1f", "Tilt poke [nm]", "refPsf" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfFsmRefTip, "psf_fsm_ref_tip", -1e5, 1e5, 1, "%0.1f", "FSM home tip [nm]", "refPsf" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_psfFsmRefTilt, "psf_fsm_ref_tilt", -1e5, 1e5, 1, "%0.1f", "FSM home tilt [nm]", "refPsf" );
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_darkNImages, "dark_n_images", 1, 10000, 1, "%u", "Dark frames", "refPsf" );
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_psfNFrames, "psf_n_frames", 1, 10000, 1, "%u", "PSF frames", "refPsf" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_darkExptimes, "dark_exptimes", "Dark-library CSV exposures", "refPsf" );
 
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calRegCond, "cal_reg_cond", -20, 0, 0.1, "%0.2f", "beta_reg for control matrix", "calibrate" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calProbeAmp, "cal_probe_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib probe amp [m]", "calibrate" );
@@ -831,8 +732,8 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_clContrastAvgN, "cl_contrast_avg_n", 1, 10000, 1, "%u",
                                  "NI frames averaged for contrast / cl_run (sets cadence)", "run" );
 
-    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_psfTakeRef, "psf_take_ref" );
-    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibBuild, "dark_lib_build" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_reloadPsfRef, "reload_psf_ref" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibLoad, "dark_lib_load" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calibrate, "calibrate" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calReload, "cal_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_clRun, "cl_run" );
@@ -869,16 +770,6 @@ int iefcCtrl::appStartup()
     m_indiP_shmCamInput["target"].setValue( m_shmCamInput );
     m_indiP_shmDm["current"].setValue( m_shmDm );
     m_indiP_shmDm["target"].setValue( m_shmDm );
-    m_indiP_shmFsm["current"].setValue( m_shmFsm );
-    m_indiP_shmFsm["target"].setValue( m_shmFsm );
-    m_indiP_shmShutter["current"].setValue( m_shutterName );
-    m_indiP_shmShutter["target"].setValue( m_shutterName );
-    // Seed shutter toggle Off (open) before INDI is up — use setSwitchState, not update*
-    m_indiP_shutter["toggle"].setSwitchState( pcf::IndiElement::Off );
-    m_indiP_camExpShmim["current"].setValue( m_camExpShmim );
-    m_indiP_camExpShmim["target"].setValue( m_camExpShmim );
-    m_indiP_camGainShmim["current"].setValue( m_camGainShmim );
-    m_indiP_camGainShmim["target"].setValue( m_camGainShmim );
     m_indiP_shmCamSubNorm["current"].setValue( m_shmCamSubNorm );
     m_indiP_shmCamSubNorm["target"].setValue( m_shmCamSubNorm );
     m_indiP_shmContrastAvg["current"].setValue( m_contrastAvgName );
@@ -901,6 +792,10 @@ int iefcCtrl::appStartup()
     m_indiP_calDir["target"].setValue( m_calDir );
     m_indiP_psfDir["current"].setValue( m_psfDir );
     m_indiP_psfDir["target"].setValue( m_psfDir );
+    m_indiP_darkLibPath["current"].setValue( m_darkLibPath );
+    m_indiP_darkLibPath["target"].setValue( m_darkLibPath );
+    m_indiP_camName["current"].setValue( m_camName );
+    m_indiP_camName["target"].setValue( m_camName );
     m_indiP_dhMaskPath["current"].setValue( m_dhMaskPath );
     m_indiP_dhMaskPath["target"].setValue( m_dhMaskPath );
     m_indiP_satMaskPath["current"].setValue( m_satMaskPath );
@@ -909,20 +804,6 @@ int iefcCtrl::appStartup()
     m_indiP_satThresh["target"].setValue( m_satThresh );
     m_indiP_psfMaxRef["current"].setValue( 0.0 );
     m_indiP_psfMaxRef["target"].setValue( 0.0 );
-    m_indiP_psfFsmPokeTip["current"].setValue( m_psfFsmPokeTip );
-    m_indiP_psfFsmPokeTip["target"].setValue( m_psfFsmPokeTip );
-    m_indiP_psfFsmPokeTilt["current"].setValue( m_psfFsmPokeTilt );
-    m_indiP_psfFsmPokeTilt["target"].setValue( m_psfFsmPokeTilt );
-    m_indiP_psfFsmRefTip["current"].setValue( m_psfFsmRefTip );
-    m_indiP_psfFsmRefTip["target"].setValue( m_psfFsmRefTip );
-    m_indiP_psfFsmRefTilt["current"].setValue( m_psfFsmRefTilt );
-    m_indiP_psfFsmRefTilt["target"].setValue( m_psfFsmRefTilt );
-    m_indiP_darkNImages["current"].setValue( m_darkNImages );
-    m_indiP_darkNImages["target"].setValue( m_darkNImages );
-    m_indiP_psfNFrames["current"].setValue( m_psfNFrames );
-    m_indiP_psfNFrames["target"].setValue( m_psfNFrames );
-    m_indiP_darkExptimes["current"].setValue( m_darkExptimesCsv );
-    m_indiP_darkExptimes["target"].setValue( m_darkExptimesCsv );
     m_indiP_calRegCond["current"].setValue( m_calRegCond );
     m_indiP_calRegCond["target"].setValue( m_calRegCond );
     m_indiP_calProbeAmp["current"].setValue( m_calProbeAmp );
@@ -940,8 +821,9 @@ int iefcCtrl::appStartup()
     m_indiP_clContrastAvgN["current"].setValue( m_clContrastAvgN );
     m_indiP_clContrastAvgN["target"].setValue( m_clContrastAvgN );
 
-    // Mirror live camera settings into INDI current without writing shmims.
-    syncCamExpGainCurrent();
+    // Mirror live camera settings into INDI current via remote SET (registered below).
+    REG_INDI_SETPROP( m_indiP_remoteExptime, m_camName, "exptime" );
+    REG_INDI_SETPROP( m_indiP_remoteEmgain, m_camName, "emgain" );
 
     m_worker = std::thread( workerStart, this );
     m_subNormShutdown = false;
@@ -965,10 +847,8 @@ int iefcCtrl::appLogic()
         state( stateCodes::READY );
     }
 
-    // Mirror cam_exp / cam_gain shmims into INDI current (default loopPause = 1 s).
-    syncCamExpGainCurrent();
-
     // shm_cam_sub_norm / contrast_avg run on m_subNormThread (semaphore-driven).
+    // cam_exp / cam_gain current updated via remote SET callbacks.
     return 0;
 }
 
@@ -1127,10 +1007,10 @@ int iefcCtrl::runJob( Job j )
 {
     switch( j )
     {
-        case Job::RefPsf:
-            return doRefPsf();
-        case Job::DarkLibrary:
-            return doDarkLibrary();
+        case Job::ReloadPsfRef:
+            return doReloadPsfRef();
+        case Job::DarkLibLoad:
+            return doDarkLibLoad();
         case Job::Calibrate:
             return doCalibrate();
         case Job::CalReload:
@@ -1206,58 +1086,6 @@ int iefcCtrl::openDm()
     return 0;
 }
 
-int iefcCtrl::openFsm()
-{
-    if( m_fsmOpen )
-        return 0;
-    if( ImageStreamIO_openIm( &m_fsm, m_shmFsm.c_str() ) != IMAGESTREAMIO_SUCCESS )
-    {
-        return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_shmFsm } );
-    }
-    m_fsmOpen = true;
-    return 0;
-}
-
-int iefcCtrl::openShutter()
-{
-    if( m_shutterOpen )
-        return 0;
-    if( ImageStreamIO_openIm( &m_shutter, m_shutterName.c_str() ) != IMAGESTREAMIO_SUCCESS )
-    {
-        return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_shutterName } );
-    }
-    m_shutterOpen = true;
-    return 0;
-}
-
-int iefcCtrl::openCamExp()
-{
-    if( m_camExpOpen )
-        return 0;
-    if( ImageStreamIO_openIm( &m_camExpShm, m_camExpShmim.c_str() ) != IMAGESTREAMIO_SUCCESS )
-    {
-        return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_camExpShmim } );
-    }
-    m_camExpOpen = true;
-    return 0;
-}
-
-int iefcCtrl::openCamGain()
-{
-    if( m_camGainOpen )
-        return 0;
-    if( ImageStreamIO_openIm( &m_camGainShm, m_camGainShmim.c_str() ) != IMAGESTREAMIO_SUCCESS )
-    {
-        return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_camGainShmim } );
-    }
-    m_camGainOpen = true;
-    return 0;
-}
-
 void iefcCtrl::closeStreams()
 {
     if( m_camsciOpen )
@@ -1269,26 +1097,6 @@ void iefcCtrl::closeStreams()
     {
         ImageStreamIO_closeIm( &m_dm );
         m_dmOpen = false;
-    }
-    if( m_fsmOpen )
-    {
-        ImageStreamIO_closeIm( &m_fsm );
-        m_fsmOpen = false;
-    }
-    if( m_shutterOpen )
-    {
-        ImageStreamIO_closeIm( &m_shutter );
-        m_shutterOpen = false;
-    }
-    if( m_camExpOpen )
-    {
-        ImageStreamIO_closeIm( &m_camExpShm );
-        m_camExpOpen = false;
-    }
-    if( m_camGainOpen )
-    {
-        ImageStreamIO_closeIm( &m_camGainShm );
-        m_camGainOpen = false;
     }
     if( m_subNormCreated )
     {
@@ -1345,47 +1153,6 @@ int iefcCtrl::writeScalar( IMAGE &im, double value )
         im.md->write = 0;
         ImageStreamIO_sempost( &im, -1 );
     }
-    return 0;
-}
-
-int iefcCtrl::writeFsmTipTiltPiston( double tip_m, double tilt_m, double piston_m )
-{
-    // Layout tip,tilt,piston at indices 0,1,2 (run_camsci_cpp convention).
-    if( !m_fsmOpen )
-        return -1;
-    const uint32_t n = m_fsm.md->size[0] * ( m_fsm.md->naxis > 1 ? m_fsm.md->size[1] : 1 );
-    if( n < 3 )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__, "FSM channel size < 3" } );
-    }
-
-    m_fsm.md->write = 1;
-    if( m_fsm.md->datatype == _DATATYPE_FLOAT )
-    {
-        float *p = (float *)m_fsm.array.raw;
-        for( uint32_t i = 0; i < n; ++i )
-            p[i] = 0.0f;
-        p[0] = static_cast<float>( tip_m );
-        p[1] = static_cast<float>( tilt_m );
-        p[2] = static_cast<float>( piston_m );
-    }
-    else if( m_fsm.md->datatype == _DATATYPE_DOUBLE )
-    {
-        double *p = (double *)m_fsm.array.raw;
-        for( uint32_t i = 0; i < n; ++i )
-            p[i] = 0.0;
-        p[0] = tip_m;
-        p[1] = tilt_m;
-        p[2] = piston_m;
-    }
-    else
-    {
-        m_fsm.md->write = 0;
-        return log<software_error, -1>( { __FILE__, __LINE__, "unsupported FSM datatype" } );
-    }
-    m_fsm.md->cnt0++;
-    m_fsm.md->write = 0;
-    ImageStreamIO_sempost( &m_fsm, -1 );
     return 0;
 }
 
@@ -1542,75 +1309,27 @@ int iefcCtrl::writeConfigTxt( const std::string &path, const std::string &body )
     return 0;
 }
 
-void iefcCtrl::publishShutterIndi( bool closed )
+double iefcCtrl::liveCamExp() const
 {
-    if( closed )
-        updateSwitchIfChanged( m_indiP_shutter, "toggle", pcf::IndiElement::On, INDI_OK );
-    else
-        updateSwitchIfChanged( m_indiP_shutter, "toggle", pcf::IndiElement::Off, INDI_IDLE );
+    return std::isfinite( m_remoteExp ) ? m_remoteExp : static_cast<double>( m_camExp );
 }
 
-int iefcCtrl::setShutterClosed( bool closed )
+double iefcCtrl::liveCamGain() const
 {
-    if( openShutter() < 0 )
-        return -1;
-    log<text_log>( std::string( "shutter -> " ) + ( closed ? "CLOSED" : "OPEN" ) +
-                   " (shmim " + m_shutterName + ")" );
-    if( writeScalar( m_shutter, closed ? 1.0 : 0.0 ) < 0 )
-        return -1;
-    publishShutterIndi( closed );
-    return 0;
-}
-
-double iefcCtrl::readScalarValue( const IMAGE &im )
-{
-    if( !im.md )
-        return std::numeric_limits<double>::quiet_NaN();
-    if( im.md->datatype == _DATATYPE_DOUBLE )
-        return ( (double *)im.array.raw )[0];
-    if( im.md->datatype == _DATATYPE_FLOAT )
-        return static_cast<double>( ( (float *)im.array.raw )[0] );
-    if( im.md->datatype == _DATATYPE_INT32 )
-        return static_cast<double>( ( (int32_t *)im.array.raw )[0] );
-    if( im.md->datatype == _DATATYPE_UINT16 )
-        return static_cast<double>( ( (uint16_t *)im.array.raw )[0] );
-    return std::numeric_limits<double>::quiet_NaN();
-}
-
-void iefcCtrl::syncCamExpGainCurrent()
-{
-    if( !m_camExpOpen )
-    {
-        if( ImageStreamIO_openIm( &m_camExpShm, m_camExpShmim.c_str() ) == IMAGESTREAMIO_SUCCESS )
-            m_camExpOpen = true;
-    }
-    if( m_camExpOpen )
-    {
-        const double v = readScalarValue( m_camExpShm );
-        if( std::isfinite( v ) )
-            updateIfChanged( m_indiP_camExp, "current", static_cast<float>( v ) );
-    }
-
-    if( !m_camGainOpen )
-    {
-        if( ImageStreamIO_openIm( &m_camGainShm, m_camGainShmim.c_str() ) == IMAGESTREAMIO_SUCCESS )
-            m_camGainOpen = true;
-    }
-    if( m_camGainOpen )
-    {
-        const double v = readScalarValue( m_camGainShm );
-        if( std::isfinite( v ) )
-            updateIfChanged( m_indiP_camGain, "current", static_cast<float>( v ) );
-    }
+    return std::isfinite( m_remoteGain ) ? m_remoteGain : static_cast<double>( m_camGain );
 }
 
 int iefcCtrl::setCamExpValue( double seconds )
 {
-    if( openCamExp() < 0 )
-        return -1;
-    log<text_log>( "cam_exp -> " + std::to_string( seconds ) + " s (shmim " + m_camExpShmim +
-                   ", dtype=" + std::to_string( m_camExpShm.md->datatype ) + ")" );
-    if( writeScalar( m_camExpShm, seconds ) < 0 )
+    log<text_log>( "cam_exp -> " + std::to_string( seconds ) + " s (" + m_camName +
+                   ".exptime)" );
+
+    pcf::IndiProperty ip( pcf::IndiProperty::Number );
+    ip.setDevice( m_camName );
+    ip.setName( "exptime" );
+    ip.add( pcf::IndiElement( "target" ) );
+    ip["target"].setValue( seconds );
+    if( sendNewProperty( ip ) < 0 )
         return -1;
     updateIfChanged( m_indiP_camExp, "current", static_cast<float>( seconds ) );
     return 0;
@@ -1618,11 +1337,14 @@ int iefcCtrl::setCamExpValue( double seconds )
 
 int iefcCtrl::setCamGainValue( double gain )
 {
-    if( openCamGain() < 0 )
-        return -1;
-    log<text_log>( "cam_gain -> " + std::to_string( gain ) + " (shmim " + m_camGainShmim +
-                   ", dtype=" + std::to_string( m_camGainShm.md->datatype ) + ")" );
-    if( writeScalar( m_camGainShm, gain ) < 0 )
+    log<text_log>( "cam_gain -> " + std::to_string( gain ) + " (" + m_camName + ".emgain)" );
+
+    pcf::IndiProperty ip( pcf::IndiProperty::Number );
+    ip.setDevice( m_camName );
+    ip.setName( "emgain" );
+    ip.add( pcf::IndiElement( "target" ) );
+    ip["target"].setValue( gain );
+    if( sendNewProperty( ip ) < 0 )
         return -1;
     updateIfChanged( m_indiP_camGain, "current", static_cast<float>( gain ) );
     return 0;
@@ -1720,13 +1442,7 @@ int iefcCtrl::processSubNormFrame()
     {
         try
         {
-            double live_exptime = m_camExp;
-            if( openCamExp() == 0 )
-            {
-                live_exptime = ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-                                   ? ( (double *)m_camExpShm.array.raw )[0]
-                                   : (double)( (float *)m_camExpShm.array.raw )[0];
-            }
+            double live_exptime = liveCamExp();
             std::size_t ncam = 0;
             if( !m_camsciOpen &&
                 ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) == IMAGESTREAMIO_SUCCESS )
@@ -1736,7 +1452,7 @@ int iefcCtrl::processSubNormFrame()
             }
             if( m_camsciOpen )
                 ncam = static_cast<std::size_t>( m_camsci.md->size[0] );
-            auto setup = lina::load_setup_dir( m_psfDir, ncam, live_exptime );
+            auto setup = lina::load_setup_dir( m_psfDir, ncam, live_exptime , m_darkLibPath, darkFilter() );
             updateLiveNormFromSetup( setup );
         }
         catch( ... )
@@ -1767,13 +1483,7 @@ int iefcCtrl::processSubNormFrame()
     const size_t npix = static_cast<size_t>( w ) * static_cast<size_t>( h );
 
     // Refresh exposure-matched dark when live exptime changes.
-    double live_exptime = m_camExp;
-    if( openCamExp() == 0 )
-    {
-        live_exptime = ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-                           ? ( (double *)m_camExpShm.array.raw )[0]
-                           : (double)( (float *)m_camExpShm.array.raw )[0];
-    }
+    double live_exptime = liveCamExp();
     if( !m_psfDir.empty() &&
         ( m_liveDarkExptime < 0.0 ||
           std::fabs( live_exptime - m_liveDarkExptime ) > lina::kDarkExptimeMatchTol ) &&
@@ -1781,7 +1491,7 @@ int iefcCtrl::processSubNormFrame()
     {
         try
         {
-            auto setup = lina::load_setup_dir( m_psfDir, w, live_exptime );
+            auto setup = lina::load_setup_dir( m_psfDir, w, live_exptime , m_darkLibPath, darkFilter() );
             updateLiveNormFromSetup( setup );
         }
         catch( ... )
@@ -2691,266 +2401,99 @@ void iefcCtrl::warnIfSaturatedFullFrame( const std::vector<float> &im,
     }
 }
 
-int iefcCtrl::doRefPsf()
+int iefcCtrl::doReloadPsfRef()
 {
-    setStatus( "refPsf: starting" );
-    log<text_log>( "psf_take_ref psf_dir=" + m_psfDir );
+    setStatus( "reload_psf_ref: starting" );
+    log<text_log>( "reload_psf_ref psf_dir=" + m_psfDir );
 
-    if( openCamsci() < 0 || openFsm() < 0 || openShutter() < 0 || openCamExp() < 0 ||
-        openCamGain() < 0 )
-        return -1;
-    if( ensureDir( m_psfDir ) < 0 )
-        return -1;
+    if( m_psfDir.empty() )
+        return log<software_error, -1>( { __FILE__, __LINE__, "psf_dir is empty" } );
 
-    // Apply target cam_exp / cam_gain if the user set them; otherwise use live shmim values.
-    if( m_setCamExp )
+    // Try to open camsci for ncam size; if it fails, try 0 and let load_setup_dir handle it.
+    uint32_t ncam = 0;
+    if( openCamsci() == 0 )
     {
-        setStatus( "refPsf: applying cam_exp" );
-        if( setCamExpValue( m_camExp ) < 0 )
-            return -1;
+        ncam = static_cast<uint32_t>( m_camsci.md->size[0] );
     }
-    if( m_setCamGain )
-    {
-        setStatus( "refPsf: applying cam_gain" );
-        if( setCamGainValue( m_camGain ) < 0 )
-            return -1;
-    }
-    if( m_setCamExp || m_setCamGain )
-        mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-    const double live_exp = readScalarValue( m_camExpShm );
-    const double live_gain = readScalarValue( m_camGainShm );
-    const float psf_exp = std::isfinite( live_exp ) ? static_cast<float>( live_exp ) : m_camExp;
-    const float psf_gain = std::isfinite( live_gain ) ? static_cast<float>( live_gain ) : m_camGain;
-    log<text_log>( "psf_take_ref cam_exp=" + std::to_string( psf_exp ) +
-                   " s cam_gain=" + std::to_string( psf_gain ) );
-
-    const double tip_m = m_psfFsmPokeTip * 1e-9;
-    const double tilt_m = m_psfFsmPokeTilt * 1e-9;
-    const double ref_tip_m = m_psfFsmRefTip * 1e-9;
-    const double ref_tilt_m = m_psfFsmRefTilt * 1e-9;
-    const double ref_pist_m = m_psfFsmRefPiston * 1e-9;
-
-    // Park at reference home, then poke home+offset.
-    setStatus( "refPsf: parking FSM home" );
-    if( writeFsmTipTiltPiston( ref_tip_m, ref_tilt_m, ref_pist_m ) < 0 )
-        return -1;
-    mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-    setStatus( "refPsf: poking FSM" );
-    if( writeFsmTipTiltPiston( ref_tip_m + tip_m, ref_tilt_m + tilt_m, ref_pist_m ) < 0 )
-        return -1;
-    mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-    if( m_stopRequested.load() )
-        return -1;
-
-    setStatus( "refPsf: closing shutter / darks" );
-    if( setShutterClosed( true ) < 0 )
-        return -1;
-    mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-    std::size_t settle_frames = 0;
-    double settle_s = 0.0;
-    resolveCamSettle( settle_frames, settle_s );
-
-    std::vector<float> dark;
-    uint32_t w = 0, h = 0;
-    if( settle_s > 0.0 )
-        mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
-    if( grabMeanCamsci( m_darkNImages, static_cast<unsigned>( settle_frames ), dark, w, h ) < 0 )
-        return -1;
-    if( saveFitsF32( m_psfDir + "/dark_avg.fits", dark, w, h ) < 0 )
-        return -1;
-
-    setStatus( "refPsf: opening shutter / PSF" );
-    if( setShutterClosed( false ) < 0 )
-        return -1;
-    mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-    std::vector<float> psf;
-    if( settle_s > 0.0 )
-        mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
-    if( grabMeanCamsci( m_psfNFrames, static_cast<unsigned>( settle_frames ), psf, w, h ) < 0 )
-        return -1;
-
-    // Full-frame saturation check on raw PSF average (before dark subtraction).
-    warnIfSaturatedFullFrame( psf, w, h, "psf_take_ref" );
-
-    std::vector<float> psf_sub( psf.size() );
-    float peak = -1e30f;
-    for( size_t i = 0; i < psf.size(); ++i )
-    {
-        psf_sub[i] = psf[i] - dark[i];
-        if( psf_sub[i] > peak )
-            peak = psf_sub[i];
-    }
-
-    if( saveFitsF32( m_psfDir + "/ref_psf_avg.fits", psf, w, h ) < 0 )
-        return -1;
-    if( saveFitsF32( m_psfDir + "/ref_psf_dark_sub.fits", psf_sub, w, h ) < 0 )
-        return -1;
-
-    std::ostringstream cfg;
-    cfg << "# Reference PSF package (iefcCtrl)\n"
-        << "camsci=" << m_shmCamInput << "\n"
-        << "dm_channel=" << m_shmDm << "\n"
-        << "fsm_channel=" << m_shmFsm << "\n"
-        << "shutter_shm=" << m_shutterName << "\n"
-        << "cam_exp_shmim=" << m_camExpShmim << "\n"
-        << "cam_gain_shmim=" << m_camGainShmim << "\n"
-        << "cam_exp=" << psf_exp << "\n"
-        << "cam_gain=" << psf_gain << "\n"
-        << "exptime=" << psf_exp << "\n"           // legacy key for lina loaders
-        << "psf_exptime=" << psf_exp << "\n"       // legacy
-        << "gain=" << psf_gain << "\n"             // legacy
-        << "psf_gain=" << psf_gain << "\n"         // legacy
-        << "psf_max_ref=" << peak << "\n"
-        << "Imax_ref=" << peak << "\n"  // legacy
-        << "peak_dark_sub=" << peak << "\n"
-        << "tip_nm=" << m_psfFsmPokeTip << "\n"
-        << "tilt_nm=" << m_psfFsmPokeTilt << "\n"
-        << "ref_tip_nm=" << m_psfFsmRefTip << "\n"
-        << "ref_tilt_nm=" << m_psfFsmRefTilt << "\n"
-        << "ndark=" << m_darkNImages << "\n"
-        << "npsf=" << m_psfNFrames << "\n"
-        << "nframes=" << m_calNImages << "\n"
-        << "cam_n_frame_delay=" << m_camNFrameDelay << "\n"
-        << "cam_r_delay=" << m_camRDelay << "\n"
-        << "dark_file=dark_avg.fits\n"
-        << "ref_psf_file=ref_psf_avg.fits\n"
-        << "ref_psf_dark_sub_file=ref_psf_dark_sub.fits\n";
-    if( writeConfigTxt( m_psfDir + "/config.txt", cfg.str() ) < 0 )
-        return -1;
-
-    updateIfChanged( m_indiP_psfMaxRef, "current", static_cast<double>( peak ) );
-    updateIfChanged( m_indiP_psfMaxRef, "target", static_cast<double>( peak ) );
-
-    // Seed continuous shm_cam_sub_norm from this ref-PSF package.
-    {
-        m_imaxRefManual = false; // refPSF measurement replaces any manual override
-        lina::SetupData setup;
-        setup.loaded = true;
-        setup.dir = m_psfDir;
-        setup.dark = lina::Array2D<double>( w, h, 0.0 ); // rows=size[0], cols=size[1]
-        for( size_t i = 0; i < dark.size(); ++i )
-            setup.dark.data()[i] = static_cast<double>( dark[i] );
-        setup.Imax_ref = static_cast<double>( peak );
-        setup.psf_exptime = psf_exp;
-        setup.dark_exptime = psf_exp;
-        setup.gain = psf_gain;
-        updateLiveNormFromSetup( setup );
-        resetContrastAccumulator();
-    }
-
-    setStatus( "refPsf: restoring FSM home" );
-    writeFsmTipTiltPiston( ref_tip_m, ref_tilt_m, ref_pist_m );
-
-    log<text_log>( "psf_take_ref done psf_max_ref=" + std::to_string( peak ) );
-    setStatus( "refPsf: done" );
-    return 0;
-}
-
-int iefcCtrl::doDarkLibrary()
-{
-    setStatus( "darkLibrary: starting" );
-    if( openCamsci() < 0 || openShutter() < 0 || openCamExp() < 0 )
-        return -1;
-    if( ensureDir( m_psfDir ) < 0 )
-        return -1;
-    if( ensureDir( m_psfDir + "/darks" ) < 0 )
-        return -1;
-
-    std::vector<double> times;
-    {
-        std::stringstream ss( m_darkExptimesCsv );
-        std::string tok;
-        while( std::getline( ss, tok, ',' ) )
-        {
-            if( tok.empty() )
-                continue;
-            times.push_back( std::atof( tok.c_str() ) );
-        }
-    }
-    if( times.empty() )
-    {
-        return log<software_error, -1>( { __FILE__, __LINE__, "dark_exptimes CSV empty" } );
-    }
-
-    const double exptime_start =
-        ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-            ? ( (double *)m_camExpShm.array.raw )[0]
-            : static_cast<double>( ( (float *)m_camExpShm.array.raw )[0] );
-    const double shutter_start =
-        ( m_shutter.md->datatype == _DATATYPE_DOUBLE )
-            ? ( (double *)m_shutter.array.raw )[0]
-            : static_cast<double>( ( (float *)m_shutter.array.raw )[0] );
-
-    log<text_log>( "darkLibrary: " + std::to_string( times.size() ) +
-                   " exposures from dark_exptimes=[" + m_darkExptimesCsv + "], nDark=" +
-                   std::to_string( m_darkNImages ) + ", start exptime=" +
-                   std::to_string( exptime_start ) + " s, shutter_start=" +
-                   std::to_string( shutter_start ) );
-    if( setShutterClosed( true ) < 0 )
-        return -1;
-
-    std::ofstream manifest( m_psfDir + "/dark_library.txt" );
-    manifest << "# dark library: exptime  relative_path  ndark\n";
-
-    for( size_t i = 0; i < times.size(); ++i )
-    {
-        if( m_stopRequested.load() )
-            break;
-        setStatus( "darkLibrary: exptime=" + std::to_string( times[i] ) );
-        log<text_log>( "darkLibrary: [" + std::to_string( i + 1 ) + "/" +
-                       std::to_string( times.size() ) + "] setting exptime=" +
-                       std::to_string( times[i] ) + " s" );
-        if( setCamExpValue( times[i] ) < 0 )
-            return -1;
-        mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
-
-        // Prefer the camera-reported exptime in the manifest so later matching
-        // against live milk values (which may round) stays consistent.
-        double reported = times[i];
-        if( openCamExp() == 0 )
-        {
-            reported = ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-                           ? ( (double *)m_camExpShm.array.raw )[0]
-                           : static_cast<double>( ( (float *)m_camExpShm.array.raw )[0] );
-        }
-
-        std::vector<float> dark;
-        uint32_t w = 0, h = 0;
-        {
-            std::size_t settle_frames = 0;
-            double settle_s = 0.0;
-            resolveCamSettle( settle_frames, settle_s );
-            if( settle_s > 0.0 )
-                mx::sys::milliSleep( static_cast<unsigned>( settle_s * 1000.0 ) );
-            if( grabMeanCamsci( m_darkNImages, static_cast<unsigned>( settle_frames ), dark, w, h ) < 0 )
-                return -1;
-        }
-
-        char rel[64];
-        std::snprintf( rel, sizeof( rel ), "darks/dark_%03zu.fits", i );
-        if( saveFitsF32( m_psfDir + "/" + rel, dark, w, h ) < 0 )
-            return -1;
-        manifest << std::setprecision( 17 ) << reported << "  " << rel << "  " << m_darkNImages
-                 << "\n";
-        log<text_log>( "darkLibrary: wrote " + m_psfDir + "/" + rel + " (requested=" +
-                       std::to_string( times[i] ) + " s, camera=" +
-                       std::to_string( reported ) + " s)" );
-    }
-
-    log<text_log>( "darkLibrary: restoring shutter/exptime" );
-    if( shutter_start > 0.5 )
-        setShutterClosed( true );
     else
-        setShutterClosed( false );
-    if( setCamExpValue( exptime_start ) < 0 )
-        return -1;
-    setStatus( "darkLibrary: done" );
-    log<text_log>( "dark_lib_build wrote " + m_psfDir + "/dark_library.txt" );
+    {
+        log<text_log>( "reload_psf_ref: could not open camsci for size, assuming ncam=0",
+                       logPrio::LOG_WARNING );
+    }
+
+    const double live_exptime = liveCamExp();
+    log<text_log>( "reload_psf_ref live_exptime=" + std::to_string( live_exptime ) + " s" );
+
+    lina::SetupData setup;
+    try
+    {
+        setup = lina::load_setup_dir( m_psfDir, ncam, live_exptime, m_darkLibPath, darkFilter() );
+    }
+    catch( const std::exception &e )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "failed to load setup from " ) + m_psfDir + ": " + e.what() } );
+    }
+
+    // Always recompute peak from package dark-sub (or avg-dark) rather than trusting config only.
+    double peak = -1.0;
+    std::string psf_dark_sub_path = m_psfDir + "/ref_psf_dark_sub.fits";
+    try
+    {
+        lina::Array2D<double> psf_sub = lina::load_fits_double( psf_dark_sub_path );
+        peak = -1e30;
+        for( size_t i = 0; i < psf_sub.size(); ++i )
+        {
+            if( psf_sub.data()[i] > peak )
+                peak = psf_sub.data()[i];
+        }
+        log<text_log>( "reload_psf_ref: loaded " + psf_dark_sub_path + " peak=" + std::to_string( peak ) );
+    }
+    catch( const std::exception &e )
+    {
+        // Fall back to ref_psf_avg.fits minus setup.dark.
+        log<text_log>( "reload_psf_ref: ref_psf_dark_sub.fits not found, loading ref_psf_avg.fits" );
+        std::string psf_avg_path = m_psfDir + "/ref_psf_avg.fits";
+        try
+        {
+            lina::Array2D<double> psf_avg = lina::load_fits_double( psf_avg_path );
+            if( psf_avg.size() != setup.dark.size() )
+                return log<software_error, -1>(
+                    { __FILE__, __LINE__, "ref_psf_avg size does not match setup.dark" } );
+            peak = -1e30;
+            for( size_t i = 0; i < psf_avg.size(); ++i )
+            {
+                double val = psf_avg.data()[i] - setup.dark.data()[i];
+                if( val > peak )
+                    peak = val;
+            }
+            log<text_log>( "reload_psf_ref: computed peak from avg-dark=" + std::to_string( peak ) );
+        }
+        catch( const std::exception &e2 )
+        {
+            return log<software_error, -1>(
+                { __FILE__, __LINE__, std::string( "failed to load ref_psf_avg.fits: " ) + e2.what() } );
+        }
+    }
+
+    setup.Imax_ref = peak;
+
+    if( peak >= m_satThresh )
+    {
+        log<text_log>( "reload_psf_ref: peak " + std::to_string( peak ) +
+                       " >= sat_thresh " + std::to_string( m_satThresh ),
+                       logPrio::LOG_WARNING );
+    }
+
+    m_imaxRefManual = false;  // Package reload owns the scale.
+    updateLiveNormFromSetup( setup );
+    resetContrastAccumulator();
+
+    updateIfChanged( m_indiP_psfMaxRef, "current", peak );
+    updateIfChanged( m_indiP_psfMaxRef, "target", peak );
+
+    log<text_log>( "reload_psf_ref done psf_max_ref=" + std::to_string( peak ) );
+    setStatus( "reload_psf_ref: done" );
     return 0;
 }
 
@@ -3074,6 +2617,74 @@ int iefcCtrl::doRecomputeControl()
     return 0;
 }
 
+
+lina::DarkMatchFilter iefcCtrl::darkFilter( double gain ) const
+{
+    lina::DarkMatchFilter f;
+    f.cam_name = m_camName;
+    if( std::isfinite( gain ) )
+        f.gain = gain;
+    return f;
+}
+
+int iefcCtrl::doDarkLibLoad()
+{
+    setStatus( "dark_lib_load: starting" );
+    if( m_darkLibPath.empty() )
+    {
+        setStatus( "dark_lib_load: failed" );
+        return log<software_error, -1>( { __FILE__, __LINE__, "dark_lib_path is empty" } );
+    }
+    if( m_camName.empty() )
+    {
+        setStatus( "dark_lib_load: failed" );
+        return log<software_error, -1>( { __FILE__, __LINE__, "cam_name is empty" } );
+    }
+
+    try
+    {
+        const auto all = lina::load_dark_library_manifest( m_darkLibPath );
+        if( all.empty() )
+        {
+            setStatus( "dark_lib_load: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "no dark_library.txt entries in " + absPath( m_darkLibPath ) } );
+        }
+        const auto matched = lina::filter_dark_library_entries( all, darkFilter() );
+        if( matched.empty() )
+        {
+            setStatus( "dark_lib_load: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "no darks for cam_name=" + m_camName + " in " +
+                      absPath( m_darkLibPath ) + " (total entries=" +
+                      std::to_string( all.size() ) + ")" } );
+        }
+
+        std::ostringstream oss;
+        oss << "dark_lib_load: " << matched.size() << "/" << all.size()
+            << " entries for cam_name=" << m_camName << " in " << absPath( m_darkLibPath )
+            << " (exptime range ";
+        double tmin = matched.front().exptime, tmax = matched.front().exptime;
+        for( const auto &e : matched )
+        {
+            tmin = std::min( tmin, e.exptime );
+            tmax = std::max( tmax, e.exptime );
+        }
+        oss << tmin << " … " << tmax << " s)";
+        log<text_log>( oss.str() );
+        setStatus( "dark_lib_load: done (" + std::to_string( matched.size() ) + " darks)" );
+        return 0;
+    }
+    catch( const std::exception &e )
+    {
+        setStatus( "dark_lib_load: failed" );
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "dark_lib_load: " ) + e.what() } );
+    }
+}
+
 int iefcCtrl::doCalReload()
 {
     setStatus( "cal_reload: starting" );
@@ -3158,20 +2769,14 @@ int iefcCtrl::doCalReload()
                 { __FILE__, __LINE__, "cal_reload: package has empty control mask" } );
         }
 
-        double live_exptime = m_camExp;
-        if( openCamExp() == 0 )
-        {
-            const double v = readScalarValue( m_camExpShm );
-            if( std::isfinite( v ) )
-                live_exptime = v;
-        }
+        double live_exptime = liveCamExp();
 
         lina::SetupData setupData;
         if( !m_psfDir.empty() )
         {
             try
             {
-                setupData = lina::load_setup_dir( m_psfDir, ncam, live_exptime );
+                setupData = lina::load_setup_dir( m_psfDir, ncam, live_exptime , m_darkLibPath, darkFilter() );
             }
             catch( const std::exception &e )
             {
@@ -3183,7 +2788,7 @@ int iefcCtrl::doCalReload()
         {
             try
             {
-                setupData = lina::load_setup_from_package( pkg, ncam, live_exptime );
+                setupData = lina::load_setup_from_package( pkg, ncam, live_exptime , m_darkLibPath, darkFilter() );
             }
             catch( const std::exception &e )
             {
@@ -3300,13 +2905,7 @@ int iefcCtrl::doCalibrate()
             if( setCamGainValue( m_camGain ) < 0 )
                 return -1;
         }
-        double live_exptime = m_camExp;
-        if( openCamExp() == 0 )
-        {
-            live_exptime = ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-                               ? ( (double *)m_camExpShm.array.raw )[0]
-                               : (double)( (float *)m_camExpShm.array.raw )[0];
-        }
+        double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_calNImages;
@@ -3317,7 +2916,7 @@ int iefcCtrl::doCalibrate()
 
         if( m_psfDir.empty() )
             return log<software_error, -1>( { __FILE__, __LINE__, "psf_dir required" } );
-        auto setup = lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime );
+        auto setup = lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime , m_darkLibPath, darkFilter() );
         lina::apply_setup( in, setup, live_exptime );
         lina::generate_modes( in );
         m_imaxRefManual = false; // calibrate adopts package Imax_ref
@@ -3507,13 +3106,7 @@ int iefcCtrl::doRun()
             if( setCamGainValue( m_camGain ) < 0 )
                 return -1;
         }
-        double live_exptime = m_camExp;
-        if( openCamExp() == 0 )
-        {
-            live_exptime = ( m_camExpShm.md->datatype == _DATATYPE_DOUBLE )
-                               ? ( (double *)m_camExpShm.array.raw )[0]
-                               : (double)( (float *)m_camExpShm.array.raw )[0];
-        }
+        double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_clContrastAvgN < 1 ? 1 : m_clContrastAvgN;
@@ -3556,9 +3149,9 @@ int iefcCtrl::doRun()
             lina::load_modes_from_package( in, pkg );
 
             if( !m_psfDir.empty() )
-                setupData = lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime );
+                setupData = lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime , m_darkLibPath, darkFilter() );
             else
-                setupData = lina::load_setup_from_package( pkg, camsci.rows(), live_exptime );
+                setupData = lina::load_setup_from_package( pkg, camsci.rows(), live_exptime , m_darkLibPath, darkFilter() );
             if( !setupData.loaded )
                 return log<software_error, -1>( { __FILE__, __LINE__, "setup/dark not loaded" } );
 
@@ -3604,7 +3197,7 @@ int iefcCtrl::doRun()
                 try
                 {
                     auto live_setup =
-                        lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime );
+                        lina::load_setup_dir( m_psfDir, camsci.rows(), live_exptime , m_darkLibPath, darkFilter() );
                     setupData.dark = live_setup.dark;
                     setupData.dark_exptime = live_setup.dark_exptime;
                     if( live_setup.Imax_ref > 0.0 && !m_imaxRefManual )
@@ -3725,119 +3318,6 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmDm )( const pcf::IndiProperty &ipRec
     log<text_log>( "shm_dm: " + m_shmDm + " -> " + target );
     m_shmDm = target;
     updateIfChanged( m_indiP_shmDm, "current", m_shmDm );
-    closeStreams();
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmFsm )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmFsm, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_shmFsm, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target.empty() || target == m_shmFsm )
-        return 0;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cannot change shm_fsm while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_shmFsm, "current", m_shmFsm );
-        updateIfChanged( m_indiP_shmFsm, "target", m_shmFsm );
-        return 0;
-    }
-    log<text_log>( "shm_fsm: " + m_shmFsm + " -> " + target );
-    m_shmFsm = target;
-    updateIfChanged( m_indiP_shmFsm, "current", m_shmFsm );
-    closeStreams();
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmShutter )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmShutter, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_shmShutter, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target.empty() || target == m_shutterName )
-        return 0;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cannot change shm_shutter while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_shmShutter, "current", m_shutterName );
-        updateIfChanged( m_indiP_shmShutter, "target", m_shutterName );
-        return 0;
-    }
-    log<text_log>( "shm_shutter: " + m_shutterName + " -> " + target );
-    m_shutterName = target;
-    updateIfChanged( m_indiP_shmShutter, "current", m_shutterName );
-    closeStreams();
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shutter )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shutter, ipRecv );
-    if( !ipRecv.find( "toggle" ) )
-        return 0;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cannot toggle shutter while IEFC job busy", logPrio::LOG_WARNING );
-        return 0;
-    }
-    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
-    {
-        updateSwitchIfChanged( m_indiP_shutter, "toggle", pcf::IndiElement::On, INDI_BUSY );
-        if( setShutterClosed( true ) < 0 )
-            return -1;
-    }
-    else if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::Off )
-    {
-        updateSwitchIfChanged( m_indiP_shutter, "toggle", pcf::IndiElement::Off, INDI_BUSY );
-        if( setShutterClosed( false ) < 0 )
-            return -1;
-    }
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camExpShmim )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camExpShmim, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_camExpShmim, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target.empty() || target == m_camExpShmim )
-        return 0;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cannot change cam_exp_shmim while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_camExpShmim, "current", m_camExpShmim );
-        updateIfChanged( m_indiP_camExpShmim, "target", m_camExpShmim );
-        return 0;
-    }
-    log<text_log>( "cam_exp_shmim: " + m_camExpShmim + " -> " + target );
-    m_camExpShmim = target;
-    updateIfChanged( m_indiP_camExpShmim, "current", m_camExpShmim );
-    closeStreams();
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camGainShmim )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camGainShmim, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_camGainShmim, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target.empty() || target == m_camGainShmim )
-        return 0;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cannot change cam_gain_shmim while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_camGainShmim, "current", m_camGainShmim );
-        updateIfChanged( m_indiP_camGainShmim, "target", m_camGainShmim );
-        return 0;
-    }
-    log<text_log>( "cam_gain_shmim: " + m_camGainShmim + " -> " + target );
-    m_camGainShmim = target;
-    updateIfChanged( m_indiP_camGainShmim, "current", m_camGainShmim );
     closeStreams();
     return 0;
 }
@@ -4137,102 +3617,6 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_satThresh )( const pcf::IndiProperty &i
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfFsmPokeTip )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfFsmPokeTip, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_psfFsmPokeTip, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_psfFsmPokeTip )
-        log<text_log>( "psf_fsm_poke_tip: " + std::to_string( m_psfFsmPokeTip ) + " -> " +
-                       std::to_string( target ) );
-    m_psfFsmPokeTip = target;
-    updateIfChanged( m_indiP_psfFsmPokeTip, "current", m_psfFsmPokeTip );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfFsmPokeTilt )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfFsmPokeTilt, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_psfFsmPokeTilt, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_psfFsmPokeTilt )
-        log<text_log>( "psf_fsm_poke_tilt: " + std::to_string( m_psfFsmPokeTilt ) + " -> " +
-                       std::to_string( target ) );
-    m_psfFsmPokeTilt = target;
-    updateIfChanged( m_indiP_psfFsmPokeTilt, "current", m_psfFsmPokeTilt );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfFsmRefTip )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfFsmRefTip, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_psfFsmRefTip, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_psfFsmRefTip )
-        log<text_log>( "psf_fsm_ref_tip: " + std::to_string( m_psfFsmRefTip ) + " -> " +
-                       std::to_string( target ) );
-    m_psfFsmRefTip = target;
-    updateIfChanged( m_indiP_psfFsmRefTip, "current", m_psfFsmRefTip );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfFsmRefTilt )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfFsmRefTilt, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_psfFsmRefTilt, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_psfFsmRefTilt )
-        log<text_log>( "psf_fsm_ref_tilt: " + std::to_string( m_psfFsmRefTilt ) + " -> " +
-                       std::to_string( target ) );
-    m_psfFsmRefTilt = target;
-    updateIfChanged( m_indiP_psfFsmRefTilt, "current", m_psfFsmRefTilt );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_darkNImages )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_darkNImages, ipRecv );
-    unsigned target;
-    if( indiTargetUpdate( m_indiP_darkNImages, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_darkNImages )
-        log<text_log>( "dark_n_images: " + std::to_string( m_darkNImages ) + " -> " + std::to_string( target ) );
-    m_darkNImages = target;
-    updateIfChanged( m_indiP_darkNImages, "current", m_darkNImages );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfNFrames )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfNFrames, ipRecv );
-    unsigned target;
-    if( indiTargetUpdate( m_indiP_psfNFrames, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_psfNFrames )
-        log<text_log>( "psf_n_frames: " + std::to_string( m_psfNFrames ) + " -> " + std::to_string( target ) );
-    m_psfNFrames = target;
-    updateIfChanged( m_indiP_psfNFrames, "current", m_psfNFrames );
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_darkExptimes )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_darkExptimes, ipRecv );
-    std::string target;
-    if( indiTargetUpdate( m_indiP_darkExptimes, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_darkExptimesCsv )
-        log<text_log>( "dark_exptimes: [" + m_darkExptimesCsv + "] -> [" + target + "]" );
-    m_darkExptimesCsv = target;
-    // Soft param: adopt immediately so GUIs see current == target.
-    updateIfChanged( m_indiP_darkExptimes, "current", m_darkExptimesCsv );
-    return 0;
-}
-
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calRegCond )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calRegCond, ipRecv );
@@ -4373,30 +3757,59 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clLeakage )( const pcf::IndiProperty &i
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfTakeRef )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_reloadPsfRef )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfTakeRef, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_reloadPsfRef, ipRecv );
     if( !ipRecv.find( "request" ) )
         return -1;
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
     {
-        updateSwitchIfChanged( m_indiP_psfTakeRef, "request", pcf::IndiElement::On, INDI_BUSY );
-        queueJob( Job::RefPsf );
-        clearRequest( m_indiP_psfTakeRef );
+        updateSwitchIfChanged( m_indiP_reloadPsfRef, "request", pcf::IndiElement::On, INDI_BUSY );
+        queueJob( Job::ReloadPsfRef );
+        clearRequest( m_indiP_reloadPsfRef );
     }
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_darkLibBuild )( const pcf::IndiProperty &ipRecv )
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_darkLibPath )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_darkLibBuild, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_darkLibPath, ipRecv );
+    std::string target;
+    if( indiTargetUpdate( m_indiP_darkLibPath, target, ipRecv, false ) < 0 )
+        return -1;
+    if( target != m_darkLibPath )
+        log<text_log>( "dark_lib_path: " + m_darkLibPath + " -> " + target );
+    m_darkLibPath = target;
+    updateIfChanged( m_indiP_darkLibPath, "current", m_darkLibPath );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camName )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camName, ipRecv );
+    std::string target;
+    if( indiTargetUpdate( m_indiP_camName, target, ipRecv, false ) < 0 )
+        return -1;
+    if( target != m_camName )
+        log<text_log>( "cam_name: " + m_camName + " -> " + target +
+                       " (restart app to rebind SET subscription)",
+                       logPrio::LOG_WARNING );
+    m_camName = target;
+    updateIfChanged( m_indiP_camName, "current", m_camName );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_darkLibLoad )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_darkLibLoad, ipRecv );
     if( !ipRecv.find( "request" ) )
         return -1;
     if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
     {
-        updateSwitchIfChanged( m_indiP_darkLibBuild, "request", pcf::IndiElement::On, INDI_BUSY );
-        queueJob( Job::DarkLibrary );
-        clearRequest( m_indiP_darkLibBuild );
+        updateSwitchIfChanged( m_indiP_darkLibLoad, "request", pcf::IndiElement::On, INDI_BUSY );
+        queueJob( Job::DarkLibLoad );
+        clearRequest( m_indiP_darkLibLoad );
     }
     return 0;
 }
@@ -4481,6 +3894,31 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_stop )( const pcf::IndiProperty &ipRecv
     {
         queueJob( Job::Stop );
         clearRequest( m_indiP_stop );
+    }
+    return 0;
+}
+
+
+INDI_SETCALLBACK_DEFN( iefcCtrl, m_indiP_remoteExptime )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteExptime, ipRecv );
+    if( ipRecv.find( "current" ) )
+    {
+        m_remoteExp = ipRecv["current"].get<double>();
+        if( std::isfinite( m_remoteExp ) )
+            updateIfChanged( m_indiP_camExp, "current", static_cast<float>( m_remoteExp ) );
+    }
+    return 0;
+}
+
+INDI_SETCALLBACK_DEFN( iefcCtrl, m_indiP_remoteEmgain )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteEmgain, ipRecv );
+    if( ipRecv.find( "current" ) )
+    {
+        m_remoteGain = ipRecv["current"].get<double>();
+        if( std::isfinite( m_remoteGain ) )
+            updateIfChanged( m_indiP_camGain, "current", static_cast<float>( m_remoteGain ) );
     }
     return 0;
 }

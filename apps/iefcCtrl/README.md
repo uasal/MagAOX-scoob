@@ -1,6 +1,6 @@
 # iefcCtrl
 
-MagAO-X INDI front-end for Stream IEFC (ref PSF, dark library, calibrate, run).
+MagAO-X INDI front-end for Stream IEFC (ref PSF, dark library, calibrate, closed loop).
 
 All jobs run natively in-process against milk ImageStreamIO shmims via the vendored
 lina IEFC library. No external binary is required.
@@ -34,65 +34,61 @@ creates FIFOs but never appears in `getINDI` / GUIs.
 See `iefcCtrl.conf.sample`. Important:
 
 - Shmim names (config + INDI group `shmims`):
-  `shm_cam_input`, `dm_shmim`, `fsm_shmim`, `shutterShmim` (config key `shutter`),
-  `cam_exp_shmim`, `cam_gain_shmim`, `shm_cam_sub_norm`, `contrast_avg`, `iefc_mask`, `iefc_sat_mask`
-- Live camera: `cam_exp`, `cam_gain` (write the milk channels above)
-- Ref-PSF (`doRefPsf`): `cal_psf_exp`, `cal_psf_gain` (same milk channels; applied at job start)
-- Paths (`dir_*`):
-  - `dir_psf` — ref-PSF / dark / Imax package (doRefPsf / doDarkLibrary write here; calibrate/run read it)
-  - `dir_cal` — calibration package (response/control matrices)
+  `shm_cam_input`, `shm_dm`, `shm_cam_sub_norm`, `shm_contrast_avg`,
+  `shm_dh_mask`, `shm_sat_mask`
+- Camera targets: `cam_exp`, `cam_gain` (NEW to `cam_name.exptime` / `emgain`; `current` tracks remote SET)
+- `cam_name` — INDI science-camera device (exptime/emgain + dark-library filter)
+- `dark_lib_path` / `dark_lib_load` — load darks built by **darkCtrl** (no in-app dark build)
+- Ref-PSF: acquisition now in **psfRefCtrl** (`take_ref`); iefc has `reload_psf_ref` to load packages
+- Paths:
+  - `psf_dir` — ref-PSF / Imax package (from psfRefCtrl; loaded by `reload_psf_ref` / calibrate / `cl_run`)
+  - `cal_dir` — calibration package (response/control matrices)
+  - `dark_lib_path` — dark library from darkCtrl
 - Camera settle (mutually exclusive): `cam_n_frame_delay` **or** `cam_r_delay`
-- Calibration amps: `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
-- Closed-loop (`cl_*`): `cl_probe_amp`, `cl_iters`, `cl_loop_gain`, `cl_leakage`
+- Calibration: `cal_n_images`, `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
+- Closed-loop (`cl_*`): `cl_probe_amp`, `cl_iters`, `cl_loop_gain`, `cl_leakage`, `cl_contrast_avg_n`, `cl_run`
 
 ## INDI properties (shmims)
 
 | Property | Role |
 |----------|------|
-| `shm_cam_input` | Science-camera ImageStreamIO name (default milk value `camsci`) |
-| `dm_shmim` | IEFC DM write channel (e.g. `dm01disp07`) |
-| `fsm_shmim` | FSM DMcomb channel (e.g. `dm00disp01`) |
-| `shutterShmim` | Shutter scalar shmim name (milk: 1=closed, 0=open) |
-| `shutter` | Shutter toggle (On=closed, Off=open; matches stdCamera) |
-| `cam_exp_shmim` | Exposure-time scalar shmim (name only) |
-| `cam_gain_shmim` | Camera-gain scalar shmim (name only) |
-| `shm_cam_sub_norm` | Continuous dark-sub + Imax-normalized camera stream |
-| `contrastAvgShmim` | Scalar stream name for running-average contrast (default `contrast_avg`) |
-| `iefcMaskShmim` | Binary WFS/control mask image stream (default `iefc_mask`) |
-| `iefcSatMaskShmim` | Binary saturation-check mask image stream (default `iefc_sat_mask`) |
+| `shm_cam_input` | Science-camera ImageStreamIO name (default `camsci`; use `camsci_sim` with llowfscSim) |
+| `shm_dm` | IEFC DM write channel (e.g. `dm01disp07`) |
+| `shm_cam_sub_norm` | Block-averaged dark-sub + normalized image (cadence = `cl_contrast_avg_n`) |
+| `shm_contrast_avg` | Scalar stream name for running-average contrast (default milk `contrast_avg`) |
+| `shm_dh_mask` | Binary WFS/control (DH) mask image stream (default milk `iefc_mask`) |
+| `shm_sat_mask` | Binary saturation-check mask image stream (default milk `iefc_sat_mask`) |
 
 Changing a shmim name closes open streams; the next job reopens with the new name.
-Automation (refPSF, dark library, calibrate, run) syncs the shutter toggle when
-writing the shutter milk scalar.
-
 ## INDI properties (shared)
 
 | Property | Role |
 |----------|------|
-| `nFrames` | Frames averaged per camera grab (refPSF / darks / calibrate / run) |
 | `cam_n_frame_delay` | Skip N new camera frames after DM write (XOR `cam_r_delay`) |
 | `cam_r_delay` | Wall-clock settle [s] after DM write (used only if `cam_n_frame_delay==0`) |
-| `cam_exp` | Live exposure [s]; writes milk `cam_exp_shmim` when idle |
-| `cam_gain` | Live gain; writes milk `cam_gain_shmim` when idle |
-| `cal_psf_exp` | Exposure [s] for `doRefPsf` (writes `cam_exp_shmim` at job start) |
-| `cal_psf_gain` | Gain for `doRefPsf` (writes `cam_gain_shmim` at job start) |
-| `dir_cal` | Calibration package directory |
-| `dir_psf` | Ref-PSF / dark / Imax package directory |
-| `wfs_mask_path` | External FITS path for `loadWfsMask` (control+contrast; empty → `dir_cal/wfs_mask.fits`) |
+| `cam_exp` | Target exposure [s]; NEW to `cam_name.exptime`. `current` mirrors remote SET |
+| `cam_gain` | Target gain; NEW to `cam_name.emgain`. `current` mirrors remote SET |
+| `cam_name` | INDI science-camera device name |
+| `cal_dir` | Calibration package directory |
+| `psf_dir` | Ref-PSF / dark / Imax package directory |
+| `dh_mask_path` | External FITS path for `dh_mask_reload` (control+contrast; empty → `cal_dir/wfs_mask.fits`) |
 | `sat_mask_path` | FITS region for raw-ADU saturation checks during calibrate |
-| `sat_thresh` | Raw ADU threshold inside `sat_mask` (≥ logs a warning, does not abort); default 55000 |
+| `sat_thresh` | Raw ADU threshold (≥ logs a warning, does not abort); default 55000 |
+| `cal_n_images` | Frames averaged per grab during `calibrate` |
+| `psf_max_ref` | Ref-PSF peak / NI scale (writable; calibrate/`reload_psf_ref` override when finished) |
 
 ## Requests
 
 | Switch | Action |
 |--------|--------|
-| `doRefPsf` | Park FSM at `fsmRefTip/Tilt_nm`, poke tip/tilt, dark + PSF → `dir_psf` |
-| `doDarkLibrary` | Dark library at `exptimes` CSV → `dir_psf/darks/` |
-| `doCalibrate` | Native in-process calibration → FITS package in `dir_cal` (masked + full response, control); matrices cached in memory |
-| `doRun` | Closed-loop run using in-memory control/response (loads `dir_cal` once if cache empty) |
-| `clearDm` | Zero the configured `dm_shmim` (e.g. `dm01disp07`) |
-| `loadWfsMask` | Load FITS mask as **control+contrast**; write `dir_cal/wfs_mask.fits`; remask `response_full` + rebuild control when cal data exists; publish `iefc_mask` |
-| `stop` | Abort in-progress job (calibrate/run/refPSF/dark library); restores DM where applicable and returns to idle |
+| `reload_psf_ref` | Load ref-PSF package from `psf_dir` (from psfRefCtrl) → recompute peak → update `psf_max_ref` / live norm; warn if peak ≥ `sat_thresh` |
+| `dark_lib_load` | Validate/index `dark_lib_path` entries for `cam_name` |
+| `calibrate` | Native in-process calibration → FITS package in `cal_dir`; matrices cached in memory |
+| `cal_reload` | Load existing `cal_dir` package (response/control/modes/mask) into memory for `cl_run` |
+| `cl_run` | Closed-loop run using in-memory control/response (loads `cal_dir` once if cache empty) |
+| `dm_reset` | Zero the configured `shm_dm` |
+| `dh_mask_reload` | Load FITS mask as **control+contrast**; write `cal_dir/wfs_mask.fits`; remask + rebuild control when cal data exists; publish `shm_dh_mask` |
+| `stop` | Abort in-progress job; restores DM where applicable and returns to idle |
 
 ## INDI properties (progress / RO)
 
@@ -100,61 +96,48 @@ writing the shutter milk scalar.
 |----------|------|
 | `status` | Text job status |
 | `cal_mode` | Current calibration mode (1…N while measuring; 0 idle) |
-| `n_cal_modes` | Total calib modes (Hadamard / FITS cube) for the active job |
-| `Imax_ref` | Ref-PSF peak / NI scale (writable target; cal/refPSF still override when finished) |
+| `n_cal_modes` | Total calib modes for the active job |
 | `contrast` | Last closed-loop contrast |
-| `cal_probe_amp` | Probe amplitude used during calibration [m] |
-| `cal_mode_amp` | Mode poke amplitude during calibration [m] |
-| `cl_probe_amp` | Probe amplitude during closed-loop run [m] |
-| `cl_iters` / `cl_loop_gain` / `cl_leakage` | Closed-loop run parameters |
-| `contrast_avg_n` | NI frames averaged into one image before contrast is computed (sets publish cadence) |
+| `cal_probe_amp` / `cal_mode_amp` | Calibration amps [m] |
+| `cl_probe_amp` / `cl_iters` / `cl_loop_gain` / `cl_leakage` | Closed-loop run parameters |
+| `cl_contrast_avg_n` | NI frames averaged for contrast / `shm_cam_sub_norm` and for `cl_run` grabs |
 | `contrast_avg` | RO: contrast of that block-averaged NI image (mean of mask ∩ NI>0) |
+| `contrast_pos_pixels` | RO: % of DH-mask pixels with NI>0 on that same block-averaged image |
 
 ## Continuous stream
 
-While `iefcCtrl` is running, a dedicated thread waits on the `shm_cam_input` semaphore (not
-the MagAOX `loopPause` timer — which defaults to 1 s) and for every new frame
-dark-subtracts + normalizes by `Imax_ref`, writing `shm_cam_sub_norm`.
+While `iefcCtrl` is running, a dedicated thread waits on the `shm_cam_input` semaphore.
+Each new frame is dark-subtracted and normalized by `psf_max_ref` once, then accumulated.
+Every `cl_contrast_avg_n` frames that block mean is published to `shm_cam_sub_norm`, and
+contrast is computed from **the same** mean image into `contrast_avg`. The fraction of
+DH-mask pixels with NI>0 on that image is published as `contrast_pos_pixels` (percent).
 
-`loadWfsMask` sets the live **control** mask (and contrast mask), writes
-`dir_cal/wfs_mask.fits`, publishes `iefc_mask`, and — when `dir_cal` has a full-frame
-response (`response_full` in memory or `response_full.fits` on disk) — remasks that
-response and rebuilds the control matrix for the current `cal_reg_cond`. If `dir_cal`
-does not exist yet, a warning is logged and the mask is kept for the next `doCalibrate`.
-`doCalibrate` uses a previously loaded mask instead of the default annulus.
+`dh_mask_reload` sets the live control (+ contrast) mask, writes `cal_dir/wfs_mask.fits`,
+publishes `shm_dh_mask`, and remasks/rebuilds control when `cal_dir` has `response_full`.
+`calibrate` uses a previously loaded mask instead of the default annulus.
 
-During calibrate, raw `camsci` frames (before dark/normalize/mask) are checked against
-`sat_mask_path` / `sat_thresh` when a sat mask is loaded; saturation logs a warning with
-`cal_mode` and continues. The mask is also published to `iefc_sat_mask`. `Imax_ref`
-accepts an INDI target for manual NI scale changes (updates live `shm_cam_sub_norm` /
-`contrast_avg` immediately and is preserved across dark reloads); refPSF/calibrate still
-overwrite it when they finish.
+`reload_psf_ref` loads a ref-PSF package created by **psfRefCtrl** and updates `psf_max_ref`,
+the live normalization, and contrast accumulator.
 
-Every `contrast_avg_n` of those NI frames are averaged into one image; contrast is then
-the mean of pixels that are inside the **WFS/control** mask **and** strictly greater than zero
-(divisor = that positive count only). The result is written to the `contrast_avg` scalar
-shmim and published as INDI `contrast_avg`. Changing `contrast_avg_n` resets the block
-accumulator and changes the update cadence.
+During calibrate, raw frames are checked against `sat_mask_path` / `sat_thresh` when a
+sat mask is loaded; saturation warns with `cal_mode` and continues. The mask is published
+to `shm_sat_mask`.
 
-Setting INDI `cal_reg_cond` (when a response is available in memory or under `dir_cal`)
-queues a worker job that **loads** `dir_cal/control_matrix_reg_<tag>.fits` if it exists,
-otherwise runs `beta_reg`, writes that file, and caches it. Switching back to a previous
-`cal_reg_cond` reloads the saved matrix (no recompute). Status shows
-`loading matrix for <value> reg param` or `gen. matrix for <value> reg param`.
-`doRun` uses the same load-or-build path. A new `doCalibrate` clears prior
-`control_matrix_reg_*.fits` in that package (response changed).
+Setting `cal_reg_cond` loads or rebuilds `cal_dir/control_matrix_reg_<tag>.fits`.
+`cl_run` uses the same path. A new `calibrate` clears prior `control_matrix_reg_*.fits`.
+
+After a restart, use `cal_reload` to restore response/control/modes/mask from `cal_dir`
+(uses current `cal_reg_cond` to pick or rebuild the tagged control matrix). Then `cl_run`
+can proceed without re-calibrating.
 
 ## Calibration package (FITS)
 
-`doCalibrate` writes:
+`calibrate` writes:
 
-- `response_matrix.fits` — masked response used for control (`nmodes × nmeas`)
-- `control_matrix_reg_<±X.XXXXXX>.fits` — control matrix for that `cal_reg_cond` (Cholesky `beta_reg`)
-- `control_matrix.fits` — legacy alias of the most recently written reg
-- modes, `wfs_mask.fits`, dark, `config.txt`
-- optional `response_full.fits` when `save_response_full=true` (multi-GB; **required** to remask via `loadWfsMask` after restart). Calibrate always keeps full response in memory for same-session remask.
+- `response_matrix.fits` — masked response (`nmodes × nmeas`)
+- `control_matrix_reg_<±X.XXXXXX>.fits` — control for that `cal_reg_cond`
+- `control_matrix.fits` — legacy alias
+- modes, `wfs_mask.fits`, dark, `config.txt` (includes `psf_max_ref`; also writes legacy `Imax_ref`)
+- optional `response_full.fits` when `save_response_full=true` (needed to remask after restart)
 
-After the last calib mode, status shows `calibrate: computing control matrix` then
-`calibrate: writing package` — the former used to look like a hang with Eigen JacobiSVD.
-
-Masked response/control stay in process memory for subsequent `doRun` calls and are refreshed after each new calibration.
+Masked response/control stay in memory for subsequent `cl_run` calls.
