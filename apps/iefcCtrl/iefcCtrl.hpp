@@ -4,8 +4,8 @@
   * All of refPSF, darkLibrary, calibrate, and run execute natively in-process against
   * milk ImageStreamIO shmims via the vendored lina IEFC library. No external binary.
   *
-  * Shared INDI numbers (cam_n_frame_delay / cam_r_delay, cam_exp, cam_gain, …) are reused across
-  * all actions. Request switches trigger one-shot worker jobs.
+  * Shared INDI numbers (cam_n_frame_delay / cam_r_delay, …) are reused across
+  * all actions. Camera exptime/emgain are commanded on cam_name INDI, not here.
   *
   * \ingroup iefcCtrl_files
   */
@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cstdint>
 #include <chrono>
@@ -75,7 +76,7 @@ class iefcCtrl : public MagAOXApp<true>
     {
         Idle = 0,
         ReloadPsfRef,
-        DarkLibLoad, ///< Index/validate dark_lib_path for cam_name
+        DarkLibLoad, ///< Index/validate dark_lib_path for shm_cam_input
         Calibrate,
         CalReload, ///< Load response/control/modes from cal_dir into memory
         Run,
@@ -98,8 +99,8 @@ class iefcCtrl : public MagAOXApp<true>
 
     std::string m_psfDir{ "./ref_psf" };  ///< Ref-PSF / Imax package (write+read)
     std::string m_calDir{ "./cal_a" };    ///< Calibration package (response/control matrices)
-    std::string m_darkLibPath; ///< External dark library dir (dark_library.txt from darkCtrl)
-    std::string m_camName{ "camsci" }; ///< INDI device name of the science camera (exptime/emgain)
+    std::string m_darkLibPath; ///< External dark library dir (dark_metadata.txt from darkCtrl)
+    std::string m_camName{ "camsci" }; ///< INDI device for cam_name.exptime / emgain (not dark match)
     std::string m_dhMaskPath; ///< External FITS mask path for dh_mask_reload (full path or filename)
     std::string m_satMaskPath; ///< FITS sat-check region for calibrate (raw ADU)
     float m_satThresh{ 55000.0f }; ///< Raw ADU threshold inside sat_mask (≥ → abort cal)
@@ -109,12 +110,7 @@ class iefcCtrl : public MagAOXApp<true>
     unsigned m_camNFrameDelay{ 1 };  ///< Skip this many new camsci frames (0 = use cam_r_delay)
     float m_camRDelay{ 0.0f };      ///< Wall-clock settle [s] (used only when cam_n_frame_delay==0)
 
-    float m_camExp{ 1.0f };       ///< Target exposure [s]; sends cam_name.exptime when set
-    float m_camGain{ 0.0f };      ///< Target gain; sends cam_name.emgain when set
-    bool m_setCamExp{ false };    ///< True after INDI cam_exp was set (calibrate/run)
-    bool m_setCamGain{ false };   ///< True after INDI cam_gain was set (calibrate/run)
-
-    /// Remote currents from cam_name.exptime / emgain SET callbacks.
+    /// Live currents from cam_name.exptime / emgain SET (for dark matching / jobs).
     double m_remoteExp{ std::numeric_limits<double>::quiet_NaN() };
     double m_remoteGain{ std::numeric_limits<double>::quiet_NaN() };
 
@@ -246,13 +242,7 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_camRDelay;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camRDelay);
 
-    pcf::IndiProperty m_indiP_camExp;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camExp);
-
-    pcf::IndiProperty m_indiP_camGain;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camGain);
-
-    /// Remote SET subscriptions on cam_name.exptime / emgain.
+    /// Remote SET subscriptions on cam_name.exptime / emgain (current only).
     pcf::IndiProperty m_indiP_remoteExptime;
     INDI_SETCALLBACK_DECL( iefcCtrl, m_indiP_remoteExptime );
     pcf::IndiProperty m_indiP_remoteEmgain;
@@ -381,9 +371,9 @@ class iefcCtrl : public MagAOXApp<true>
     int doReloadPsfRef();
     int doCalibrate();
     int doCalReload(); ///< Load response/control/modes/mask from cal_dir into memory
-    int doDarkLibLoad(); ///< Index dark_lib_path for cam_name (validate library)
+    int doDarkLibLoad(); ///< Reload/validate dark_lib_path for shm_cam_input
 
-    /// Dark-library match filter for current cam_name / live gain.
+    /// Dark-library match filter for shm_cam_input / live cam_name.emgain.current.
     lina::DarkMatchFilter darkFilter( double gain = std::numeric_limits<double>::quiet_NaN() ) const;
     int doRun();
     int doDmReset();
@@ -416,16 +406,10 @@ class iefcCtrl : public MagAOXApp<true>
                             float reg,
                             lina::Array2D<double> &control_out );
 
-    /// Send cam_name.exptime target via INDI NEW; update local cam_exp current.
-    int setCamExpValue( double seconds );
-
-    /// Send cam_name.emgain target via INDI NEW; update local cam_gain current.
-    int setCamGainValue( double gain );
-
-    /// Best-known live exposure [s] from remote SET, else local target.
+    /// Live exposure [s] from cam_name.exptime.current (NaN until SET received).
     double liveCamExp() const;
 
-    /// Best-known live gain from remote SET, else local target.
+    /// Live gain from cam_name.emgain.current (NaN until SET received).
     double liveCamGain() const;
 
     /// Cache setup (dark + Imax) for continuous shm_cam_sub_norm.
@@ -494,34 +478,16 @@ void iefcCtrl::setupConfig()
 {
     config.add( "iefc.shm_cam_input", "", "iefc.shm_cam_input", argType::Required, "iefc",
                 "shm_cam_input", false, "string",
-                "Science-camera ImageStreamIO name (default camsci)." );
+                "Science-camera ImageStreamIO name (dark-library match key; default camsci)." );
     config.add( "iefc.shm_dm", "", "iefc.shm_dm", argType::Required, "iefc", "shm_dm", false,
                 "string", "IEFC DM channel shmim (default dm01disp07)." );
-    config.add( "iefc.cam_exp",
-                "",
-                "iefc.cam_exp",
-                argType::Required,
-                "iefc",
-                "cam_exp",
-                false,
-                "float",
-                "Target camera exposure [s]; sends cam_name.exptime when set (current tracks remote)." );
-    config.add( "iefc.cam_gain",
-                "",
-                "iefc.cam_gain",
-                argType::Required,
-                "iefc",
-                "cam_gain",
-                false,
-                "float",
-                "Target camera gain; sends cam_name.emgain when set (current tracks remote)." );
     config.add( "iefc.cal_dir", "", "iefc.cal_dir", argType::Required, "iefc", "cal_dir", false,
                 "string", "Calibration package dir (response/control matrices)." );
     config.add( "iefc.psf_dir", "", "iefc.psf_dir", argType::Required, "iefc", "psf_dir", false,
                 "string",
                 "Ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref/calibrate/cl_run)." );
     config.add( "iefc.dark_lib_path", "", "iefc.dark_lib_path", argType::Required, "iefc", "dark_lib_path", false,
-                "string", "Dark library directory (dark_library.txt from darkCtrl)." );
+                "string", "Dark library directory (dark_metadata.txt from darkCtrl)." );
     config.add( "iefc.cam_name",
                 "",
                 "iefc.cam_name",
@@ -529,7 +495,7 @@ void iefcCtrl::setupConfig()
                 "iefc",
                 "cam_name",
                 false,
-                "string", "INDI device name of the science camera." );
+                "string", "INDI device for exptime/emgain (cam_name.exptime.target, etc.)." );
     config.add( "iefc.dh_mask_path",
                 "",
                 "iefc.dh_mask_path",
@@ -652,8 +618,6 @@ void iefcCtrl::loadConfig()
 {
     config( m_shmCamInput, "iefc.shm_cam_input" );
     config( m_shmDm, "iefc.shm_dm" );
-    config( m_camExp, "iefc.cam_exp" );
-    config( m_camGain, "iefc.cam_gain" );
     config( m_calDir, "iefc.cal_dir" );
     config( m_psfDir, "iefc.psf_dir" );
     config( m_darkLibPath, "iefc.dark_lib_path" );
@@ -706,15 +670,10 @@ int iefcCtrl::appStartup()
                                  "Skip N camsci frames after DM (XOR cam_r_delay)", "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camRDelay, "cam_r_delay", 0, 10, 0.01, "%0.3f",
                                  "Wall-clock settle after DM [s] (XOR cam_n_frame_delay)", "shared" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camExp, "cam_exp", 0, 1000, 0.1, "%0.3f",
-                                 "Target exposure [s] → cam_name.exptime (current tracks remote)",
-                                 "shared" );
-    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camGain, "cam_gain", -100, 100, 0.1, "%0.3f",
-                                 "Target gain → cam_name.emgain (current tracks remote)", "shared" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_calDir, "cal_dir", "Calibration package dir (response/control)", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_psfDir, "psf_dir", "Ref-PSF package from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_darkLibPath, "dark_lib_path", "Dark library directory (from darkCtrl)", "paths" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_camName, "cam_name", "INDI science-camera device name", "camera" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_camName, "cam_name", "INDI science-camera device (exptime/emgain)", "camera" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_dhMaskPath, "dh_mask_path", "External WFS/control mask FITS path", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_satMaskPath, "sat_mask_path", "Saturation-check mask FITS path", "paths" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_satThresh, "sat_thresh", 0, 1e7, 1, "%0.1f",
@@ -733,7 +692,7 @@ int iefcCtrl::appStartup()
                                  "NI frames averaged for contrast / cl_run (sets cadence)", "run" );
 
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_reloadPsfRef, "reload_psf_ref" );
-    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibLoad, "dark_lib_load" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibLoad, "reload_dark_lib" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calibrate, "calibrate" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calReload, "cal_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_clRun, "cl_run" );
@@ -784,10 +743,6 @@ int iefcCtrl::appStartup()
     m_indiP_camNFrameDelay["target"].setValue( m_camNFrameDelay );
     m_indiP_camRDelay["current"].setValue( m_camRDelay );
     m_indiP_camRDelay["target"].setValue( m_camRDelay );
-    m_indiP_camExp["current"].setValue( m_camExp );
-    m_indiP_camExp["target"].setValue( m_camExp );
-    m_indiP_camGain["current"].setValue( m_camGain );
-    m_indiP_camGain["target"].setValue( m_camGain );
     m_indiP_calDir["current"].setValue( m_calDir );
     m_indiP_calDir["target"].setValue( m_calDir );
     m_indiP_psfDir["current"].setValue( m_psfDir );
@@ -848,7 +803,6 @@ int iefcCtrl::appLogic()
     }
 
     // shm_cam_sub_norm / contrast_avg run on m_subNormThread (semaphore-driven).
-    // cam_exp / cam_gain current updated via remote SET callbacks.
     return 0;
 }
 
@@ -1309,45 +1263,47 @@ int iefcCtrl::writeConfigTxt( const std::string &path, const std::string &body )
     return 0;
 }
 
+namespace
+{
+
+bool parseIndiCurrentNumber( const pcf::IndiProperty &ip, double &out )
+{
+    try
+    {
+        if( !ip.find( "current" ) )
+            return false;
+        const std::string s = ip["current"].getValue();
+        if( s.empty() )
+            return false;
+        char *end = nullptr;
+        const double v = std::strtod( s.c_str(), &end );
+        if( end == s.c_str() )
+            return false;
+        while( *end != '\0' && std::isspace( static_cast<unsigned char>( *end ) ) )
+            ++end;
+        if( *end != '\0' )
+            return false;
+        if( !std::isfinite( v ) )
+            return false;
+        out = v;
+        return true;
+    }
+    catch( ... )
+    {
+        return false;
+    }
+}
+
+} // namespace
+
 double iefcCtrl::liveCamExp() const
 {
-    return std::isfinite( m_remoteExp ) ? m_remoteExp : static_cast<double>( m_camExp );
+    return m_remoteExp;
 }
 
 double iefcCtrl::liveCamGain() const
 {
-    return std::isfinite( m_remoteGain ) ? m_remoteGain : static_cast<double>( m_camGain );
-}
-
-int iefcCtrl::setCamExpValue( double seconds )
-{
-    log<text_log>( "cam_exp -> " + std::to_string( seconds ) + " s (" + m_camName +
-                   ".exptime)" );
-
-    pcf::IndiProperty ip( pcf::IndiProperty::Number );
-    ip.setDevice( m_camName );
-    ip.setName( "exptime" );
-    ip.add( pcf::IndiElement( "target" ) );
-    ip["target"].setValue( seconds );
-    if( sendNewProperty( ip ) < 0 )
-        return -1;
-    updateIfChanged( m_indiP_camExp, "current", static_cast<float>( seconds ) );
-    return 0;
-}
-
-int iefcCtrl::setCamGainValue( double gain )
-{
-    log<text_log>( "cam_gain -> " + std::to_string( gain ) + " (" + m_camName + ".emgain)" );
-
-    pcf::IndiProperty ip( pcf::IndiProperty::Number );
-    ip.setDevice( m_camName );
-    ip.setName( "emgain" );
-    ip.add( pcf::IndiElement( "target" ) );
-    ip["target"].setValue( gain );
-    if( sendNewProperty( ip ) < 0 )
-        return -1;
-    updateIfChanged( m_indiP_camGain, "current", static_cast<float>( gain ) );
-    return 0;
+    return m_remoteGain;
 }
 
 void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
@@ -2621,24 +2577,25 @@ int iefcCtrl::doRecomputeControl()
 lina::DarkMatchFilter iefcCtrl::darkFilter( double gain ) const
 {
     lina::DarkMatchFilter f;
-    f.cam_name = m_camName;
-    if( std::isfinite( gain ) )
-        f.gain = gain;
+    f.shm_cam_input = m_shmCamInput;
+    const double g = std::isfinite( gain ) ? gain : m_remoteGain;
+    if( std::isfinite( g ) )
+        f.gain = g;
     return f;
 }
 
 int iefcCtrl::doDarkLibLoad()
 {
-    setStatus( "dark_lib_load: starting" );
+    setStatus( "reload_dark_lib: starting" );
     if( m_darkLibPath.empty() )
     {
-        setStatus( "dark_lib_load: failed" );
+        setStatus( "reload_dark_lib: failed" );
         return log<software_error, -1>( { __FILE__, __LINE__, "dark_lib_path is empty" } );
     }
-    if( m_camName.empty() )
+    if( m_shmCamInput.empty() )
     {
-        setStatus( "dark_lib_load: failed" );
-        return log<software_error, -1>( { __FILE__, __LINE__, "cam_name is empty" } );
+        setStatus( "reload_dark_lib: failed" );
+        return log<software_error, -1>( { __FILE__, __LINE__, "shm_cam_input is empty" } );
     }
 
     try
@@ -2646,25 +2603,25 @@ int iefcCtrl::doDarkLibLoad()
         const auto all = lina::load_dark_library_manifest( m_darkLibPath );
         if( all.empty() )
         {
-            setStatus( "dark_lib_load: failed" );
+            setStatus( "reload_dark_lib: failed" );
             return log<software_error, -1>(
                 { __FILE__, __LINE__,
-                  "no dark_library.txt entries in " + absPath( m_darkLibPath ) } );
+                  "no dark_metadata.txt entries in " + absPath( m_darkLibPath ) } );
         }
         const auto matched = lina::filter_dark_library_entries( all, darkFilter() );
         if( matched.empty() )
         {
-            setStatus( "dark_lib_load: failed" );
+            setStatus( "reload_dark_lib: failed" );
             return log<software_error, -1>(
                 { __FILE__, __LINE__,
-                  "no darks for cam_name=" + m_camName + " in " +
+                  "no darks for shm_cam_input=" + m_shmCamInput + " in " +
                       absPath( m_darkLibPath ) + " (total entries=" +
                       std::to_string( all.size() ) + ")" } );
         }
 
         std::ostringstream oss;
-        oss << "dark_lib_load: " << matched.size() << "/" << all.size()
-            << " entries for cam_name=" << m_camName << " in " << absPath( m_darkLibPath )
+        oss << "reload_dark_lib: " << matched.size() << "/" << all.size()
+            << " entries for shm_cam_input=" << m_shmCamInput << " in " << absPath( m_darkLibPath )
             << " (exptime range ";
         double tmin = matched.front().exptime, tmax = matched.front().exptime;
         for( const auto &e : matched )
@@ -2674,14 +2631,14 @@ int iefcCtrl::doDarkLibLoad()
         }
         oss << tmin << " … " << tmax << " s)";
         log<text_log>( oss.str() );
-        setStatus( "dark_lib_load: done (" + std::to_string( matched.size() ) + " darks)" );
+        setStatus( "reload_dark_lib: done (" + std::to_string( matched.size() ) + " darks)" );
         return 0;
     }
     catch( const std::exception &e )
     {
-        setStatus( "dark_lib_load: failed" );
+        setStatus( "reload_dark_lib: failed" );
         return log<software_error, -1>(
-            { __FILE__, __LINE__, std::string( "dark_lib_load: " ) + e.what() } );
+            { __FILE__, __LINE__, std::string( "reload_dark_lib: " ) + e.what() } );
     }
 }
 
@@ -2895,16 +2852,6 @@ int iefcCtrl::doCalibrate()
         lina::ShmimStream camsci( m_shmCamInput );
         lina::ShmimStream dm( m_shmDm );
 
-        if( m_setCamExp )
-        {
-            if( setCamExpValue( m_camExp ) < 0 )
-                return -1;
-        }
-        if( m_setCamGain )
-        {
-            if( setCamGainValue( m_camGain ) < 0 )
-                return -1;
-        }
         double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
@@ -3096,16 +3043,6 @@ int iefcCtrl::doRun()
         lina::ShmimStream camsci( m_shmCamInput );
         lina::ShmimStream dm( m_shmDm );
 
-        if( m_setCamExp )
-        {
-            if( setCamExpValue( m_camExp ) < 0 )
-                return -1;
-        }
-        if( m_setCamGain )
-        {
-            if( setCamGainValue( m_camGain ) < 0 )
-                return -1;
-        }
         double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
@@ -3501,46 +3438,6 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camRDelay )( const pcf::IndiProperty &i
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camExp )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camExp, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_camExp, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_camExp )
-        log<text_log>( "cam_exp: " + std::to_string( m_camExp ) + " -> " +
-                       std::to_string( target ) + " s" );
-    m_camExp = target;
-    m_setCamExp = true;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cam_exp stored; will apply when idle / next job",
-                       logPrio::LOG_WARNING );
-        return 0;
-    }
-    return setCamExpValue( m_camExp );
-}
-
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_camGain )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_camGain, ipRecv );
-    float target;
-    if( indiTargetUpdate( m_indiP_camGain, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target != m_camGain )
-        log<text_log>( "cam_gain: " + std::to_string( m_camGain ) + " -> " +
-                       std::to_string( target ) );
-    m_camGain = target;
-    m_setCamGain = true;
-    if( m_busy.load() )
-    {
-        log<text_log>( "cam_gain stored; will apply when idle / next job",
-                       logPrio::LOG_WARNING );
-        return 0;
-    }
-    return setCamGainValue( m_camGain );
-}
-
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfDir )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_psfDir, ipRecv );
@@ -3902,24 +3799,14 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_stop )( const pcf::IndiProperty &ipRecv
 INDI_SETCALLBACK_DEFN( iefcCtrl, m_indiP_remoteExptime )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteExptime, ipRecv );
-    if( ipRecv.find( "current" ) )
-    {
-        m_remoteExp = ipRecv["current"].get<double>();
-        if( std::isfinite( m_remoteExp ) )
-            updateIfChanged( m_indiP_camExp, "current", static_cast<float>( m_remoteExp ) );
-    }
+    parseIndiCurrentNumber( ipRecv, m_remoteExp );
     return 0;
 }
 
 INDI_SETCALLBACK_DEFN( iefcCtrl, m_indiP_remoteEmgain )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteEmgain, ipRecv );
-    if( ipRecv.find( "current" ) )
-    {
-        m_remoteGain = ipRecv["current"].get<double>();
-        if( std::isfinite( m_remoteGain ) )
-            updateIfChanged( m_indiP_camGain, "current", static_cast<float>( m_remoteGain ) );
-    }
+    parseIndiCurrentNumber( ipRecv, m_remoteGain );
     return 0;
 }
 

@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <dirent.h>
 #include <fstream>
 #include <iomanip>
@@ -354,132 +355,7 @@ LoopInputs default_loop_inputs(std::size_t ncam, std::size_t nact) {
     return in;
 }
 
-std::vector<DarkLibraryEntry> load_dark_library_manifest(const std::string& lib_dir) {
-    const std::string path = join_path(lib_dir, "dark_library.txt");
-    std::ifstream in(path);
-    if (!in) return {};
-    std::vector<DarkLibraryEntry> entries;
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::stringstream ss(line);
-        DarkLibraryEntry e;
-        if (!(ss >> e.exptime >> e.relpath)) continue;
-        // Optional v2 columns (ignored by older writers / partial lines).
-        if (ss >> e.ndark) {
-            if (ss >> e.cam_name) {
-                if (e.cam_name == "-") e.cam_name.clear();
-                unsigned w = 0, h = 0, bd = 0;
-                int rx = 0, ry = 0;
-                if (ss >> w >> h) {
-                    e.width = w;
-                    e.height = h;
-                    if (ss >> bd) e.bitdepth = bd;
-                    if (ss >> rx >> ry) {
-                        e.roi_x = rx;
-                        e.roi_y = ry;
-                    }
-                    // v3: roi_width roi_height gain blacklevel
-                    // v2: gain blacklevel
-                    double a = std::numeric_limits<double>::quiet_NaN();
-                    double b = std::numeric_limits<double>::quiet_NaN();
-                    double c = std::numeric_limits<double>::quiet_NaN();
-                    double d = std::numeric_limits<double>::quiet_NaN();
-                    if (ss >> a >> b) {
-                        if (ss >> c >> d) {
-                            e.roi_width = static_cast<unsigned>( a );
-                            e.roi_height = static_cast<unsigned>( b );
-                            e.gain = c;
-                            e.blacklevel = d;
-                        } else {
-                            e.gain = a;
-                            e.blacklevel = b;
-                        }
-                    }
-                }
-            }
-        }
-        entries.push_back(e);
-    }
-    return entries;
-}
 
-std::vector<DarkLibraryEntry>
-filter_dark_library_entries(const std::vector<DarkLibraryEntry>& entries,
-                            const DarkMatchFilter& filter) {
-    std::vector<DarkLibraryEntry> out;
-    out.reserve(entries.size());
-    for (const auto& e : entries) {
-        if (!filter.cam_name.empty() && !e.cam_name.empty() && e.cam_name != filter.cam_name)
-            continue;
-        // Legacy v1 rows (empty cam_name) still match any filter.cam_name.
-        if (filter.width > 0 && e.width > 0 && e.width != filter.width) continue;
-        if (filter.height > 0 && e.height > 0 && e.height != filter.height) continue;
-        if (std::isfinite(filter.gain) && std::isfinite(e.gain) &&
-            std::fabs(e.gain - filter.gain) > filter.gain_tol)
-            continue;
-        if (std::isfinite(filter.blacklevel) && std::isfinite(e.blacklevel) &&
-            std::fabs(e.blacklevel - filter.blacklevel) > filter.blacklevel_tol)
-            continue;
-        out.push_back(e);
-    }
-    return out;
-}
-
-std::string pick_dark_from_library(const std::string& lib_dir, double target_exptime,
-                                   const DarkMatchFilter& filter, DarkLibraryEntry* matched,
-                                   double* match_err) {
-    auto entries = filter_dark_library_entries(load_dark_library_manifest(lib_dir), filter);
-    if (entries.empty()) return {};
-    std::size_t best = 0;
-    double best_err = std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0; i < entries.size(); ++i) {
-        const double err = std::fabs(entries[i].exptime - target_exptime);
-        if (err < best_err) {
-            best_err = err;
-            best = i;
-        }
-    }
-    if (matched) *matched = entries[best];
-    if (match_err) *match_err = best_err;
-    std::cout << "dark library: " << entries.size() << " matching entries; target exptime="
-              << target_exptime << " -> closest " << entries[best].exptime
-              << " (err=" << best_err << " s, " << entries[best].relpath << ")\n";
-    if (best_err > kDarkExptimeMatchTol) {
-        std::cerr << "warning: nearest dark exptime " << entries[best].exptime
-                  << " differs by " << best_err << " s from requested " << target_exptime
-                  << " (tol=" << kDarkExptimeMatchTol << " s)\n";
-    }
-    return join_path(lib_dir, entries[best].relpath);
-}
-
-void write_dark_library_manifest(const std::string& lib_dir,
-                                 const std::vector<DarkLibraryEntry>& entries) {
-    ensure_dir(lib_dir);
-    const std::string path = join_path(lib_dir, "dark_library.txt");
-    std::ofstream out(path);
-    if (!out) throw std::runtime_error("failed to write " + path);
-    out << "# dark_library_format=3\n";
-    out << "# exptime relative_path ndark cam_name width height bitdepth roi_x roi_y "
-           "roi_width roi_height gain blacklevel\n";
-    out << std::setprecision(17);
-    for (const auto& e : entries) {
-        out << e.exptime << "  " << e.relpath << "  " << e.ndark << "  "
-            << (e.cam_name.empty() ? "-" : e.cam_name) << "  " << e.width << "  " << e.height
-            << "  " << e.bitdepth << "  " << e.roi_x << "  " << e.roi_y << "  "
-            << e.roi_width << "  " << e.roi_height << "  ";
-        if (std::isfinite(e.gain))
-            out << e.gain;
-        else
-            out << "nan";
-        out << "  ";
-        if (std::isfinite(e.blacklevel))
-            out << e.blacklevel;
-        else
-            out << "nan";
-        out << "\n";
-    }
-}
 
 SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
                          double target_exptime, const std::string& dark_lib_path,
@@ -517,7 +393,7 @@ SetupData load_setup_dir(const std::string& dir, std::size_t expect_ncam,
                                               &matched, &match_err);
         }
         if (dark_path.empty()) {
-            // Legacy: dark_library.txt inside the ref-PSF / setup directory.
+            // Legacy: dark_metadata.txt / dark_library.txt inside the ref-PSF directory.
             dark_path =
                 pick_dark_from_library(dir, target_exptime, filter, &matched, &match_err);
         }
