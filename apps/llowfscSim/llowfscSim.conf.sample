@@ -1,0 +1,52 @@
+# Sample MagAO-X config for llowfscSim (xconf / TOML)
+# Install as /opt/MagAOX/config/llowfscSim.conf (match -n / proclist name)
+#
+# Requires esc_llowfsc_sim + lina in the MagAO-X conda env (e.g. lina_cpp310).
+# Pair with nsvCtrlSim (cam_name) and fsmSim (fsm_name).
+
+sleep_interval_sec = 0.0
+
+# INDI device that owns exptime / emgain / blacklevel / fps / bitDepth / ROI
+cam_name = "nsvsim"
+
+# INDI device for FSM tip/tilt currents (x.current / y.current [nm])
+# Do NOT set shm_fsm_total — FSM is INDI-only now.
+fsm_name = "fsmsim"
+
+# Output ImageStreamIO (not the camera's own shmim)
+shm_output = "camsci_sim"
+
+# Optical model (esc_llowfsc_sim data pack + overrides)
+model_pack = "1k-256"
+wavelength_c = 633e-9
+ncamsci = 512
+nwaves = 51
+bw = 0.02
+cuda_device = "0"
+dm_astig_rms = 0.0
+compute_flat = true
+plot_flat = false
+
+# Detector static params (live exp/gain/blacklevel/rebin come from cam_name)
+dark_current = 0.025
+nbits = 14
+qe = 0.75
+default_exp_time = 0.01
+default_gain = 120.0
+default_blacklevel = 10.0
+default_fps = 200.0
+default_bit_depth = 16
+
+# Input shmims (FSM is via fsm_name INDI, not a shmim)
+shm_dm_total = "dm01disp"
+shm_dm_flat_channel = "dm01disp00"
+shm_vmag = "vmag"
+shm_opdsim = "opdsim"
+dm_scale = 1e-6
+# Never write the optical-model flat onto cacao. The app *reads* dm01disp00
+# as M.dm_flat and dm01disp as the live combination (residual on channel 1).
+plant_dm_flat = false
+zero_other_dm_channels = false
+
+# Vortex coronagraph (INDI llowfscsim.usevortex.toggle; On=in). Default On.
+usevortex = true

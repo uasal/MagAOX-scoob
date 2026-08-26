@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llowfscSim"
+description = "Optical + detector simulator driven by a MagAO-X camera INDI device (e.g. nsvCtrlSim)."
+version = "2026.08.05"
+dependencies = [
+  "xconf",
+  "purepyindi2",
+]
+authors = [
+  {name = "MagAO-X", email = "xsup@magao-x.org"},
+]
+
+[project.scripts]
+llowfscSim = "xapp.llowfscSim:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xapp*"]
