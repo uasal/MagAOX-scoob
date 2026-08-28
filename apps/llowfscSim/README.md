@@ -5,7 +5,7 @@ MagAO-X **optical + detector simulator** (Python). Ports
 
 1. Follows a live camera INDI device (`cam_name`, e.g. `nsvCtrlSim`) for
    `exptime`, `emgain`, `blacklevel`, `fps`, `bitDepth` (→ detector `rebin`), and ROI
-2. Follows an FSM INDI device (`fsm_name`, e.g. `fsmSim`) for `x.current` / `y.current` [nm]
+2. Follows an FSM INDI device (`fsm_name`, e.g. `fsm_sim`) for `val_1.current` / `val_2.current` [nm]
 3. Owns **`shutter`** (INDI toggle; On = closed) — replace milk `camscishutter`
 4. Owns **`usevortex`** (INDI toggle; On = vortex in) — replace milk `usevortex` shmim
 5. Publishes frames to a configurable output shmim (`shm_output`, default `camsci_sim`)

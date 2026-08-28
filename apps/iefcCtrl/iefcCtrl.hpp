@@ -462,6 +462,7 @@ class iefcCtrl : public MagAOXApp<true>
 
     void setStatus( const std::string &s );
     void clearRequest( pcf::IndiProperty &p );
+    void setClRunToggle( bool on );
 
     /// Cooperative cancel predicate for lina calibrate/run/grab.
     lina::StopCheck makeStopCheck();
@@ -695,7 +696,10 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibLoad, "reload_dark_lib" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calibrate, "calibrate" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_calReload, "cal_reload" );
-    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_clRun, "cl_run" );
+    if( createStandardIndiToggleSw( m_indiP_clRun, "cl_run", "Run closed loop", "run" ) < 0 )
+        return log<software_error, -1>( { __FILE__, __LINE__, "createStandardIndiToggleSw cl_run" } );
+    if( registerIndiPropertyNew( m_indiP_clRun, INDI_NEWCALLBACK( m_indiP_clRun ) ) < 0 )
+        return log<software_error, -1>( { __FILE__, __LINE__, "registerIndiPropertyNew cl_run" } );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dmReset, "dm_reset" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dhMaskReload, "dh_mask_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_stop, "stop" );
@@ -914,8 +918,25 @@ void iefcCtrl::workerExec()
         }
 
         m_busy = 1;
-        // Fresh job: clear any stale stop from a previous abort.
-        m_stopRequested = false;
+        if( job == Job::Run )
+        {
+            // Off may have arrived after queue but before we started.
+            if( m_stopRequested.load() )
+            {
+                m_busy = 0;
+                m_stopRequested = false;
+                setClRunToggle( false );
+                setStatus( "idle" );
+                continue;
+            }
+            state( stateCodes::OPERATING );
+            setClRunToggle( true );
+        }
+        else
+        {
+            // Fresh non-run job: clear any stale stop from a previous abort.
+            m_stopRequested = false;
+        }
         try
         {
             runJob( job );
@@ -929,6 +950,8 @@ void iefcCtrl::workerExec()
             setStatus( "idle" );
         }
         m_busy = 0;
+        if( job == Job::Run )
+            setClRunToggle( false );
         updateIfChanged( m_indiP_calMode, "current", 0.0 );
     }
 }
@@ -1011,6 +1034,13 @@ void iefcCtrl::setStatus( const std::string &s )
 void iefcCtrl::clearRequest( pcf::IndiProperty &p )
 {
     updateSwitchIfChanged( p, "request", pcf::IndiElement::Off, INDI_IDLE );
+}
+
+void iefcCtrl::setClRunToggle( bool on )
+{
+    updateSwitchIfChanged( m_indiP_clRun, "toggle",
+                           on ? pcf::IndiElement::On : pcf::IndiElement::Off,
+                           on ? INDI_BUSY : INDI_IDLE );
 }
 
 int iefcCtrl::openCamsci()
@@ -3742,14 +3772,26 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calReload )( const pcf::IndiProperty &i
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clRun )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clRun, ipRecv );
-    if( !ipRecv.find( "request" ) )
-        return -1;
-    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    if( !ipRecv.find( "toggle" ) )
+        return 0;
+
+    if( ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On )
     {
-        updateSwitchIfChanged( m_indiP_clRun, "request", pcf::IndiElement::On, INDI_BUSY );
+        if( m_busy.load() )
+        {
+            log<text_log>( "cl_run: already busy; ignoring", logPrio::LOG_WARNING );
+            setClRunToggle( false );
+            return 0;
+        }
+        setClRunToggle( true );
+        state( stateCodes::OPERATING );
         queueJob( Job::Run );
-        clearRequest( m_indiP_clRun );
+        return 0;
     }
+
+    // Toggle Off: abort a pending or in-flight closed loop.
+    queueJob( Job::Stop );
+    setClRunToggle( false );
     return 0;
 }
 

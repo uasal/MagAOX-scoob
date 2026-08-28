@@ -66,6 +66,8 @@ apps_rtc = \
 	ocam2KCtrl \
 	andorCtrl \
 	nsvCtrl \
+	nsvCtrlSim \
+	fsmSim \
 	cred2Ctrl \
 	siglentSDG \
 	ttmModulator \
@@ -82,9 +84,12 @@ apps_rtc = \
 	strehlEstimator \
 	modalFilter \
 	dmRecon \
-	iefcCtrl
+	iefcCtrl \
+	darkCtrl \
+	psfRefCtrl
 pythonapps_rtc = \
-	efcControl
+	efcControl \
+	llowfscSim
 
 # Apps needed on ICC
 apps_icc = \
@@ -120,7 +125,9 @@ apps_tic = \
 
 # Apps with simulator mode
 apps_sim = \
-	trippLitePDU
+	trippLitePDU \
+	nsvCtrlSim \
+	fsmSim
 
 all_buildable_apps = \
 	adcTracker \
@@ -132,6 +139,10 @@ all_buildable_apps = \
 	dmPokeXCorr \
 	dmSpeckle \
 	iefcCtrl \
+	darkCtrl \
+	psfRefCtrl \
+	nsvCtrlSim \
+	fsmSim \
 	filterWheelCtrl \
 	flipperCtrl \
 	flowRPM \

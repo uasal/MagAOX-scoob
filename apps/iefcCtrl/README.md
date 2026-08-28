@@ -36,9 +36,9 @@ See `iefcCtrl.conf.sample`. Important:
 - Shmim names (config + INDI group `shmims`):
   `shm_cam_input`, `shm_dm`, `shm_cam_sub_norm`, `shm_contrast_avg`,
   `shm_dh_mask`, `shm_sat_mask`
-- Camera targets: `cam_exp`, `cam_gain` (NEW to `cam_name.exptime` / `emgain`; `current` tracks remote SET)
-- `cam_name` — INDI science-camera device (exptime/emgain + dark-library filter)
-- `dark_lib_path` / `dark_lib_load` — load darks built by **darkCtrl** (no in-app dark build)
+- `cam_name` — INDI science-camera device. Set/query `cam_name.exptime` / `cam_name.emgain` there (`*.target` to command, `*.current` is what iefc stores for dark matching).
+- `shm_cam_input` — ImageStreamIO stream; also the dark-library match key
+- `dark_lib_path` / `reload_dark_lib` — load darks built by **darkCtrl** (`dark_metadata.txt` + `dark_NNN.fits`) for `shm_cam_input`
 - Ref-PSF: acquisition now in **psfRefCtrl** (`take_ref`); iefc has `reload_psf_ref` to load packages
 - Paths:
   - `psf_dir` — ref-PSF / Imax package (from psfRefCtrl; loaded by `reload_psf_ref` / calibrate / `cl_run`)
@@ -52,7 +52,7 @@ See `iefcCtrl.conf.sample`. Important:
 
 | Property | Role |
 |----------|------|
-| `shm_cam_input` | Science-camera ImageStreamIO name (default `camsci`; use `camsci_sim` with llowfscSim) |
+| `shm_cam_input` | Science-camera ImageStreamIO name (default `camsci`; use `camsci_sim` with llowfscSim). Dark-library match key. |
 | `shm_dm` | IEFC DM write channel (e.g. `dm01disp07`) |
 | `shm_cam_sub_norm` | Block-averaged dark-sub + normalized image (cadence = `cl_contrast_avg_n`) |
 | `shm_contrast_avg` | Scalar stream name for running-average contrast (default milk `contrast_avg`) |
@@ -66,9 +66,7 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 |----------|------|
 | `cam_n_frame_delay` | Skip N new camera frames after DM write (XOR `cam_r_delay`) |
 | `cam_r_delay` | Wall-clock settle [s] after DM write (used only if `cam_n_frame_delay==0`) |
-| `cam_exp` | Target exposure [s]; NEW to `cam_name.exptime`. `current` mirrors remote SET |
-| `cam_gain` | Target gain; NEW to `cam_name.emgain`. `current` mirrors remote SET |
-| `cam_name` | INDI science-camera device name |
+| `cam_name` | INDI science-camera device. Command `cam_name.exptime.target` / `emgain.target`; iefc reads `.current` |
 | `cal_dir` | Calibration package directory |
 | `psf_dir` | Ref-PSF / dark / Imax package directory |
 | `dh_mask_path` | External FITS path for `dh_mask_reload` (control+contrast; empty → `cal_dir/wfs_mask.fits`) |
@@ -82,10 +80,10 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 | Switch | Action |
 |--------|--------|
 | `reload_psf_ref` | Load ref-PSF package from `psf_dir` (from psfRefCtrl) → recompute peak → update `psf_max_ref` / live norm; warn if peak ≥ `sat_thresh` |
-| `dark_lib_load` | Validate/index `dark_lib_path` entries for `cam_name` |
+| `reload_dark_lib` | Reload/validate `dark_lib_path` (`dark_metadata.txt`) for `shm_cam_input` |
 | `calibrate` | Native in-process calibration → FITS package in `cal_dir`; matrices cached in memory |
 | `cal_reload` | Load existing `cal_dir` package (response/control/modes/mask) into memory for `cl_run` |
-| `cl_run` | Closed-loop run using in-memory control/response (loads `cal_dir` once if cache empty) |
+| `cl_run` | Toggle: On starts closed loop (FSM OPERATING); Off aborts. Auto-Off when the run finishes. |
 | `dm_reset` | Zero the configured `shm_dm` |
 | `dh_mask_reload` | Load FITS mask as **control+contrast**; write `cal_dir/wfs_mask.fits`; remask + rebuild control when cal data exists; publish `shm_dh_mask` |
 | `stop` | Abort in-progress job; restores DM where applicable and returns to idle |

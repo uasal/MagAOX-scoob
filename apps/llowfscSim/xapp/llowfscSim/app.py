@@ -86,7 +86,7 @@ class LlowfscSimConfig(BaseConfig):
         help="INDI device name of the camera providing exptime/emgain/fps/blacklevel/bitDepth/ROI.",
     )
     fsm_name: str = xconf.field(
-        default="fsmsim",
+        default="fsm_sim",
         help="INDI device for FSM tip/tilt currents (fsm_name.x.current / y.current [nm]).",
     )
 
@@ -586,20 +586,20 @@ class LlowfscSim(XDevice):
             self.log.exception("get_properties(%s) failed", self._fsm_name)
 
     def _read_fsm_current_nm(self):
-        """Pull fsm_name.x/y.current [nm]; keep last values if unavailable."""
+        """Pull fsm_name.val_1/val_2.current [nm]; keep last values if unavailable."""
         try:
             dev = self.client[self._fsm_name]
         except Exception:
             return self._fsm_x_nm, self._fsm_y_nm
 
         try:
-            if "x" in dev:
-                self._fsm_x_nm = _safe_float(dev["x"]["current"], self._fsm_x_nm)
+            if "val_1" in dev:
+                self._fsm_x_nm = _safe_float(dev["val_1"]["current"], self._fsm_x_nm)
         except Exception:
             pass
         try:
-            if "y" in dev:
-                self._fsm_y_nm = _safe_float(dev["y"]["current"], self._fsm_y_nm)
+            if "val_2" in dev:
+                self._fsm_y_nm = _safe_float(dev["val_2"]["current"], self._fsm_y_nm)
         except Exception:
             pass
         return self._fsm_x_nm, self._fsm_y_nm

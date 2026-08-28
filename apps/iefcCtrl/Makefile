@@ -1,11 +1,16 @@
 allall: all
 
+# Shared dark_metadata.txt schema (also used by darkCtrl and psfRefCtrl).
+COMMON_INC := ../common/include
+CXXFLAGS += -I$(COMMON_INC)
+
 # Vendored SHM-only IEFC core (no external iefc_camsci_once binary).
 IEFC_DIR := iefc
 CXXFLAGS += -I$(IEFC_DIR)/include
 CXXFLAGS += -DLINA_USE_IMAGESTREAMIO -DLINA_USE_CFITSIO -DLINA_USE_EIGEN_SVD -DLINA_USE_OPENBLAS
 
-OTHER_HEADERS = $(IEFC_DIR)/include/lina/array.h \
+OTHER_HEADERS = $(COMMON_INC)/lina/dark_library.h \
+                $(IEFC_DIR)/include/lina/array.h \
                 $(IEFC_DIR)/include/lina/stream.h \
                 $(IEFC_DIR)/include/lina/coro_utils.h \
                 $(IEFC_DIR)/include/lina/dm.h \

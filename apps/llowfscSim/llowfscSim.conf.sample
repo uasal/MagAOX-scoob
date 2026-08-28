@@ -11,7 +11,7 @@ cam_name = "nsvsim"
 
 # INDI device for FSM tip/tilt currents (x.current / y.current [nm])
 # Do NOT set shm_fsm_total — FSM is INDI-only now.
-fsm_name = "fsmsim"
+fsm_name = "fsm_sim"
 
 # Output ImageStreamIO (not the camera's own shmim)
 shm_output = "camsci_sim"

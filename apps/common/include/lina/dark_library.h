@@ -1,6 +1,10 @@
 #pragma once
 
-/// Shared dark-library format used by darkCtrl, psfRefCtrl, and iefcCtrl.
+/// Shared dark-library schema used by darkCtrl, psfRefCtrl, and iefcCtrl.
+///
+/// Lives in apps/common/include (not under any one app) so the writer and
+/// readers cannot drift. Include with -I../common/include and
+/// `#include <lina/dark_library.h>`.
 ///
 /// Directory layout (dark_lib_path):
 ///   dark_000.fits

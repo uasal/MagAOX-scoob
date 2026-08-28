@@ -7,19 +7,16 @@
 shm_cam_input=camsci
 shm_dm=dm01disp07
 
-# INDI device name of the science camera (exptime/emgain + dark_lib filter)
+# INDI device name of the science camera. Set exposure/gain on that device:
+#   setINDI nsvsim.exptime.target=0.01
+#   setINDI nsvsim.emgain.target=120
+# iefcCtrl only stores cam_name.exptime.current / emgain.current for dark matching.
 cam_name=camsci
-
-# Target camera exposure / gain (INDI: cam_exp, cam_gain). Written to
-# cam_name.exptime / cam_name.emgain when set via INDI (or applied at job start
-# if previously set). INDI 'current' mirrors remote SET callbacks.
-cam_exp=1.0
-cam_gain=0.0
 
 # Paths:
 #   cal_dir — calibration package (response/control matrices from calibrate; used by cl_run)
 #   psf_dir — ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run)
-#   dark_lib_path — dark library from darkCtrl (dark_library.txt + darks/)
+#   dark_lib_path — dark library from darkCtrl (dark_metadata.txt + dark_NNN.fits)
 # NOTE: PSF acquisition is now in psfRefCtrl (take_ref). Use reload_psf_ref here to reload the package.
 cal_dir=./cal_a
 psf_dir=./ref_psf
