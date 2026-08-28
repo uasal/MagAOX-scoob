@@ -1,0 +1,27 @@
+# Sample MagAO-X config for psfRefCtrl
+# Install as /opt/MagAOX/config/psfref.conf (process name from proclist)
+
+[ref]
+# Frame stream from llowfscSim (not the camera's own milk stream)
+shm_cam_input=camsci_sim
+# INDI device providing exptime / emgain / blacklevel (e.g. nsvCtrlSim)
+cam_name=nsvsim
+# INDI FSM device for tip/tilt positioning (e.g. fsmSim)
+fsm_name=fsmsim
+# Directory with dark_NNN.fits + dark_metadata.txt (REQUIRED)
+dark_lib_path=/opt/MagAOX/data/darks/camsci
+# Package output directory for reference PSF
+dir=./ref_psf
+
+n_frames=20
+# FSM poke offsets [nm]
+fsm_poke_tip=1000
+fsm_poke_tilt=1000
+# FSM reference position [nm]
+fsm_ref_tip=0
+fsm_ref_tilt=0
+# Saturation threshold (warn only, do not abort)
+sat_thresh=55000
+# Wall-clock settle after FSM park/poke [s]
+settle_s=0.5
+cam_n_frame_delay=1

@@ -1,0 +1,20 @@
+# Sample MagAO-X config for darkCtrl
+# Install as /opt/MagAOX/config/dark.conf (process name from proclist)
+
+[dark]
+# Frame stream from llowfscSim (not the camera's own milk stream)
+shm_cam_input=camsci_sim
+# INDI device providing exptime / emgain / fps / blacklevel / bitDepth / ROI
+# (e.g. nsvCtrlSim). Camera commands: setINDI nsvsim.exptime.target=...
+cam_name=nsv455sim
+# INDI device that owns shutter.toggle (On=closed), e.g. llowfscSim
+shutter_device=llowfscsim
+dark_lib_path=/opt/MagAOX/data/darks/camsci
+
+dark_n_images=20
+dark_exptimes=0.001,0.01,0.1,0.5,1,5,10
+cam_n_frame_delay=2
+
+# Camera params (cam_exptime, cam_emgain, cam_fps, cam_blacklevel,
+# cam_bitdepth, cam_roi_*) are RO mirrors of cam_name.*.current.
+# Do not set them here — query/set via cam_name INDI.
