@@ -15,7 +15,7 @@ default_w=9576
 default_x=4788
 default_y=3194
 bitDepth=16
-# Nanoseconds reserved for "sensor readout"; max exptime = 1/fps - this (when fast_cam Off)
+# Kept for config compatibility; does not cap exptime.
 readoutOverhead_ns=100
 
 [9576x6388]

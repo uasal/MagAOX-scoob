@@ -75,15 +75,14 @@ class nsvCtrlSim : public MagAOXApp<>,
 
   protected:
     int m_bitDepth{ 16 }; ///< Simulated ADC bit depth (8–16). Frames stored as UINT16.
-    double m_readoutOverhead_s{ 100e-9 }; ///< Reserved readout time; caps max exposure.
+    double m_readoutOverhead_s{ 100e-9 }; ///< Reserved readout time (config; not used to cap exptime).
     uint16_t m_fillValue{ 65535 }; ///< Constant DN written into every pixel.
 
     bool m_streaming{ false }; ///< INDI "streaming" toggle — gates frame publication.
-    bool m_fastCam{ false }; ///< Bypass mode maxFPS and fps↔exptime mutual limiting.
+    bool m_fastCam{ false }; ///< Bypass mode maxFPS.
 
-    /// Absolute ceiling while fast_cam is On (no ROI/mode coupling).
+    /// Absolute fps ceiling while fast_cam is On (no ROI/mode coupling).
     static constexpr float c_fastCamAbsMaxFps{ 2000.0f };
-    static constexpr float c_fastCamAbsMaxExp{ 3600.0f };
 
     std::vector<uint16_t> m_frame; ///< Current simulated frame buffer.
     double m_lastTime{ 0 };
@@ -140,16 +139,16 @@ class nsvCtrlSim : public MagAOXApp<>,
     /// Apply named mode geometry / maxFPS from m_cameraModes. Optionally reset ROI to full mode.
     int applyMode( const std::string &modeName, bool resetROI );
 
-    /// Clamp fps/exptime (bypassed mutual limits when fast_cam is On).
+    /// Clamp fps to the live mode (or fast_cam) limit. Exposure is not capped.
     void clampFpsAndExp();
 
-    /// max exposure allowed for given fps (1/fps - readout overhead).
-    float maxExpForFps( float fpsVal ) const;
+    /// Default exposure if unset: 1/fps − readout overhead (not an enforced max).
+    float defaultExpForFps( float fpsVal ) const;
 
     /// Enter/leave fast_cam (members + state() only — never sendSetProperty here).
     void applyFastCamMode( bool enable );
 
-    /// INDI fps/exptime min/max: mode limits when fast_cam Off, 2000 Hz / 3600 s when On.
+    /// INDI fps min/max follow fast_cam; exptime.max is unbounded.
     void publishFpsExpLimits();
 
     /// Refresh m_fillValue from m_bitDepth.
@@ -173,7 +172,7 @@ inline nsvCtrlSim::nsvCtrlSim() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MO
     m_minBlacklevel = 0;
 
     m_minExpTime = 1e-6f;
-    m_maxExpTime = 3600.0f;
+    m_maxExpTime = std::numeric_limits<float>::max();
     m_minFPS = 0.01f;
     m_maxFPS = 1000.0f;
 
@@ -204,7 +203,7 @@ inline void nsvCtrlSim::setupConfig()
                 "readoutOverhead_ns",
                 false,
                 "double",
-                "Readout overhead in nanoseconds subtracted from 1/fps for max exposure (default 100)." );
+                "Readout overhead in nanoseconds (kept for config compatibility; does not cap exptime)." );
 
     stdCameraT::setupConfig( config );
     FRAMEGRABBER_SETUP_CONFIG( config );
@@ -283,7 +282,7 @@ inline int nsvCtrlSim::appStartup()
     // Default Off — operator must toggle streaming to begin publishing frames.
     m_indiP_streamSwitch["toggle"].setSwitchState( pcf::IndiElement::Off );
 
-    createStandardIndiToggleSw( m_indiP_fastCam, "fast_cam", "Bypass fps/exptime mutual limits" );
+    createStandardIndiToggleSw( m_indiP_fastCam, "fast_cam", "Bypass ROI mode maxFPS" );
     if( registerIndiPropertyNew( m_indiP_fastCam, INDI_NEWCALLBACK( m_indiP_fastCam ) ) < 0 )
     {
         return log<software_error, -1>( { __FILE__, __LINE__ } );
@@ -330,7 +329,8 @@ inline int nsvCtrlSim::appStartup()
     // Connected but not yet streaming (mirrors pixelinkCtrl pattern).
     state( stateCodes::CONNECTED );
     log<text_log>( "nsvCtrlSim ready (mode=" + m_modeName + ", maxFPS=" + std::to_string( m_maxFPS ) +
-                   "). Toggle streaming to publish; fast_cam bypasses fps/exptime limits." );
+                   "). Toggle streaming to publish; fast_cam raises fps.max to 2000 Hz. "
+                   "exptime has no maximum." );
     return 0;
 }
 
@@ -454,55 +454,53 @@ inline int nsvCtrlSim::applyMode( const std::string &modeName, bool resetROI )
     return 0;
 }
 
-inline float nsvCtrlSim::maxExpForFps( float fpsVal ) const
+inline float nsvCtrlSim::defaultExpForFps( float fpsVal ) const
 {
     if( fpsVal <= 0 )
         return m_minExpTime;
     const double period = 1.0 / static_cast<double>( fpsVal );
-    const double maxExp = period - m_readoutOverhead_s;
-    if( maxExp < static_cast<double>( m_minExpTime ) )
+    const double exp = period - m_readoutOverhead_s;
+    if( exp < static_cast<double>( m_minExpTime ) )
         return m_minExpTime;
-    return static_cast<float>( maxExp );
+    return static_cast<float>( exp );
 }
 
 inline void nsvCtrlSim::clampFpsAndExp()
 {
     if( m_fastCam )
     {
-        // Bypass mode maxFPS and fps↔exptime coupling; only absolute floors/ceilings.
         if( m_fpsSet < m_minFPS )
             m_fpsSet = m_minFPS;
         if( m_fpsSet > c_fastCamAbsMaxFps )
             m_fpsSet = c_fastCamAbsMaxFps;
         m_fps = m_fpsSet;
-
-        m_maxExpTime = c_fastCamAbsMaxExp;
-        if( m_expTimeSet < m_minExpTime )
-            m_expTimeSet = m_minExpTime;
-        if( m_expTimeSet > m_maxExpTime )
-            m_expTimeSet = m_maxExpTime;
-        m_expTime = m_expTimeSet;
-        return;
+    }
+    else
+    {
+        if( m_fpsSet < m_minFPS )
+            m_fpsSet = m_minFPS;
+        if( m_fpsSet > m_maxFPS )
+            m_fpsSet = m_maxFPS;
+        if( m_fps < m_minFPS )
+            m_fps = m_minFPS;
+        if( m_fps > m_maxFPS )
+            m_fps = m_maxFPS;
+        m_fpsSet = m_fps;
     }
 
-    if( m_fpsSet < m_minFPS )
-        m_fpsSet = m_minFPS;
-    if( m_fpsSet > m_maxFPS )
-        m_fpsSet = m_maxFPS;
-    if( m_fps < m_minFPS )
-        m_fps = m_minFPS;
-    if( m_fps > m_maxFPS )
-        m_fps = m_maxFPS;
-    m_fpsSet = m_fps;
-
-    m_maxExpTime = maxExpForFps( m_fps );
-    if( m_expTime <= 0 )
-        m_expTime = m_maxExpTime;
-    if( m_expTime > m_maxExpTime )
-        m_expTime = m_maxExpTime;
+    // Exposure is independent of fps. Only a floor; INDI max stays unbounded.
+    m_maxExpTime = std::numeric_limits<float>::max();
+    if( m_expTimeSet <= 0 && m_expTime <= 0 )
+    {
+        m_expTime = defaultExpForFps( m_fps );
+        m_expTimeSet = m_expTime;
+    }
+    if( m_expTimeSet < m_minExpTime )
+        m_expTimeSet = m_minExpTime;
     if( m_expTime < m_minExpTime )
         m_expTime = m_minExpTime;
-    m_expTimeSet = m_expTime;
+    if( m_expTimeSet > 0 )
+        m_expTime = m_expTimeSet;
 }
 
 inline void nsvCtrlSim::applyFastCamMode( bool enable )
@@ -519,7 +517,7 @@ inline void nsvCtrlSim::applyFastCamMode( bool enable )
             log<text_log>( "fast_cam ON auto-enabled streaming (member only)" );
         }
         state( stateCodes::OPERATING );
-        log<text_log>( "fast_cam ON (bypass limits; INDI publish via appLogic)" );
+        log<text_log>( "fast_cam ON (bypass mode maxFPS; INDI publish via appLogic)" );
     }
     else
     {
@@ -543,7 +541,7 @@ inline void nsvCtrlSim::publishFpsExpLimits()
         return;
 
     const float fpsMax = m_fastCam ? c_fastCamAbsMaxFps : m_maxFPS;
-    const float expMax = m_fastCam ? c_fastCamAbsMaxExp : m_maxExpTime;
+    const float expMax = std::numeric_limits<float>::max();
 
     if( fpsMax != m_pubFpsMax && m_indiP_fps.find( "current" ) && m_indiP_fps.find( "target" ) )
     {
@@ -795,33 +793,10 @@ inline int nsvCtrlSim::setExpTime()
                        logPrio::LOG_WARNING );
     }
 
-    if( m_fastCam )
-    {
-        if( exp > c_fastCamAbsMaxExp )
-        {
-            exp = c_fastCamAbsMaxExp;
-            log<text_log>( "exptime limited to absolute max " + std::to_string( c_fastCamAbsMaxExp ) +
-                               " s (fast_cam)",
-                           logPrio::LOG_WARNING );
-        }
-        m_maxExpTime = c_fastCamAbsMaxExp;
-    }
-    else
-    {
-        m_maxExpTime = maxExpForFps( m_fps );
-        if( exp > m_maxExpTime )
-        {
-            exp = m_maxExpTime;
-            log<text_log>( "exptime limited to max " + std::to_string( m_maxExpTime ) +
-                               " s (= 1/fps - readout overhead)",
-                           logPrio::LOG_WARNING );
-        }
-    }
-
+    m_maxExpTime = std::numeric_limits<float>::max();
     m_expTime = exp;
     m_expTimeSet = exp;
-    log<text_log>( "Set exposure time: " + std::to_string( m_expTime ) + " s" +
-                   ( m_fastCam ? " (fast_cam)" : "" ) );
+    log<text_log>( "Set exposure time: " + std::to_string( m_expTime ) + " s" );
     return 0;
 }
 
@@ -857,9 +832,7 @@ inline int nsvCtrlSim::setFPS()
         }
         m_fpsSet = fr;
         m_fps = fr;
-        clampFpsAndExp();
-        log<text_log>( "Set frame rate: " + std::to_string( m_fps ) +
-                       " fps (max exptime=" + std::to_string( m_maxExpTime ) + " s)" );
+        log<text_log>( "Set frame rate: " + std::to_string( m_fps ) + " fps" );
     }
 
     m_lastTime = mx::sys::get_curr_time();
