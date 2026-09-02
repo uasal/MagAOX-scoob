@@ -19,6 +19,10 @@ struct Cancelled : public std::runtime_error {
 
 using StopCheck = std::function<bool()>;
 
+/// Called after each closed-loop DM command is published to the shmim
+/// (same units as Stream2D::write, i.e. after dividing by dm_scale).
+using CommandWrittenFn = std::function<void(const Array2D<double>& write_cmd)>;
+
 inline bool stop_requested(const StopCheck& stop) {
     return static_cast<bool>(stop) && stop();
 }
@@ -130,6 +134,7 @@ void run(IefcData& iefc_data,
          double leakage = 0.0,
          double dm_scale = 1e-6,
          std::size_t wait_frames = 1,
-         const StopCheck& stop = {});
+         const StopCheck& stop = {},
+         const CommandWrittenFn& on_command = {});
 
 } // namespace lina

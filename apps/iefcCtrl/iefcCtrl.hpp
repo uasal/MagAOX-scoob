@@ -28,6 +28,7 @@
 #include <limits>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -99,13 +100,16 @@ class iefcCtrl : public MagAOXApp<true>
 
     std::string m_psfDir{ "./ref_psf" };  ///< Ref-PSF / Imax package (write+read)
     std::string m_calDir{ "./cal_a" };    ///< Calibration package (response/control matrices)
+    std::string m_dmCmdPath{ "./dm_cmds" }; ///< Closed-loop DM command FITS archive
+    unsigned m_clIndex{ 0 }; ///< Last archived / restored `{shm_dm}_cl_{N}.fits` index
+    unsigned m_dmResetIndex{ 0 }; ///< Archive index loaded by `dm_reset`
     std::string m_darkLibPath; ///< External dark library dir (dark_metadata.txt from darkCtrl)
     std::string m_camName{ "camsci" }; ///< INDI device for cam_name.exptime / emgain (not dark match)
     std::string m_dhMaskPath; ///< External FITS mask path for dh_mask_reload (full path or filename)
     std::string m_satMaskPath; ///< FITS sat-check region for calibrate (raw ADU)
     float m_satThresh{ 55000.0f }; ///< Raw ADU threshold inside sat_mask (≥ → abort cal)
 
-    unsigned m_calNImages{ 5 }; ///< Frames averaged per grab during calibrate
+    unsigned m_nImages{ 10 }; ///< Frames averaged for calibrate grabs, cl_run grabs, and contrast
     /// Camera settle after DM write: use frame delay OR wall-clock delay (mutually exclusive).
     unsigned m_camNFrameDelay{ 1 };  ///< Skip this many new camsci frames (0 = use cam_r_delay)
     float m_camRDelay{ 0.0f };      ///< Wall-clock settle [s] (used only when cam_n_frame_delay==0)
@@ -126,7 +130,6 @@ class iefcCtrl : public MagAOXApp<true>
     std::string m_contrastAvgName{ "contrast_avg" };
     std::string m_shmDhMaskName{ "iefc_mask" }; ///< Live WFS/control mask image for verification
     std::string m_shmSatMaskName{ "iefc_sat_mask" }; ///< Saturation-check mask image
-    unsigned m_clContrastAvgN{ 10 }; ///< NI frames avg for contrast / cl_run grab cadence
     bool m_saveResponseFull{ true }; ///< Save full-frame response (needed to remask on dh_mask_reload)
     ///@}
 
@@ -233,8 +236,8 @@ class iefcCtrl : public MagAOXApp<true>
     /** \name INDI — shared
       *@{
       */
-    pcf::IndiProperty m_indiP_calNImages;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calNImages);
+    pcf::IndiProperty m_indiP_nImages;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_nImages);
 
     pcf::IndiProperty m_indiP_camNFrameDelay;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_camNFrameDelay);
@@ -253,6 +256,9 @@ class iefcCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_calDir;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_calDir);
+
+    pcf::IndiProperty m_indiP_dmCmdPath;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmCmdPath);
 
     pcf::IndiProperty m_indiP_darkLibPath;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_darkLibPath);
@@ -296,9 +302,6 @@ class iefcCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_clLeakage;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clLeakage);
-
-    pcf::IndiProperty m_indiP_clContrastAvgN;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_clContrastAvgN);
     ///@}
 
     /** \name INDI — requests + status
@@ -322,6 +325,9 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_dmReset;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmReset);
 
+    pcf::IndiProperty m_indiP_dmResetIndex;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmResetIndex);
+
     pcf::IndiProperty m_indiP_dhMaskReload;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskReload);
 
@@ -334,6 +340,7 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_contrastPosPixels; ///< RO % of DH-mask pixels with NI > 0
     pcf::IndiProperty m_indiP_calMode;   ///< RO: current calib mode (1..N, 0 idle)
     pcf::IndiProperty m_indiP_nCalModes; ///< RO: total calib modes in package / run
+    pcf::IndiProperty m_indiP_clIndex; ///< RO: last archived / restored DM command index
     ///@}
 
   public:
@@ -377,6 +384,15 @@ class iefcCtrl : public MagAOXApp<true>
     lina::DarkMatchFilter darkFilter( double gain = std::numeric_limits<double>::quiet_NaN() ) const;
     int doRun();
     int doDmReset();
+
+    /// `{dm_cmd_path}/{shm_dm}_cl_{index}.fits`
+    std::string dmCmdFitsPath( unsigned index ) const;
+    /// Write a closed-loop DM command (shmim units) to the archive, overwriting if present.
+    int writeDmCmdArchive( unsigned index, const lina::Array2D<double> &cmd );
+    /// Ensure `{shm_dm}_cl_0.fits` exists as the zero flat when `cl_index==0`.
+    int ensureFlatDmCmdArchive( std::size_t rows, std::size_t cols );
+    /// After each CL DM write: increment `cl_index`, archive, publish INDI.
+    void archiveClosedLoopCommand( const lina::Array2D<double> &write_cmd );
     int doRecomputeControl(); ///< Load or build control for current cal_reg_cond
     int doDhMaskReload();      ///< Load WFS/control mask; remask+rebuild control from dir_cal
 
@@ -446,7 +462,7 @@ class iefcCtrl : public MagAOXApp<true>
     /// Absolute path helper for logs (falls back to input on failure).
     static std::string absPath( const std::string &path );
 
-    /// Accumulate one NI frame. Every cl_contrast_avg_n frames: publish mean →
+    /// Accumulate one NI frame. Every n_images frames: publish mean →
     /// shm_cam_sub_norm and contrast(mean ∩ mask) → contrast_avg; also
     /// % of mask pixels with NI>0 → contrast_pos_pixels.
     int updateContrastFromNi( const lina::Array2D<double> &ni );
@@ -454,7 +470,7 @@ class iefcCtrl : public MagAOXApp<true>
     /// Publish a float image to shm_cam_sub_norm (creates stream if needed).
     int publishSubNorm( const lina::Array2D<double> &im );
 
-    /// Reset the NI-frame accumulator (e.g. when cl_contrast_avg_n changes).
+    /// Reset the NI-frame accumulator (e.g. when n_images changes).
     void resetContrastAccumulator();
 
     /// Format a double in scientific notation for logs.
@@ -484,6 +500,12 @@ void iefcCtrl::setupConfig()
                 "string", "IEFC DM channel shmim (default dm01disp07)." );
     config.add( "iefc.cal_dir", "", "iefc.cal_dir", argType::Required, "iefc", "cal_dir", false,
                 "string", "Calibration package dir (response/control matrices)." );
+    config.add( "iefc.dm_cmd_path", "", "iefc.dm_cmd_path", argType::Required, "iefc", "dm_cmd_path",
+                false, "string",
+                "Directory for closed-loop DM command FITS ({shm_dm}_cl_{N}.fits)." );
+    config.add( "iefc.dm_reset_index", "", "iefc.dm_reset_index", argType::Required, "iefc",
+                "dm_reset_index", false, "unsigned",
+                "Archive index loaded by dm_reset (default 0 = zero flat)." );
     config.add( "iefc.psf_dir", "", "iefc.psf_dir", argType::Required, "iefc", "psf_dir", false,
                 "string",
                 "Ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref/calibrate/cl_run)." );
@@ -524,8 +546,9 @@ void iefcCtrl::setupConfig()
                 false,
                 "float",
                 "Raw ADU threshold inside sat_mask (>= aborts calibrate)." );
-    config.add( "iefc.cal_n_images", "", "iefc.cal_n_images", argType::Required, "iefc", "cal_n_images", false,
-                "unsigned", "Frames averaged per grab during calibrate." );
+    config.add( "iefc.n_images", "", "iefc.n_images", argType::Required, "iefc", "n_images", false,
+                "unsigned",
+                "Frames averaged per grab for calibrate, cl_run, and contrast / shm_cam_sub_norm." );
     config.add( "iefc.cam_n_frame_delay",
                 "",
                 "iefc.cam_n_frame_delay",
@@ -609,8 +632,6 @@ void iefcCtrl::setupConfig()
     config.add( "shmims.shm_sat_mask", "", "shmims.shm_sat_mask", argType::Required, "shmims",
                 "shm_sat_mask", false, "string",
                 "Binary saturation-check mask image stream (default iefc_sat_mask)." );
-    config.add( "iefc.cl_contrast_avg_n", "", "iefc.cl_contrast_avg_n", argType::Required, "iefc", "cl_contrast_avg_n", false,
-                "unsigned", "NI frames averaged for contrast / cl_run grabs (sets update cadence)." );
     config.add( "iefc.save_response_full", "", "iefc.save_response_full", argType::Required, "iefc", "save_response_full", false,
                 "bool", "Write response_full.fits (multi-GB; needed to remask after restart)." );
 }
@@ -620,13 +641,15 @@ void iefcCtrl::loadConfig()
     config( m_shmCamInput, "iefc.shm_cam_input" );
     config( m_shmDm, "iefc.shm_dm" );
     config( m_calDir, "iefc.cal_dir" );
+    config( m_dmCmdPath, "iefc.dm_cmd_path" );
+    config( m_dmResetIndex, "iefc.dm_reset_index" );
     config( m_psfDir, "iefc.psf_dir" );
     config( m_darkLibPath, "iefc.dark_lib_path" );
     config( m_camName, "iefc.cam_name" );
     config( m_dhMaskPath, "iefc.dh_mask_path" );
     config( m_satMaskPath, "iefc.sat_mask_path" );
     config( m_satThresh, "iefc.sat_thresh" );
-    config( m_calNImages, "iefc.cal_n_images" );
+    config( m_nImages, "iefc.n_images" );
     config( m_camNFrameDelay, "iefc.cam_n_frame_delay" );
     config( m_camRDelay, "iefc.cam_r_delay" );
     config( m_calRegCond, "iefc.cal_reg_cond" );
@@ -640,7 +663,6 @@ void iefcCtrl::loadConfig()
     config( m_contrastAvgName, "shmims.shm_contrast_avg" );
     config( m_shmDhMaskName, "shmims.shm_dh_mask" );
     config( m_shmSatMaskName, "shmims.shm_sat_mask" );
-    config( m_clContrastAvgN, "iefc.cl_contrast_avg_n" );
     config( m_saveResponseFull, "iefc.save_response_full" );
 
     // Enforce mutual exclusivity: frame delay wins if both are set.
@@ -666,12 +688,14 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDhMask, "shm_dh_mask", "WFS/control mask image shmim", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmSatMask, "shm_sat_mask", "Saturation-check mask image shmim", "shmims" );
 
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_calNImages, "cal_n_images", 1, 10000, 1, "%u", "Frames averaged during calibrate", "calibrate" );
+    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_nImages, "n_images", 1, 10000, 1, "%u",
+                                 "Frames averaged for calibrate, cl_run, and contrast", "shared" );
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_camNFrameDelay, "cam_n_frame_delay", 0, 1000, 1, "%u",
                                  "Skip N camsci frames after DM (XOR cam_r_delay)", "shared" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_camRDelay, "cam_r_delay", 0, 10, 0.01, "%0.3f",
                                  "Wall-clock settle after DM [s] (XOR cam_n_frame_delay)", "shared" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_calDir, "cal_dir", "Calibration package dir (response/control)", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_dmCmdPath, "dm_cmd_path", "Closed-loop DM command FITS directory", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_psfDir, "psf_dir", "Ref-PSF package from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_darkLibPath, "dark_lib_path", "Dark library directory (from darkCtrl)", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_camName, "cam_name", "INDI science-camera device (exptime/emgain)", "camera" );
@@ -687,10 +711,10 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_calModeAmp, "cal_mode_amp", 0, 1e-6, 1e-10, "%0.3e", "Calib mode amp [m]", "calibrate" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clProbeAmp, "cl_probe_amp", 0, 1e-6, 1e-10, "%0.3e", "Closed-loop probe amp [m]", "run" );
     CREATE_REG_INDI_NEW_NUMBERU( m_indiP_clIters, "cl_iters", 1, 1000, 1, "%u", "Closed-loop iterations", "run" );
+    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_dmResetIndex, "dm_reset_index", 0, 1000000, 1, "%u",
+                                 "Archive index loaded by dm_reset", "run" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clLoopGain, "cl_loop_gain", 0, 2, 0.05, "%0.2f", "Closed-loop gain", "run" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_clLeakage, "cl_leakage", 0, 1, 0.01, "%0.2f", "Closed-loop leakage", "run" );
-    CREATE_REG_INDI_NEW_NUMBERU( m_indiP_clContrastAvgN, "cl_contrast_avg_n", 1, 10000, 1, "%u",
-                                 "NI frames averaged for contrast / cl_run (sets cadence)", "run" );
 
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_reloadPsfRef, "reload_psf_ref" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibLoad, "reload_dark_lib" );
@@ -728,6 +752,10 @@ int iefcCtrl::appStartup()
     m_indiP_nCalModes.add( pcf::IndiElement( "current" ) );
     m_indiP_nCalModes["current"].set( 0.0 );
 
+    REG_INDI_NEWPROP_NOCB( m_indiP_clIndex, "cl_index", pcf::IndiProperty::Number );
+    m_indiP_clIndex.add( pcf::IndiElement( "current" ) );
+    m_indiP_clIndex["current"].set( 0.0 );
+
     // Seed current/target from config (before INDI starts — use setValue, not updateIfChanged)
     m_indiP_shmCamInput["current"].setValue( m_shmCamInput );
     m_indiP_shmCamInput["target"].setValue( m_shmCamInput );
@@ -741,14 +769,16 @@ int iefcCtrl::appStartup()
     m_indiP_shmDhMask["target"].setValue( m_shmDhMaskName );
     m_indiP_shmSatMask["current"].setValue( m_shmSatMaskName );
     m_indiP_shmSatMask["target"].setValue( m_shmSatMaskName );
-    m_indiP_calNImages["current"].setValue( m_calNImages );
-    m_indiP_calNImages["target"].setValue( m_calNImages );
+    m_indiP_nImages["current"].setValue( m_nImages );
+    m_indiP_nImages["target"].setValue( m_nImages );
     m_indiP_camNFrameDelay["current"].setValue( m_camNFrameDelay );
     m_indiP_camNFrameDelay["target"].setValue( m_camNFrameDelay );
     m_indiP_camRDelay["current"].setValue( m_camRDelay );
     m_indiP_camRDelay["target"].setValue( m_camRDelay );
     m_indiP_calDir["current"].setValue( m_calDir );
     m_indiP_calDir["target"].setValue( m_calDir );
+    m_indiP_dmCmdPath["current"].setValue( m_dmCmdPath );
+    m_indiP_dmCmdPath["target"].setValue( m_dmCmdPath );
     m_indiP_psfDir["current"].setValue( m_psfDir );
     m_indiP_psfDir["target"].setValue( m_psfDir );
     m_indiP_darkLibPath["current"].setValue( m_darkLibPath );
@@ -773,12 +803,13 @@ int iefcCtrl::appStartup()
     m_indiP_clProbeAmp["target"].setValue( m_clProbeAmp );
     m_indiP_clIters["current"].setValue( m_clIters );
     m_indiP_clIters["target"].setValue( m_clIters );
+    m_indiP_dmResetIndex["current"].setValue( m_dmResetIndex );
+    m_indiP_dmResetIndex["target"].setValue( m_dmResetIndex );
     m_indiP_clLoopGain["current"].setValue( m_clLoopGain );
     m_indiP_clLoopGain["target"].setValue( m_clLoopGain );
     m_indiP_clLeakage["current"].setValue( m_clLeakage );
     m_indiP_clLeakage["target"].setValue( m_clLeakage );
-    m_indiP_clContrastAvgN["current"].setValue( m_clContrastAvgN );
-    m_indiP_clContrastAvgN["target"].setValue( m_clContrastAvgN );
+    m_indiP_clIndex["current"].setValue( m_clIndex );
 
     // Mirror live camera settings into INDI current via remote SET (registered below).
     REG_INDI_SETPROP( m_indiP_remoteExptime, m_camName, "exptime" );
@@ -1254,6 +1285,64 @@ int iefcCtrl::ensureDir( const std::string &dir )
     return 0;
 }
 
+std::string iefcCtrl::dmCmdFitsPath( unsigned index ) const
+{
+    std::string dir = m_dmCmdPath;
+    while( !dir.empty() && dir.back() == '/' )
+        dir.pop_back();
+    return dir + "/" + m_shmDm + "_cl_" + std::to_string( index ) + ".fits";
+}
+
+int iefcCtrl::writeDmCmdArchive( unsigned index, const lina::Array2D<double> &cmd )
+{
+    if( m_dmCmdPath.empty() )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "dm_cmd_path is empty; cannot archive DM commands" } );
+    }
+    if( ensureDir( m_dmCmdPath ) < 0 )
+        return -1;
+    const std::string path = dmCmdFitsPath( index );
+    try
+    {
+        lina::FitsHeader hdr;
+        hdr.emplace_back( "SHMDM", "'" + m_shmDm + "'" );
+        hdr.emplace_back( "CLINDEX", std::to_string( index ) );
+        lina::save_fits( path, cmd, hdr, true );
+    }
+    catch( const std::exception &e )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              std::string( "DM command FITS write failed (" ) + path + "): " + e.what() } );
+    }
+    return 0;
+}
+
+int iefcCtrl::ensureFlatDmCmdArchive( std::size_t rows, std::size_t cols )
+{
+    if( m_clIndex != 0 )
+        return 0;
+    lina::Array2D<double> zeros( rows, cols, 0.0 );
+    if( writeDmCmdArchive( 0, zeros ) < 0 )
+        return -1;
+    updateIfChanged( m_indiP_clIndex, "current", static_cast<double>( m_clIndex ) );
+    log<text_log>( "wrote flat DM command " + dmCmdFitsPath( 0 ) );
+    return 0;
+}
+
+void iefcCtrl::archiveClosedLoopCommand( const lina::Array2D<double> &write_cmd )
+{
+    const unsigned next = m_clIndex + 1;
+    if( writeDmCmdArchive( next, write_cmd ) < 0 )
+    {
+        throw std::runtime_error( "failed to archive DM command " + dmCmdFitsPath( next ) );
+    }
+    m_clIndex = next;
+    updateIfChanged( m_indiP_clIndex, "current", static_cast<double>( m_clIndex ) );
+    log<text_log>( "archived DM command " + dmCmdFitsPath( m_clIndex ) );
+}
+
 int iefcCtrl::saveFitsF32( const std::string &path, const std::vector<float> &im, uint32_t w,
                            uint32_t h )
 {
@@ -1550,7 +1639,7 @@ int iefcCtrl::processSubNormFrame()
         return 0;
     }
 
-    // Single pipeline: accumulate NI; every cl_contrast_avg_n frames publish the
+    // Single pipeline: accumulate NI; every n_images frames publish the
     // block mean to shm_cam_sub_norm and compute contrast from that same mean.
     if( ensureContrastMask( w, h ) == 0 )
         updateContrastFromNi( ni );
@@ -2180,7 +2269,7 @@ int iefcCtrl::updateContrastFromNi( const lina::Array2D<double> &ni )
     bool ready = false;
     {
         std::lock_guard<std::mutex> lock( m_contrastAvgMutex );
-        const unsigned nwin = m_clContrastAvgN < 1 ? 1 : m_clContrastAvgN;
+        const unsigned nwin = m_nImages < 1 ? 1 : m_nImages;
 
         if( m_contrastFrameCount == 0 || m_contrastSumIm.rows() != ni.rows() ||
             m_contrastSumIm.cols() != ni.cols() )
@@ -2196,7 +2285,7 @@ int iefcCtrl::updateContrastFromNi( const lina::Array2D<double> &ni )
         if( m_contrastFrameCount < nwin )
             return 0;
 
-        // Non-overlapping block: cadence = cl_contrast_avg_n camera frames.
+        // Non-overlapping block: cadence = n_images camera frames.
         mean = lina::Array2D<double>( ni.rows(), ni.cols(), 0.0 );
         const double inv = 1.0 / static_cast<double>( nwin );
         for( size_t i = 0; i < mean.size(); ++i )
@@ -2485,48 +2574,64 @@ int iefcCtrl::doReloadPsfRef()
 
 int iefcCtrl::doDmReset()
 {
-    setStatus( "dm_reset: zeroing " + m_shmDm );
-    log<text_log>( "dm_reset: writing zeros to " + m_shmDm );
+    const unsigned idx = m_dmResetIndex;
+    setStatus( "dm_reset: restoring " + m_shmDm + " from index " + std::to_string( idx ) );
+    log<text_log>( "dm_reset: loading " + dmCmdFitsPath( idx ) );
 
-    if( openDm() < 0 )
-        return -1;
-
-    const uint32_t w = m_dm.md->size[0];
-    const uint32_t h = ( m_dm.md->naxis > 1 ) ? m_dm.md->size[1] : 1;
-    const size_t npix = static_cast<size_t>( w ) * static_cast<size_t>( h );
-
-    m_dm.md->write = 1;
-    if( m_dm.md->datatype == _DATATYPE_FLOAT )
+    try
     {
-        float *p = (float *)m_dm.array.raw;
-        for( size_t i = 0; i < npix; ++i )
-            p[i] = 0.0f;
+        lina::ShmimStream dm( m_shmDm );
+        lina::Array2D<double> cmd;
+
+        const std::string path = dmCmdFitsPath( idx );
+        const bool exists = !m_dmCmdPath.empty() && ::access( path.c_str(), F_OK ) == 0;
+
+        if( !exists )
+        {
+            if( idx != 0 )
+            {
+                setStatus( "dm_reset: failed" );
+                return log<software_error, -1>(
+                    { __FILE__, __LINE__, "dm_reset: missing " + path } );
+            }
+            cmd = lina::Array2D<double>( dm.rows(), dm.cols(), 0.0 );
+            if( writeDmCmdArchive( 0, cmd ) < 0 )
+            {
+                setStatus( "dm_reset: failed" );
+                return -1;
+            }
+            log<text_log>( "dm_reset: wrote missing flat " + dmCmdFitsPath( 0 ) );
+        }
+        else
+        {
+            cmd = lina::load_fits_double( path );
+        }
+
+        if( cmd.rows() != dm.rows() || cmd.cols() != dm.cols() )
+        {
+            setStatus( "dm_reset: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "dm_reset: " + path + " is " + std::to_string( cmd.rows() ) + "x" +
+                      std::to_string( cmd.cols() ) + ", shmim is " +
+                      std::to_string( dm.rows() ) + "x" + std::to_string( dm.cols() ) } );
+        }
+
+        dm.write( cmd );
+        m_clIndex = idx;
+        updateIfChanged( m_indiP_clIndex, "current", static_cast<double>( m_clIndex ) );
+
+        log<text_log>( "dm_reset: restored " + m_shmDm + " from " + path +
+                       " (cl_index=" + std::to_string( m_clIndex ) + ")" );
+        setStatus( "dm_reset: done" );
+        return 0;
     }
-    else if( m_dm.md->datatype == _DATATYPE_DOUBLE )
+    catch( const std::exception &e )
     {
-        double *p = (double *)m_dm.array.raw;
-        for( size_t i = 0; i < npix; ++i )
-            p[i] = 0.0;
-    }
-    else
-    {
-        m_dm.md->write = 0;
+        setStatus( "dm_reset: failed" );
         return log<software_error, -1>(
-            { __FILE__, __LINE__,
-              "unsupported DM datatype " + std::to_string( m_dm.md->datatype ) } );
+            { __FILE__, __LINE__, std::string( "dm_reset: " ) + e.what() } );
     }
-
-    if( ImageStreamIO_UpdateIm( &m_dm ) != IMAGESTREAMIO_SUCCESS )
-    {
-        m_dm.md->cnt0++;
-        m_dm.md->write = 0;
-        ImageStreamIO_sempost( &m_dm, -1 );
-    }
-
-    log<text_log>( "dm_reset: zeroed " + m_shmDm + " (" + std::to_string( w ) + "x" +
-                   std::to_string( h ) + ")" );
-    setStatus( "dm_reset: done" );
-    return 0;
 }
 
 int iefcCtrl::doRecomputeControl()
@@ -2885,7 +2990,7 @@ int iefcCtrl::doCalibrate()
         double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
-        in.nframes = m_calNImages;
+        in.nframes = m_nImages < 1 ? 1 : m_nImages;
         resolveCamSettle( in.wait_frames, in.delay_s );
         in.calib_probe_amp = m_calProbeAmp;
         in.calib_amp = m_calModeAmp;
@@ -3076,7 +3181,7 @@ int iefcCtrl::doRun()
         double live_exptime = liveCamExp();
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
-        in.nframes = m_clContrastAvgN < 1 ? 1 : m_clContrastAvgN;
+        in.nframes = m_nImages < 1 ? 1 : m_nImages;
         resolveCamSettle( in.wait_frames, in.delay_s );
         in.reg_cond = m_calRegCond;
         in.run_probe_amp = m_clProbeAmp;
@@ -3203,11 +3308,17 @@ int iefcCtrl::doRun()
             current.data()[i] *= in.dm_scale;
         data.commands.push_back( current );
 
+        if( ensureFlatDmCmdArchive( dm.rows(), dm.cols() ) < 0 )
+            return -1;
+
         setStatus( "run: closed loop" );
         lina::run( data, camsci, in.nframes, dm, in.im_params, in.ref_params, setupData.dark,
                    control, in.run_probe_amp, in.probe_modes, in.calib_modes, in.control_mask,
                    in.delay_s, in.num_iters, in.gain, in.leakage, in.dm_scale, in.wait_frames,
-                   makeStopCheck() );
+                   makeStopCheck(),
+                   [this]( const lina::Array2D<double> &write_cmd ) {
+                       archiveClosedLoopCommand( write_cmd );
+                   } );
 
         if( !data.contrasts.empty() )
             updateIfChanged( m_indiP_contrast, "current", data.contrasts.back() );
@@ -3411,16 +3522,23 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_psfMaxRef )( const pcf::IndiProperty &i
 
 
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calNImages )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_nImages )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_calNImages, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_nImages, ipRecv );
     unsigned target;
-    if( indiTargetUpdate( m_indiP_calNImages, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_nImages, target, ipRecv, false ) < 0 )
         return -1;
-    if( target != m_calNImages )
-        log<text_log>( "cal_n_images: " + std::to_string( m_calNImages ) + " -> " + std::to_string( target ) );
-    m_calNImages = target;
-    updateIfChanged( m_indiP_calNImages, "current", m_calNImages );
+    if( target < 1 )
+        target = 1;
+    if( target != m_nImages )
+        log<text_log>( "n_images: " + std::to_string( m_nImages ) + " -> " +
+                       std::to_string( target ) + " (resets NI block accumulator)" );
+    {
+        std::lock_guard<std::mutex> lock( m_contrastAvgMutex );
+        m_nImages = target;
+    }
+    resetContrastAccumulator();
+    updateIfChanged( m_indiP_nImages, "current", m_nImages );
     return 0;
 }
 
@@ -3491,6 +3609,31 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_calDir )( const pcf::IndiProperty &ipRe
         log<text_log>( "cal_dir: " + m_calDir + " -> " + target );
     m_calDir = target;
     updateIfChanged( m_indiP_calDir, "current", m_calDir );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dmCmdPath )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dmCmdPath, ipRecv );
+    std::string target;
+    if( indiTargetUpdate( m_indiP_dmCmdPath, target, ipRecv, false ) < 0 )
+        return -1;
+    if( target.empty() || target == m_dmCmdPath )
+    {
+        updateIfChanged( m_indiP_dmCmdPath, "current", m_dmCmdPath );
+        updateIfChanged( m_indiP_dmCmdPath, "target", m_dmCmdPath );
+        return 0;
+    }
+    if( m_busy.load() )
+    {
+        log<text_log>( "cannot change dm_cmd_path while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_dmCmdPath, "current", m_dmCmdPath );
+        updateIfChanged( m_indiP_dmCmdPath, "target", m_dmCmdPath );
+        return 0;
+    }
+    log<text_log>( "dm_cmd_path: " + m_dmCmdPath + " -> " + target );
+    m_dmCmdPath = target;
+    updateIfChanged( m_indiP_dmCmdPath, "current", m_dmCmdPath );
     return 0;
 }
 
@@ -3623,26 +3766,6 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clProbeAmp )( const pcf::IndiProperty &
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clContrastAvgN )( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clContrastAvgN, ipRecv );
-    unsigned target;
-    if( indiTargetUpdate( m_indiP_clContrastAvgN, target, ipRecv, false ) < 0 )
-        return -1;
-    if( target < 1 )
-        target = 1;
-    if( target != m_clContrastAvgN )
-        log<text_log>( "cl_contrast_avg_n: " + std::to_string( m_clContrastAvgN ) + " -> " +
-                       std::to_string( target ) + " (resets NI block accumulator)" );
-    {
-        std::lock_guard<std::mutex> lock( m_contrastAvgMutex );
-        m_clContrastAvgN = target;
-    }
-    resetContrastAccumulator();
-    updateIfChanged( m_indiP_clContrastAvgN, "current", m_clContrastAvgN );
-    return 0;
-}
-
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clIters )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_clIters, ipRecv );
@@ -3653,6 +3776,20 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_clIters )( const pcf::IndiProperty &ipR
         log<text_log>( "cl_iters: " + std::to_string( m_clIters ) + " -> " + std::to_string( target ) );
     m_clIters = target;
     updateIfChanged( m_indiP_clIters, "current", m_clIters );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dmResetIndex )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dmResetIndex, ipRecv );
+    unsigned target;
+    if( indiTargetUpdate( m_indiP_dmResetIndex, target, ipRecv, false ) < 0 )
+        return -1;
+    if( target != m_dmResetIndex )
+        log<text_log>( "dm_reset_index: " + std::to_string( m_dmResetIndex ) + " -> " +
+                       std::to_string( target ) );
+    m_dmResetIndex = target;
+    updateIfChanged( m_indiP_dmResetIndex, "current", m_dmResetIndex );
     return 0;
 }
 

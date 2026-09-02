@@ -323,7 +323,8 @@ void run(IefcData& iefc_data,
          double leakage,
          double dm_scale,
          std::size_t wait_frames,
-         const StopCheck& stop) {
+         const StopCheck& stop,
+         const CommandWrittenFn& on_command) {
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
     const std::size_t nmodes = calib_modes.rows();
     const std::vector<std::size_t> mask_idx = mask_indices(control_mask);
@@ -381,6 +382,9 @@ void run(IefcData& iefc_data,
                 write_cmd.data()[idx] /= dm_scale;
             }
             dm.write(write_cmd);
+            if (on_command) {
+                on_command(write_cmd);
+            }
             sleep_interruptible(delay_s, stop);
 
             const Array2D<double> coro_im = camsci.grab_mean(ncamsci, wait_frames, stop);

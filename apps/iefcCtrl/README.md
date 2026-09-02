@@ -43,10 +43,12 @@ See `iefcCtrl.conf.sample`. Important:
 - Paths:
   - `psf_dir` — ref-PSF / Imax package (from psfRefCtrl; loaded by `reload_psf_ref` / calibrate / `cl_run`)
   - `cal_dir` — calibration package (response/control matrices)
+  - `dm_cmd_path` — closed-loop DM command FITS archive (`{shm_dm}_cl_{N}.fits`)
   - `dark_lib_path` — dark library from darkCtrl
 - Camera settle (mutually exclusive): `cam_n_frame_delay` **or** `cam_r_delay`
-- Calibration: `cal_n_images`, `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
-- Closed-loop (`cl_*`): `cl_probe_amp`, `cl_iters`, `cl_loop_gain`, `cl_leakage`, `cl_contrast_avg_n`, `cl_run`
+- Shared: `n_images` — frames averaged for `calibrate` grabs, `cl_run` grabs, and contrast / `shm_cam_sub_norm`
+- Calibration: `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
+- Closed-loop (`cl_*`): `cl_probe_amp`, `cl_iters`, `cl_loop_gain`, `cl_leakage`, `cl_run`, `cl_index`, `dm_reset_index`
 
 ## INDI properties (shmims)
 
@@ -54,7 +56,7 @@ See `iefcCtrl.conf.sample`. Important:
 |----------|------|
 | `shm_cam_input` | Science-camera ImageStreamIO name (default `camsci`; use `camsci_sim` with llowfscSim). Dark-library match key. |
 | `shm_dm` | IEFC DM write channel (e.g. `dm01disp07`) |
-| `shm_cam_sub_norm` | Block-averaged dark-sub + normalized image (cadence = `cl_contrast_avg_n`) |
+| `shm_cam_sub_norm` | Block-averaged dark-sub + normalized image (cadence = `n_images`) |
 | `shm_contrast_avg` | Scalar stream name for running-average contrast (default milk `contrast_avg`) |
 | `shm_dh_mask` | Binary WFS/control (DH) mask image stream (default milk `iefc_mask`) |
 | `shm_sat_mask` | Binary saturation-check mask image stream (default milk `iefc_sat_mask`) |
@@ -66,13 +68,14 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 |----------|------|
 | `cam_n_frame_delay` | Skip N new camera frames after DM write (XOR `cam_r_delay`) |
 | `cam_r_delay` | Wall-clock settle [s] after DM write (used only if `cam_n_frame_delay==0`) |
+| `n_images` | Frames averaged for `calibrate` grabs, `cl_run` grabs, and contrast / `shm_cam_sub_norm` |
 | `cam_name` | INDI science-camera device. Command `cam_name.exptime.target` / `emgain.target`; iefc reads `.current` |
 | `cal_dir` | Calibration package directory |
+| `dm_cmd_path` | Directory for closed-loop DM command FITS (`{shm_dm}_cl_{N}.fits`) |
 | `psf_dir` | Ref-PSF / dark / Imax package directory |
 | `dh_mask_path` | External FITS path for `dh_mask_reload` (control+contrast; empty → `cal_dir/wfs_mask.fits`) |
 | `sat_mask_path` | FITS region for raw-ADU saturation checks during calibrate |
 | `sat_thresh` | Raw ADU threshold (≥ logs a warning, does not abort); default 55000 |
-| `cal_n_images` | Frames averaged per grab during `calibrate` |
 | `psf_max_ref` | Ref-PSF peak / NI scale (writable; calibrate/`reload_psf_ref` override when finished) |
 
 ## Requests
@@ -84,9 +87,24 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 | `calibrate` | Native in-process calibration → FITS package in `cal_dir`; matrices cached in memory |
 | `cal_reload` | Load existing `cal_dir` package (response/control/modes/mask) into memory for `cl_run` |
 | `cl_run` | Toggle: On starts closed loop (FSM OPERATING); Off aborts. Auto-Off when the run finishes. |
-| `dm_reset` | Zero the configured `shm_dm` |
+| `dm_reset` | Load `{dm_cmd_path}/{shm_dm}_cl_{dm_reset_index}.fits` onto `shm_dm` and set `cl_index` to that index. Index 0 is the zero flat. Later `cl_run` writes overwrite newer files. |
+| `dm_reset_index` | Archive index restored by `dm_reset` (0 = `{shm_dm}_cl_0.fits`) |
 | `dh_mask_reload` | Load FITS mask as **control+contrast**; write `cal_dir/wfs_mask.fits`; remask + rebuild control when cal data exists; publish `shm_dh_mask` |
 | `stop` | Abort in-progress job; restores DM where applicable and returns to idle |
+
+## Closed-loop DM command archive
+
+Every command published to `shm_dm` during `cl_run` is also written under `dm_cmd_path` as
+`{shm_dm}_cl_{N}.fits` (same units as the shmim). Probe pokes are not archived.
+
+- `{shm_dm}_cl_0.fits` is the zero flat, written when a run starts at `cl_index=0`.
+- Each closed-loop update increments `cl_index` and writes `{shm_dm}_cl_1.fits`,
+  `{shm_dm}_cl_2.fits`, …
+- `cl_index` (RO INDI) is the last archived or restored index.
+- `dm_reset` loads `{shm_dm}_cl_{dm_reset_index}.fits` onto `shm_dm` and sets `cl_index`
+  to that value. The next `cl_run` continues from there (`cl_{index+1}`, …), overwriting
+  newer files if they exist. `dm_reset_index=0` restores the zero flat
+  (`dm01disp07_cl_0.fits` when `shm_dm=dm01disp07`).
 
 ## INDI properties (progress / RO)
 
@@ -98,7 +116,7 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 | `contrast` | Last closed-loop contrast |
 | `cal_probe_amp` / `cal_mode_amp` | Calibration amps [m] |
 | `cl_probe_amp` / `cl_iters` / `cl_loop_gain` / `cl_leakage` | Closed-loop run parameters |
-| `cl_contrast_avg_n` | NI frames averaged for contrast / `shm_cam_sub_norm` and for `cl_run` grabs |
+| `cl_index` | RO: last archived / restored DM command index (`{shm_dm}_cl_{N}.fits`) |
 | `contrast_avg` | RO: contrast of that block-averaged NI image (mean of mask ∩ NI>0) |
 | `contrast_pos_pixels` | RO: % of DH-mask pixels with NI>0 on that same block-averaged image |
 
@@ -106,7 +124,7 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 
 While `iefcCtrl` is running, a dedicated thread waits on the `shm_cam_input` semaphore.
 Each new frame is dark-subtracted and normalized by `psf_max_ref` once, then accumulated.
-Every `cl_contrast_avg_n` frames that block mean is published to `shm_cam_sub_norm`, and
+Every `n_images` frames that block mean is published to `shm_cam_sub_norm`, and
 contrast is computed from **the same** mean image into `contrast_avg`. The fraction of
 DH-mask pixels with NI>0 on that image is published as `contrast_pos_pixels` (percent).
 

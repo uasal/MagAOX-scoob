@@ -15,10 +15,12 @@ cam_name=camsci
 
 # Paths:
 #   cal_dir — calibration package (response/control matrices from calibrate; used by cl_run)
+#   dm_cmd_path — closed-loop DM command FITS archive ({shm_dm}_cl_{N}.fits)
 #   psf_dir — ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run)
 #   dark_lib_path — dark library from darkCtrl (dark_metadata.txt + dark_NNN.fits)
 # NOTE: PSF acquisition is now in psfRefCtrl (take_ref). Use reload_psf_ref here to reload the package.
 cal_dir=./cal_a
+dm_cmd_path=./dm_cmds
 psf_dir=./ref_psf
 dark_lib_path=/opt/MagAOX/data/darks/camsci
 # External FITS mask for dh_mask_reload (sets control+contrast; remasks cal_dir if present).
@@ -28,8 +30,8 @@ dark_lib_path=/opt/MagAOX/data/darks/camsci
 #sat_mask_path=./sat_mask.fits
 sat_thresh=55000
 
-# Frames averaged per grab during calibrate only.
-cal_n_images=5
+# Frames averaged per grab for calibrate, cl_run, and contrast / shm_cam_sub_norm.
+n_images=10
 # Camera settle after DM write: use ONE of these (mutually exclusive).
 # Frame delay wins if both are non-zero.
 cam_n_frame_delay=1
@@ -45,9 +47,10 @@ cl_probe_amp=1e-9
 cl_iters=3
 cl_loop_gain=1.0
 cl_leakage=0.0
+# dm_reset loads {dm_cmd_path}/{shm_dm}_cl_{dm_reset_index}.fits and sets cl_index to that value.
+# Subsequent cl_run writes overwrite cl_{index+1}, cl_{index+2}, ...
+dm_reset_index=0
 
-# NI frames averaged for contrast / shm_cam_sub_norm cadence, and for cl_run grabs.
-cl_contrast_avg_n=10
 # Full-frame response cube (multi-GB). Keep true to remask via dh_mask_reload after restart.
 save_response_full=true
 
