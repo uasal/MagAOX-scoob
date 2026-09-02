@@ -81,8 +81,8 @@ class nsvCtrlSim : public MagAOXApp<>,
     bool m_streaming{ false }; ///< INDI "streaming" toggle — gates frame publication.
     bool m_fastCam{ false }; ///< Bypass mode maxFPS and fps↔exptime mutual limiting.
 
-    /// Absolute ceilings used only while fast_cam is On (no ROI/mode coupling).
-    static constexpr float c_fastCamAbsMaxFps{ 1.0e6f };
+    /// Absolute ceiling while fast_cam is On (no ROI/mode coupling).
+    static constexpr float c_fastCamAbsMaxFps{ 2000.0f };
     static constexpr float c_fastCamAbsMaxExp{ 3600.0f };
 
     std::vector<uint16_t> m_frame; ///< Current simulated frame buffer.
@@ -149,8 +149,14 @@ class nsvCtrlSim : public MagAOXApp<>,
     /// Enter/leave fast_cam (members + state() only — never sendSetProperty here).
     void applyFastCamMode( bool enable );
 
+    /// INDI fps/exptime min/max: mode limits when fast_cam Off, 2000 Hz / 3600 s when On.
+    void publishFpsExpLimits();
+
     /// Refresh m_fillValue from m_bitDepth.
     void updateFillValue();
+
+    float m_pubFpsMax{ -1.0f }; ///< Last fps.max sent on INDI (avoid SET every loop).
+    float m_pubExpMax{ -1.0f }; ///< Last exptime.max sent on INDI.
 };
 
 inline nsvCtrlSim::nsvCtrlSim() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
@@ -373,6 +379,7 @@ inline int nsvCtrlSim::appLogic()
         updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK );
 
         FRAMEGRABBER_UPDATE_INDI;
+        publishFpsExpLimits();
     }
 
     return 0;
@@ -528,6 +535,35 @@ inline void nsvCtrlSim::applyFastCamMode( bool enable )
 
     m_lastTime = mx::sys::get_curr_time();
     m_offset = 0;
+}
+
+inline void nsvCtrlSim::publishFpsExpLimits()
+{
+    if( !m_indiDriver )
+        return;
+
+    const float fpsMax = m_fastCam ? c_fastCamAbsMaxFps : m_maxFPS;
+    const float expMax = m_fastCam ? c_fastCamAbsMaxExp : m_maxExpTime;
+
+    if( fpsMax != m_pubFpsMax && m_indiP_fps.find( "current" ) && m_indiP_fps.find( "target" ) )
+    {
+        m_indiP_fps["current"].setMin( m_minFPS );
+        m_indiP_fps["current"].setMax( fpsMax );
+        m_indiP_fps["target"].setMin( m_minFPS );
+        m_indiP_fps["target"].setMax( fpsMax );
+        m_pubFpsMax = fpsMax;
+        m_indiDriver->sendSetProperty( m_indiP_fps );
+    }
+
+    if( expMax != m_pubExpMax && m_indiP_exptime.find( "current" ) && m_indiP_exptime.find( "target" ) )
+    {
+        m_indiP_exptime["current"].setMin( m_minExpTime );
+        m_indiP_exptime["current"].setMax( expMax );
+        m_indiP_exptime["target"].setMin( m_minExpTime );
+        m_indiP_exptime["target"].setMax( expMax );
+        m_pubExpMax = expMax;
+        m_indiDriver->sendSetProperty( m_indiP_exptime );
+    }
 }
 
 inline void nsvCtrlSim::updateFillValue()

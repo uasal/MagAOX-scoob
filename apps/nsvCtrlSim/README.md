@@ -33,12 +33,14 @@ Important:
 1. Start the app (state `CONNECTED`).
 2. Toggle INDI `streaming` **On** → state `OPERATING`, frames published at `fps.current`.
 3. Switch `mode` to change ROI geometry + `maxFPS` (fps clamped; exptime re-capped).
-4. Normally: set `fps` ≤ mode `maxFPS`; `exptime` is limited by current fps.
-5. Optional: toggle `fast_cam` **On** to **bypass** those limits. Use the normal `fps` /
-   `exptime` target/current properties for whatever rate/exposure you want (no mode
-   `maxFPS` clamp, no fps↔exptime mutual capping). Cadence follows `fps.current`.
-   Auto-enables `streaming` so the shmim is written. `llowfscSim` follows `fps.current`.
-   Toggle Off to restore realistic clamping from mode `maxFPS` / `1/fps`.
+4. With `fast_cam` **Off** (default): `fps` is limited to the current ROI mode
+   `maxFPS` from config, and `exptime` is limited by `1/fps − readout overhead`.
+5. Toggle `fast_cam` **On** to bypass those ROI/exposure limits. `fps` may go up
+   to **2000 Hz** and `exptime` is independent of fps (absolute max 3600 s).
+   INDI `fps.max` / `exptime.max` follow this switch so GUIs match the live
+   limits. Cadence follows `fps.current`. Auto-enables `streaming`.
+   `llowfscSim` follows `fps.current`. Toggle Off to restore the mode `maxFPS`
+   clamp and the fps↔exptime cap.
 
 ### Key INDI properties (nsvCtrl-aligned)
 
