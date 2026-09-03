@@ -40,7 +40,8 @@ default_bit_depth = 16
 # Input shmims (FSM is via fsm_name INDI, not a shmim)
 shm_dm_total = "dm01disp"
 shm_dm_flat_channel = "dm01disp00"
-shm_vmag = "vmag"
+# Vega magnitude (INDI llowfscsim.magnitude). flux_scale_factor = 2.512**(-magnitude).
+magnitude = 0.0
 shm_opdsim = "opdsim"
 dm_scale = 1e-6
 # Never write the optical-model flat onto cacao. The app *reads* dm01disp00

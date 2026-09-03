@@ -129,7 +129,14 @@ class LlowfscSimConfig(BaseConfig):
         default="dm01disp00",
         help="Cacao DM channel 00 (µm). Read as the optical-model flat; never written.",
     )
-    shm_vmag: str = xconf.field(default="vmag", help="Vega magnitude scalar shmim.")
+    magnitude: float = xconf.field(
+        default=0.0,
+        help="Vega magnitude. Sets M.flux_scale_factor = 2.512**(-magnitude) (INDI magnitude).",
+    )
+    shm_vmag: str = xconf.field(
+        default="vmag",
+        help="Deprecated unused. Magnitude is config/INDI `magnitude`, not a shmim.",
+    )
     shm_opdsim: str = xconf.field(default="opdsim", help="10 Zernike coefficient shmim.")
     usevortex: bool = xconf.field(
         default=True,
@@ -159,6 +166,7 @@ class LlowfscSim(XDevice):
         self._streaming = False
         self._shutter_closed = False
         self._use_vortex = bool(self.config.usevortex)
+        self._magnitude = float(self.config.magnitude)
         self._cam_name = self.config.cam_name
         self._fsm_name = self.config.fsm_name
         self._shm_output = self.config.shm_output
@@ -239,6 +247,31 @@ class LlowfscSim(XDevice):
             )
         )
         self.add_property(sv, callback=self.handle_usevortex)
+
+        nv = properties.NumberVector(name="magnitude", perm=constants.PropertyPerm.READ_WRITE)
+        nv.add_element(
+            DefNumber(
+                name="current",
+                label="Vega magnitude",
+                format="%0.2f",
+                min=-5.0,
+                max=30.0,
+                step=0.1,
+                _value=float(self._magnitude),
+            )
+        )
+        nv.add_element(
+            DefNumber(
+                name="target",
+                label="Vega magnitude",
+                format="%0.2f",
+                min=-5.0,
+                max=30.0,
+                step=0.1,
+                _value=float(self._magnitude),
+            )
+        )
+        self.add_property(nv, callback=self.handle_magnitude)
 
         # cam_name (retarget which camera INDI device to follow)
         tv = properties.TextVector(name="cam_name", perm=constants.PropertyPerm.READ_WRITE)
@@ -324,7 +357,23 @@ class LlowfscSim(XDevice):
         self.log.info(
             "usevortex %s (next snap %s vortex)",
             "ON" if on else "OFF",
-            "with" if on else "without",
+            "with" if on else             "without",
+        )
+
+    def handle_magnitude(self, existing_property, new_message):
+        if "target" not in new_message:
+            return
+        mag = _safe_float(new_message["target"], self._magnitude)
+        if not np.isfinite(mag):
+            return
+        self._magnitude = mag
+        existing_property["target"] = mag
+        existing_property["current"] = mag
+        self.update_property(existing_property)
+        self.log.info(
+            "magnitude → %.3f (flux_scale_factor=%.6g)",
+            mag,
+            2.512 ** (-mag),
         )
 
     def handle_cam_name(self, existing_property, new_message):
@@ -518,7 +567,7 @@ class LlowfscSim(XDevice):
                 self.log.exception("failed to zero DM channel %s", ch)
 
     def _ensure_input_shmims(self):
-        """Open DM / vmag / opd shmims if they appeared after setup."""
+        """Open DM / opd shmims if they appeared after setup."""
         if self._dm is None:
             self._dm = self._try_open_shmim(self.config.shm_dm_total)
             if self._dm is not None:
@@ -528,8 +577,6 @@ class LlowfscSim(XDevice):
             self._dm_flat = self._try_open_shmim(self.config.shm_dm_flat_channel)
             if self._dm_flat is not None:
                 self.log.info("opened DM flat shmim %s", self.config.shm_dm_flat_channel)
-        if self._vmag is None:
-            self._vmag = self._try_open_shmim(self.config.shm_vmag)
         if self._opd is None:
             self._opd = self._try_open_shmim(self.config.shm_opdsim)
 
@@ -540,13 +587,11 @@ class LlowfscSim(XDevice):
 
         self._dm = self._try_open_shmim(self.config.shm_dm_total)
         self._dm_flat = self._try_open_shmim(self.config.shm_dm_flat_channel)
-        self._vmag = self._try_open_shmim(self.config.shm_vmag)
         self._opd = self._try_open_shmim(self.config.shm_opdsim)
 
         for name, img in (
             (self.config.shm_dm_total, self._dm),
             (self.config.shm_dm_flat_channel, self._dm_flat),
-            (self.config.shm_vmag, self._vmag),
             (self.config.shm_opdsim, self._opd),
         ):
             if img is None:
@@ -779,7 +824,7 @@ class LlowfscSim(XDevice):
         xp = self._xp
         self._ensure_input_shmims()
 
-        vmag = self._grab_scalar(self._vmag, 0.0)
+        vmag = float(self._magnitude)
         M.flux_scale_factor = 2.512 ** (-vmag)
 
         M.use_vortex = bool(self._use_vortex)

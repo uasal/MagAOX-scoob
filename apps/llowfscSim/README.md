@@ -43,15 +43,17 @@ make -C apps/llowfscSim install
    (`shm_dm_flat_channel`). The app **reads** `dm01disp00` into `M.dm_flat` (never
    writes cacao). Each frame matches `run_camsci_cpp.ipynb`:
    `M.set_dm(grab(dm01disp)/1e6, channel=0)` using magpyx's Fortran-view + `.T`
-   layout. `vmag` and `opdsim` are optional. Missing streams are retried every frame.
+   layout. `opdsim` is optional. Missing streams are retried every frame.
 3. Toggle **`llowfscsim.streaming`** On to publish frames at `cam_name.fps`
 4. Other apps command shutter via **`llowfscsim.shutter.toggle`** (not a shmim)
 5. Toggle **`llowfscsim.usevortex.toggle`** On/Off to insert or remove the vortex
    (default On; next published frame uses the new path — no process restart)
-6. Other apps set camera params on **`cam_name`** only, e.g.
+6. Set **`llowfscsim.magnitude.target`** to the Vega magnitude (default 0). That
+   scales entrance flux as `2.512**(-magnitude)` on the next snap.
+7. Other apps set camera params on **`cam_name`** only, e.g.
    `setINDI nsvsim.exptime.target=0.01` / `nsvsim.emgain.target=...`
    (this app only mirrors `.current` and does not own targets for those props)
-7. Other apps command FSM via **`fsm_name.x.target` / `y.target`** [nm]; this app reads **`.current`**
+8. Other apps command FSM via **`fsm_name.x.target` / `y.target`** [nm]; this app reads **`.current`**
 
 ## INDI properties
 
@@ -60,6 +62,7 @@ make -C apps/llowfscSim install
 | `streaming` | Gate frame publication |
 | `shutter` | `toggle` On=closed / Off=open (owned here; other apps NEW this) |
 | `usevortex` | `toggle` On=vortex in / Off=out (owned here; default On). Next snap uses the new path. |
+| `magnitude` | Vega magnitude (`current`/`target`). `flux_scale_factor = 2.512**(-magnitude)` |
 | `cam_name` | Which camera INDI device to follow |
 | `fsm_name` | Which FSM INDI device provides `x/y.current` [nm] |
 | `shm_output` | Output ImageStreamIO name |
@@ -73,6 +76,7 @@ make -C apps/llowfscSim install
 |----------|-----|
 | `camscishutter` | `llowfscsim.shutter.toggle` INDI (On=closed) |
 | `usevortex` shmim | `llowfscsim.usevortex.toggle` INDI (On=vortex in) |
+| `vmag` shmim | `llowfscsim.magnitude` INDI |
 | `camsciexptime` | `cam_name.exptime` INDI |
 | `camscigain` | `cam_name.emgain` INDI |
 | `dm00disp` (FSM) | `fsm_name.x/y.current` INDI [nm] |

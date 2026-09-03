@@ -1,0 +1,41 @@
+# MagAO-X config for llowfscSimCpp
+# Install as /opt/MagAOX/config/llowfscsimcpp.conf (process name from proclist)
+#
+# A/B with Python llowfscSim: do not run both against the same shm_output.
+
+[sim]
+cam_name=nsvsim
+# fsm_sim publishes val_1 / val_2 [nm] (not fsmSim x/y).
+fsm_name=fsm_sim
+shm_output=camsci_sim
+# Optional: also publish M.snap_camlo()
+# shm_camlo_output=camlo_sim
+
+shm_dm_total=dm01disp
+shm_dm_flat_channel=dm01disp00
+# Vega magnitude (INDI llowfscsimcpp.magnitude). flux_scale_factor = 2.512**(-magnitude).
+magnitude=0.0
+shm_opdsim=opdsim
+dm_scale=1e-6
+
+# Directory with optical_bridge.py (default: /opt/MagAOX/python/llowfscSimCpp)
+# bridge_dir=/opt/MagAOX/python/llowfscSimCpp
+# MagAO-X Python apps/packages live in base conda. Leave unset to use the
+# prefix compiled into the binary (Make/python.mk → /opt/conda).
+python_prefix=/opt/conda
+
+model_pack=1k-256
+cuda_device=0
+wavelength_c=6.33e-7
+ncamsci=512
+nwaves=51
+bw=0.02
+dark_current=0.025
+nbits=14
+qe=0.75
+default_fps=200
+default_exp_time=0.01
+default_gain=120
+default_blacklevel=10
+default_bit_depth=16
+usevortex=true
