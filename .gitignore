@@ -108,6 +108,7 @@ apps/koolanceCtrl/koolanceCtrl
 
 #l
 apps/loPredCtrl/loPredCtrl
+apps/llowfscSimCpp/llowfscSimCpp
 
 #m
 apps/magAOXMaths/magAOXMaths
