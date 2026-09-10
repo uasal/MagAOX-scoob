@@ -3,6 +3,11 @@
   *
   * INDI, ImageStreamIO, and loop cadence live here. Fraunhofer snaps stay in
   * Python (optical_bridge.py → M.snap_camsci / M.snap_camlo).
+  *
+  * The worker waits on the total-DM shmim semaphore (timeout = camera period)
+  * so a new command is snapped as soon as it is posted rather than on the next
+  * fps tick. DM-to-camera latency is measured from milk `writetime` to output
+  * publish and averaged once per second onto INDI `dm_latency`.
   */
 
 #ifndef llowfscSimCpp_hpp
@@ -13,6 +18,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -64,6 +70,12 @@ bool parseIndiCurrentNumber( const pcf::IndiProperty &ip, double &out )
     }
 }
 
+/// Convert a timespec to seconds.
+double timespecToSec( const timespec &ts )
+{
+    return static_cast<double>( ts.tv_sec ) + 1e-9 * static_cast<double>( ts.tv_nsec );
+}
+
 } // namespace
 
 class llowfscSimCpp : public MagAOXApp<true>
@@ -85,7 +97,11 @@ class llowfscSimCpp : public MagAOXApp<true>
     std::atomic<bool> m_streaming{ false };
     std::atomic<bool> m_shutterClosed{ false };
     std::atomic<bool> m_useVortex{ true };
-    double m_magnitude{ 0.0 }; ///< Vega mag; flux_scale_factor = 2.512**(-m)
+
+    /// Vega mag; flux_scale_factor = 2.512**(-m)
+    double m_magnitude{ 0.0 };
+
+    /// True after the optical model has been created on the worker thread.
     std::atomic<bool> m_modelReady{ false };
     std::atomic<bool> m_workerShutdown{ false };
     std::atomic<bool> m_snapFault{ false };
@@ -100,6 +116,15 @@ class llowfscSimCpp : public MagAOXApp<true>
     int m_camRoiH{ 512 };
     double m_fsmX_nm{ 0.0 };
     double m_fsmY_nm{ 0.0 };
+
+    /// Last DM-to-camera latency [s] (publish time − DM writetime).
+    double m_dmLatencyLast{ std::numeric_limits<double>::quiet_NaN() };
+
+    /// One-second mean DM-to-camera latency [s].
+    double m_dmLatencyAvg{ std::numeric_limits<double>::quiet_NaN() };
+
+    /// One-second mean latency in camera frames (avg × fps).
+    double m_dmLatencyFrames{ std::numeric_limits<double>::quiet_NaN() };
 
     int m_nact{ 0 };
     int m_ncamsci{ 512 };
@@ -126,6 +151,9 @@ class llowfscSimCpp : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_blacklevel;
     pcf::IndiProperty m_indiP_fps;
     pcf::IndiProperty m_indiP_bitDepth;
+
+    /// DM-to-camera latency: current [s], 1 s avg [s], 1 s avg in frames.
+    pcf::IndiProperty m_indiP_dmLatency;
 
     pcf::IndiProperty m_indiP_remoteExptime;
     INDI_SETCALLBACK_DECL( llowfscSimCpp, m_indiP_remoteExptime );
@@ -157,21 +185,73 @@ class llowfscSimCpp : public MagAOXApp<true>
     virtual int appShutdown();
 
   protected:
-    static void workerStart( llowfscSimCpp *s );
+    /// Worker thread entry (calls workerExec).
+    static void workerStart( llowfscSimCpp *s /**< [in] this */ );
+
+    /// Optical-model loop: wait on DM, snap, publish, update latency stats.
     void workerExec();
-    void copyLive( llowfscsim::SnapRequest &req, double &fps );
-    bool grabShmim2D( const std::string &name, std::vector<double> &out, uint32_t &n0,
-                      uint32_t &n1, bool magpyxTranspose );
-    bool ensureShmimOpen( IMAGE &im, bool &open, const std::string &name );
-    bool copyOpenShmim2D( IMAGE &im, std::vector<double> &out, uint32_t &n0, uint32_t &n1,
-                          bool magpyxTranspose );
-    bool grabOpen2D( IMAGE &im, bool &open, const std::string &name, std::vector<double> &out,
-                     uint32_t &n0, uint32_t &n1, bool magpyxTranspose );
-    bool grabShmimScalar( const std::string &name, double &out );
-    int ensureOutput( IMAGE &im, bool &open, const std::string &name, uint32_t w, uint32_t h );
-    int publish( IMAGE &im, const std::vector<float> &pix, uint32_t w, uint32_t h );
+
+    /// Copy live camera/FSM/magnitude into a snap request.
+    void copyLive( llowfscsim::SnapRequest &req /**< [out] request */,
+                   double &fps /**< [out] camera fps */ );
+
+    /// Open, copy, and close a 2D shmim (one-shot).
+    bool grabShmim2D( const std::string &name /**< [in] stream name */,
+                      std::vector<double> &out /**< [out] pixels */,
+                      uint32_t &n0 /**< [out] dim 0 */,
+                      uint32_t &n1 /**< [out] dim 1 */,
+                      bool magpyxTranspose /**< [in] apply magpyx F.T layout */ );
+
+    /// Open a named shmim if not already open.
+    bool ensureShmimOpen( IMAGE &im /**< [in,out] stream */,
+                          bool &open /**< [in,out] open flag */,
+                          const std::string &name /**< [in] stream name */ );
+
+    /// Copy an already-open 2D shmim into a host buffer.
+    bool copyOpenShmim2D( IMAGE &im /**< [in] open stream */,
+                          std::vector<double> &out /**< [out] pixels */,
+                          uint32_t &n0 /**< [out] dim 0 */,
+                          uint32_t &n1 /**< [out] dim 1 */,
+                          bool magpyxTranspose /**< [in] apply magpyx F.T layout */ );
+
+    /// Ensure open then copy a 2D shmim.
+    bool grabOpen2D( IMAGE &im /**< [in,out] stream */,
+                     bool &open /**< [in,out] open flag */,
+                     const std::string &name /**< [in] stream name */,
+                     std::vector<double> &out /**< [out] pixels */,
+                     uint32_t &n0 /**< [out] dim 0 */,
+                     uint32_t &n1 /**< [out] dim 1 */,
+                     bool magpyxTranspose /**< [in] apply magpyx F.T layout */ );
+
+    /// Read the first pixel of a scalar shmim as double.
+    bool grabShmimScalar( const std::string &name /**< [in] stream name */,
+                          double &out /**< [out] value */ );
+
+    /// Create or reopen a float output stream with magaox (h,w) layout.
+    int ensureOutput( IMAGE &im /**< [in,out] stream */,
+                      bool &open /**< [in,out] open flag */,
+                      const std::string &name /**< [in] stream name */,
+                      uint32_t w /**< [in] width */,
+                      uint32_t h /**< [in] height */ );
+
+    /// Write a C-order (h,w) float image into milk with F-order layout.
+    int publish( IMAGE &im /**< [in,out] output stream */,
+                 const std::vector<float> &pix /**< [in] pixels */,
+                 uint32_t w /**< [in] width */,
+                 uint32_t h /**< [in] height */ );
+
+    /// Wait for a new DM post or until timeout_s; flush extras so grab sees the latest.
+    bool waitDmOrTimeout( IMAGE &im /**< [in] open DM stream */,
+                          int sem /**< [in] semaphore index, <0 skips wait */,
+                          double timeout_s /**< [in] max wait [s]; <=0 is trywait only */ );
+
+    /// Mirror live camera settings and DM latency onto local INDI.
     void mirrorCamIndi();
+
+    /// Resolve optical_bridge.py directory.
     std::string pickBridgeDir() const;
+
+    /// Resolve the Python prefix used to embed CPython.
     std::string pickPythonPrefix() const;
 };
 
@@ -329,6 +409,15 @@ int llowfscSimCpp::appStartup()
     m_indiP_bitDepth.add( pcf::IndiElement( "current" ) );
     m_indiP_bitDepth["current"].set( m_camBitdepth );
 
+    CREATE_REG_INDI_RO_NUMBER( m_indiP_dmLatency, "dm_latency",
+                               "DM writetime to camera publish latency", "sim" );
+    m_indiP_dmLatency.add( pcf::IndiElement( "current" ) );
+    m_indiP_dmLatency.add( pcf::IndiElement( "avg" ) );
+    m_indiP_dmLatency.add( pcf::IndiElement( "frames" ) );
+    m_indiP_dmLatency["current"].set( m_dmLatencyLast );
+    m_indiP_dmLatency["avg"].set( m_dmLatencyAvg );
+    m_indiP_dmLatency["frames"].set( m_dmLatencyFrames );
+
     REG_INDI_SETPROP( m_indiP_remoteExptime, m_camName, "exptime" );
     REG_INDI_SETPROP( m_indiP_remoteEmgain, m_camName, "emgain" );
     REG_INDI_SETPROP( m_indiP_remoteBlacklevel, m_camName, "blacklevel" );
@@ -384,19 +473,21 @@ void llowfscSimCpp::workerStart( llowfscSimCpp *s )
 
 void llowfscSimCpp::copyLive( llowfscsim::SnapRequest &req, double &fps )
 {
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    req.exp = m_camExp;
-    req.gain = m_camGain;
-    req.blacklevel = m_camBlacklevel;
-    req.bitdepth = m_camBitdepth;
-    req.roi_w = m_camRoiW;
-    req.roi_h = m_camRoiH;
-    req.fsm_x_nm = m_fsmX_nm;
-    req.fsm_y_nm = m_fsmY_nm;
-    fps = m_camFps > 0 ? m_camFps : 1.0;
-    req.shutter_closed = m_shutterClosed.load();
-    req.use_vortex = m_useVortex.load();
-    req.vmag = m_magnitude;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        req.exp = m_camExp;
+        req.gain = m_camGain;
+        req.blacklevel = m_camBlacklevel;
+        req.bitdepth = m_camBitdepth;
+        req.roi_w = m_camRoiW;
+        req.roi_h = m_camRoiH;
+        req.fsm_x_nm = m_fsmX_nm;
+        req.fsm_y_nm = m_fsmY_nm;
+        fps = m_camFps > 0 ? m_camFps : 1.0;
+        req.shutter_closed = m_shutterClosed.load();
+        req.use_vortex = m_useVortex.load();
+        req.vmag = m_magnitude;
+    }
 }
 
 bool llowfscSimCpp::copyOpenShmim2D( IMAGE &im, std::vector<double> &out, uint32_t &n0,
@@ -555,23 +646,64 @@ int llowfscSimCpp::publish( IMAGE &im, const std::vector<float> &pix, uint32_t w
     return 0;
 }
 
+bool llowfscSimCpp::waitDmOrTimeout( IMAGE &im, int sem, double timeout_s )
+{
+    if( sem < 0 || !im.md )
+        return false;
+
+    if( timeout_s <= 0.0 )
+    {
+        if( ImageStreamIO_semtrywait( &im, sem ) == 0 )
+        {
+            ImageStreamIO_semflush( &im, sem );
+            return true;
+        }
+        return false;
+    }
+
+    timespec ts{};
+    if( clock_gettime( CLOCK_REALTIME, &ts ) < 0 )
+        return false;
+    const long nsec = static_cast<long>( timeout_s * 1e9 );
+    ts.tv_sec += nsec / 1000000000L;
+    ts.tv_nsec += nsec % 1000000000L;
+    if( ts.tv_nsec >= 1000000000L )
+    {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    if( ImageStreamIO_semtimedwait( &im, sem, &ts ) == 0 )
+    {
+        ImageStreamIO_semflush( &im, sem );
+        return true;
+    }
+    return false;
+}
+
 void llowfscSimCpp::mirrorCamIndi()
 {
     double exp = 0, gain = 0, bl = 0, fps = 0;
     int bit = 0;
-    {
+    double latLast = 0, latAvg = 0, latFrames = 0;
+    { //mutex scope
         std::lock_guard<std::mutex> lock( m_liveMutex );
         exp = m_camExp;
         gain = m_camGain;
         bl = m_camBlacklevel;
         fps = m_camFps;
         bit = m_camBitdepth;
+        latLast = m_dmLatencyLast;
+        latAvg = m_dmLatencyAvg;
+        latFrames = m_dmLatencyFrames;
     }
     updateIfChanged( m_indiP_exptime, "current", exp );
     updateIfChanged( m_indiP_emgain, "current", gain );
     updateIfChanged( m_indiP_blacklevel, "current", bl );
     updateIfChanged( m_indiP_fps, "current", fps );
     updateIfChanged( m_indiP_bitDepth, "current", static_cast<double>( bit ) );
+    updateIfChanged( m_indiP_dmLatency, "current", latLast );
+    updateIfChanged( m_indiP_dmLatency, "avg", latAvg );
+    updateIfChanged( m_indiP_dmLatency, "frames", latFrames );
 }
 
 std::string llowfscSimCpp::pickBridgeDir() const
@@ -689,16 +821,21 @@ void llowfscSimCpp::workerExec()
     bool camloOpen = false;
     IMAGE dmIm{};
     bool dmOpen = false;
+    int dmSem = -1;
+    bool wasStreaming = false;
     IMAGE opdIm{};
     bool opdOpen = false;
     m_modelReady = true;
 
-    double t0 = mx::sys::get_curr_time();
-    double timeCounter = 0.0;
     uint64_t nSnap = 0;
     double grabSum_s = 0.0;
     double snapSum_s = 0.0;
     double pubSum_s = 0.0;
+    double lastSnap_s = 1.0;
+    double latSum_s = 0.0;
+    unsigned latN = 0;
+    double latWin0 = mx::sys::get_curr_time();
+    double latAvgLog = std::numeric_limits<double>::quiet_NaN();
     std::vector<float> frame;
 
     while( !m_workerShutdown.load() )
@@ -710,12 +847,41 @@ void llowfscSimCpp::workerExec()
 
         if( !m_streaming.load() )
         {
+            wasStreaming = false;
             mx::sys::milliSleep( 50 );
             continue;
         }
 
+        if( !ensureShmimOpen( dmIm, dmOpen, m_shmDmTotal ) )
+        {
+            dmSem = -1;
+            mx::sys::milliSleep( 10 );
+        }
+        else if( dmSem < 0 )
+        {
+            dmSem = ImageStreamIO_getsemwaitindex( &dmIm, 0 );
+            if( dmSem >= 0 )
+                ImageStreamIO_semflush( &dmIm, dmSem );
+        }
+        if( dmOpen && dmSem >= 0 && !wasStreaming )
+        {
+            ImageStreamIO_semflush( &dmIm, dmSem );
+            wasStreaming = true;
+        }
+
+        const double period = 1.0 / std::max( fps, 1e-6 );
+        const double wait_s = std::max( 0.0, period - lastSnap_s );
+        if( dmOpen && dmSem >= 0 )
+            waitDmOrTimeout( dmIm, dmSem, wait_s );
+        else
+            mx::sys::microSleep( static_cast<unsigned>( wait_s * 1e6 ) );
+        timespec dmMark{};
+        clock_gettime( CLOCK_ISIO, &dmMark );
+
         uint32_t n0 = 0, n1 = 0;
         std::vector<double> dm;
+        timespec dmWrite{};
+        bool haveDmWrite = false;
         const double tGrab0 = mx::sys::get_curr_time();
         if( grabOpen2D( dmIm, dmOpen, m_shmDmTotal, dm, n0, n1, true ) &&
             static_cast<int>( n0 ) == m_nact && static_cast<int>( n1 ) == m_nact )
@@ -723,7 +889,14 @@ void llowfscSimCpp::workerExec()
             for( double &v : dm )
                 v *= m_dmScale;
             req.dm = dm.data();
+            if( dmIm.md )
+            {
+                dmWrite = dmIm.md->writetime;
+                haveDmWrite = ( dmWrite.tv_sec != 0 || dmWrite.tv_nsec != 0 );
+            }
         }
+        else if( !dmOpen )
+            dmSem = -1;
 
         double opd[10]{};
         uint32_t o0 = 0, o1 = 0;
@@ -749,7 +922,42 @@ void llowfscSimCpp::workerExec()
         const double tPub0 = mx::sys::get_curr_time();
         if( ensureOutput( outIm, outOpen, m_shmOutput, w, h ) == 0 )
             publish( outIm, frame, w, h );
+
+        timespec nowIsio{};
+        clock_gettime( CLOCK_ISIO, &nowIsio );
         const double tEnd = mx::sys::get_curr_time();
+        lastSnap_s = tEnd - tGrab0;
+
+        if( haveDmWrite )
+            dmMark = dmWrite;
+        {
+            const double lat = timespecToSec( nowIsio ) - timespecToSec( dmMark );
+            if( std::isfinite( lat ) && lat >= 0.0 && lat < 10.0 )
+            {
+                latSum_s += lat;
+                ++latN;
+                { //mutex scope
+                    std::lock_guard<std::mutex> lock( m_liveMutex );
+                    m_dmLatencyLast = lat;
+                }
+            }
+        }
+        if( tEnd - latWin0 >= 1.0 )
+        {
+            if( latN > 0 )
+            {
+                const double avg = latSum_s / static_cast<double>( latN );
+                latAvgLog = avg;
+                { //mutex scope
+                    std::lock_guard<std::mutex> lock( m_liveMutex );
+                    m_dmLatencyAvg = avg;
+                    m_dmLatencyFrames = avg * fps;
+                }
+            }
+            latSum_s = 0.0;
+            latN = 0;
+            latWin0 = tEnd;
+        }
 
         ++nSnap;
         grabSum_s += tSnap0 - tGrab0;
@@ -766,7 +974,8 @@ void llowfscSimCpp::workerExec()
                            std::to_string( 1000.0 / std::max( tot_ms, 1e-6 ) ) +
                            " Hz) grab=" + std::to_string( grab_ms ) + " snap=" +
                            std::to_string( snap_ms ) + " pub=" + std::to_string( pub_ms ) +
-                           " over " + std::to_string( nSnap ) );
+                           " dm_lat_avg=" + std::to_string( latAvgLog ) + " s over " +
+                           std::to_string( nSnap ) );
         }
 
         if( !m_shmCamloOutput.empty() )
@@ -779,19 +988,6 @@ void llowfscSimCpp::workerExec()
                 if( ensureOutput( camloIm, camloOpen, m_shmCamloOutput, lw, lh ) == 0 )
                     publish( camloIm, lo, lw, lh );
             }
-        }
-
-        const double period = 1.0 / std::max( fps, 1e-6 );
-        timeCounter += period;
-        const double now = mx::sys::get_curr_time();
-        const double target = t0 + timeCounter;
-        const double remain = target - now;
-        if( remain > 0.0 )
-            mx::sys::microSleep( static_cast<unsigned>( remain * 1e6 ) );
-        else if( remain < -1.0 )
-        {
-            t0 = mx::sys::get_curr_time();
-            timeCounter = 0.0;
         }
     }
 
@@ -853,11 +1049,11 @@ INDI_NEWCALLBACK_DEFN( llowfscSimCpp, m_indiP_magnitude )( const pcf::IndiProper
         return -1;
     if( !std::isfinite( target ) )
         return 0;
-    {
+    { //mutex scope
         std::lock_guard<std::mutex> lock( m_liveMutex );
         m_magnitude = target;
     }
-    updateIfChanged( m_indiP_magnitude, "current", m_magnitude );
+    updateIfChanged( m_indiP_magnitude, "current", target );
     log<text_log>( "magnitude -> " + std::to_string( target ) );
     return 0;
 }
@@ -905,8 +1101,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteExptime )( const pcf::IndiPr
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camExp = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camExp = v;
+    }
     return 0;
 }
 
@@ -916,8 +1114,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteEmgain )( const pcf::IndiPro
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camGain = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camGain = v;
+    }
     return 0;
 }
 
@@ -927,8 +1127,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteBlacklevel )( const pcf::Ind
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camBlacklevel = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camBlacklevel = v;
+    }
     return 0;
 }
 
@@ -938,8 +1140,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteFps )( const pcf::IndiProper
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camFps = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camFps = v;
+    }
     return 0;
 }
 
@@ -949,8 +1153,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteBitDepth )( const pcf::IndiP
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camBitdepth = static_cast<int>( v );
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camBitdepth = static_cast<int>( v );
+    }
     return 0;
 }
 
@@ -960,8 +1166,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteRoiW )( const pcf::IndiPrope
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camRoiW = std::max( 1, static_cast<int>( v ) );
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camRoiW = std::max( 1, static_cast<int>( v ) );
+    }
     return 0;
 }
 
@@ -971,8 +1179,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteRoiH )( const pcf::IndiPrope
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_camRoiH = std::max( 1, static_cast<int>( v ) );
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_camRoiH = std::max( 1, static_cast<int>( v ) );
+    }
     return 0;
 }
 
@@ -982,8 +1192,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteFsmVal1 )( const pcf::IndiPr
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_fsmX_nm = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_fsmX_nm = v;
+    }
     return 0;
 }
 
@@ -993,8 +1205,10 @@ INDI_SETCALLBACK_DEFN( llowfscSimCpp, m_indiP_remoteFsmVal2 )( const pcf::IndiPr
     double v = 0;
     if( !parseIndiCurrentNumber( ipRecv, v ) )
         return 0;
-    std::lock_guard<std::mutex> lock( m_liveMutex );
-    m_fsmY_nm = v;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_liveMutex );
+        m_fsmY_nm = v;
+    }
     return 0;
 }
 
