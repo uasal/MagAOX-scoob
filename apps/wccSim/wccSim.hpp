@@ -399,7 +399,6 @@ class wccSim : public MagAOXApp<true>
                      const wcc::psfBank &bnk /**< [in] PSF bank for this sensor */,
                      const wcc::roiSpec &roi /**< [in] region of interest to render */,
                      double expTime /**< [in] exposure time [s] */,
-                     size_t iSensor /**< [in] sensor index in the focal plane model */,
                      double ra /**< [in] boresight right ascension [deg] */,
                      double dec /**< [in] boresight declination [deg] */,
                      double pa /**< [in] boresight position angle [deg] */,
@@ -1178,8 +1177,7 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
 
         int bx0 = w, by0 = h, bx1 = -1, by1 = -1;
 
-        const int nStars =
-            renderFrame( sc, *bnk, roi, expTime, sen->m_index, ra, dec, pa, frame, bx0, by0, bx1, by1 );
+        const int nStars = renderFrame( sc, *bnk, roi, expTime, ra, dec, pa, frame, bx0, by0, bx1, by1 );
 
         if( nStars < 0 )
         {
@@ -1254,7 +1252,6 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
                                 const wcc::psfBank &bnk,
                                 const wcc::roiSpec &roi,
                                 double expTime,
-                                size_t iSensor,
                                 double ra,
                                 double dec,
                                 double pa,

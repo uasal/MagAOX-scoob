@@ -23,7 +23,9 @@ parity=-1
 throughput=0.5
 
 [catalog]
-path=/opt/MagAOX/source/MagAOX/data/gsc31_north.csv
+# The catalog is instrument calibration data, not source, so it is not carried in
+# this repository. Install it under /opt/MagAOX/calib/wcc/ and point here.
+path=/opt/MagAOX/calib/wcc/gsc31_north.csv
 mag_column=mag
 id_column=gsc2ID
 # Sources fainter than this are dropped at load, which keeps the cone searches short.

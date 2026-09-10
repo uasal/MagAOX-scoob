@@ -41,10 +41,16 @@ namespace wccSimTest
 class wccSimTester : public wccSim
 {
   public:
-    /// Run loadConfigImpl against a configurator built by a test.
-    int testLoadConfig( mx::app::appConfigurator &cfg )
+    /// Register the config targets, read a file, and load it.
+    /** This has to use the app's own `config` member: setupConfig() registers its
+     * targets there, and a separate appConfigurator would have none of them, so
+     * every lookup would silently miss.
+     */
+    int testLoadConfigFile( const std::string &path )
     {
-        return loadConfigImpl( cfg );
+        setupConfig();
+        config.readConfig( path );
+        return loadConfigImpl( config );
     }
 
     /// Number of sensors the configuration produced.
@@ -154,10 +160,8 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     SECTION( "two sensors with different pitches need two PSF banks" )
     {
         wccSimTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
-        // Drive the configurator the way a config file would.
+        // Drive the loader the way a config file would.
         std::vector<std::string> lines = { "[telescope]",
                                            "diameter=6.5",
                                            "f_number=12.0",
@@ -193,9 +197,7 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
             }
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) == 0 );
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
 
         REQUIRE( app.nSensors() == 2 );
         REQUIRE( app.sensorName( 0 ) == "IMX-18" );
@@ -225,8 +227,6 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     SECTION( "identical sensors share one PSF bank" )
     {
         wccSimTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccSim_test_config_same.conf";
         {
@@ -237,9 +237,7 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
             fout << "[B]\nindi_device=b\npixel_size=3.76\nfull_w=512\nfull_h=512\nfield_x=100\nfield_y=0\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) == 0 );
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
 
         // Sharing a bank is what keeps startup short across an array of identical
         // detectors, so it must not regress.
@@ -251,8 +249,6 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     SECTION( "a sensor with no indi_device is rejected" )
     {
         wccSimTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccSim_test_config_bad.conf";
         {
@@ -262,9 +258,7 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
             fout << "[A]\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) < 0 );
+        REQUIRE( app.testLoadConfigFile( path ) < 0 );
 
         std::remove( path.c_str() );
     }
@@ -272,8 +266,6 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     SECTION( "an empty sensor list is rejected" )
     {
         wccSimTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccSim_test_config_empty.conf";
         {
@@ -281,9 +273,7 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
             fout << "[catalog]\npath=/dev/null\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) < 0 );
+        REQUIRE( app.testLoadConfigFile( path ) < 0 );
 
         std::remove( path.c_str() );
     }
@@ -291,8 +281,6 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     SECTION( "the noise mode is parsed from configuration" )
     {
         wccSimTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccSim_test_config_noise.conf";
         {
@@ -302,9 +290,7 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
             fout << "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) == 0 );
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
         REQUIRE( app.noise() == MagAOX::wcc::noiseMode::read );
 
         std::remove( path.c_str() );

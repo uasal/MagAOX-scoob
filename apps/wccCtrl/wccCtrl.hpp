@@ -428,6 +428,9 @@ class wccCtrl : public MagAOXApp<true>
 
     wcc::visitStar m_rollStarSel; ///< The selected roll star.
 
+    /// Sensors the loaded visit put into the astrometric solution.
+    int m_nInSolution{ 0 };
+
     bool m_haveGuideStar{ false }; ///< True once a guide star has been selected and resolved.
 
     bool m_haveRollStar{ false }; ///< True once a roll star has been selected and resolved.
@@ -491,6 +494,15 @@ class wccCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_acqStatus; ///< Read-only acquisition numbers.
 
     pcf::IndiProperty m_indiP_visit; ///< Read-only summary of the loaded visit.
+
+    /// Read-only parameters the loaded visit supplied, refreshed on every load.
+    /** These are the values that change when a different visit file is loaded, so
+     * they are published rather than left implicit in a configuration file: an
+     * operator can see the tolerances and tracking configuration the running
+     * sequence is actually using, not the ones the .conf file happened to default
+     * to at startup.
+     */
+    pcf::IndiProperty m_indiP_visitParams;
 
     pcf::IndiProperty m_indiP_trackStatus; ///< Read-only fast loop status.
 
@@ -1196,7 +1208,31 @@ inline int wccCtrl::appStartup()
     m_indiP_visit.add( pcf::IndiElement( "ra" ) );
     m_indiP_visit.add( pcf::IndiElement( "dec" ) );
     m_indiP_visit.add( pcf::IndiElement( "rollpa" ) );
+    m_indiP_visit.add( pcf::IndiElement( "guide_star" ) );
+    m_indiP_visit.add( pcf::IndiElement( "roll_star" ) );
+    m_indiP_visit.add( pcf::IndiElement( "centroid_guide" ) );
+    m_indiP_visit.add( pcf::IndiElement( "centroid_roll" ) );
     registerIndiPropertyReadOnly( m_indiP_visit );
+
+    if( createROIndiNumber( m_indiP_visitParams, "visit_params", "Parameters from the loaded visit",
+                            "visit" ) < 0 )
+    {
+        return log<software_error, -1>( { __FILE__, __LINE__, "createROIndiNumber visit_params" } );
+    }
+    m_indiP_visitParams.add( pcf::IndiElement( "guide_tol_px" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "roll_tol_px" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "max_iterations" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "ta_exptime" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "ta_frame_rate" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "n_config_sensors" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "n_in_solution" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_roi_w" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_roi_h" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_fps" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_exptime" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_loop_gain" ) );
+    m_indiP_visitParams.add( pcf::IndiElement( "track_roll_gain" ) );
+    registerIndiPropertyReadOnly( m_indiP_visitParams );
 
     if( createROIndiNumber( m_indiP_trackStatus, "track_status", "Fast loop status", "track" ) < 0 )
     {
@@ -1394,14 +1430,16 @@ inline int wccCtrl::loadVisit()
         }
     }
 
-    int nInSolution = 0;
+    m_nInSolution = 0;
     for( std::unique_ptr<wccCtrlSensor> &sen : m_sensors )
     {
         if( sen->m_inSolution )
         {
-            ++nInSolution;
+            ++m_nInSolution;
         }
     }
+
+    const int nInSolution = m_nInSolution;
 
     if( nInSolution == 0 )
     {
@@ -3356,6 +3394,29 @@ inline void wccCtrl::updateStatus()
         updateIfChanged( m_indiP_visit, "ra", std::to_string( m_visit.ra() ) );
         updateIfChanged( m_indiP_visit, "dec", std::to_string( m_visit.dec() ) );
         updateIfChanged( m_indiP_visit, "rollpa", std::to_string( m_visit.rollPA() ) );
+        updateIfChanged( m_indiP_visit, "guide_star", m_haveGuideStar ? m_guideStar.m_id : std::string( "none" ) );
+        updateIfChanged( m_indiP_visit, "roll_star",
+                         m_haveRollStar ? m_rollStarSel.m_id : std::string( "none" ) );
+        updateIfChanged( m_indiP_visit, "centroid_guide", m_visit.tracking().m_centroidGuide );
+        updateIfChanged( m_indiP_visit, "centroid_roll", m_visit.tracking().m_centroidRoll );
+
+        // These are the values the running sequence is actually using. They come
+        // from the visit file when it supplies them and from configuration
+        // otherwise, so publishing them removes any ambiguity about which won.
+        updateIfChanged( m_indiP_visitParams, "guide_tol_px", m_guideTolPix );
+        updateIfChanged( m_indiP_visitParams, "roll_tol_px", m_rollTolPix );
+        updateIfChanged( m_indiP_visitParams, "max_iterations", static_cast<double>( m_maxIterations ) );
+        updateIfChanged( m_indiP_visitParams, "ta_exptime", m_visit.taExpTime() );
+        updateIfChanged( m_indiP_visitParams, "ta_frame_rate", m_visit.taFrameRate() );
+        updateIfChanged( m_indiP_visitParams, "n_config_sensors",
+                         static_cast<double>( m_visit.configSensors().size() ) );
+        updateIfChanged( m_indiP_visitParams, "n_in_solution", static_cast<double>( m_nInSolution ) );
+        updateIfChanged( m_indiP_visitParams, "track_roi_w", static_cast<double>( m_trackROIW ) );
+        updateIfChanged( m_indiP_visitParams, "track_roi_h", static_cast<double>( m_trackROIH ) );
+        updateIfChanged( m_indiP_visitParams, "track_fps", m_trackFps );
+        updateIfChanged( m_indiP_visitParams, "track_exptime", m_trackExpTime );
+        updateIfChanged( m_indiP_visitParams, "track_loop_gain", m_trackGain );
+        updateIfChanged( m_indiP_visitParams, "track_roll_gain", m_trackRollGain );
     }
 
     { //mutex scope

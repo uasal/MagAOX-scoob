@@ -41,10 +41,16 @@ namespace wccCtrlTest
 class wccCtrlTester : public wccCtrl
 {
   public:
-    /// Run loadConfigImpl against a configurator built by a test.
-    int testLoadConfig( mx::app::appConfigurator &cfg )
+    /// Register the config targets, read a file, and load it.
+    /** This has to use the app's own `config` member: setupConfig() registers its
+     * targets there, and a separate appConfigurator would have none of them, so
+     * every lookup would silently miss.
+     */
+    int testLoadConfigFile( const std::string &path )
     {
-        return loadConfigImpl( cfg );
+        setupConfig();
+        config.readConfig( path );
+        return loadConfigImpl( config );
     }
 
     /// Number of sensors the configuration produced.
@@ -223,8 +229,6 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
     SECTION( "sensors are built and matched tolerantly by name" )
     {
         wccCtrlTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = writeCtrlConfig(
             "/tmp/wccCtrl_test_config.conf", "IMX-18,HWK-09",
@@ -233,9 +237,7 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
             "[HWK-09]\nindi_device=hwk09\nshmim_in=hwk09custom\npixel_size=4.6\n"
             "full_w=4096\nfull_h=2300\nfield_x=1029.51\nfield_y=59.31\n" );
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) == 0 );
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
         REQUIRE( app.nSensors() == 2 );
 
         // The input stream defaults to the simulator's output name and is overridable.
@@ -256,8 +258,6 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
         // Without a telescope there is nothing to send offsets to, so this is fatal
         // rather than something to discover mid-sequence.
         wccCtrlTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccCtrl_test_config_notel.conf";
         {
@@ -267,9 +267,7 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
             fout << "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) < 0 );
+        REQUIRE( app.testLoadConfigFile( path ) < 0 );
 
         std::remove( path.c_str() );
     }
@@ -277,8 +275,6 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
     SECTION( "an empty sensor list is rejected" )
     {
         wccCtrlTester app;
-        mx::app::appConfigurator cfg;
-        app.setupConfig();
 
         const std::string path = "/tmp/wccCtrl_test_config_nosensors.conf";
         {
@@ -287,9 +283,7 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
             fout << "[catalog]\npath=/dev/null\n";
         }
 
-        cfg.readConfig( path );
-
-        REQUIRE( app.testLoadConfig( cfg ) < 0 );
+        REQUIRE( app.testLoadConfigFile( path ) < 0 );
 
         std::remove( path.c_str() );
     }
@@ -310,8 +304,6 @@ TEST_CASE( "wccCtrl selects the best usable guide and roll star pair", "[wccCtrl
 
     // Configure an array holding only IMX-19 and HWK-08.
     wccCtrlTester app;
-    mx::app::appConfigurator cfg;
-    app.setupConfig();
 
     const std::string path = writeCtrlConfig(
         "/tmp/wccCtrl_test_select.conf", "IMX-19,HWK-08",
@@ -320,8 +312,7 @@ TEST_CASE( "wccCtrl selects the best usable guide and roll star pair", "[wccCtrl
         "[HWK-08]\nindi_device=hwk08\npixel_size=4.6\nfull_w=4096\nfull_h=2300\n"
         "field_x=786.51\nfield_y=102.092\n" );
 
-    cfg.readConfig( path );
-    REQUIRE( app.testLoadConfig( cfg ) == 0 );
+    REQUIRE( app.testLoadConfigFile( path ) == 0 );
 
     SECTION( "rank 1 is skipped when its sensor is not configured" )
     {

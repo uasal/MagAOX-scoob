@@ -5,7 +5,10 @@
 # astrometry against a different array geometry than the simulator rendered.
 
 [visit]
-path=/opt/MagAOX/source/MagAOX/apps/wccCtrl/wcc_visit.sample.json
+# May also be set at runtime: point visit_file at a path and send the load
+# request. Everything the visit supplies is then republished on the visit and
+# visit_params properties, so what the sequence is using is never implicit.
+path=/opt/MagAOX/config/wcc_visit.json
 auto_start=false
 
 #-----------------------------------------------------------------------------
@@ -53,7 +56,9 @@ f_number=12.0
 parity=-1
 
 [catalog]
-path=/opt/MagAOX/source/MagAOX/data/gsc31_north.csv
+# Install the catalog under /opt/MagAOX/calib/wcc/; it is calibration data rather
+# than source and is not carried in this repository. Use the same file wccSim uses.
+path=/opt/MagAOX/calib/wcc/gsc31_north.csv
 mag_column=mag
 id_column=gsc2ID
 mag_limit=21
