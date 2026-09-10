@@ -111,6 +111,35 @@ exactly as it appears in `sim.sensors`.
 shared loader in `../wccCommon/wccSensorConfig.hpp` precisely so the two cannot
 drift, but the two config files still have to carry the same numbers.
 
+The catalog is instrument calibration data rather than source, so it is not
+carried in this repository. Install it under `/opt/MagAOX/calib/wcc/` and point
+`catalog.path` at it.
+
+### Where `star_catalog_simulator.toml` went
+
+The Python simulator was driven by a TOML file. Everything in it has a home in
+the MagAO-X `.conf` format, mostly because a value that used to be global is now
+either per sensor or supplied live over INDI:
+
+| TOML | `.conf` equivalent |
+|---|---|
+| `catalog.pointing_ra` / `pointing_dec` | `pointing.ra` / `pointing.dec`, then live on the `pointing` property |
+| `catalog.gaia_catalog_file` | `catalog.path` |
+| `catalog.nrows` | `catalog.mag_limit` — trimming by brightness beats trimming by row order |
+| `observation.exp_time` | per sensor, from each camera's `exptime` over INDI |
+| `observation.throughput` | `telescope.throughput` |
+| `observation.sensor` | one config section per sensor, so a mixed IMX and HWK array is described directly rather than one type at a time |
+| `sensor.<TYPE>.dark_current` / `read_noise` | `dark_current` / `read_noise` in that sensor's section |
+| `sensor.<TYPE>.nominal_temp` | not carried: the calibration-file interpolation the Python did for it is not ported, so the noise values are given directly |
+| `simulator.psf_arr_size` | `sim.psf_samples` |
+| `simulator.npix_pupil` | `sim.npix_pupil` |
+
+Values that vary per observation rather than per installation — the pointing, and
+on the controller side the tolerances and tracking configuration — are not
+duplicated in the `.conf` at all. They come from the visit file and are
+republished on INDI once it loads, so the running configuration is always
+visible. See `wccCtrl`'s `visit` and `visit_params` properties.
+
 ## Trying it out
 
 With a camera simulator and a controller:

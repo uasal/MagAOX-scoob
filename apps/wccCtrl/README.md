@@ -153,8 +153,16 @@ enable toggle. All three names are configurable.
 | `abort` | request | Stop the sequence, return to `LOADED` |
 | `acq_state` | text (RO) | `state`, `message` |
 | `acq_status` | number (RO) | `iteration`, `guide_err_px`, `roll_err_px`, `n_solved`, `boresight_x`, `boresight_y`, `roll_err_deg`, `solve_rms` |
-| `visit` | text (RO) | `target`, `guide_sensor`, `roll_sensor`, `ra`, `dec`, `rollpa` |
+| `visit` | text (RO) | `target`, `guide_sensor`, `roll_sensor`, `ra`, `dec`, `rollpa`, `guide_star`, `roll_star`, `centroid_guide`, `centroid_roll` |
+| `visit_params` | number (RO) | `guide_tol_px`, `roll_tol_px`, `max_iterations`, `ta_exptime`, `ta_frame_rate`, `n_config_sensors`, `n_in_solution`, `track_roi_w/h`, `track_fps`, `track_exptime`, `track_loop_gain`, `track_roll_gain` |
 | `track_status` | number (RO) | `guide_x/y`, `guide_err_px`, `roll_x/y`, `roll_err_px`, `corrections` |
+
+`visit` and `visit_params` exist because these values are per observation, not per
+installation. Anything the visit file supplies overrides the `.conf` default, and
+loading a different visit changes it, so leaving them implicit in a config file
+would be misleading. They are republished on every load, which means the
+properties always show what the running sequence is actually using rather than
+what the process started with.
 
 ## Trying it out
 
