@@ -1,0 +1,163 @@
+# Sample MagAO-X config for wccSim, the WCC all-sky sensor array simulator.
+# Install as /opt/MagAOX/config/wccsim.conf (process name comes from the proclist).
+#
+# wccSim publishes one ImageStreamIO stream per sensor, at that sensor's own
+# commanded frame rate, exposure time and region of interest. It follows each
+# camera over INDI, so reconfiguring a camera reconfigures the simulation.
+#
+# Numbers below are a LAZULI-like wide field guider array. The plate scale that
+# results from telescope.diameter and telescope.f_number is
+#   3.76 um / (12 * 6.5 m) * 206265 = 0.00994 arcsec/pixel
+# so a 9576 pixel IMX sensor spans about 95 arcsec and the sensors sit hundreds
+# of arcsec apart in field angle, matching the X_WCC and Y_WCC columns of the
+# visit file.
+
+[telescope]
+diameter=6.5
+f_number=12.0
+central_obscuration=0.0
+spider_vanes=0
+spider_width=0.0
+# WCC focal plane X runs opposite to increasing right ascension.
+parity=-1
+throughput=0.5
+
+[catalog]
+path=/opt/MagAOX/source/MagAOX/data/gsc31_north.csv
+mag_column=mag
+id_column=gsc2ID
+# Sources fainter than this are dropped at load, which keeps the cone searches short.
+mag_limit=21
+
+[pointing]
+# Leave tel_device empty to let wccSim own the pointing and accept local
+# pointing and offset commands. That makes the whole acquisition loop
+# demonstrable with no telescope present. Set it to a telescope device, e.g.
+# tcsi, to slave the simulation to real reported pointing instead.
+tel_device=
+tel_property=telpos
+tel_ra_element=ra
+tel_dec_element=dec
+tel_pa_element=rotoff
+# Startup boresight. This is the gsc31_north.csv field centre.
+ra=192.317
+dec=26.84316038
+pa=0.0
+
+[sim]
+sensors=IMX-18,IMX-19,IMX-21,HWK-08,HWK-09
+# Pupil sampling for the diffraction calculation. Larger is more faithful and
+# much slower to start; the PSF itself does not change much above 256.
+npix_pupil=256
+# PSF postage stamp size. 48 covers the core and first rings at this plate scale.
+psf_samples=48
+# Sub-pixel placement bins per axis. Worst placement error is 0.5/psf_substeps
+# pixels, so 8 gives 0.0625 px.
+psf_substeps=8
+star_margin=1.0
+# off  : signal plus pedestals only, fastest and fully repeatable
+# read  : adds Gaussian read noise over the whole frame
+# full  : adds Poisson shot noise on illuminated pixels as well
+# A full 61 megapixel frame costs roughly 0.3 s in full mode, so full frame
+# acquisition above a few Hz needs read or off.
+noise_mode=full
+bias=100
+seed=20260909
+circ_buff_length=1
+default_fps=4
+default_exp_time=1.0
+start_streaming=false
+
+#-----------------------------------------------------------------------------
+# One section per sensor. The name must match an entry in sim.sensors, and must
+# match the corresponding section in wccCtrl's configuration.
+#
+# field_x and field_y are the boresight relative field angles of the sensor
+# optical centre in arcseconds, the same convention as X_WCC and Y_WCC in the
+# visit file.
+#-----------------------------------------------------------------------------
+
+[IMX-18]
+indi_device=nsv18
+shmim_out=nsv18sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-849.953
+field_y=-68.782
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+dark_current=0.05
+read_noise=1.2
+quantum_efficiency=0.8
+full_well=65535
+
+[IMX-19]
+indi_device=nsv19
+shmim_out=nsv19sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-666.282
+field_y=-109.310
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+dark_current=0.05
+read_noise=1.2
+quantum_efficiency=0.8
+full_well=65535
+
+[IMX-21]
+indi_device=nsv21
+shmim_out=nsv21sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-161.870
+field_y=-283.004
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+dark_current=0.05
+read_noise=1.2
+quantum_efficiency=0.8
+full_well=65535
+
+[HWK-08]
+indi_device=hwk08
+shmim_out=hwk08sim
+pixel_size=4.6
+full_w=4096
+full_h=2300
+field_x=786.510
+field_y=102.092
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+dark_current=0.05
+read_noise=0.28
+quantum_efficiency=0.7
+full_well=65535
+
+[HWK-09]
+indi_device=hwk09
+shmim_out=hwk09sim
+pixel_size=4.6
+full_w=4096
+full_h=2300
+field_x=1029.510
+field_y=59.310
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+dark_current=0.05
+read_noise=0.28
+quantum_efficiency=0.7
+full_well=65535

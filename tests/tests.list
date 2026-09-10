@@ -84,6 +84,9 @@
 ../apps/usbtempMon/tests/usbtempMon_test
 ../apps/userGainCtrl/tests/userGainCtrl_test
 ../apps/w2tcsOffloader/tests/w2tcsOffloader_test
+../apps/wccCommon/tests/wccCommon_test
+../apps/wccCtrl/tests/wccCtrl_test
+../apps/wccSim/tests/wccSim_test
 ../apps/xindiserver/tests/xindiserver_test
 
 ../apps/xInstGraph/xigNodes/tests/xigNode_test

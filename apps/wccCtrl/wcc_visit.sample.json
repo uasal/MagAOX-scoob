@@ -1,0 +1,157 @@
+{
+    "_comment": "WCC visit file. Derived from data/LAZ_072226_001_R001.json, extended with the per camera parameters wccCtrl needs: TARGET_ACQUISITION.TA_SENSORS, TARGET_X_PIX and TARGET_Y_PIX on each star, the fine guiding EXP_TIME_FG / FRAME_RATE_FG / ROI_W_FG / ROI_H_FG, and the TRACKING handoff block. Every added field has a default, so an original LAZ format file still loads.",
+
+    "PROGMID": "072226",
+    "TELESCOP": "LAZULI",
+    "INSTRUME": "WCC",
+    "OBSID": "001",
+    "VISITID": "001",
+    "TARGET": "GSC31 NORTH FIELD",
+
+    "_comment_pointing": "Boresight the telescope is asked for. This sample uses the gsc31_north.csv field centre so it runs against the bundled catalog.",
+    "RA_PROP": 192.317,
+    "DEC_PROP": 26.84316038,
+    "ROLLPA": 0.0,
+
+    "TARGET_ACQUISITION": {
+        "_comment": "CONFIG_SENSORS lists the sensors an astrometric solution is computed on. Solving several at once is what separates a pointing error from a roll error.",
+        "CONFIG_SENSORS": [
+            "IMX-18",
+            "IMX-19",
+            "IMX-21",
+            "HWK-08",
+            "HWK-09"
+        ],
+        "TA_EXPTIME_SEC_SLOANR": [
+            1.0
+        ],
+        "TA_FRAME_RATE_HZ": 4,
+        "TA_GAIN": "HIGH",
+
+        "_comment_tol": "Acceptance radii and the iteration limit. 50 pixels at 0.00994 arcsec/pixel is about 0.5 arcsec.",
+        "TA_GUIDE_TOL_PIX": 50,
+        "TA_ROLL_TOL_PIX": 50,
+        "TA_MAX_ITERATIONS": 3,
+
+        "_comment_sensors": "Per sensor overrides for the full frame acquisition pass. Anything omitted falls back to the TA_ defaults above. STREAM false drops a sensor out of the solution without removing it from the array.",
+        "TA_SENSORS": {
+            "IMX-18": {
+                "EXPTIME": 1.0,
+                "FRAME_RATE": 4,
+                "GAIN": 100
+            },
+            "IMX-19": {
+                "EXPTIME": 1.0,
+                "FRAME_RATE": 4
+            },
+            "IMX-21": {
+                "EXPTIME": 1.0,
+                "FRAME_RATE": 4
+            },
+            "HWK-08": {
+                "EXPTIME": 1.0,
+                "FRAME_RATE": 4
+            },
+            "HWK-09": {
+                "EXPTIME": 1.0,
+                "FRAME_RATE": 4
+            }
+        }
+    },
+
+    "GUIDE_STAR_CATALOG": [
+        "gsc31_north.csv"
+    ],
+
+    "_comment_guide": "Ranked guide star candidates. X_WCC and Y_WCC are boresight relative field angles in arcseconds, with X_WCC running opposite to increasing right ascension. TARGET_X_PIX and TARGET_Y_PIX are the full sensor pixel the star is to be placed on; omit them to use the sensor centre. wccCtrl walks the ranks and takes the first whose guide and roll star both land on configured sensors.",
+    "GUIDE_STAR": [
+        {
+            "RANK": 1,
+            "GSNUM": 1,
+            "ID": "N122303225344",
+            "SENSOR": "IMX-18",
+            "RA": 192.08657,
+            "DEC": 26.82405,
+            "X_WCC": -640.0,
+            "Y_WCC": -68.8,
+            "MAG": 14.2,
+            "TARGET_X_PIX": 4788,
+            "TARGET_Y_PIX": 3194,
+            "EXP_TIME_FG": 0.01,
+            "FRAME_RATE_FG": 100,
+            "ROI_W_FG": 128,
+            "ROI_H_FG": 128,
+            "CATALOG_NAME": "gsc31_north.csv"
+        },
+        {
+            "RANK": 2,
+            "GSNUM": 1,
+            "ID": "N122303237236",
+            "SENSOR": "IMX-19",
+            "RA": 192.13210,
+            "DEC": 26.81290,
+            "X_WCC": -493.0,
+            "Y_WCC": -109.3,
+            "MAG": 15.1,
+            "TARGET_X_PIX": 4788,
+            "TARGET_Y_PIX": 3194,
+            "EXP_TIME_FG": 0.02,
+            "FRAME_RATE_FG": 100,
+            "ROI_W_FG": 128,
+            "ROI_H_FG": 128,
+            "CATALOG_NAME": "gsc31_north.csv"
+        }
+    ],
+
+    "_comment_roll": "Roll star candidates. A roll star far from the boresight and well separated from the guide star gives the best roll lever arm, which is why HWK-09 at a field radius of about 1030 arcsec is used here.",
+    "ROLL_STAR": [
+        {
+            "RANK": 1,
+            "RSNUM": 1,
+            "ID": "N122303100411",
+            "SENSOR": "HWK-09",
+            "RA": 192.63640,
+            "DEC": 26.86000,
+            "X_WCC": 1029.51,
+            "Y_WCC": 59.31,
+            "MAG": 13.8,
+            "TARGET_X_PIX": 2048,
+            "TARGET_Y_PIX": 1150,
+            "EXP_TIME_FG": 0.01,
+            "FRAME_RATE_FG": 100,
+            "ROI_W_FG": 128,
+            "ROI_H_FG": 128,
+            "CATALOG_NAME": "gsc31_north.csv"
+        },
+        {
+            "RANK": 2,
+            "RSNUM": 1,
+            "ID": "N122303100412",
+            "SENSOR": "HWK-08",
+            "RA": 192.55520,
+            "DEC": 26.87200,
+            "X_WCC": 786.51,
+            "Y_WCC": 102.09,
+            "MAG": 14.4,
+            "TARGET_X_PIX": 2048,
+            "TARGET_Y_PIX": 1150,
+            "EXP_TIME_FG": 0.01,
+            "FRAME_RATE_FG": 100,
+            "ROI_W_FG": 128,
+            "ROI_H_FG": 128,
+            "CATALOG_NAME": "gsc31_north.csv"
+        }
+    ],
+
+    "_comment_tracking": "Handoff to the centroid controllers. CENTROID_DEVICE_GUIDE and CENTROID_DEVICE_ROLL are the INDI device names of the two centroidCtrl instances that will read the narrowed camera streams and publish a centroid. LOOP_GAIN and ROLL_GAIN are the proportional gains of the fast offset loop.",
+    "TRACKING": {
+        "ROI_W": 128,
+        "ROI_H": 128,
+        "FRAME_RATE": 100,
+        "EXPTIME": 0.01,
+        "CENTROID_DEVICE_GUIDE": "centroidguide",
+        "CENTROID_DEVICE_ROLL": "centroidroll",
+        "LOOP_GAIN": 0.3,
+        "ROLL_GAIN": 0.3
+    }
+}

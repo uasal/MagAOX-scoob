@@ -119,7 +119,9 @@ apps_tic = \
 
 # Apps with simulator mode
 apps_sim = \
-	trippLitePDU
+	trippLitePDU \
+	wccSim \
+	wccCtrl
 
 all_buildable_apps = \
 	adcTracker \
@@ -170,6 +172,8 @@ all_buildable_apps = \
 	ttmModulator \
 	usbtempMon \
 	w2tcsOffloader \
+	wccCtrl \
+	wccSim \
 	xindiserver \
 	xt1121Ctrl \
 	xt1121DCDU \

@@ -1,0 +1,177 @@
+# Sample MagAO-X config for wccCtrl, the WCC acquisition controller.
+# Install as /opt/MagAOX/config/wccctrl.conf (process name comes from the proclist).
+#
+# The sensor sections below MUST match wccSim's, otherwise the controller solves
+# astrometry against a different array geometry than the simulator rendered.
+
+[visit]
+path=/opt/MagAOX/source/MagAOX/apps/wccCtrl/wcc_visit.sample.json
+auto_start=false
+
+#-----------------------------------------------------------------------------
+# Telescope interface.
+#
+# The defaults below drive wccSim acting as its own pointing authority, which is
+# how the loop is demonstrated with no telescope present.
+#
+# For MagAO-X tcsInterface instead use:
+#   device=tcsi
+#   offset_property=pyrNudge
+#   offset_x_element=x
+#   offset_y_element=y
+#   offset_swap_xy=true        # pyrNudge x and y are the WFS axes, not the focal plane axes
+#   roll_property=             # tcsInterface exposes no roll offset; leave empty
+#   done_property=teldata
+#   done_elements=slewing,guider_moving
+#   pos_property=telpos
+#   ra_element=ra
+#   dec_element=dec
+#   pa_element=rotoff
+#-----------------------------------------------------------------------------
+
+[telescope]
+device=wccsim
+offset_property=offset
+offset_x_element=x
+offset_y_element=y
+offset_sign=1
+offset_swap_xy=false
+roll_property=offset
+roll_element=roll
+# Empty done_property means fall back to a fixed settle_time after each offset.
+done_property=
+done_elements=
+pos_property=pointing
+ra_element=ra
+dec_element=dec
+pa_element=pa
+settle_time=1.0
+move_timeout=60
+# Must match wccSim.
+diameter=6.5
+f_number=12.0
+parity=-1
+
+[catalog]
+path=/opt/MagAOX/source/MagAOX/data/gsc31_north.csv
+mag_column=mag
+id_column=gsc2ID
+mag_limit=21
+# Only sources brighter than this are predicted when solving. Keeping this a
+# magnitude or two brighter than what the exposure actually detects keeps the
+# match fast and avoids pairing noise with catalog entries.
+predict_mag_limit=18
+
+[acq]
+sensors=IMX-18,IMX-19,IMX-21,HWK-08,HWK-09
+guide_tol_px=50
+roll_tol_px=50
+max_iterations=3
+frame_timeout=30
+confirm_timeout=15
+roi_tol_px=1
+param_tol_frac=0.05
+min_solved_sensors=1
+# Source detection.
+detect_threshold=5
+detect_box_half=5
+min_separation=8
+max_sources=200
+# A bright star's Airy rings are genuine local maxima. Within this radius a
+# candidate must reach ring_suppress_ratio of the brighter star's peak to be kept.
+ring_suppress_radius=24
+ring_suppress_ratio=0.3
+# Astrometric matching. solve_search_px must exceed the worst pointing error
+# expected at the start of acquisition.
+solve_search_px=400
+solve_vote_bin=8
+solve_match_px=6
+solve_min_matched=4
+solve_rotation=true
+
+[track]
+roi_w=128
+roi_h=128
+fps=100
+exptime=0.01
+loop_gain=0.3
+roll_gain=0.3
+# The centroidCtrl applications publish this property; the device names come from
+# the visit file's TRACKING block.
+centroid_property=centroid
+centroid_x_element=x
+centroid_y_element=y
+centroid_enable_property=loop
+max_offset_arcsec=5
+period=0.05
+deadband_px=0.05
+
+#-----------------------------------------------------------------------------
+# Sensor array. Geometry keys must match wccSim exactly. shmim_in is the stream
+# this controller reads, which for a simulated array is wccSim's shmim_out.
+#-----------------------------------------------------------------------------
+
+[IMX-18]
+indi_device=nsv18
+shmim_in=nsv18sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-849.953
+field_y=-68.782
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+
+[IMX-19]
+indi_device=nsv19
+shmim_in=nsv19sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-666.282
+field_y=-109.310
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+
+[IMX-21]
+indi_device=nsv21
+shmim_in=nsv21sim
+pixel_size=3.76
+full_w=9576
+full_h=6388
+field_x=-161.870
+field_y=-283.004
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+
+[HWK-08]
+indi_device=hwk08
+shmim_in=hwk08sim
+pixel_size=4.6
+full_w=4096
+full_h=2300
+field_x=786.510
+field_y=102.092
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
+
+[HWK-09]
+indi_device=hwk09
+shmim_in=hwk09sim
+pixel_size=4.6
+full_w=4096
+full_h=2300
+field_x=1029.510
+field_y=59.310
+rotation=0.0
+filter=SLOANR
+bandwidth=0.150
+pivot_wavelength=650
