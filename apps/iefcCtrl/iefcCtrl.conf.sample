@@ -5,6 +5,9 @@
 # Milk / ImageStreamIO names (also exposed as INDI text props under group "shmims")
 # For sim with llowfscSim, use shm_cam_input=camsci_sim (camera's own stream is separate).
 shm_cam_input=camsci
+# DM write channel. nact is the square size of this stream (e.g. 34x34), not a
+# separate config key. Camera geometry/datatype likewise come from shm_cam_input
+# (UINT16 science cameras are supported).
 shm_dm=dm01disp07
 
 # INDI device name of the science camera. Set exposure/gain on that device:

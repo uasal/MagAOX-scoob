@@ -36,6 +36,12 @@ See `iefcCtrl.conf.sample`. Important:
 - Shmim names (config + INDI group `shmims`):
   `shm_cam_input`, `shm_dm`, `shm_cam_sub_norm`, `shm_contrast_avg`,
   `shm_dh_mask`, `shm_sat_mask`
+- Geometry is taken from the open shmims: camera size/datatype from
+  `shm_cam_input`, square `nact` from `shm_dm` (e.g. 34×34). No `nact` config
+  key. Science cameras are often UINT16; calibrate/run convert integer frames
+  to double. A 256×256 camera with a 34×34 DM is valid (WFS/sat masks must
+  match the camera). Hadamard mode count follows the circular mask on that DM
+  (34×34 → 1024 modes).
 - `cam_name` — INDI science-camera device. Set/query `cam_name.exptime` / `cam_name.emgain` there (`*.target` to command, `*.current` is what iefc stores for dark matching).
 - `shm_cam_input` — ImageStreamIO stream; also the dark-library match key
 - `dark_lib_path` / `reload_dark_lib` — load darks built by **darkCtrl** (`dark_metadata.txt` + `dark_NNN.fits`) for `shm_cam_input`

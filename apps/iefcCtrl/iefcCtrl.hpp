@@ -428,6 +428,12 @@ class iefcCtrl : public MagAOXApp<true>
     /// Live gain from cam_name.emgain.current (NaN until SET received).
     double liveCamGain() const;
 
+    /// Square actuator count from `shm_dm` (`size[0]==size[1]`); 0 if unknown/non-square.
+    std::size_t liveDmNact() const;
+
+    /// Require a square DM command stream; log and return -1 otherwise.
+    int requireSquareDm( const lina::ShmimStream &dm /**< [in] open shm_dm stream */ );
+
     /// Cache setup (dark + Imax) for continuous shm_cam_sub_norm.
     void updateLiveNormFromSetup( const lina::SetupData &setup );
 
@@ -1263,7 +1269,9 @@ int iefcCtrl::grabMeanCamsci( unsigned nframes, unsigned wait_frames, std::vecto
         else
         {
             return log<software_error, -1>(
-                { __FILE__, __LINE__, "unsupported camsci datatype" } );
+                { __FILE__, __LINE__,
+                  "unsupported camsci datatype " +
+                      std::to_string( static_cast<int>( m_camsci.md->datatype ) ) } );
         }
         ++collected;
     }
@@ -1423,6 +1431,41 @@ double iefcCtrl::liveCamExp() const
 double iefcCtrl::liveCamGain() const
 {
     return m_remoteGain;
+}
+
+std::size_t iefcCtrl::liveDmNact() const
+{
+    auto nact_from_image = []( const IMAGE &im ) -> std::size_t {
+        if( im.md == nullptr )
+            return 0;
+        const std::size_t r = im.md->size[0];
+        const std::size_t c = ( im.md->naxis > 1 ) ? im.md->size[1] : 1;
+        if( r > 0 && r == c )
+            return r;
+        return 0;
+    };
+    if( m_dmOpen )
+        return nact_from_image( m_dm );
+    try
+    {
+        lina::ShmimStream dm( m_shmDm );
+        if( dm.rows() > 0 && dm.rows() == dm.cols() )
+            return dm.rows();
+    }
+    catch( ... )
+    {
+    }
+    return 0;
+}
+
+int iefcCtrl::requireSquareDm( const lina::ShmimStream &dm )
+{
+    if( dm.rows() > 0 && dm.rows() == dm.cols() )
+        return 0;
+    return log<software_error, -1>(
+        { __FILE__, __LINE__,
+          "shm_dm is not a square DM command (" + dm.describe() +
+              "); IEFC takes nact from the stream size" } );
 }
 
 void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
@@ -1689,7 +1732,7 @@ int iefcCtrl::ensureContrastMask( uint32_t w, uint32_t h )
     // Fall back to default half-annulus DH mask (square camsci).
     if( w == h && w > 0 )
     {
-        auto in = lina::default_loop_inputs( w, 34 );
+        auto in = lina::default_loop_inputs( w, liveDmNact() );
         m_liveContrastMask = lina::create_annular_focal_plane_mask(
             in.ncam, in.pxscl, in.dh_iwa, in.dh_owa, in.dh_iwa, "odd", in.dh_rot );
         m_haveContrastMask = true;
@@ -1970,7 +2013,25 @@ int iefcCtrl::remaskControlFromCalibration( const lina::Array2D<std::uint8_t> &m
         {
             lina::PackagePaths pkg;
             pkg.dir = m_calDir;
-            lina::LoopInputs in = lina::default_loop_inputs( ncam, 34 );
+            std::size_t nact = liveDmNact();
+            if( nact == 0 )
+            {
+                try
+                {
+                    const auto cfg = lina::read_config( pkg.config_path() );
+                    nact = lina::cfg_z( cfg, "nact", 0 );
+                }
+                catch( ... )
+                {
+                }
+            }
+            if( nact == 0 )
+            {
+                log<text_log>( "dh_mask_reload: nact unknown from shm_dm / config.txt",
+                               logPrio::LOG_WARNING );
+                return 1;
+            }
+            lina::LoopInputs in = lina::default_loop_inputs( ncam, nact );
             lina::load_modes_from_package( in, pkg );
             probe_modes = in.probe_modes;
             calib_modes = in.calib_modes;
@@ -2986,8 +3047,12 @@ int iefcCtrl::doCalibrate()
     {
         lina::ShmimStream camsci( m_shmCamInput );
         lina::ShmimStream dm( m_shmDm );
+        if( requireSquareDm( dm ) < 0 )
+            return -1;
 
         double live_exptime = liveCamExp();
+
+        log<text_log>( "calibrate: camera " + camsci.describe() + ", dm " + dm.describe() );
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_nImages < 1 ? 1 : m_nImages;
@@ -3177,8 +3242,12 @@ int iefcCtrl::doRun()
     {
         lina::ShmimStream camsci( m_shmCamInput );
         lina::ShmimStream dm( m_shmDm );
+        if( requireSquareDm( dm ) < 0 )
+            return -1;
 
         double live_exptime = liveCamExp();
+
+        log<text_log>( "run: camera " + camsci.describe() + ", dm " + dm.describe() );
 
         auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
         in.nframes = m_nImages < 1 ? 1 : m_nImages;

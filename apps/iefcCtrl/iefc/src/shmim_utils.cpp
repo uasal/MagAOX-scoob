@@ -1,11 +1,17 @@
+/** \file shmim_utils.cpp
+  * \brief Milk ImageStreamIO adapter implementing lina::Stream2D.
+  */
+
 #include "lina/shmim_utils.h"
 #include "lina/iefc.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #ifdef LINA_USE_IMAGESTREAMIO
@@ -20,121 +26,108 @@ struct ShmimStream::Impl {
     bool open = false;
     int sem_index = -1;
 #endif
+    std::string name;
     std::size_t rows = 0;
     std::size_t cols = 0;
 };
 
-ShmimStream::ShmimStream() : impl_(new Impl()) {}
-
-ShmimStream::ShmimStream(const std::string& name) : ShmimStream() {
-    open(name);
-}
-
-ShmimStream::~ShmimStream() {
-    close();
-    delete impl_;
-}
-
-void ShmimStream::open(const std::string& name) {
-#ifndef LINA_USE_IMAGESTREAMIO
-    throw std::runtime_error("ImageStreamIO not enabled");
-#else
-    if (impl_->open) {
-        close();
-    }
-    if (ImageStreamIO_openIm(&impl_->image, name.c_str()) != IMAGESTREAMIO_SUCCESS) {
-        throw std::runtime_error("ImageStreamIO_openIm failed");
-    }
-    impl_->open = true;
-    impl_->sem_index = -1;
-    impl_->rows = impl_->image.md->size[0];
-    impl_->cols = impl_->image.md->size[1];
-#endif
-}
-
-void ShmimStream::create(const std::string& name,
-                         std::size_t rows,
-                         std::size_t cols,
-                         int datatype,
-                         std::size_t cbsize) {
-#ifndef LINA_USE_IMAGESTREAMIO
-    throw std::runtime_error("ImageStreamIO not enabled");
-#else
-    if (impl_->open) {
-        close();
-    }
-    uint32_t sizes[2] = {static_cast<uint32_t>(rows), static_cast<uint32_t>(cols)};
-    if (ImageStreamIO_createIm(&impl_->image, name.c_str(), 2, sizes,
-                               static_cast<uint8_t>(datatype), 1, 8,
-                               static_cast<int>(cbsize)) != IMAGESTREAMIO_SUCCESS) {
-        throw std::runtime_error("ImageStreamIO_createIm failed");
-    }
-    impl_->open = true;
-    impl_->sem_index = -1;
-    impl_->rows = rows;
-    impl_->cols = cols;
-#endif
-}
-
-void ShmimStream::close() {
-#ifdef LINA_USE_IMAGESTREAMIO
-    if (impl_->open) {
-        ImageStreamIO_closeIm(&impl_->image);
-        impl_->open = false;
-    }
-#endif
-}
-
-std::size_t ShmimStream::rows() const {
-    return impl_->rows;
-}
-
-std::size_t ShmimStream::cols() const {
-    return impl_->cols;
-}
-
-Array2D<double> ShmimStream::grab_latest() {
-#ifndef LINA_USE_IMAGESTREAMIO
-    throw std::runtime_error("ImageStreamIO not enabled");
-#else
-    if (!impl_->open) {
-        throw std::runtime_error("ShmimStream not open");
-    }
-    void* buffer = nullptr;
-    if (ImageStreamIO_readLastWroteBuffer(&impl_->image, &buffer) != IMAGESTREAMIO_SUCCESS) {
-        throw std::runtime_error("ImageStreamIO_readLastWroteBuffer failed");
-    }
-
-    const std::size_t n = impl_->rows * impl_->cols;
-    Array2D<double> out(impl_->rows, impl_->cols, 0.0);
-    if (impl_->image.md->datatype == _DATATYPE_FLOAT) {
-        const float* src = static_cast<const float*>(buffer);
-        for (std::size_t i = 0; i < n; ++i) {
-            out.data()[i] = static_cast<double>(src[i]);
-        }
-    } else if (impl_->image.md->datatype == _DATATYPE_DOUBLE) {
-        const double* src = static_cast<const double*>(buffer);
-        std::memcpy(out.data(), src, sizeof(double) * n);
-    } else {
-        throw std::runtime_error("Unsupported shmim datatype");
-    }
-    return out;
-#endif
-}
-
 namespace {
 
 #ifdef LINA_USE_IMAGESTREAMIO
-void copy_buffer_to_array(IMAGE* image, void* buffer, Array2D<double>& out) {
+const char* milk_datatype_name(uint8_t t) {
+    switch (t) {
+        case _DATATYPE_UINT8:
+            return "UINT8";
+        case _DATATYPE_INT8:
+            return "INT8";
+        case _DATATYPE_UINT16:
+            return "UINT16";
+        case _DATATYPE_INT16:
+            return "INT16";
+        case _DATATYPE_UINT32:
+            return "UINT32";
+        case _DATATYPE_INT32:
+            return "INT32";
+        case _DATATYPE_UINT64:
+            return "UINT64";
+        case _DATATYPE_INT64:
+            return "INT64";
+        case _DATATYPE_FLOAT:
+            return "FLOAT";
+        case _DATATYPE_DOUBLE:
+            return "DOUBLE";
+        case _DATATYPE_HALF:
+            return "HALF";
+        case _DATATYPE_COMPLEX_FLOAT:
+            return "COMPLEX_FLOAT";
+        case _DATATYPE_COMPLEX_DOUBLE:
+            return "COMPLEX_DOUBLE";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+std::string unsupported_datatype_msg(const std::string& name, uint8_t t) {
+    std::string msg = "Unsupported shmim datatype ";
+    msg += milk_datatype_name(t);
+    msg += " (";
+    msg += std::to_string(static_cast<int>(t));
+    msg += ")";
+    if (!name.empty()) {
+        msg += " on stream '";
+        msg += name;
+        msg += "'";
+    }
+    return msg;
+}
+
+template <typename T>
+void copy_as_double(const void* buffer, Array2D<double>& out) {
+    const T* src = static_cast<const T*>(buffer);
+    double* dst = out.data();
     const std::size_t n = out.size();
-    if (image->md->datatype == _DATATYPE_FLOAT) {
-        const float* src = static_cast<const float*>(buffer);
-        for (std::size_t i = 0; i < n; ++i) out.data()[i] = static_cast<double>(src[i]);
-    } else if (image->md->datatype == _DATATYPE_DOUBLE) {
-        const double* src = static_cast<const double*>(buffer);
-        std::memcpy(out.data(), src, sizeof(double) * n);
-    } else {
-        throw std::runtime_error("Unsupported shmim datatype");
+    for (std::size_t i = 0; i < n; ++i) {
+        dst[i] = static_cast<double>(src[i]);
+    }
+}
+
+void copy_buffer_to_array(IMAGE* image, void* buffer, Array2D<double>& out,
+                          const std::string& name) {
+    switch (image->md->datatype) {
+        case _DATATYPE_UINT8:
+            copy_as_double<uint8_t>(buffer, out);
+            return;
+        case _DATATYPE_INT8:
+            copy_as_double<int8_t>(buffer, out);
+            return;
+        case _DATATYPE_UINT16:
+            copy_as_double<uint16_t>(buffer, out);
+            return;
+        case _DATATYPE_INT16:
+            copy_as_double<int16_t>(buffer, out);
+            return;
+        case _DATATYPE_UINT32:
+            copy_as_double<uint32_t>(buffer, out);
+            return;
+        case _DATATYPE_INT32:
+            copy_as_double<int32_t>(buffer, out);
+            return;
+        case _DATATYPE_UINT64:
+            copy_as_double<uint64_t>(buffer, out);
+            return;
+        case _DATATYPE_INT64:
+            copy_as_double<int64_t>(buffer, out);
+            return;
+        case _DATATYPE_FLOAT:
+            copy_as_double<float>(buffer, out);
+            return;
+        case _DATATYPE_DOUBLE: {
+            const double* src = static_cast<const double*>(buffer);
+            std::memcpy(out.data(), src, sizeof(double) * out.size());
+            return;
+        }
+        default:
+            throw std::runtime_error(unsupported_datatype_msg(name, image->md->datatype));
     }
 }
 
@@ -167,6 +160,124 @@ bool sem_wait_timeout(IMAGE* image, int sem, double timeout_s) {
 #endif
 
 } // namespace
+
+ShmimStream::ShmimStream() : impl_(new Impl()) {}
+
+ShmimStream::ShmimStream(const std::string& name) : ShmimStream() {
+    open(name);
+}
+
+ShmimStream::~ShmimStream() {
+    close();
+    delete impl_;
+}
+
+void ShmimStream::open(const std::string& name) {
+#ifndef LINA_USE_IMAGESTREAMIO
+    throw std::runtime_error("ImageStreamIO not enabled");
+#else
+    if (impl_->open) {
+        close();
+    }
+    impl_->name = name;
+    if (ImageStreamIO_openIm(&impl_->image, name.c_str()) != IMAGESTREAMIO_SUCCESS) {
+        throw std::runtime_error("ImageStreamIO_openIm failed for '" + name + "'");
+    }
+    impl_->open = true;
+    impl_->sem_index = -1;
+    impl_->rows = impl_->image.md->size[0];
+    impl_->cols = impl_->image.md->size[1];
+#endif
+}
+
+void ShmimStream::create(const std::string& name,
+                         std::size_t rows,
+                         std::size_t cols,
+                         int datatype,
+                         std::size_t cbsize) {
+#ifndef LINA_USE_IMAGESTREAMIO
+    throw std::runtime_error("ImageStreamIO not enabled");
+#else
+    if (impl_->open) {
+        close();
+    }
+    impl_->name = name;
+    uint32_t sizes[2] = {static_cast<uint32_t>(rows), static_cast<uint32_t>(cols)};
+    if (ImageStreamIO_createIm(&impl_->image, name.c_str(), 2, sizes,
+                               static_cast<uint8_t>(datatype), 1, 8,
+                               static_cast<int>(cbsize)) != IMAGESTREAMIO_SUCCESS) {
+        throw std::runtime_error("ImageStreamIO_createIm failed for '" + name + "'");
+    }
+    impl_->open = true;
+    impl_->sem_index = -1;
+    impl_->rows = rows;
+    impl_->cols = cols;
+#endif
+}
+
+void ShmimStream::close() {
+#ifdef LINA_USE_IMAGESTREAMIO
+    if (impl_->open) {
+        ImageStreamIO_closeIm(&impl_->image);
+        impl_->open = false;
+    }
+#endif
+}
+
+std::size_t ShmimStream::rows() const {
+    return impl_->rows;
+}
+
+std::size_t ShmimStream::cols() const {
+    return impl_->cols;
+}
+
+int ShmimStream::datatype() const {
+#ifdef LINA_USE_IMAGESTREAMIO
+    if (!impl_->open) {
+        return 0;
+    }
+    return static_cast<int>(impl_->image.md->datatype);
+#else
+    return 0;
+#endif
+}
+
+std::string ShmimStream::datatype_name() const {
+#ifdef LINA_USE_IMAGESTREAMIO
+    return milk_datatype_name(static_cast<uint8_t>(datatype()));
+#else
+    return "UNKNOWN";
+#endif
+}
+
+const std::string& ShmimStream::name() const {
+    return impl_->name;
+}
+
+std::string ShmimStream::describe() const {
+    const std::string& n = impl_->name.empty() ? std::string("<unnamed>") : impl_->name;
+    return n + " " + std::to_string(impl_->rows) + "x" + std::to_string(impl_->cols) + " " +
+           datatype_name();
+}
+
+Array2D<double> ShmimStream::grab_latest() {
+#ifndef LINA_USE_IMAGESTREAMIO
+    throw std::runtime_error("ImageStreamIO not enabled");
+#else
+    if (!impl_->open) {
+        throw std::runtime_error("ShmimStream not open");
+    }
+    void* buffer = nullptr;
+    if (ImageStreamIO_readLastWroteBuffer(&impl_->image, &buffer) != IMAGESTREAMIO_SUCCESS) {
+        throw std::runtime_error("ImageStreamIO_readLastWroteBuffer failed");
+    }
+
+    Array2D<double> out(impl_->rows, impl_->cols, 0.0);
+    copy_buffer_to_array(&impl_->image, buffer, out, impl_->name);
+    return out;
+#endif
+}
 
 Array2D<double> ShmimStream::grab_mean(std::size_t nframes, std::size_t wait_frames,
                                        const std::function<bool()>& stop) {
@@ -219,7 +330,7 @@ Array2D<double> ShmimStream::grab_mean(std::size_t nframes, std::size_t wait_fra
                 IMAGESTREAMIO_SUCCESS) {
                 throw std::runtime_error("ImageStreamIO_readLastWroteBuffer failed");
             }
-            copy_buffer_to_array(&impl_->image, buffer, frame);
+            copy_buffer_to_array(&impl_->image, buffer, frame, impl_->name);
             for (std::size_t j = 0; j < n; ++j) mean.data()[j] += frame.data()[j];
             ++collected;
         }
@@ -245,7 +356,7 @@ Array2D<double> ShmimStream::grab_mean(std::size_t nframes, std::size_t wait_fra
                                           &buffer) != IMAGESTREAMIO_SUCCESS) {
                 throw std::runtime_error("ImageStreamIO_readBufferAt failed");
             }
-            copy_buffer_to_array(&impl_->image, buffer, frame);
+            copy_buffer_to_array(&impl_->image, buffer, frame, impl_->name);
             for (std::size_t j = 0; j < n; ++j) mean.data()[j] += frame.data()[j];
         }
         nframes = frames;
@@ -269,7 +380,9 @@ void ShmimStream::write_scaled(const Array2D<double>& data, double scale) {
         throw std::runtime_error("ShmimStream not open");
     }
     if (data.rows() != impl_->rows || data.cols() != impl_->cols) {
-        throw std::invalid_argument("write size mismatch");
+        throw std::invalid_argument(
+            "write size mismatch: data " + std::to_string(data.rows()) + "x" +
+            std::to_string(data.cols()) + " vs stream " + describe());
     }
     // MagAO-X / cacao DMcomb only reacts to md->cnt0 changes. A bare
     // ImageStreamIO_sempost does NOT bump cnt0, so channel writes never
@@ -294,7 +407,9 @@ void ShmimStream::write_scaled(const Array2D<double>& data, double scale) {
         }
     } else {
         impl_->image.md->write = 0;
-        throw std::runtime_error("Unsupported shmim datatype");
+        throw std::runtime_error(unsupported_datatype_msg(impl_->name,
+                                                          impl_->image.md->datatype) +
+                                 " (writes require FLOAT or DOUBLE)");
     }
     if (ImageStreamIO_UpdateIm(&impl_->image) != IMAGESTREAMIO_SUCCESS) {
         throw std::runtime_error("ImageStreamIO_UpdateIm failed");
