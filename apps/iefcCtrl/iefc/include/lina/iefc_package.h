@@ -1,5 +1,9 @@
 #pragma once
 
+/** \file iefc_package.h
+  * \brief Calibration-package load/save helpers for Stream IEFC.
+  */
+
 #include "lina/array.h"
 #include "lina/coro_utils.h"
 #include "lina/dark_library.h"
@@ -36,6 +40,10 @@ struct LoopInputs {
     double fourier_owa = 14.0;
     double fourier_rot = 90.0;
     double dh_rot = 90.0;
+    double dh_x = -1.0; ///< Vortex column [pix]; <0 → ncam/2
+    double dh_y = -1.0; ///< Vortex row [pix]; <0 → ncam/2
+    double dh_pixel_scale = 1.0; ///< Scale from pixels to IWA/OWA/edge units
+    double dh_edge = 3.0; ///< Unrotated half-plane cut; typically equal to IWA
     std::size_t nframes = 5;
     std::size_t num_iters = 3;
     std::size_t nact = 34;
@@ -128,6 +136,7 @@ SetupData load_setup_from_package(const PackagePaths& pkg,
 
 void apply_setup(LoopInputs& in, const SetupData& s, double live_exptime = -1.0);
 
+/// Build Fourier probes and Hadamard calib modes. Does not create `control_mask`.
 void generate_modes(LoopInputs& in, const std::string& calib_modes_fits_override = {});
 
 void load_modes_from_package(LoopInputs& in,
@@ -136,11 +145,14 @@ void load_modes_from_package(LoopInputs& in,
                              const std::string& calib_override = {},
                              const std::string& mask_override = {});
 
-void save_package(const PackagePaths& pkg,
-                  const LoopInputs& in,
-                  const Array2D<double>& response_masked,
-                  const Array2D<double>& control,
-                  const SetupData& setup = {},
-                  const Array2D<double>* response_full = nullptr);
+/// Write response/control/modes/mask/config under `pkg.dir`.
+/** `mask_header` is copied onto `wfs_mask.fits` when non-empty (DH-mask INDI cards). */
+void save_package(const PackagePaths& pkg /**< [in] destination paths */,
+                  const LoopInputs& in /**< [in] modes, mask, and loop parameters */,
+                  const Array2D<double>& response_masked /**< [in] nmodes × nmeas */,
+                  const Array2D<double>& control /**< [in] control matrix */,
+                  const SetupData& setup = {} /**< [in] optional dark/Imax */,
+                  const Array2D<double>* response_full = nullptr /**< [in] optional full-frame cube */,
+                  const FitsHeader& mask_header = {} /**< [in] cards for wfs_mask.fits */);
 
 } // namespace lina

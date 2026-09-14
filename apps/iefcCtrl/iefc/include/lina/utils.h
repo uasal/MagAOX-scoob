@@ -1,5 +1,9 @@
 #pragma once
 
+/** \file utils.h
+  * \brief Image statistics, annular DH-mask generation, and FITS I/O for IEFC.
+  */
+
 #include "lina/array.h"
 
 #include <complex>
@@ -56,6 +60,32 @@ Array2D<std::uint8_t> create_annular_focal_plane_mask(std::size_t npsf,
 // "'foo'" -> string). For the common case of ASCII metadata, just pass
 // strings; numeric values are accepted as their string form.
 using FitsHeader = std::vector<std::pair<std::string, std::string>>;
+
+/// Parameters for the IEFC dark-hole (half-annulus) control mask.
+/** `pixel_scale` multiplies pixel offsets from the vortex so IWA/OWA/edge
+  * are in the same units. `pixel_scale=1` means IWA/OWA are in pixels.
+  * `x`/`y` < 0 means the camera center (`ncam/2`). `edge` is the unrotated
+  * half-plane cut (`x > edge`); NaN uses IWA (classic D-shaped dark hole).
+  */
+struct DhMaskParams {
+    std::size_t ncam = 0; ///< Square camera size [pix]
+    double x = -1.0; ///< Vortex column [pix]; <0 → ncam/2
+    double y = -1.0; ///< Vortex row [pix]; <0 → ncam/2
+    double iwa = 3.0; ///< Inner working angle (pixel_scale units)
+    double owa = 10.0; ///< Outer working angle (pixel_scale units)
+    double rotation_deg = 90.0; ///< Rotation about the vortex [deg]
+    double pixel_scale = 1.0; ///< Scale from pixels to IWA/OWA units
+    double edge = std::numeric_limits<double>::quiet_NaN(); ///< Half-plane cut; NaN → iwa
+};
+
+/// Resolve vortex pixel center and edge cut from `DhMaskParams`.
+void resolve_dh_mask_params(DhMaskParams& p /**< [in,out] fills x, y, edge when unset */);
+
+/// Half-annulus DH mask: IWA/OWA about (x,y), rotated about that vortex.
+Array2D<std::uint8_t> create_dh_control_mask(const DhMaskParams& p /**< [in] mask geometry */);
+
+/// FITS cards for a generated DH mask (INDI names as keywords).
+FitsHeader dh_mask_fits_header(const DhMaskParams& p /**< [in] resolved geometry */);
 
 // Save a 2D real-valued array (double precision) as the primary HDU of
 // a FITS file. Always writes BITPIX=-64 (IEEE double), NAXIS=2.

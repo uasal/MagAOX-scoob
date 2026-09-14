@@ -61,6 +61,8 @@ See `iefcCtrl.conf.sample`. Important:
   - `cal_dir` — calibration package (response/control matrices)
   - `dm_cmd_path` — closed-loop DM command FITS archive (`{shm_dm_mode}_cl_{N}.fits`)
   - `dark_lib_path` — dark library from darkCtrl
+  - `dh_mask_path` — DH mask FITS file or directory (`dh_mask_generate` / `dh_mask_reload`)
+- DH mask geometry (`dh_mask_x/y`, `dh_mask_iwa/owa`, `dh_mask_rotation`, `dh_mask_pixel_scale`, `dh_mask_edge`): used only by `dh_mask_generate`
 - Camera settle (mutually exclusive): `cam_n_frame_delay` **or** `cam_r_delay`
 - Shared: `n_images` — frames averaged for `calibrate` grabs, `cl_run` grabs, and contrast / `shm_cam_sub_norm`
 - Calibration: `cal_probe_amp`, `cal_mode_amp`, `cal_reg_cond`
@@ -90,7 +92,12 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 | `cal_dir` | Calibration package directory |
 | `dm_cmd_path` | Directory for closed-loop DM command FITS (`{shm_dm_mode}_cl_{N}.fits`) |
 | `psf_dir` | Ref-PSF / dark / Imax package directory |
-| `dh_mask_path` | External FITS path for `dh_mask_reload` (control+contrast; empty → `cal_dir/wfs_mask.fits`) |
+| `dh_mask_path` | DH mask FITS file or directory for `dh_mask_generate` / `dh_mask_reload` (directory → `dh_mask.fits`; empty → `cal_dir/wfs_mask.fits`) |
+| `dh_mask_x` / `dh_mask_y` | Vortex center [pix]; `<0` uses camera center (`ncam/2`) |
+| `dh_mask_iwa` / `dh_mask_owa` | Inner/outer working angle in `dh_mask_pixel_scale` units (`1` → pixels) |
+| `dh_mask_rotation` | Rotation of the half-annulus about the vortex [deg] |
+| `dh_mask_pixel_scale` | Scale from pixels to IWA/OWA/edge (`1` = 1 pixel per unit) |
+| `dh_mask_edge` | Unrotated half-plane cut (`x > edge`); default equals IWA (D-shaped hole) |
 | `sat_mask_path` | FITS region for raw-ADU saturation checks; applied only by `sat_mask_reload` |
 | `sat_thresh` | Raw ADU threshold (≥ logs a warning, does not abort); default 55000 |
 | `psf_max_ref` | Ref-PSF peak / NI scale (writable; calibrate/`reload_psf_ref` override when finished) |
@@ -106,6 +113,7 @@ Changing a shmim name closes open streams; the next job reopens with the new nam
 | `cl_run` | Toggle: On starts closed loop (FSM OPERATING); Off aborts. Auto-Off when the run finishes. |
 | `dm_reset` | Load `{dm_cmd_path}/{shm_dm_mode}_cl_{dm_reset_index}.fits` onto `shm_dm_mode`, zero `shm_dm_probe`, set `cl_index`. Index 0 is the zero flat. Later `cl_run` writes overwrite newer files. |
 | `dm_reset_index` | Archive index restored by `dm_reset` (0 = `{shm_dm_mode}_cl_0.fits`) |
+| `dh_mask_generate` | Raster the half-annulus DH mask from `dh_mask_*` geometry and write FITS at `dh_mask_path` (does **not** load it) |
 | `dh_mask_reload` | Load FITS mask as **control+contrast**; write `cal_dir/wfs_mask.fits`; remask + rebuild control when cal data exists; publish `shm_dh_mask` |
 | `sat_mask_reload` | Load `sat_mask_path` into memory and publish `shm_sat_mask`. Changing the path alone does not reload. |
 | `stop` | Abort in-progress job; zeros **both** DM poke channels and returns to idle |
@@ -151,9 +159,17 @@ Dark-library warnings (no match / nearest dark not at live exptime) are logged w
 when `reload_dark_lib`, `reload_psf_ref`, `calibrate`, or `cl_run` loads a setup.
 They are not repeated every camera frame.
 
-`dh_mask_reload` sets the live control (+ contrast) mask, writes `cal_dir/wfs_mask.fits`,
-publishes `shm_dh_mask`, and remasks/rebuilds control when `cal_dir` has `response_full`.
-`calibrate` uses a previously loaded mask instead of the default annulus.
+`dh_mask_generate` rasters the classic D-shaped half-annulus (IWA/OWA about the vortex,
+half-plane cut at `dh_mask_edge`, then rotation about that vortex) and writes a 0/1 FITS
+file. `dh_mask_path` may be a FITS file or a directory (`dh_mask.fits` is written inside).
+Empty path falls back to `cal_dir/wfs_mask.fits`. Generation does not load the mask.
+The FITS header stores `DH_MASK_X`, `DH_MASK_Y`, `DH_MASK_IWA`, `DH_MASK_OWA`,
+`DH_MASK_ROTATION`, `DH_MASK_PIXEL_SCALE`, and `DH_MASK_EDGE`.
+
+`dh_mask_reload` loads that FITS (or any external mask), publishes `shm_dh_mask`, writes
+`cal_dir/wfs_mask.fits` (preserving those cards), and remasks/rebuilds control when
+`cal_dir` has `response_full`. `calibrate` uses the loaded mask and will not generate one.
+Typical order: generate → reload → calibrate.
 
 `reload_psf_ref` loads a ref-PSF package created by **psfRefCtrl** and updates `psf_max_ref`,
 the live normalization, and contrast accumulator.

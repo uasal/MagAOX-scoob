@@ -1,7 +1,14 @@
 #include "lina/utils.h"
 
+/** \file utils.cpp
+  * \brief Image statistics, annular DH masks, and FITS helpers for IEFC.
+  */
+
 #include <cmath>
+#include <iomanip>
 #include <numeric>
+#include <sstream>
+#include <stdexcept>
 
 namespace lina {
 
@@ -231,6 +238,53 @@ Array2D<std::uint8_t> create_annular_focal_plane_mask(std::size_t npsf,
         mask = ndimage_shift_nn(mask, y_shift, x_shift);
     }
     return mask;
+}
+
+void resolve_dh_mask_params(DhMaskParams& p) {
+    if (p.ncam == 0) {
+        throw std::invalid_argument("create_dh_control_mask: ncam is 0");
+    }
+    if (!(p.pixel_scale > 0.0) || !std::isfinite(p.pixel_scale)) {
+        throw std::invalid_argument("create_dh_control_mask: dh_mask_pixel_scale must be > 0");
+    }
+    if (!(p.owa > p.iwa) || !std::isfinite(p.iwa) || !std::isfinite(p.owa)) {
+        throw std::invalid_argument("create_dh_control_mask: dh_mask_owa must be > dh_mask_iwa");
+    }
+    const double center = static_cast<double>(p.ncam) / 2.0;
+    if (!(p.x >= 0.0) || !std::isfinite(p.x))
+        p.x = center;
+    if (!(p.y >= 0.0) || !std::isfinite(p.y))
+        p.y = center;
+    if (!std::isfinite(p.edge))
+        p.edge = p.iwa;
+}
+
+Array2D<std::uint8_t> create_dh_control_mask(const DhMaskParams& params) {
+    DhMaskParams p = params;
+    resolve_dh_mask_params(p);
+    const double half = static_cast<double>(p.ncam) / 2.0;
+    const double x_shift = p.x - half;
+    const double y_shift = p.y - half;
+    return create_annular_focal_plane_mask(p.ncam, p.pixel_scale, p.iwa, p.owa, p.edge, "odd",
+                                           p.rotation_deg, x_shift, y_shift);
+}
+
+FitsHeader dh_mask_fits_header(const DhMaskParams& params) {
+    auto fmt = [](double v) {
+        std::ostringstream oss;
+        oss << std::setprecision(17) << v;
+        return oss.str();
+    };
+    return {{"KIND", "'wfs_mask'"},
+            {"SOURCE", "'dh_mask_generate'"},
+            {"DH_MASK_X", fmt(params.x)},
+            {"DH_MASK_Y", fmt(params.y)},
+            {"DH_MASK_IWA", fmt(params.iwa)},
+            {"DH_MASK_OWA", fmt(params.owa)},
+            {"DH_MASK_ROTATION", fmt(params.rotation_deg)},
+            {"DH_MASK_PIXEL_SCALE", fmt(params.pixel_scale)},
+            {"DH_MASK_EDGE", fmt(params.edge)},
+            {"NCAM", std::to_string(params.ncam)}};
 }
 
 } // namespace lina

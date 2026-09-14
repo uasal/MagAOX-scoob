@@ -67,7 +67,7 @@ namespace MagAOX
 namespace app
 {
 
-/// MagAO-X Stream IEFC controller (INDI front-end for ref-PSF / calibrate / run).
+/// MagAO-X Stream IEFC controller (INDI front-end for ref-PSF / DH mask / calibrate / run).
 /** \ingroup iefcCtrl
   */
 class iefcCtrl : public MagAOXApp<true>
@@ -83,6 +83,7 @@ class iefcCtrl : public MagAOXApp<true>
         Run,
         DmReset,
         RecomputeControl, ///< beta_reg from cached response with current cal_reg_cond
+        DhMaskGenerate, ///< Raster DH mask and write FITS at dh_mask_path
         Stop
     };
 
@@ -106,7 +107,14 @@ class iefcCtrl : public MagAOXApp<true>
     unsigned m_dmResetIndex{ 0 }; ///< Archive index loaded by `dm_reset`
     std::string m_darkLibPath; ///< External dark library dir (dark_metadata.txt from darkCtrl)
     std::string m_camName{ "camsci" }; ///< INDI device for cam_name.exptime / emgain (not dark match)
-    std::string m_dhMaskPath; ///< External FITS mask path for dh_mask_reload (full path or filename)
+    std::string m_dhMaskPath; ///< DH mask FITS file or directory (generate + reload)
+    double m_dhMaskX{ -1.0 }; ///< Vortex column [pix]; <0 → camera center
+    double m_dhMaskY{ -1.0 }; ///< Vortex row [pix]; <0 → camera center
+    double m_dhMaskIwa{ 3.0 }; ///< Inner working angle (dh_mask_pixel_scale units)
+    double m_dhMaskOwa{ 10.0 }; ///< Outer working angle (dh_mask_pixel_scale units)
+    double m_dhMaskRotation{ 90.0 }; ///< Rotation about the vortex [deg]
+    double m_dhMaskPixelScale{ 1.0 }; ///< 1 → IWA/OWA/edge are in pixels
+    double m_dhMaskEdge{ 3.0 }; ///< Unrotated half-plane cut; default matches IWA
     std::string m_satMaskPath; ///< FITS sat-check region for calibrate (raw ADU)
     float m_satThresh{ 55000.0f }; ///< Raw ADU threshold inside sat_mask (≥ → abort cal)
 
@@ -161,7 +169,8 @@ class iefcCtrl : public MagAOXApp<true>
     lina::Array2D<double> m_cachedProbeModes;
     lina::Array2D<double> m_cachedCalibModes;
     lina::Array2D<std::uint8_t> m_cachedMask;
-    bool m_haveUserDhMask{ false }; ///< True after dh_mask_reload (prefer for next calibrate)
+    bool m_haveUserDhMask{ false }; ///< True after dh_mask_reload (required for calibrate)
+    lina::FitsHeader m_dhMaskHeader; ///< Cards copied from the last generated/loaded mask FITS
     lina::Array2D<double> m_cachedDark;
     double m_cachedImaxRef{ 0.0 };
     double m_cachedPsfExptime{ 1.0 };
@@ -275,6 +284,27 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_dhMaskPath;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskPath);
 
+    pcf::IndiProperty m_indiP_dhMaskX;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskX);
+
+    pcf::IndiProperty m_indiP_dhMaskY;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskY);
+
+    pcf::IndiProperty m_indiP_dhMaskIwa;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskIwa);
+
+    pcf::IndiProperty m_indiP_dhMaskOwa;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskOwa);
+
+    pcf::IndiProperty m_indiP_dhMaskRotation;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskRotation);
+
+    pcf::IndiProperty m_indiP_dhMaskPixelScale;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskPixelScale);
+
+    pcf::IndiProperty m_indiP_dhMaskEdge;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskEdge);
+
     pcf::IndiProperty m_indiP_satMaskPath;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_satMaskPath);
 
@@ -333,6 +363,9 @@ class iefcCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_dmResetIndex;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dmResetIndex);
+
+    pcf::IndiProperty m_indiP_dhMaskGenerate;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskGenerate);
 
     pcf::IndiProperty m_indiP_dhMaskReload;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskReload);
@@ -403,8 +436,22 @@ class iefcCtrl : public MagAOXApp<true>
     /// After each CL DM write: increment `cl_index`, archive, publish INDI.
     void archiveClosedLoopCommand( const lina::Array2D<double> &write_cmd );
     int doRecomputeControl(); ///< Load or build control for current cal_reg_cond
+    int doDhMaskGenerate(); ///< Raster DH mask from INDI geometry and write FITS
     int doDhMaskReload();      ///< Load WFS/control mask; remask+rebuild control from dir_cal
     int doSatMaskReload();     ///< Load sat mask from sat_mask_path; publish shm_sat_mask
+
+    /// Resolve `dh_mask_path` to a FITS file (directory → `dh_mask.fits`; empty → `cal_dir/wfs_mask.fits`).
+    std::string dhMaskFitsPath() const;
+
+    /// Current INDI DH-mask geometry for a square camera of size `ncam`.
+    lina::DhMaskParams currentDhMaskParams( std::size_t ncam /**< [in] square camsci size [pix] */ ) const;
+
+    /// Copy user FITS cards, dropping HDU-structure keywords; ensure KIND/SOURCE.
+    static lina::FitsHeader copyDhMaskFitsHeader( const lina::FitsHeader &src /**< [in] loaded header */,
+                                                  const char *source_tag /**< [in] SOURCE if missing */ );
+
+    /// True if `path` ends in `.fits` / `.fit` (any case).
+    static bool pathLooksLikeFits( const std::string &path /**< [in] file or directory path */ );
 
     /// Apply FITS mask as control+contrast; remask response / beta_reg when cal data exists.
     int applyDhMaskFromFits( const std::string &path );
@@ -477,7 +524,7 @@ class iefcCtrl : public MagAOXApp<true>
     /// If a new camsci frame is available, dark-sub + normalize and publish.
     int processSubNormFrame();
 
-    /// Ensure control mask available for continuous contrast (cal cache / dir_cal / default).
+    /// Ensure control mask available for continuous contrast (cal cache / dir_cal).
     int ensureContrastMask( uint32_t w, uint32_t h );
 
     /// Ensure scalar contrast_avg shmim exists.
@@ -573,7 +620,70 @@ void iefcCtrl::setupConfig()
                 "dh_mask_path",
                 false,
                 "string",
-                "FITS path for dh_mask_reload (control+contrast; remasks dir_cal if present)." );
+                "FITS file or directory for dh_mask_generate / dh_mask_reload (dir → dh_mask.fits)." );
+    config.add( "iefc.dh_mask_x",
+                "",
+                "iefc.dh_mask_x",
+                argType::Required,
+                "iefc",
+                "dh_mask_x",
+                false,
+                "float",
+                "DH mask vortex column [pix]; <0 uses camera center." );
+    config.add( "iefc.dh_mask_y",
+                "",
+                "iefc.dh_mask_y",
+                argType::Required,
+                "iefc",
+                "dh_mask_y",
+                false,
+                "float",
+                "DH mask vortex row [pix]; <0 uses camera center." );
+    config.add( "iefc.dh_mask_iwa",
+                "",
+                "iefc.dh_mask_iwa",
+                argType::Required,
+                "iefc",
+                "dh_mask_iwa",
+                false,
+                "float",
+                "DH mask inner working angle (dh_mask_pixel_scale units)." );
+    config.add( "iefc.dh_mask_owa",
+                "",
+                "iefc.dh_mask_owa",
+                argType::Required,
+                "iefc",
+                "dh_mask_owa",
+                false,
+                "float",
+                "DH mask outer working angle (dh_mask_pixel_scale units)." );
+    config.add( "iefc.dh_mask_rotation",
+                "",
+                "iefc.dh_mask_rotation",
+                argType::Required,
+                "iefc",
+                "dh_mask_rotation",
+                false,
+                "float",
+                "DH mask rotation about the vortex [deg]." );
+    config.add( "iefc.dh_mask_pixel_scale",
+                "",
+                "iefc.dh_mask_pixel_scale",
+                argType::Required,
+                "iefc",
+                "dh_mask_pixel_scale",
+                false,
+                "float",
+                "Scale from pixels to IWA/OWA/edge (1 = 1 pixel per unit)." );
+    config.add( "iefc.dh_mask_edge",
+                "",
+                "iefc.dh_mask_edge",
+                argType::Required,
+                "iefc",
+                "dh_mask_edge",
+                false,
+                "float",
+                "Unrotated half-plane cut (x > edge); default matches IWA (D-shaped hole)." );
     config.add( "iefc.sat_mask_path",
                 "",
                 "iefc.sat_mask_path",
@@ -695,6 +805,13 @@ void iefcCtrl::loadConfig()
     config( m_darkLibPath, "iefc.dark_lib_path" );
     config( m_camName, "iefc.cam_name" );
     config( m_dhMaskPath, "iefc.dh_mask_path" );
+    config( m_dhMaskX, "iefc.dh_mask_x" );
+    config( m_dhMaskY, "iefc.dh_mask_y" );
+    config( m_dhMaskIwa, "iefc.dh_mask_iwa" );
+    config( m_dhMaskOwa, "iefc.dh_mask_owa" );
+    config( m_dhMaskRotation, "iefc.dh_mask_rotation" );
+    config( m_dhMaskPixelScale, "iefc.dh_mask_pixel_scale" );
+    config( m_dhMaskEdge, "iefc.dh_mask_edge" );
     config( m_satMaskPath, "iefc.sat_mask_path" );
     config( m_satThresh, "iefc.sat_thresh" );
     config( m_nImages, "iefc.n_images" );
@@ -748,7 +865,21 @@ int iefcCtrl::appStartup()
     CREATE_REG_INDI_NEW_TEXT( m_indiP_psfDir, "psf_dir", "Ref-PSF package from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_darkLibPath, "dark_lib_path", "Dark library directory (from darkCtrl)", "paths" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_camName, "cam_name", "INDI science-camera device (exptime/emgain)", "camera" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_dhMaskPath, "dh_mask_path", "External WFS/control mask FITS path", "paths" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_dhMaskPath, "dh_mask_path", "DH mask FITS file or directory", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskX, "dh_mask_x", -1, 1e5, 0.1, "%0.3f",
+                                "Vortex column [pix]; <0 = camera center", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskY, "dh_mask_y", -1, 1e5, 0.1, "%0.3f",
+                                "Vortex row [pix]; <0 = camera center", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskIwa, "dh_mask_iwa", 0, 1e4, 0.1, "%0.3f",
+                                "Inner working angle (pixel_scale units)", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskOwa, "dh_mask_owa", 0, 1e4, 0.1, "%0.3f",
+                                "Outer working angle (pixel_scale units)", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskRotation, "dh_mask_rotation", -360, 360, 0.1, "%0.3f",
+                                "Rotation about the vortex [deg]", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskPixelScale, "dh_mask_pixel_scale", 1e-6, 1e3, 0.01, "%0.6g",
+                                "IWA/OWA/edge scale (1 = pixels)", "dh_mask" );
+    CREATE_REG_INDI_NEW_NUMBERF( m_indiP_dhMaskEdge, "dh_mask_edge", -1e9, 1e4, 0.1, "%0.3f",
+                                "Unrotated half-plane cut (x > edge)", "dh_mask" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_satMaskPath, "sat_mask_path", "Saturation-check mask FITS path", "paths" );
     CREATE_REG_INDI_NEW_NUMBERF( m_indiP_satThresh, "sat_thresh", 0, 1e7, 1, "%0.1f",
                                 "Raw ADU sat threshold in sat_mask", "calibrate" );
@@ -774,6 +905,7 @@ int iefcCtrl::appStartup()
     if( registerIndiPropertyNew( m_indiP_clRun, INDI_NEWCALLBACK( m_indiP_clRun ) ) < 0 )
         return log<software_error, -1>( { __FILE__, __LINE__, "registerIndiPropertyNew cl_run" } );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dmReset, "dm_reset" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dhMaskGenerate, "dh_mask_generate" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dhMaskReload, "dh_mask_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_satMaskReload, "sat_mask_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_stop, "stop" );
@@ -839,6 +971,20 @@ int iefcCtrl::appStartup()
     m_indiP_camName["target"].setValue( m_camName );
     m_indiP_dhMaskPath["current"].setValue( m_dhMaskPath );
     m_indiP_dhMaskPath["target"].setValue( m_dhMaskPath );
+    m_indiP_dhMaskX["current"].setValue( m_dhMaskX );
+    m_indiP_dhMaskX["target"].setValue( m_dhMaskX );
+    m_indiP_dhMaskY["current"].setValue( m_dhMaskY );
+    m_indiP_dhMaskY["target"].setValue( m_dhMaskY );
+    m_indiP_dhMaskIwa["current"].setValue( m_dhMaskIwa );
+    m_indiP_dhMaskIwa["target"].setValue( m_dhMaskIwa );
+    m_indiP_dhMaskOwa["current"].setValue( m_dhMaskOwa );
+    m_indiP_dhMaskOwa["target"].setValue( m_dhMaskOwa );
+    m_indiP_dhMaskRotation["current"].setValue( m_dhMaskRotation );
+    m_indiP_dhMaskRotation["target"].setValue( m_dhMaskRotation );
+    m_indiP_dhMaskPixelScale["current"].setValue( m_dhMaskPixelScale );
+    m_indiP_dhMaskPixelScale["target"].setValue( m_dhMaskPixelScale );
+    m_indiP_dhMaskEdge["current"].setValue( m_dhMaskEdge );
+    m_indiP_dhMaskEdge["target"].setValue( m_dhMaskEdge );
     m_indiP_satMaskPath["current"].setValue( m_satMaskPath );
     m_indiP_satMaskPath["target"].setValue( m_satMaskPath );
     m_indiP_satThresh["current"].setValue( m_satThresh );
@@ -1083,6 +1229,8 @@ int iefcCtrl::runJob( Job j )
             return doDmReset();
         case Job::RecomputeControl:
             return doRecomputeControl();
+        case Job::DhMaskGenerate:
+            return doDhMaskGenerate();
         case Job::Stop:
             setStatus( "stop requested" );
             return 0;
@@ -1893,16 +2041,6 @@ int iefcCtrl::ensureContrastMask( uint32_t w, uint32_t h )
         {
         }
     }
-
-    // Fall back to default half-annulus DH mask (square camsci).
-    if( w == h && w > 0 )
-    {
-        auto in = lina::default_loop_inputs( w, liveDmNact() );
-        m_liveContrastMask = lina::create_annular_focal_plane_mask(
-            in.ncam, in.pxscl, in.dh_iwa, in.dh_owa, in.dh_iwa, "odd", in.dh_rot );
-        m_haveContrastMask = true;
-        return 0;
-    }
     return -1;
 }
 
@@ -2291,10 +2429,12 @@ int iefcCtrl::remaskControlFromCalibration( const lina::Array2D<std::uint8_t> &m
             lina::Array2D<double> mask_f( mask.rows(), mask.cols(), 0.0 );
             for( size_t i = 0; i < mask.size(); ++i )
                 mask_f.data()[i] = mask.data()[i] ? 1.0 : 0.0;
-            lina::save_fits( pkg.wfs_mask_path(),
-                             mask_f,
-                             { { "KIND", "'wfs_mask'" }, { "SOURCE", "'dh_mask_reload'" } },
-                             true );
+            lina::FitsHeader hdr;
+            {
+                std::lock_guard<std::mutex> lock( m_calMutex );
+                hdr = copyDhMaskFitsHeader( m_dhMaskHeader, "dh_mask_reload" );
+            }
+            lina::save_fits( pkg.wfs_mask_path(), mask_f, hdr, true );
             log<text_log>( "wrote " + absPath( pkg.wfs_mask_path() ) );
 
             const std::size_t nmask = response_masked.cols() / nprobes;
@@ -2328,9 +2468,12 @@ int iefcCtrl::applyDhMaskFromFits( const std::string &path )
             { __FILE__, __LINE__, "dh_mask_path is empty" } );
 
     lina::Array2D<double> m;
+    lina::FitsHeader hdr;
     try
     {
-        m = lina::load_fits_double( path );
+        auto loaded = lina::load_fits_with_header( path );
+        m = std::move( loaded.first );
+        hdr = copyDhMaskFitsHeader( loaded.second, "dh_mask_reload" );
     }
     catch( const std::exception &e )
     {
@@ -2359,6 +2502,7 @@ int iefcCtrl::applyDhMaskFromFits( const std::string &path )
         std::lock_guard<std::mutex> lock( m_calMutex );
         m_cachedMask = mask;
         m_haveUserDhMask = true;
+        m_dhMaskHeader = hdr;
     }
     {
         std::lock_guard<std::mutex> lock( m_contrastAvgMutex );
@@ -2393,11 +2537,7 @@ int iefcCtrl::applyDhMaskFromFits( const std::string &path )
                 lina::Array2D<double> mask_f( mask.rows(), mask.cols(), 0.0 );
                 for( size_t i = 0; i < mask.size(); ++i )
                     mask_f.data()[i] = mask.data()[i] ? 1.0 : 0.0;
-                lina::save_fits( pkg.wfs_mask_path(),
-                                 mask_f,
-                                 { { "KIND", "'wfs_mask'" },
-                                   { "SOURCE", "'dh_mask_reload'" } },
-                                 true );
+                lina::save_fits( pkg.wfs_mask_path(), mask_f, hdr, true );
                 log<text_log>( "wrote " + absPath( pkg.wfs_mask_path() ) );
             }
         }
@@ -2417,14 +2557,16 @@ int iefcCtrl::applyDhMaskFromFits( const std::string &path )
 
 int iefcCtrl::doDhMaskReload()
 {
-    std::string path = m_dhMaskPath;
-    if( path.empty() && !m_calDir.empty() )
+    const std::string path = dhMaskFitsPath();
+    if( path.empty() )
     {
-        lina::PackagePaths pkg;
-        pkg.dir = m_calDir;
-        path = pkg.wfs_mask_path();
-        log<text_log>( "dh_mask_path empty; falling back to " + path );
+        setStatus( "dh_mask_reload: failed" );
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              "dh_mask_path is empty and cal_dir is empty; nowhere to load a mask" } );
     }
+    if( path != m_dhMaskPath )
+        log<text_log>( "dh_mask_path resolved to " + path );
 
     setStatus( "dh_mask_reload: " + path );
     if( applyDhMaskFromFits( path ) < 0 )
@@ -2434,6 +2576,159 @@ int iefcCtrl::doDhMaskReload()
     }
     setStatus( "dh_mask_reload: done" );
     return 0;
+}
+
+bool iefcCtrl::pathLooksLikeFits( const std::string &path )
+{
+    auto lower = path;
+    std::transform( lower.begin(), lower.end(), lower.begin(), []( unsigned char c ) {
+        return static_cast<char>( std::tolower( c ) );
+    } );
+    return ( lower.size() >= 5 && lower.compare( lower.size() - 5, 5, ".fits" ) == 0 ) ||
+           ( lower.size() >= 4 && lower.compare( lower.size() - 4, 4, ".fit" ) == 0 );
+}
+
+std::string iefcCtrl::dhMaskFitsPath() const
+{
+    std::string path = m_dhMaskPath;
+    while( !path.empty() && ( path.back() == '/' || path.back() == '\\' ) )
+        path.pop_back();
+    if( path.empty() )
+    {
+        if( m_calDir.empty() )
+            return {};
+        lina::PackagePaths pkg;
+        pkg.dir = m_calDir;
+        return pkg.wfs_mask_path();
+    }
+    struct stat st {};
+    if( ::stat( path.c_str(), &st ) == 0 && S_ISDIR( st.st_mode ) )
+        return path + "/dh_mask.fits";
+    if( !pathLooksLikeFits( path ) )
+        return path + "/dh_mask.fits";
+    return path;
+}
+
+lina::DhMaskParams iefcCtrl::currentDhMaskParams( std::size_t ncam ) const
+{
+    lina::DhMaskParams p;
+    p.ncam = ncam;
+    p.x = m_dhMaskX;
+    p.y = m_dhMaskY;
+    p.iwa = m_dhMaskIwa;
+    p.owa = m_dhMaskOwa;
+    p.rotation_deg = m_dhMaskRotation;
+    p.pixel_scale = m_dhMaskPixelScale;
+    p.edge = m_dhMaskEdge;
+    return p;
+}
+
+lina::FitsHeader iefcCtrl::copyDhMaskFitsHeader( const lina::FitsHeader &src, const char *source_tag )
+{
+    lina::FitsHeader out;
+    bool have_kind = false;
+    bool have_source = false;
+    for( const auto &kv : src )
+    {
+        const std::string &k = kv.first;
+        if( k == "SIMPLE" || k == "BITPIX" || k == "NAXIS" || k == "NAXIS1" || k == "NAXIS2" ||
+            k == "NAXIS3" || k == "EXTEND" || k == "PCOUNT" || k == "GCOUNT" || k == "BSCALE" ||
+            k == "BZERO" || k == "BLANK" || k == "CHECKSUM" || k == "DATASUM" )
+            continue;
+        out.push_back( kv );
+        if( k == "KIND" )
+            have_kind = true;
+        if( k == "SOURCE" )
+            have_source = true;
+    }
+    if( !have_kind )
+        out.insert( out.begin(), { "KIND", "'wfs_mask'" } );
+    if( !have_source && source_tag != nullptr )
+        out.emplace_back( "SOURCE", std::string( "'" ) + source_tag + "'" );
+    return out;
+}
+
+int iefcCtrl::doDhMaskGenerate()
+{
+    setStatus( "dh_mask_generate: starting" );
+    try
+    {
+        lina::ShmimStream camsci( m_shmCamInput );
+        if( camsci.rows() == 0 || camsci.cols() == 0 )
+        {
+            setStatus( "dh_mask_generate: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__, "dh_mask_generate: camera stream has zero size" } );
+        }
+        if( camsci.rows() != camsci.cols() )
+        {
+            setStatus( "dh_mask_generate: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "dh_mask_generate: camera must be square (got " +
+                      std::to_string( camsci.rows() ) + "x" + std::to_string( camsci.cols() ) +
+                      ")" } );
+        }
+
+        const auto params = currentDhMaskParams( camsci.rows() );
+        auto mask = lina::create_dh_control_mask( params );
+        std::size_t nones = 0;
+        for( size_t i = 0; i < mask.size(); ++i )
+        {
+            if( mask.data()[i] )
+                ++nones;
+        }
+        if( nones == 0 )
+        {
+            setStatus( "dh_mask_generate: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__, "dh_mask_generate: mask has no positive pixels" } );
+        }
+
+        const std::string path = dhMaskFitsPath();
+        if( path.empty() )
+        {
+            setStatus( "dh_mask_generate: failed" );
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "dh_mask_path is empty and cal_dir is empty; nowhere to write a mask" } );
+        }
+
+        std::string parent = path;
+        const auto slash = parent.find_last_of( '/' );
+        if( slash != std::string::npos )
+            parent = parent.substr( 0, slash == 0 ? 1 : slash );
+        else
+            parent = ".";
+        if( parent != "." && ensureDir( parent ) < 0 )
+        {
+            setStatus( "dh_mask_generate: failed" );
+            return -1;
+        }
+
+        lina::Array2D<double> mask_f( mask.rows(), mask.cols(), 0.0 );
+        for( size_t i = 0; i < mask.size(); ++i )
+            mask_f.data()[i] = mask.data()[i] ? 1.0 : 0.0;
+        const auto hdr = lina::dh_mask_fits_header( params );
+        lina::save_fits( path, mask_f, hdr, true );
+        {
+            std::lock_guard<std::mutex> lock( m_calMutex );
+            m_dhMaskHeader = hdr;
+        }
+
+        log<text_log>( "dh_mask_generate: wrote " + absPath( path ) + " (" +
+                       std::to_string( mask.rows() ) + "x" + std::to_string( mask.cols() ) +
+                       ", ones=" + std::to_string( nones ) +
+                       "); use dh_mask_reload to load it" );
+        setStatus( "dh_mask_generate: done" );
+        return 0;
+    }
+    catch( const std::exception &e )
+    {
+        setStatus( "dh_mask_generate: failed" );
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "dh_mask_generate: " ) + e.what() } );
+    }
 }
 
 int iefcCtrl::ensureContrastAvgStream()
@@ -3171,6 +3466,16 @@ int iefcCtrl::doCalReload()
                            logPrio::LOG_WARNING );
         }
 
+        lina::FitsHeader mask_hdr;
+        try
+        {
+            auto loaded = lina::load_fits_with_header( pkg.wfs_mask_path() );
+            mask_hdr = copyDhMaskFitsHeader( loaded.second, "cal_reload" );
+        }
+        catch( ... )
+        {
+        }
+
         {
             std::lock_guard<std::mutex> lock( m_calMutex );
             m_cachedResponse = std::move( response );
@@ -3180,6 +3485,7 @@ int iefcCtrl::doCalReload()
             m_cachedProbeModes = in.probe_modes;
             m_cachedCalibModes = in.calib_modes;
             m_cachedMask = in.control_mask;
+            m_dhMaskHeader = mask_hdr;
             if( setupData.loaded )
             {
                 m_cachedDark = setupData.dark;
@@ -3257,23 +3563,30 @@ int iefcCtrl::doCalibrate()
         updateLiveNormFromSetup( setup, live_exptime );
         resetContrastAccumulator();
 
-        // Prefer user-loaded / cached WFS mask over default annulus.
+        in.dh_iwa = m_dhMaskIwa;
+        in.dh_owa = m_dhMaskOwa;
+        in.dh_rot = m_dhMaskRotation;
+        in.dh_x = m_dhMaskX;
+        in.dh_y = m_dhMaskY;
+        in.dh_pixel_scale = m_dhMaskPixelScale;
+        in.dh_edge = m_dhMaskEdge;
+
+        lina::FitsHeader mask_hdr;
         {
             std::lock_guard<std::mutex> lock( m_calMutex );
-            if( m_cachedMask.size() > 0 && m_cachedMask.rows() == in.control_mask.rows() &&
-                m_cachedMask.cols() == in.control_mask.cols() )
-            {
-                in.control_mask = m_cachedMask;
-                log<text_log>( "calibrate: using loaded/cached WFS mask (" +
-                               std::to_string( m_cachedMask.rows() ) + "x" +
-                               std::to_string( m_cachedMask.cols() ) + ")" );
-            }
-            else if( m_haveUserDhMask )
+            if( m_cachedMask.size() == 0 || m_cachedMask.rows() != in.ncam ||
+                m_cachedMask.cols() != in.ncam )
             {
                 return log<software_error, -1>(
                     { __FILE__, __LINE__,
-                      "loaded WFS mask size does not match camsci — reload mask" } );
+                      "calibrate requires a loaded DH mask matching camsci "
+                      "(dh_mask_generate then dh_mask_reload)" } );
             }
+            in.control_mask = m_cachedMask;
+            mask_hdr = m_dhMaskHeader;
+            log<text_log>( "calibrate: using loaded WFS mask (" +
+                           std::to_string( m_cachedMask.rows() ) + "x" +
+                           std::to_string( m_cachedMask.cols() ) + ")" );
         }
 
         if( !m_haveSatMask || m_satMask.size() == 0 )
@@ -3367,7 +3680,6 @@ int iefcCtrl::doCalibrate()
             m_cachedProbeModes = in.probe_modes;
             m_cachedCalibModes = in.calib_modes;
             m_cachedMask = in.control_mask;
-            m_haveUserDhMask = false; // consumed into this package
             m_cachedDark = setup.dark;
             m_cachedImaxRef = setup.Imax_ref;
             m_cachedPsfExptime = setup.psf_exptime;
@@ -3393,7 +3705,7 @@ int iefcCtrl::doCalibrate()
                            "recalibrate or enable save_response_full",
                            logPrio::LOG_WARNING );
         }
-        lina::save_package( pkg, in, cal.response_masked, control, setup, full_ptr );
+        lina::save_package( pkg, in, cal.response_masked, control, setup, full_ptr, mask_hdr );
 
         updateIfChanged( m_indiP_psfMaxRef, "current", setup.Imax_ref );
         updateIfChanged( m_indiP_psfMaxRef, "target", setup.Imax_ref );
@@ -3941,6 +4253,102 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskPath )( const pcf::IndiProperty &
     return 0;
 }
 
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskX )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskX, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskX, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskX )
+        log<text_log>( "dh_mask_x: " + std::to_string( m_dhMaskX ) + " -> " + std::to_string( target ) );
+    m_dhMaskX = target;
+    updateIfChanged( m_indiP_dhMaskX, "current", m_dhMaskX );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskY )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskY, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskY, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskY )
+        log<text_log>( "dh_mask_y: " + std::to_string( m_dhMaskY ) + " -> " + std::to_string( target ) );
+    m_dhMaskY = target;
+    updateIfChanged( m_indiP_dhMaskY, "current", m_dhMaskY );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskIwa )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskIwa, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskIwa, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskIwa )
+        log<text_log>( "dh_mask_iwa: " + std::to_string( m_dhMaskIwa ) + " -> " +
+                       std::to_string( target ) );
+    m_dhMaskIwa = target;
+    updateIfChanged( m_indiP_dhMaskIwa, "current", m_dhMaskIwa );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskOwa )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskOwa, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskOwa, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskOwa )
+        log<text_log>( "dh_mask_owa: " + std::to_string( m_dhMaskOwa ) + " -> " +
+                       std::to_string( target ) );
+    m_dhMaskOwa = target;
+    updateIfChanged( m_indiP_dhMaskOwa, "current", m_dhMaskOwa );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskRotation )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskRotation, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskRotation, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskRotation )
+        log<text_log>( "dh_mask_rotation: " + std::to_string( m_dhMaskRotation ) + " -> " +
+                       std::to_string( target ) );
+    m_dhMaskRotation = target;
+    updateIfChanged( m_indiP_dhMaskRotation, "current", m_dhMaskRotation );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskPixelScale )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskPixelScale, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskPixelScale, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskPixelScale )
+        log<text_log>( "dh_mask_pixel_scale: " + std::to_string( m_dhMaskPixelScale ) + " -> " +
+                       std::to_string( target ) );
+    m_dhMaskPixelScale = target;
+    updateIfChanged( m_indiP_dhMaskPixelScale, "current", m_dhMaskPixelScale );
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskEdge )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskEdge, ipRecv );
+    float target;
+    if( indiTargetUpdate( m_indiP_dhMaskEdge, target, ipRecv, false ) < 0 )
+        return -1;
+    if( static_cast<double>( target ) != m_dhMaskEdge )
+        log<text_log>( "dh_mask_edge: " + std::to_string( m_dhMaskEdge ) + " -> " +
+                       std::to_string( target ) );
+    m_dhMaskEdge = target;
+    updateIfChanged( m_indiP_dhMaskEdge, "current", m_dhMaskEdge );
+    return 0;
+}
+
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_satMaskPath )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_satMaskPath, ipRecv );
@@ -4223,6 +4631,20 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dmReset )( const pcf::IndiProperty &ipR
         updateSwitchIfChanged( m_indiP_dmReset, "request", pcf::IndiElement::On, INDI_BUSY );
         queueJob( Job::DmReset );
         clearRequest( m_indiP_dmReset );
+    }
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskGenerate )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_dhMaskGenerate, ipRecv );
+    if( !ipRecv.find( "request" ) )
+        return -1;
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        updateSwitchIfChanged( m_indiP_dhMaskGenerate, "request", pcf::IndiElement::On, INDI_BUSY );
+        queueJob( Job::DhMaskGenerate );
+        clearRequest( m_indiP_dhMaskGenerate );
     }
     return 0;
 }

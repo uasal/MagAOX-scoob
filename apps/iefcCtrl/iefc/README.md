@@ -9,3 +9,8 @@ mode and probe streams (same square size); the physical command is their cacao s
 exposure + 2 extra frames), floored at 5 s. A missing camera frame period is an
 error (no timeout fallback).
 
+`create_dh_control_mask` rasters the IEFC D-shaped half-annulus (IWA/OWA about a vortex,
+optional half-plane cut, rotation about that vortex, then shift so the vortex lands at
+`(x,y)`). `iefcCtrl` calls this only from `dh_mask_generate`; calibration does not
+auto-generate a mask.
+

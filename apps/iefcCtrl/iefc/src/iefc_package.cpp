@@ -3,6 +3,10 @@
 #include "lina/linalg.h"
 #include "lina/utils.h"
 
+/** \file iefc_package.cpp
+  * \brief Calibration-package orchestration for Stream IEFC.
+  */
+
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -564,19 +568,7 @@ void generate_modes(LoopInputs& in, const std::string& calib_modes_fits_override
         in.calib_modes = create_hadamard_modes(dm_mask);
         std::cout << "calib_modes: " << in.calib_modes.rows() << " Hadamard modes\n";
     }
-
-    in.control_mask = create_annular_focal_plane_mask(
-        in.ncam, in.pxscl, in.dh_iwa, in.dh_owa,
-        in.dh_iwa,
-        "odd",
-        in.dh_rot);
-    std::size_t nmask = 0;
-    for (std::size_t i = 0; i < in.control_mask.size(); ++i) {
-        if (in.control_mask.data()[i]) ++nmask;
-    }
-    std::cout << "wfs_mask: half-annulus iwa=" << in.dh_iwa << " owa=" << in.dh_owa
-              << " edge=" << in.dh_iwa << " rot=" << in.dh_rot
-              << " pixels=" << nmask << "\n";
+    // control_mask is not generated here — iefcCtrl writes it via dh_mask_generate.
 }
 
 void load_modes_from_package(LoopInputs& in, const PackagePaths& pkg,
@@ -634,7 +626,8 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
                   const Array2D<double>& response_masked,
                   const Array2D<double>& control,
                   const SetupData& setup,
-                  const Array2D<double>* response_full) {
+                  const Array2D<double>* response_full,
+                  const FitsHeader& mask_header) {
     ensure_dir(pkg.dir);
 
     // New response invalidates any prior per-reg control matrices in this package.
@@ -690,7 +683,10 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
     Array2D<double> mask_f(in.control_mask.rows(), in.control_mask.cols(), 0.0);
     for (std::size_t i = 0; i < mask_f.size(); ++i)
         mask_f.data()[i] = in.control_mask.data()[i] ? 1.0 : 0.0;
-    save_fits(pkg.wfs_mask_path(), mask_f, {{"KIND", "'wfs_mask'"}}, true);
+    FitsHeader wfs_hdr = mask_header;
+    if (wfs_hdr.empty())
+        wfs_hdr = {{"KIND", "'wfs_mask'"}};
+    save_fits(pkg.wfs_mask_path(), mask_f, wfs_hdr, true);
     std::cout << "wrote " << pkg.wfs_mask_path() << "\n";
 
     if (setup.loaded) {
@@ -712,8 +708,11 @@ void save_package(const PackagePaths& pkg, const LoopInputs& in,
     cfg["pxscl_lamd"] = std::to_string(in.pxscl);
     cfg["dh_iwa"] = std::to_string(in.dh_iwa);
     cfg["dh_owa"] = std::to_string(in.dh_owa);
-    cfg["dh_edge"] = std::to_string(in.dh_iwa);
+    cfg["dh_edge"] = std::to_string(std::isfinite(in.dh_edge) ? in.dh_edge : in.dh_iwa);
     cfg["dh_rotation"] = std::to_string(in.dh_rot);
+    cfg["dh_mask_x"] = std::to_string(in.dh_x);
+    cfg["dh_mask_y"] = std::to_string(in.dh_y);
+    cfg["dh_mask_pixel_scale"] = std::to_string(in.dh_pixel_scale);
     cfg["nprobes"] = std::to_string(in.probe_modes.rows());
     cfg["nmodes"] = std::to_string(in.calib_modes.rows());
     cfg["psf_max_ref"] = std::to_string(in.ref_params.Imax);

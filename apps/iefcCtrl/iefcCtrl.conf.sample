@@ -30,9 +30,17 @@ cal_dir=./cal_a
 dm_cmd_path=./dm_cmds
 psf_dir=./ref_psf
 dark_lib_path=/opt/MagAOX/data/darks/camsci
-# External FITS mask for dh_mask_reload (sets control+contrast; remasks cal_dir if present).
-# Empty → falls back to cal_dir/wfs_mask.fits on dh_mask_reload.
-#dh_mask_path=./my_dh_mask.fits
+# DH mask FITS file or directory for dh_mask_generate / dh_mask_reload.
+# Directory → <path>/dh_mask.fits. Empty → cal_dir/wfs_mask.fits.
+# Generate writes the FITS; dh_mask_reload loads it (and remasks cal_dir if present).
+#dh_mask_path=./masks
+dh_mask_x=-1
+dh_mask_y=-1
+dh_mask_iwa=3
+dh_mask_owa=10
+dh_mask_rotation=90
+dh_mask_pixel_scale=1
+dh_mask_edge=3
 # Saturation-check region (raw ADU). Path only; apply with sat_mask_reload. Published to shm_sat_mask.
 #sat_mask_path=./sat_mask.fits
 sat_thresh=55000
