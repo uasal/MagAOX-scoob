@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
@@ -29,6 +30,7 @@ struct ShmimStream::Impl {
     std::string name;
     std::size_t rows = 0;
     std::size_t cols = 0;
+    double frame_period_s = 0.0;
 };
 
 namespace {
@@ -161,6 +163,18 @@ bool sem_wait_timeout(IMAGE* image, int sem, double timeout_s) {
 
 } // namespace
 
+double grab_mean_timeout_s(std::size_t nframes, std::size_t wait_frames, double frame_period_s) {
+    constexpr double k_min_s = 5.0;
+    if (!(frame_period_s > 0.0) || !std::isfinite(frame_period_s)) {
+        throw std::invalid_argument(
+            "grab_mean_timeout_s: camera frame period is unknown "
+            "(cam_name.exptime.current missing)");
+    }
+    const double t = (static_cast<double>(wait_frames + nframes) + k_grab_mean_extra_frames) *
+                     frame_period_s;
+    return t < k_min_s ? k_min_s : t;
+}
+
 ShmimStream::ShmimStream() : impl_(new Impl()) {}
 
 ShmimStream::ShmimStream(const std::string& name) : ShmimStream() {
@@ -261,6 +275,14 @@ std::string ShmimStream::describe() const {
            datatype_name();
 }
 
+void ShmimStream::set_frame_period_s(double period_s) {
+    impl_->frame_period_s = period_s;
+}
+
+double ShmimStream::frame_period_s() const {
+    return impl_->frame_period_s;
+}
+
 Array2D<double> ShmimStream::grab_latest() {
 #ifndef LINA_USE_IMAGESTREAMIO
     throw std::runtime_error("ImageStreamIO not enabled");
@@ -307,7 +329,13 @@ Array2D<double> ShmimStream::grab_mean(std::size_t nframes, std::size_t wait_fra
 
         const uint64_t cnt0_min = impl_->image.md->cnt0 + static_cast<uint64_t>(wait_frames);
         constexpr double k_slice_s = 0.2; // short so stop is responsive
-        constexpr double k_total_timeout_s = 30.0;
+        if (!(impl_->frame_period_s > 0.0) || !std::isfinite(impl_->frame_period_s)) {
+            throw std::runtime_error(
+                "ShmimStream::grab_mean: camera frame period is unknown "
+                "(cam_name.exptime.current missing)");
+        }
+        const double timeout_s =
+            grab_mean_timeout_s(nframes, wait_frames, impl_->frame_period_s);
         const auto t0 = std::chrono::steady_clock::now();
         std::size_t collected = 0;
         while (collected < nframes) {
@@ -315,10 +343,13 @@ Array2D<double> ShmimStream::grab_mean(std::size_t nframes, std::size_t wait_fra
             const auto elapsed = std::chrono::duration<double>(
                                      std::chrono::steady_clock::now() - t0)
                                      .count();
-            if (elapsed > k_total_timeout_s) {
+            if (elapsed > timeout_s) {
                 throw std::runtime_error(
-                    "ShmimStream::grab_mean timed out waiting for a new frame "
-                    "(camsci not updating?)");
+                    "ShmimStream::grab_mean timed out after " + std::to_string(elapsed) +
+                    " s waiting for a new frame (timeout=" + std::to_string(timeout_s) +
+                    " s, nframes=" + std::to_string(nframes) +
+                    ", wait_frames=" + std::to_string(wait_frames) +
+                    ", period=" + std::to_string(impl_->frame_period_s) + " s)");
             }
             if (!sem_wait_timeout(&impl_->image, sem, k_slice_s)) {
                 continue;

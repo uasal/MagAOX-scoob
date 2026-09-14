@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
 namespace lina {
@@ -42,6 +43,35 @@ void restore_dm_meters(Stream2D& dm, const Array2D<double>& command_m, double dm
         write_cmd.data()[idx] /= dm_scale;
     }
     dm.write(write_cmd);
+}
+
+void zero_dm(Stream2D& dm) {
+    Array2D<double> zeros(dm.rows(), dm.cols(), 0.0);
+    dm.write(zeros);
+}
+
+void require_square_same(const Stream2D& mode_dm, const Stream2D& probe_dm) {
+    if (mode_dm.rows() == 0 || mode_dm.rows() != mode_dm.cols()) {
+        throw std::runtime_error("mode DM stream is not square");
+    }
+    if (probe_dm.rows() == 0 || probe_dm.rows() != probe_dm.cols()) {
+        throw std::runtime_error("probe DM stream is not square");
+    }
+    if (mode_dm.rows() != probe_dm.rows() || mode_dm.cols() != probe_dm.cols()) {
+        throw std::runtime_error(
+            "mode and probe DM streams differ in size (" + std::to_string(mode_dm.rows()) + "x" +
+            std::to_string(mode_dm.cols()) + " vs " + std::to_string(probe_dm.rows()) + "x" +
+            std::to_string(probe_dm.cols()) + ")");
+    }
+}
+
+void require_nact_matches(const Stream2D& dm, std::size_t nact, const char* which) {
+    if (dm.rows() != nact || dm.cols() != nact) {
+        throw std::runtime_error(std::string(which) + " DM stream is " +
+                                 std::to_string(dm.rows()) + "x" + std::to_string(dm.cols()) +
+                                 ", modes expect " + std::to_string(nact) + "x" +
+                                 std::to_string(nact));
+    }
 }
 
 } // namespace
@@ -94,7 +124,7 @@ Array2D<double> mask_response_full(const Array2D<double>& response_full,
 
 std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t ncamsci,
-                                                    Stream2D& dm,
+                                                    Stream2D& probe_dm,
                                                     const ImParams& im_params,
                                                     const ImParams& ref_params,
                                                     const Array2D<double>& probe_modes,
@@ -109,11 +139,7 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     const SaturationWarnFn& sat_warn) {
     const std::size_t nprobes = probe_modes.rows();
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
-
-    Array2D<double> current_command = dm.grab_latest();
-    for (std::size_t j = 0; j < current_command.size(); ++j) {
-        current_command.data()[j] *= dm_scale;
-    }
+    require_nact_matches(probe_dm, nact, "probe");
 
     std::vector<Array2D<double>> responses;
     responses.reserve(nprobes);
@@ -128,30 +154,17 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                 }
             }
 
-            Array2D<double> cmd_pos(nact, nact, 0.0);
-            Array2D<double> cmd_neg(nact, nact, 0.0);
-            for (std::size_t r = 0; r < nact; ++r) {
-                for (std::size_t c = 0; c < nact; ++c) {
-                    cmd_pos(r, c) = current_command(r, c) + probe(r, c);
-                    cmd_neg(r, c) = current_command(r, c) - probe(r, c);
-                }
-            }
-
-            Array2D<double> write_pos = cmd_pos;
-            for (std::size_t idx = 0; idx < write_pos.size(); ++idx) {
-                write_pos.data()[idx] /= dm_scale;
-            }
-            dm.write(write_pos);
+            restore_dm_meters(probe_dm, probe, dm_scale);
             sleep_interruptible(delay_s, stop);
             Array2D<double> im_pos = camsci.grab_mean(ncamsci, wait_frames, stop);
             if (sat_mask && check_saturation(im_pos, *sat_mask, sat_thresh) && sat_warn)
                 sat_warn();
 
-            Array2D<double> write_neg = cmd_neg;
-            for (std::size_t idx = 0; idx < write_neg.size(); ++idx) {
-                write_neg.data()[idx] /= dm_scale;
+            Array2D<double> probe_neg(nact, nact, 0.0);
+            for (std::size_t idx = 0; idx < probe_neg.size(); ++idx) {
+                probe_neg.data()[idx] = -probe.data()[idx];
             }
-            dm.write(write_neg);
+            restore_dm_meters(probe_dm, probe_neg, dm_scale);
             sleep_interruptible(delay_s, stop);
             Array2D<double> im_neg = camsci.grab_mean(ncamsci, wait_frames, stop);
             if (sat_mask && check_saturation(im_neg, *sat_mask, sat_thresh) && sat_warn)
@@ -178,17 +191,21 @@ std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
             responses.push_back(diff_ni);
         }
     } catch (...) {
-        restore_dm_meters(dm, current_command, dm_scale);
+        try {
+            zero_dm(probe_dm);
+        } catch (...) {
+        }
         throw;
     }
 
-    restore_dm_meters(dm, current_command, dm_scale);
+    zero_dm(probe_dm);
     return responses;
 }
 
 CalibrateResult calibrate(Stream2D& camsci,
                           std::size_t ncamsci,
-                          Stream2D& dm,
+                          Stream2D& mode_dm,
+                          Stream2D& probe_dm,
                           const ImParams& im_params,
                           const ImParams& ref_params,
                           const Array2D<std::uint8_t>& control_mask,
@@ -206,16 +223,19 @@ CalibrateResult calibrate(Stream2D& camsci,
                           const Array2D<std::uint8_t>* sat_mask,
                           double sat_thresh,
                           const SaturationWarn& sat_warn) {
+    require_square_same(mode_dm, probe_dm);
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
+    require_nact_matches(mode_dm, nact, "mode");
+    require_nact_matches(probe_dm, nact, "probe");
     const std::size_t nprobes = probe_modes.rows();
     const std::size_t nmodes = calibration_modes.rows();
 
     const std::vector<std::size_t> mask_idx = mask_indices(control_mask);
     const std::size_t nmask = mask_idx.size();
 
-    Array2D<double> current_command = dm.grab_latest();
-    for (std::size_t j = 0; j < current_command.size(); ++j) {
-        current_command.data()[j] *= dm_scale;
+    Array2D<double> mode_baseline = mode_dm.grab_latest();
+    for (std::size_t j = 0; j < mode_baseline.size(); ++j) {
+        mode_baseline.data()[j] *= dm_scale;
     }
 
     const std::size_t image_size = control_mask.size();
@@ -250,20 +270,16 @@ CalibrateResult calibrate(Stream2D& camsci,
                 Array2D<double> cmd(nact, nact, 0.0);
                 for (std::size_t r = 0; r < nact; ++r) {
                     for (std::size_t c = 0; c < nact; ++c) {
-                        cmd(r, c) = current_command(r, c) + s * calib_mode(r, c);
+                        cmd(r, c) = mode_baseline(r, c) + s * calib_mode(r, c);
                     }
                 }
-                Array2D<double> write_cmd = cmd;
-                for (std::size_t idx = 0; idx < write_cmd.size(); ++idx) {
-                    write_cmd.data()[idx] /= dm_scale;
-                }
-                dm.write(write_cmd);
+                restore_dm_meters(mode_dm, cmd, dm_scale);
                 sleep_interruptible(delay_s, stop);
 
                 // No dark subtraction during calibration: responses are difference images.
                 (void)dark_im;
                 const auto probed = measure_probe_response(
-                    camsci, ncamsci, dm, im_params, ref_params, probe_modes, probe_amplitude,
+                    camsci, ncamsci, probe_dm, im_params, ref_params, probe_modes, probe_amplitude,
                     delay_s, dm_scale, /*dark_im=*/nullptr, wait_frames, stop, sat_mask,
                     sat_thresh,
                     [&]() {
@@ -284,7 +300,7 @@ CalibrateResult calibrate(Stream2D& camsci,
                     }
                 }
             }
-            restore_dm_meters(dm, current_command, dm_scale);
+            restore_dm_meters(mode_dm, mode_baseline, dm_scale);
 
             for (std::size_t p = 0; p < nprobes; ++p) {
                 for (std::size_t k = 0; k < nmask; ++k) {
@@ -298,7 +314,14 @@ CalibrateResult calibrate(Stream2D& camsci,
             }
         }
     } catch (...) {
-        restore_dm_meters(dm, current_command, dm_scale);
+        try {
+            restore_dm_meters(mode_dm, mode_baseline, dm_scale);
+        } catch (...) {
+        }
+        try {
+            zero_dm(probe_dm);
+        } catch (...) {
+        }
         throw;
     }
 
@@ -308,7 +331,8 @@ CalibrateResult calibrate(Stream2D& camsci,
 void run(IefcData& iefc_data,
          Stream2D& camsci,
          std::size_t ncamsci,
-         Stream2D& dm,
+         Stream2D& mode_dm,
+         Stream2D& probe_dm,
          const ImParams& im_params,
          const ImParams& ref_params,
          const Array2D<double>& dark_im,
@@ -325,7 +349,10 @@ void run(IefcData& iefc_data,
          std::size_t wait_frames,
          const StopCheck& stop,
          const CommandWrittenFn& on_command) {
+    require_square_same(mode_dm, probe_dm);
     const std::size_t nact = static_cast<std::size_t>(std::sqrt(probe_modes.cols()));
+    require_nact_matches(mode_dm, nact, "mode");
+    require_nact_matches(probe_dm, nact, "probe");
     const std::size_t nmodes = calib_modes.rows();
     const std::vector<std::size_t> mask_idx = mask_indices(control_mask);
     const std::size_t nmask = mask_idx.size();
@@ -348,7 +375,7 @@ void run(IefcData& iefc_data,
         for (std::size_t i = 0; i < num_iterations; ++i) {
             throw_if_stopped(stop);
             const auto diff_ims = measure_probe_response(
-                camsci, ncamsci, dm, im_params, ref_params, probe_modes, probe_amplitude,
+                camsci, ncamsci, probe_dm, im_params, ref_params, probe_modes, probe_amplitude,
                 delay_s, dm_scale, &dark_im, wait_frames, stop);
 
             std::vector<double> measurement_vector;
@@ -377,12 +404,12 @@ void run(IefcData& iefc_data,
                                              del_command.data()[idx];
             }
 
-            Array2D<double> write_cmd = total_command;
-            for (std::size_t idx = 0; idx < write_cmd.size(); ++idx) {
-                write_cmd.data()[idx] /= dm_scale;
-            }
-            dm.write(write_cmd);
+            restore_dm_meters(mode_dm, total_command, dm_scale);
             if (on_command) {
+                Array2D<double> write_cmd = total_command;
+                for (std::size_t idx = 0; idx < write_cmd.size(); ++idx) {
+                    write_cmd.data()[idx] /= dm_scale;
+                }
                 on_command(write_cmd);
             }
             sleep_interruptible(delay_s, stop);
@@ -419,9 +446,15 @@ void run(IefcData& iefc_data,
             iefc_data.n_contrast_positive.push_back(contrast.n_positive);
         }
     } catch (const Cancelled&) {
-        // Leave the last applied command (safer mid-loop than reverting all CL work),
-        // but ensure DM is in a defined published state.
-        restore_dm_meters(dm, total_command, dm_scale);
+        // Leave the last applied mode command (safer mid-loop than reverting all CL work).
+        try {
+            restore_dm_meters(mode_dm, total_command, dm_scale);
+        } catch (...) {
+        }
+        try {
+            zero_dm(probe_dm);
+        } catch (...) {
+        }
         throw;
     }
 }

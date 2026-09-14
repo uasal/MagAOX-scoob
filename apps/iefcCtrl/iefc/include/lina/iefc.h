@@ -65,9 +65,14 @@ using SaturationWarnFn = std::function<void()>;
 /// Calibrate-level sat warning with 1-based mode index (same as INDI cal_mode).
 using SaturationWarn = std::function<void(std::size_t cal_mode_1based)>;
 
+/// Differential ±probe response. Writes only `probe_dm` (±poke, then zero).
+/** Mode / closed-loop commands must already be on a separate mode channel so
+  * cacao sums them on the physical DM. Probe shapes match `probe_modes`
+  * (`nact*nact` columns); `probe_dm` must be square `nact x nact`.
+  */
 std::vector<Array2D<double>> measure_probe_response(Stream2D& camsci,
                                                     std::size_t ncamsci,
-                                                    Stream2D& dm,
+                                                    Stream2D& probe_dm,
                                                     const ImParams& im_params,
                                                     const ImParams& ref_params,
                                                     const Array2D<double>& probe_modes,
@@ -94,10 +99,16 @@ struct CalibrateResult {
 /// storage is O(nmodes*nprobes*npix) and can be many GB for large camsci.
 /// Raw frames are checked against sat_mask (if non-null) before normalize/mask;
 /// saturation triggers sat_warn (if set) and continues — it does not abort.
-/// Throws Cancelled if stop() returns true; DM restored to entry command.
+/// Throws Cancelled if stop() returns true; mode channel restored, probe zeroed.
+/** `mode_dm` holds ±calib modes (plus any baseline already on that channel).
+  * `probe_dm` holds only ±probe pokes. Both must be the same square `nact`.
+  * The physical DM command is the cacao sum; the response still maps those
+  * same calib modes to WFS pixels.
+  */
 CalibrateResult calibrate(Stream2D& camsci,
                           std::size_t ncamsci,
-                          Stream2D& dm,
+                          Stream2D& mode_dm,
+                          Stream2D& probe_dm,
                           const ImParams& im_params,
                           const ImParams& ref_params,
                           const Array2D<std::uint8_t>& control_mask,
@@ -116,10 +127,15 @@ CalibrateResult calibrate(Stream2D& camsci,
                           double sat_thresh = 0.0,
                           const SaturationWarn& sat_warn = {});
 
+/// Closed-loop iterations. Writes integrator commands to `mode_dm` and ±probes
+/// to `probe_dm` (same square `nact` as calibration). Probe channel is zeroed
+/// after each measurement; on Cancelled the last mode command is republished
+/// and the probe channel is zeroed.
 void run(IefcData& iefc_data,
          Stream2D& camsci,
          std::size_t ncamsci,
-         Stream2D& dm,
+         Stream2D& mode_dm,
+         Stream2D& probe_dm,
          const ImParams& im_params,
          const ImParams& ref_params,
          const Array2D<double>& dark_im,

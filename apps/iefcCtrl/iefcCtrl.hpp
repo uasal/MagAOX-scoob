@@ -96,12 +96,13 @@ class iefcCtrl : public MagAOXApp<true>
       *@{
       */
     std::string m_shmCamInput{ "camsci" };
-    std::string m_shmDm{ "dm01disp07" };
+    std::string m_shmDmMode{ "dm01disp07" }; ///< Calib / closed-loop command cacao channel
+    std::string m_shmDmProbe{ "dm01disp08" }; ///< ±probe cacao channel (visually isolated)
 
     std::string m_psfDir{ "./ref_psf" };  ///< Ref-PSF / Imax package (write+read)
     std::string m_calDir{ "./cal_a" };    ///< Calibration package (response/control matrices)
     std::string m_dmCmdPath{ "./dm_cmds" }; ///< Closed-loop DM command FITS archive
-    unsigned m_clIndex{ 0 }; ///< Last archived / restored `{shm_dm}_cl_{N}.fits` index
+    unsigned m_clIndex{ 0 }; ///< Last archived / restored `{shm_dm_mode}_cl_{N}.fits` index
     unsigned m_dmResetIndex{ 0 }; ///< Archive index loaded by `dm_reset`
     std::string m_darkLibPath; ///< External dark library dir (dark_metadata.txt from darkCtrl)
     std::string m_camName{ "camsci" }; ///< INDI device for cam_name.exptime / emgain (not dark match)
@@ -179,6 +180,8 @@ class iefcCtrl : public MagAOXApp<true>
     double m_livePsfExptime{ 1.0 };
     double m_liveGain{ 0.0 };
     double m_liveDarkExptime{ -1.0 };
+    /// Live cam exptime last used for a dark-library lookup (NaN = never).
+    double m_lastDarkMatchRequestExp{ std::numeric_limits<double>::quiet_NaN() };
     bool m_haveLiveNorm{ false };
     std::atomic<bool> m_imaxRefManual{ false }; ///< True after INDI Imax_ref set; preserve across dark reloads
     ///@}
@@ -217,8 +220,11 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_shmCamInput;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmCamInput);
 
-    pcf::IndiProperty m_indiP_shmDm;
-    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmDm);
+    pcf::IndiProperty m_indiP_shmDmMode;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmDmMode);
+
+    pcf::IndiProperty m_indiP_shmDmProbe;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmDmProbe);
 
     pcf::IndiProperty m_indiP_shmCamSubNorm;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_shmCamSubNorm);
@@ -331,6 +337,9 @@ class iefcCtrl : public MagAOXApp<true>
     pcf::IndiProperty m_indiP_dhMaskReload;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_dhMaskReload);
 
+    pcf::IndiProperty m_indiP_satMaskReload;
+    INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_satMaskReload);
+
     pcf::IndiProperty m_indiP_stop;
     INDI_NEWCALLBACK_DECL(iefcCtrl, m_indiP_stop);
 
@@ -385,16 +394,17 @@ class iefcCtrl : public MagAOXApp<true>
     int doRun();
     int doDmReset();
 
-    /// `{dm_cmd_path}/{shm_dm}_cl_{index}.fits`
+    /// `{dm_cmd_path}/{shm_dm_mode}_cl_{index}.fits`
     std::string dmCmdFitsPath( unsigned index ) const;
     /// Write a closed-loop DM command (shmim units) to the archive, overwriting if present.
     int writeDmCmdArchive( unsigned index, const lina::Array2D<double> &cmd );
-    /// Ensure `{shm_dm}_cl_0.fits` exists as the zero flat when `cl_index==0`.
+    /// Ensure `{shm_dm_mode}_cl_0.fits` exists as the zero flat when `cl_index==0`.
     int ensureFlatDmCmdArchive( std::size_t rows, std::size_t cols );
     /// After each CL DM write: increment `cl_index`, archive, publish INDI.
     void archiveClosedLoopCommand( const lina::Array2D<double> &write_cmd );
     int doRecomputeControl(); ///< Load or build control for current cal_reg_cond
     int doDhMaskReload();      ///< Load WFS/control mask; remask+rebuild control from dir_cal
+    int doSatMaskReload();     ///< Load sat mask from sat_mask_path; publish shm_sat_mask
 
     /// Apply FITS mask as control+contrast; remask response / beta_reg when cal data exists.
     int applyDhMaskFromFits( const std::string &path );
@@ -407,9 +417,6 @@ class iefcCtrl : public MagAOXApp<true>
 
     /// Load saturation-check mask from FITS; publish iefc_sat_mask.
     int applySatMaskFromFits( const std::string &path );
-
-    /// Ensure sat mask loaded from sat_mask_path (if set) before calibrate.
-    int ensureSatMaskLoaded();
 
     /// Apply manual Imax_ref and refresh live NI normalization scale.
     int setImaxRefValue( double imax );
@@ -425,17 +432,44 @@ class iefcCtrl : public MagAOXApp<true>
     /// Live exposure [s] from cam_name.exptime.current (NaN until SET received).
     double liveCamExp() const;
 
+    /// True when cam_name.exptime.current is a positive finite period.
+    bool haveLiveCamExp() const;
+
+    /// Fail a job if camera exptime has not been received over INDI.
+    int requireLiveCamExp();
+
     /// Live gain from cam_name.emgain.current (NaN until SET received).
     double liveCamGain() const;
 
-    /// Square actuator count from `shm_dm` (`size[0]==size[1]`); 0 if unknown/non-square.
+    /// Square actuator count from `shm_dm_mode` (else probe); 0 if unknown/non-square.
     std::size_t liveDmNact() const;
 
     /// Require a square DM command stream; log and return -1 otherwise.
-    int requireSquareDm( const lina::ShmimStream &dm /**< [in] open shm_dm stream */ );
+    int requireSquareDm( const lina::ShmimStream &dm /**< [in] open DM stream */ );
+
+    /// Require matching square mode and probe DM streams.
+    int requireMatchingDmChannels( const lina::ShmimStream &mode /**< [in] mode channel */,
+                                   const lina::ShmimStream &probe /**< [in] probe channel */ );
+
+    /// Zero both DM poke channels (stop / post-calibrate).
+    void zeroDmChannels();
+
+    /// Set camera grab_mean cadence from live exptime and log the timeout.
+    /** Returns -1 (and does not start the job) if cam_name.exptime.current is missing. */
+    int configureCamGrab( lina::ShmimStream &camsci /**< [in,out] camera stream */,
+                          std::size_t nframes /**< [in] frames to average */,
+                          std::size_t wait_frames /**< [in] frames to skip */ );
+
+    /// Reload the exposure-matched dark when live exptime changes or a job asks.
+    void rematchLiveDark( const char *reason /**< [in] log tag */,
+                          bool force /**< [in] rematch even if exptime is unchanged */,
+                          std::size_t expect_ncam = 0 /**< [in] camsci size[0]; 0 = probe if open */ );
 
     /// Cache setup (dark + Imax) for continuous shm_cam_sub_norm.
-    void updateLiveNormFromSetup( const lina::SetupData &setup );
+    /** `requested_exp` is the live camera exptime used for the library lookup
+      * (not necessarily `liveCamExp()` at cache time). */
+    void updateLiveNormFromSetup( const lina::SetupData &setup,
+                                  double requested_exp = std::numeric_limits<double>::quiet_NaN() );
 
     /// Ensure shm_cam_sub_norm shmim exists matching camera geometry.
     int ensureSubNormStream( uint32_t w, uint32_t h );
@@ -502,13 +536,19 @@ void iefcCtrl::setupConfig()
     config.add( "iefc.shm_cam_input", "", "iefc.shm_cam_input", argType::Required, "iefc",
                 "shm_cam_input", false, "string",
                 "Science-camera ImageStreamIO name (dark-library match key; default camsci)." );
+    config.add( "iefc.shm_dm_mode", "", "iefc.shm_dm_mode", argType::Required, "iefc",
+                "shm_dm_mode", false, "string",
+                "Cacao channel for calib/closed-loop mode commands (default dm01disp07)." );
+    config.add( "iefc.shm_dm_probe", "", "iefc.shm_dm_probe", argType::Required, "iefc",
+                "shm_dm_probe", false, "string",
+                "Cacao channel for ±probe pokes (default dm01disp08)." );
     config.add( "iefc.shm_dm", "", "iefc.shm_dm", argType::Required, "iefc", "shm_dm", false,
-                "string", "IEFC DM channel shmim (default dm01disp07)." );
+                "string", "Deprecated alias for shm_dm_mode." );
     config.add( "iefc.cal_dir", "", "iefc.cal_dir", argType::Required, "iefc", "cal_dir", false,
                 "string", "Calibration package dir (response/control matrices)." );
     config.add( "iefc.dm_cmd_path", "", "iefc.dm_cmd_path", argType::Required, "iefc", "dm_cmd_path",
                 false, "string",
-                "Directory for closed-loop DM command FITS ({shm_dm}_cl_{N}.fits)." );
+                "Directory for closed-loop DM command FITS ({shm_dm_mode}_cl_{N}.fits)." );
     config.add( "iefc.dm_reset_index", "", "iefc.dm_reset_index", argType::Required, "iefc",
                 "dm_reset_index", false, "unsigned",
                 "Archive index loaded by dm_reset (default 0 = zero flat)." );
@@ -542,7 +582,7 @@ void iefcCtrl::setupConfig()
                 "sat_mask_path",
                 false,
                 "string",
-                "FITS path for calibration saturation-check region (raw ADU)." );
+                "FITS path for sat_mask_reload (raw-ADU saturation check; published to shm_sat_mask)." );
     config.add( "iefc.sat_thresh",
                 "",
                 "iefc.sat_thresh",
@@ -645,7 +685,9 @@ void iefcCtrl::setupConfig()
 void iefcCtrl::loadConfig()
 {
     config( m_shmCamInput, "iefc.shm_cam_input" );
-    config( m_shmDm, "iefc.shm_dm" );
+    config( m_shmDmMode, "iefc.shm_dm" ); // legacy alias
+    config( m_shmDmMode, "iefc.shm_dm_mode" );
+    config( m_shmDmProbe, "iefc.shm_dm_probe" );
     config( m_calDir, "iefc.cal_dir" );
     config( m_dmCmdPath, "iefc.dm_cmd_path" );
     config( m_dmResetIndex, "iefc.dm_reset_index" );
@@ -688,7 +730,8 @@ int iefcCtrl::appStartup()
     }
 
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamInput, "shm_cam_input", "Science camera input shmim", "shmims" );
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDm, "shm_dm", "IEFC DM channel shmim", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDmMode, "shm_dm_mode", "IEFC mode/command DM channel", "shmims" );
+    CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDmProbe, "shm_dm_probe", "IEFC probe DM channel", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmCamSubNorm, "shm_cam_sub_norm", "Dark-sub+norm camera stream", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmContrastAvg, "shm_contrast_avg", "Running-avg contrast shmim name", "shmims" );
     CREATE_REG_INDI_NEW_TEXT( m_indiP_shmDhMask, "shm_dh_mask", "WFS/control mask image shmim", "shmims" );
@@ -732,6 +775,7 @@ int iefcCtrl::appStartup()
         return log<software_error, -1>( { __FILE__, __LINE__, "registerIndiPropertyNew cl_run" } );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dmReset, "dm_reset" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_dhMaskReload, "dh_mask_reload" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_satMaskReload, "sat_mask_reload" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_stop, "stop" );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_status, "status", pcf::IndiProperty::Text );
@@ -765,8 +809,10 @@ int iefcCtrl::appStartup()
     // Seed current/target from config (before INDI starts — use setValue, not updateIfChanged)
     m_indiP_shmCamInput["current"].setValue( m_shmCamInput );
     m_indiP_shmCamInput["target"].setValue( m_shmCamInput );
-    m_indiP_shmDm["current"].setValue( m_shmDm );
-    m_indiP_shmDm["target"].setValue( m_shmDm );
+    m_indiP_shmDmMode["current"].setValue( m_shmDmMode );
+    m_indiP_shmDmMode["target"].setValue( m_shmDmMode );
+    m_indiP_shmDmProbe["current"].setValue( m_shmDmProbe );
+    m_indiP_shmDmProbe["target"].setValue( m_shmDmProbe );
     m_indiP_shmCamSubNorm["current"].setValue( m_shmCamSubNorm );
     m_indiP_shmCamSubNorm["target"].setValue( m_shmCamSubNorm );
     m_indiP_shmContrastAvg["current"].setValue( m_contrastAvgName );
@@ -1001,6 +1047,8 @@ void iefcCtrl::queueJob( Job j )
         m_stopRequested = true;
         log<text_log>( "stop requested" +
                        std::string( m_busy.load() ? " (aborting active job)" : "" ) );
+        if( !m_busy.load() )
+            zeroDmChannels();
         return;
     }
 
@@ -1098,10 +1146,10 @@ int iefcCtrl::openDm()
 {
     if( m_dmOpen )
         return 0;
-    if( ImageStreamIO_openIm( &m_dm, m_shmDm.c_str() ) != IMAGESTREAMIO_SUCCESS )
+    if( ImageStreamIO_openIm( &m_dm, m_shmDmMode.c_str() ) != IMAGESTREAMIO_SUCCESS )
     {
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "failed to open " + m_shmDm } );
+            { __FILE__, __LINE__, "failed to open " + m_shmDmMode } );
     }
     m_dmOpen = true;
     return 0;
@@ -1184,6 +1232,8 @@ int iefcCtrl::grabMeanCamsci( unsigned nframes, unsigned wait_frames, std::vecto
         return -1;
     if( nframes == 0 )
         return -1;
+    if( requireLiveCamExp() < 0 )
+        return -1;
 
     w = m_camsci.md->size[0];
     h = ( m_camsci.md->naxis > 1 ) ? m_camsci.md->size[1] : 1;
@@ -1222,7 +1272,7 @@ int iefcCtrl::grabMeanCamsci( unsigned nframes, unsigned wait_frames, std::vecto
             const double elapsed = std::chrono::duration<double>(
                                        std::chrono::steady_clock::now() - t0 )
                                        .count();
-            if( elapsed > 30.0 )
+            if( elapsed > lina::grab_mean_timeout_s( nframes, wait_frames, liveCamExp() ) )
             {
                 return log<software_error, -1>(
                     { __FILE__, __LINE__, "timeout waiting for camsci frame" } );
@@ -1298,7 +1348,7 @@ std::string iefcCtrl::dmCmdFitsPath( unsigned index ) const
     std::string dir = m_dmCmdPath;
     while( !dir.empty() && dir.back() == '/' )
         dir.pop_back();
-    return dir + "/" + m_shmDm + "_cl_" + std::to_string( index ) + ".fits";
+    return dir + "/" + m_shmDmMode + "_cl_" + std::to_string( index ) + ".fits";
 }
 
 int iefcCtrl::writeDmCmdArchive( unsigned index, const lina::Array2D<double> &cmd )
@@ -1314,7 +1364,8 @@ int iefcCtrl::writeDmCmdArchive( unsigned index, const lina::Array2D<double> &cm
     try
     {
         lina::FitsHeader hdr;
-        hdr.emplace_back( "SHMDM", "'" + m_shmDm + "'" );
+        hdr.emplace_back( "SHMDM", "'" + m_shmDmMode + "'" );
+        hdr.emplace_back( "SHMPROBE", "'" + m_shmDmProbe + "'" );
         hdr.emplace_back( "CLINDEX", std::to_string( index ) );
         lina::save_fits( path, cmd, hdr, true );
     }
@@ -1421,11 +1472,34 @@ bool parseIndiCurrentNumber( const pcf::IndiProperty &ip, double &out )
     }
 }
 
+bool sameExptime( double a, double b )
+{
+    if( !std::isfinite( a ) || !std::isfinite( b ) )
+        return false;
+    return std::fabs( a - b ) <= lina::kDarkExptimeMatchTol;
+}
+
 } // namespace
 
 double iefcCtrl::liveCamExp() const
 {
     return m_remoteExp;
+}
+
+bool iefcCtrl::haveLiveCamExp() const
+{
+    const double v = liveCamExp();
+    return std::isfinite( v ) && v > 0.0;
+}
+
+int iefcCtrl::requireLiveCamExp()
+{
+    if( haveLiveCamExp() )
+        return 0;
+    return log<software_error, -1>(
+        { __FILE__, __LINE__,
+          "cam_name.exptime.current is missing; subscribe to " + m_camName +
+              ".exptime and wait for SET before calibrate/run" } );
 }
 
 double iefcCtrl::liveCamGain() const
@@ -1448,9 +1522,18 @@ std::size_t iefcCtrl::liveDmNact() const
         return nact_from_image( m_dm );
     try
     {
-        lina::ShmimStream dm( m_shmDm );
-        if( dm.rows() > 0 && dm.rows() == dm.cols() )
-            return dm.rows();
+        lina::ShmimStream mode( m_shmDmMode );
+        if( mode.rows() > 0 && mode.rows() == mode.cols() )
+            return mode.rows();
+    }
+    catch( ... )
+    {
+    }
+    try
+    {
+        lina::ShmimStream probe( m_shmDmProbe );
+        if( probe.rows() > 0 && probe.rows() == probe.cols() )
+            return probe.rows();
     }
     catch( ... )
     {
@@ -1464,11 +1547,118 @@ int iefcCtrl::requireSquareDm( const lina::ShmimStream &dm )
         return 0;
     return log<software_error, -1>(
         { __FILE__, __LINE__,
-          "shm_dm is not a square DM command (" + dm.describe() +
+          "DM stream is not a square command (" + dm.describe() +
               "); IEFC takes nact from the stream size" } );
 }
 
-void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
+int iefcCtrl::requireMatchingDmChannels( const lina::ShmimStream &mode,
+                                         const lina::ShmimStream &probe )
+{
+    if( requireSquareDm( mode ) < 0 )
+        return -1;
+    if( requireSquareDm( probe ) < 0 )
+        return -1;
+    if( !mode.name().empty() && mode.name() == probe.name() )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              "shm_dm_mode and shm_dm_probe must be distinct cacao channels (both '" +
+                  mode.name() + "')" } );
+    }
+    if( mode.rows() != probe.rows() || mode.cols() != probe.cols() )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              "mode/probe DM size mismatch (" + mode.describe() + " vs " + probe.describe() +
+                  ")" } );
+    }
+    return 0;
+}
+
+void iefcCtrl::zeroDmChannels()
+{
+    try
+    {
+        lina::ShmimStream mode( m_shmDmMode );
+        mode.zero();
+        log<text_log>( "zeroed " + mode.describe() );
+    }
+    catch( const std::exception &e )
+    {
+        log<text_log>( std::string( "failed to zero shm_dm_mode: " ) + e.what(),
+                       logPrio::LOG_WARNING );
+    }
+    try
+    {
+        lina::ShmimStream probe( m_shmDmProbe );
+        probe.zero();
+        log<text_log>( "zeroed " + probe.describe() );
+    }
+    catch( const std::exception &e )
+    {
+        log<text_log>( std::string( "failed to zero shm_dm_probe: " ) + e.what(),
+                       logPrio::LOG_WARNING );
+    }
+}
+
+int iefcCtrl::configureCamGrab( lina::ShmimStream &camsci,
+                                std::size_t nframes,
+                                std::size_t wait_frames )
+{
+    if( requireLiveCamExp() < 0 )
+        return -1;
+    const double period = liveCamExp();
+    camsci.set_frame_period_s( period );
+    const double timeout_s = lina::grab_mean_timeout_s( nframes, wait_frames, period );
+    log<text_log>( "grab_mean timeout " + std::to_string( timeout_s ) + " s (nframes=" +
+                   std::to_string( nframes ) + ", wait_frames=" + std::to_string( wait_frames ) +
+                   ", period=" + std::to_string( period ) + " s, extra=" +
+                   std::to_string( lina::k_grab_mean_extra_frames ) + " frames)" );
+    return 0;
+}
+
+void iefcCtrl::rematchLiveDark( const char *reason, bool force, std::size_t expect_ncam )
+{
+    if( m_psfDir.empty() && m_darkLibPath.empty() )
+        return;
+    if( !haveLiveCamExp() )
+        return;
+
+    const double live = liveCamExp();
+    {
+        std::lock_guard<std::mutex> lock( m_subNormMutex );
+        const bool size_ok = !m_haveLiveNorm || expect_ncam == 0 ||
+                             ( m_liveDark.rows() == expect_ncam && m_liveDark.cols() == expect_ncam );
+        if( !force && size_ok && sameExptime( live, m_lastDarkMatchRequestExp ) )
+            return;
+        m_lastDarkMatchRequestExp = live;
+    }
+
+    std::size_t ncam = expect_ncam;
+    if( ncam == 0 && m_camsciOpen && m_camsci.md != nullptr )
+        ncam = static_cast<std::size_t>( m_camsci.md->size[0] );
+
+    try
+    {
+        if( m_psfDir.empty() )
+        {
+            log<text_log>( std::string( "dark match skipped (" ) + reason +
+                               "): psf_dir empty, cannot load a setup dark",
+                           logPrio::LOG_WARNING );
+            return;
+        }
+        auto setup = lina::load_setup_dir( m_psfDir, ncam, live, m_darkLibPath, darkFilter() );
+        updateLiveNormFromSetup( setup, live );
+    }
+    catch( const std::exception &e )
+    {
+        log<text_log>( std::string( "no dark for exptime=" ) + std::to_string( live ) + " s (" +
+                           reason + "): " + e.what(),
+                       logPrio::LOG_WARNING );
+    }
+}
+
+void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup, double requested_exp )
 {
     if( !setup.loaded || setup.dark.size() == 0 )
         return;
@@ -1485,7 +1675,12 @@ void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
         m_liveGain = setup.gain;
         m_liveDarkExptime = setup.dark_exptime;
         m_haveLiveNorm = ( m_liveImaxRef > 0.0 );
+        if( std::isfinite( requested_exp ) && requested_exp > 0.0 )
+            m_lastDarkMatchRequestExp = requested_exp;
     }
+    const double log_exp = ( std::isfinite( requested_exp ) && requested_exp > 0.0 )
+                               ? requested_exp
+                               : liveCamExp();
     if( setup.dark_from_library )
     {
         std::ostringstream oss;
@@ -1494,14 +1689,20 @@ void iefcCtrl::updateLiveNormFromSetup( const lina::SetupData &setup )
             << " s, |err|=" << setup.dark_match_err << " s)";
         if( setup.dark_match_err > lina::kDarkExptimeMatchTol )
         {
-            log<text_log>( oss.str() + " — exceeds tol "
-                               + std::to_string( lina::kDarkExptimeMatchTol ) + " s",
+            log<text_log>( oss.str() + " — no dark at live exptime (tol "
+                               + std::to_string( lina::kDarkExptimeMatchTol ) + " s)",
                            logPrio::LOG_WARNING );
         }
         else
         {
             log<text_log>( oss.str() );
         }
+    }
+    else if( !m_darkLibPath.empty() )
+    {
+        log<text_log>( "no dark library match for exptime=" + std::to_string( log_exp ) +
+                           " s; using " + setup.dark_path_used,
+                       logPrio::LOG_WARNING );
     }
 }
 
@@ -1555,34 +1756,7 @@ int iefcCtrl::ensureSubNormStream( uint32_t w, uint32_t h )
 
 int iefcCtrl::processSubNormFrame()
 {
-    // Lazy-load setup for continuous norm if not yet available.
-    if( !m_haveLiveNorm && !m_psfDir.empty() && !m_busy.load() )
-    {
-        try
-        {
-            double live_exptime = liveCamExp();
-            std::size_t ncam = 0;
-            if( !m_camsciOpen &&
-                ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) == IMAGESTREAMIO_SUCCESS )
-            {
-                m_camsciOpen = true;
-                m_camsciSem = ImageStreamIO_getsemwaitindex( &m_camsci, 0 );
-            }
-            if( m_camsciOpen )
-                ncam = static_cast<std::size_t>( m_camsci.md->size[0] );
-            auto setup = lina::load_setup_dir( m_psfDir, ncam, live_exptime , m_darkLibPath, darkFilter() );
-            updateLiveNormFromSetup( setup );
-        }
-        catch( ... )
-        {
-            // Setup not ready yet; stay quiet in the tight appLogic loop.
-        }
-    }
-
-    if( !m_haveLiveNorm )
-        return 0;
-
-    // Quiet attach: appLogic runs continuously; do not spam logs if camsci is down.
+    // Quiet attach: do not spam logs if camsci is down.
     if( !m_camsciOpen )
     {
         if( ImageStreamIO_openIm( &m_camsci, m_shmCamInput.c_str() ) != IMAGESTREAMIO_SUCCESS )
@@ -1600,22 +1774,12 @@ int iefcCtrl::processSubNormFrame()
     const uint32_t h = ( m_camsci.md->naxis > 1 ) ? m_camsci.md->size[1] : 1;
     const size_t npix = static_cast<size_t>( w ) * static_cast<size_t>( h );
 
-    // Refresh exposure-matched dark when live exptime changes.
-    double live_exptime = liveCamExp();
-    if( !m_psfDir.empty() &&
-        ( m_liveDarkExptime < 0.0 ||
-          std::fabs( live_exptime - m_liveDarkExptime ) > lina::kDarkExptimeMatchTol ) &&
-        !m_busy.load() )
-    {
-        try
-        {
-            auto setup = lina::load_setup_dir( m_psfDir, w, live_exptime , m_darkLibPath, darkFilter() );
-            updateLiveNormFromSetup( setup );
-        }
-        catch( ... )
-        {
-        }
-    }
+    // Startup / exptime-change dark match only (not every frame).
+    if( !m_busy.load() )
+        rematchLiveDark( "live", false, static_cast<std::size_t>( w ) );
+
+    if( !m_haveLiveNorm )
+        return 0;
 
     lina::Array2D<double> dark;
     double imax = 0.0;
@@ -1663,6 +1827,7 @@ int iefcCtrl::processSubNormFrame()
     }
 
     lina::ImParams im_params;
+    const double live_exptime = liveCamExp();
     im_params.exp_time = live_exptime > 0.0 ? live_exptime : 1.0;
     im_params.gain = gain;
     im_params.Imax = imax;
@@ -1969,13 +2134,23 @@ int iefcCtrl::applySatMaskFromFits( const std::string &path )
     return 0;
 }
 
-int iefcCtrl::ensureSatMaskLoaded()
+int iefcCtrl::doSatMaskReload()
 {
-    if( m_haveSatMask && m_satMask.size() > 0 )
-        return 0;
     if( m_satMaskPath.empty() )
-        return 0; // optional
-    return applySatMaskFromFits( m_satMaskPath );
+    {
+        setStatus( "sat_mask_reload: failed" );
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "sat_mask_path is empty" } );
+    }
+
+    setStatus( "sat_mask_reload: " + m_satMaskPath );
+    if( applySatMaskFromFits( m_satMaskPath ) < 0 )
+    {
+        setStatus( "sat_mask_reload: failed" );
+        return -1;
+    }
+    setStatus( "sat_mask_reload: done" );
+    return 0;
 }
 
 int iefcCtrl::remaskControlFromCalibration( const lina::Array2D<std::uint8_t> &mask )
@@ -2027,7 +2202,7 @@ int iefcCtrl::remaskControlFromCalibration( const lina::Array2D<std::uint8_t> &m
             }
             if( nact == 0 )
             {
-                log<text_log>( "dh_mask_reload: nact unknown from shm_dm / config.txt",
+                log<text_log>( "dh_mask_reload: nact unknown from shm_dm_mode / config.txt",
                                logPrio::LOG_WARNING );
                 return 1;
             }
@@ -2622,7 +2797,7 @@ int iefcCtrl::doReloadPsfRef()
     }
 
     m_imaxRefManual = false;  // Package reload owns the scale.
-    updateLiveNormFromSetup( setup );
+    updateLiveNormFromSetup( setup, live_exptime );
     resetContrastAccumulator();
 
     updateIfChanged( m_indiP_psfMaxRef, "current", peak );
@@ -2636,12 +2811,15 @@ int iefcCtrl::doReloadPsfRef()
 int iefcCtrl::doDmReset()
 {
     const unsigned idx = m_dmResetIndex;
-    setStatus( "dm_reset: restoring " + m_shmDm + " from index " + std::to_string( idx ) );
+    setStatus( "dm_reset: restoring " + m_shmDmMode + " from index " + std::to_string( idx ) );
     log<text_log>( "dm_reset: loading " + dmCmdFitsPath( idx ) );
 
     try
     {
-        lina::ShmimStream dm( m_shmDm );
+        lina::ShmimStream mode( m_shmDmMode );
+        lina::ShmimStream probe( m_shmDmProbe );
+        if( requireMatchingDmChannels( mode, probe ) < 0 )
+            return -1;
         lina::Array2D<double> cmd;
 
         const std::string path = dmCmdFitsPath( idx );
@@ -2655,7 +2833,7 @@ int iefcCtrl::doDmReset()
                 return log<software_error, -1>(
                     { __FILE__, __LINE__, "dm_reset: missing " + path } );
             }
-            cmd = lina::Array2D<double>( dm.rows(), dm.cols(), 0.0 );
+            cmd = lina::Array2D<double>( mode.rows(), mode.cols(), 0.0 );
             if( writeDmCmdArchive( 0, cmd ) < 0 )
             {
                 setStatus( "dm_reset: failed" );
@@ -2668,22 +2846,24 @@ int iefcCtrl::doDmReset()
             cmd = lina::load_fits_double( path );
         }
 
-        if( cmd.rows() != dm.rows() || cmd.cols() != dm.cols() )
+        if( cmd.rows() != mode.rows() || cmd.cols() != mode.cols() )
         {
             setStatus( "dm_reset: failed" );
             return log<software_error, -1>(
                 { __FILE__, __LINE__,
                   "dm_reset: " + path + " is " + std::to_string( cmd.rows() ) + "x" +
                       std::to_string( cmd.cols() ) + ", shmim is " +
-                      std::to_string( dm.rows() ) + "x" + std::to_string( dm.cols() ) } );
+                      std::to_string( mode.rows() ) + "x" + std::to_string( mode.cols() ) } );
         }
 
-        dm.write( cmd );
+        mode.write( cmd );
+        probe.zero();
         m_clIndex = idx;
         updateIfChanged( m_indiP_clIndex, "current", static_cast<double>( m_clIndex ) );
 
-        log<text_log>( "dm_reset: restored " + m_shmDm + " from " + path +
-                       " (cl_index=" + std::to_string( m_clIndex ) + ")" );
+        log<text_log>( "dm_reset: restored " + m_shmDmMode + " from " + path +
+                       " (cl_index=" + std::to_string( m_clIndex ) + "); zeroed " +
+                       m_shmDmProbe );
         setStatus( "dm_reset: done" );
         return 0;
     }
@@ -2827,6 +3007,7 @@ int iefcCtrl::doDarkLibLoad()
         }
         oss << tmin << " … " << tmax << " s)";
         log<text_log>( oss.str() );
+        rematchLiveDark( "reload_dark_lib", true );
         setStatus( "reload_dark_lib: done (" + std::to_string( matched.size() ) + " darks)" );
         return 0;
     }
@@ -2878,12 +3059,12 @@ int iefcCtrl::doCalReload()
         }
         try
         {
-            lina::ShmimStream dm( m_shmDm );
-            nact = dm.rows();
+            lina::ShmimStream mode( m_shmDmMode );
+            nact = mode.rows();
         }
         catch( const std::exception &e )
         {
-            log<text_log>( std::string( "cal_reload: shm_dm unavailable (" ) + e.what() +
+            log<text_log>( std::string( "cal_reload: shm_dm_mode unavailable (" ) + e.what() +
                                "); will use package config",
                            logPrio::LOG_WARNING );
         }
@@ -2910,7 +3091,7 @@ int iefcCtrl::doCalReload()
             setStatus( "cal_reload: failed" );
             return log<software_error, -1>(
                 { __FILE__, __LINE__,
-                  "cal_reload: ncam/nact unknown (open camsci+shm_dm or provide cal_dir/config.txt)" } );
+                  "cal_reload: ncam/nact unknown (open camsci+shm_dm_mode or provide cal_dir/config.txt)" } );
         }
 
         auto in = lina::default_loop_inputs( ncam, nact );
@@ -3014,7 +3195,7 @@ int iefcCtrl::doCalReload()
         m_haveContrastMask = true;
         (void)publishDhMask( in.control_mask );
         if( setupData.loaded )
-            updateLiveNormFromSetup( setupData );
+            updateLiveNormFromSetup( setupData, live_exptime );
         resetContrastAccumulator();
 
         updateIfChanged( m_indiP_nCalModes, "current",
@@ -3046,17 +3227,23 @@ int iefcCtrl::doCalibrate()
     try
     {
         lina::ShmimStream camsci( m_shmCamInput );
-        lina::ShmimStream dm( m_shmDm );
-        if( requireSquareDm( dm ) < 0 )
+        lina::ShmimStream mode_dm( m_shmDmMode );
+        lina::ShmimStream probe_dm( m_shmDmProbe );
+        if( requireMatchingDmChannels( mode_dm, probe_dm ) < 0 )
             return -1;
 
         double live_exptime = liveCamExp();
+        if( requireLiveCamExp() < 0 )
+            return -1;
 
-        log<text_log>( "calibrate: camera " + camsci.describe() + ", dm " + dm.describe() );
+        log<text_log>( "calibrate: camera " + camsci.describe() + ", mode " + mode_dm.describe() +
+                       ", probe " + probe_dm.describe() );
 
-        auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
+        auto in = lina::default_loop_inputs( camsci.rows(), mode_dm.rows() );
         in.nframes = m_nImages < 1 ? 1 : m_nImages;
         resolveCamSettle( in.wait_frames, in.delay_s );
+        if( configureCamGrab( camsci, in.nframes, in.wait_frames ) < 0 )
+            return -1;
         in.calib_probe_amp = m_calProbeAmp;
         in.calib_amp = m_calModeAmp;
         in.reg_cond = m_calRegCond;
@@ -3067,7 +3254,7 @@ int iefcCtrl::doCalibrate()
         lina::apply_setup( in, setup, live_exptime );
         lina::generate_modes( in );
         m_imaxRefManual = false; // calibrate adopts package Imax_ref
-        updateLiveNormFromSetup( setup );
+        updateLiveNormFromSetup( setup, live_exptime );
         resetContrastAccumulator();
 
         // Prefer user-loaded / cached WFS mask over default annulus.
@@ -3089,8 +3276,11 @@ int iefcCtrl::doCalibrate()
             }
         }
 
-        if( ensureSatMaskLoaded() < 0 )
-            return -1;
+        if( !m_haveSatMask || m_satMask.size() == 0 )
+        {
+            log<text_log>( "calibrate: no sat mask loaded (use sat_mask_reload)",
+                           logPrio::LOG_WARNING );
+        }
         const lina::Array2D<std::uint8_t> *sat_ptr =
             ( m_haveSatMask && m_satMask.size() > 0 ) ? &m_satMask : nullptr;
         if( sat_ptr )
@@ -3100,7 +3290,7 @@ int iefcCtrl::doCalibrate()
             {
                 return log<software_error, -1>(
                     { __FILE__, __LINE__,
-                      "sat_mask size does not match camsci / control mask" } );
+                      "sat_mask size does not match camsci / control mask — sat_mask_reload" } );
             }
             log<text_log>( "calibrate: saturation check enabled (thresh=" +
                            std::to_string( m_satThresh ) + " ADU)" );
@@ -3116,7 +3306,8 @@ int iefcCtrl::doCalibrate()
         auto cal = lina::calibrate(
             camsci,
             in.nframes,
-            dm,
+            mode_dm,
+            probe_dm,
             in.im_params,
             in.ref_params,
             in.control_mask,
@@ -3158,7 +3349,7 @@ int iefcCtrl::doCalibrate()
                                    std::to_string( m_satThresh ) + " ADU in sat_mask)",
                                logPrio::LOG_WARNING );
             } );
-        dm.zero();
+        zeroDmChannels();
 
         updateIfChanged( m_indiP_calMode, "current", static_cast<double>( nmodes ) );
         setStatus( "calibrate: computing control matrix (beta_reg)" );
@@ -3214,21 +3405,15 @@ int iefcCtrl::doCalibrate()
     }
     catch( const lina::Cancelled & )
     {
-        try
-        {
-            lina::ShmimStream dm( m_shmDm );
-            dm.zero();
-        }
-        catch( ... )
-        {
-        }
+        zeroDmChannels();
         updateIfChanged( m_indiP_calMode, "current", 0.0 );
         setStatus( "calibrate: stopped" );
-        log<text_log>( "calibrate stopped by user; DM cleared, matrix not saved" );
+        log<text_log>( "calibrate stopped by user; mode and probe channels cleared, matrix not saved" );
         return 0;
     }
     catch( const std::exception &e )
     {
+        zeroDmChannels();
         setStatus( "calibrate: failed" );
         return log<software_error, -1>(
             { __FILE__, __LINE__, std::string( "calibrate: " ) + e.what() } );
@@ -3241,17 +3426,23 @@ int iefcCtrl::doRun()
     try
     {
         lina::ShmimStream camsci( m_shmCamInput );
-        lina::ShmimStream dm( m_shmDm );
-        if( requireSquareDm( dm ) < 0 )
+        lina::ShmimStream mode_dm( m_shmDmMode );
+        lina::ShmimStream probe_dm( m_shmDmProbe );
+        if( requireMatchingDmChannels( mode_dm, probe_dm ) < 0 )
             return -1;
 
         double live_exptime = liveCamExp();
+        if( requireLiveCamExp() < 0 )
+            return -1;
 
-        log<text_log>( "run: camera " + camsci.describe() + ", dm " + dm.describe() );
+        log<text_log>( "run: camera " + camsci.describe() + ", mode " + mode_dm.describe() +
+                       ", probe " + probe_dm.describe() );
 
-        auto in = lina::default_loop_inputs( camsci.rows(), dm.rows() );
+        auto in = lina::default_loop_inputs( camsci.rows(), mode_dm.rows() );
         in.nframes = m_nImages < 1 ? 1 : m_nImages;
         resolveCamSettle( in.wait_frames, in.delay_s );
+        if( configureCamGrab( camsci, in.nframes, in.wait_frames ) < 0 )
+            return -1;
         in.reg_cond = m_calRegCond;
         in.run_probe_amp = m_clProbeAmp;
         in.num_iters = m_clIters;
@@ -3362,7 +3553,7 @@ int iefcCtrl::doRun()
         }
 
         lina::apply_setup( in, setupData, live_exptime );
-        updateLiveNormFromSetup( setupData );
+        updateLiveNormFromSetup( setupData, live_exptime );
         m_liveContrastMask = in.control_mask;
         m_haveContrastMask = true;
         (void)publishDhMask( in.control_mask );
@@ -3372,19 +3563,19 @@ int iefcCtrl::doRun()
         updateIfChanged( m_indiP_calMode, "current", 0.0 );
 
         lina::IefcData data;
-        auto current = dm.grab_latest();
+        auto current = mode_dm.grab_latest();
         for( size_t i = 0; i < current.size(); ++i )
             current.data()[i] *= in.dm_scale;
         data.commands.push_back( current );
 
-        if( ensureFlatDmCmdArchive( dm.rows(), dm.cols() ) < 0 )
+        if( ensureFlatDmCmdArchive( mode_dm.rows(), mode_dm.cols() ) < 0 )
             return -1;
 
         setStatus( "run: closed loop" );
-        lina::run( data, camsci, in.nframes, dm, in.im_params, in.ref_params, setupData.dark,
-                   control, in.run_probe_amp, in.probe_modes, in.calib_modes, in.control_mask,
-                   in.delay_s, in.num_iters, in.gain, in.leakage, in.dm_scale, in.wait_frames,
-                   makeStopCheck(),
+        lina::run( data, camsci, in.nframes, mode_dm, probe_dm, in.im_params, in.ref_params,
+                   setupData.dark, control, in.run_probe_amp, in.probe_modes, in.calib_modes,
+                   in.control_mask, in.delay_s, in.num_iters, in.gain, in.leakage, in.dm_scale,
+                   in.wait_frames, makeStopCheck(),
                    [this]( const lina::Array2D<double> &write_cmd ) {
                        archiveClosedLoopCommand( write_cmd );
                    } );
@@ -3411,12 +3602,21 @@ int iefcCtrl::doRun()
     }
     catch( const lina::Cancelled & )
     {
+        zeroDmChannels();
         setStatus( "run: stopped" );
-        log<text_log>( "run stopped by user; leaving last DM command" );
+        log<text_log>( "run stopped by user; mode and probe channels cleared" );
         return 0;
     }
     catch( const std::exception &e )
     {
+        try
+        {
+            lina::ShmimStream probe( m_shmDmProbe );
+            probe.zero();
+        }
+        catch( ... )
+        {
+        }
         setStatus( "run: failed" );
         return log<software_error, -1>(
             { __FILE__, __LINE__, std::string( "run: " ) + e.what() } );
@@ -3447,24 +3647,46 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmCamInput )( const pcf::IndiProperty 
     return 0;
 }
 
-INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmDm )( const pcf::IndiProperty &ipRecv )
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmDmMode )( const pcf::IndiProperty &ipRecv )
 {
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmDm, ipRecv );
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmDmMode, ipRecv );
     std::string target;
-    if( indiTargetUpdate( m_indiP_shmDm, target, ipRecv, false ) < 0 )
+    if( indiTargetUpdate( m_indiP_shmDmMode, target, ipRecv, false ) < 0 )
         return -1;
-    if( target.empty() || target == m_shmDm )
+    if( target.empty() || target == m_shmDmMode )
         return 0;
     if( m_busy.load() )
     {
-        log<text_log>( "cannot change shm_dm while busy", logPrio::LOG_WARNING );
-        updateIfChanged( m_indiP_shmDm, "current", m_shmDm );
-        updateIfChanged( m_indiP_shmDm, "target", m_shmDm );
+        log<text_log>( "cannot change shm_dm_mode while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_shmDmMode, "current", m_shmDmMode );
+        updateIfChanged( m_indiP_shmDmMode, "target", m_shmDmMode );
         return 0;
     }
-    log<text_log>( "shm_dm: " + m_shmDm + " -> " + target );
-    m_shmDm = target;
-    updateIfChanged( m_indiP_shmDm, "current", m_shmDm );
+    log<text_log>( "shm_dm_mode: " + m_shmDmMode + " -> " + target );
+    m_shmDmMode = target;
+    updateIfChanged( m_indiP_shmDmMode, "current", m_shmDmMode );
+    closeStreams();
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_shmDmProbe )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_shmDmProbe, ipRecv );
+    std::string target;
+    if( indiTargetUpdate( m_indiP_shmDmProbe, target, ipRecv, false ) < 0 )
+        return -1;
+    if( target.empty() || target == m_shmDmProbe )
+        return 0;
+    if( m_busy.load() )
+    {
+        log<text_log>( "cannot change shm_dm_probe while busy", logPrio::LOG_WARNING );
+        updateIfChanged( m_indiP_shmDmProbe, "current", m_shmDmProbe );
+        updateIfChanged( m_indiP_shmDmProbe, "target", m_shmDmProbe );
+        return 0;
+    }
+    log<text_log>( "shm_dm_probe: " + m_shmDmProbe + " -> " + target );
+    m_shmDmProbe = target;
+    updateIfChanged( m_indiP_shmDmProbe, "current", m_shmDmProbe );
     closeStreams();
     return 0;
 }
@@ -3729,16 +3951,6 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_satMaskPath )( const pcf::IndiProperty 
         log<text_log>( "sat_mask_path: " + m_satMaskPath + " -> " + target );
     m_satMaskPath = target;
     updateIfChanged( m_indiP_satMaskPath, "current", m_satMaskPath );
-    if( !m_satMaskPath.empty() && !m_busy.load() )
-    {
-        if( applySatMaskFromFits( m_satMaskPath ) < 0 )
-            log<text_log>( "sat_mask_path set but load failed", logPrio::LOG_WARNING );
-    }
-    else if( m_satMaskPath.empty() )
-    {
-        m_haveSatMask = false;
-        m_satMask = {};
-    }
     return 0;
 }
 
@@ -4030,6 +4242,20 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_dhMaskReload )( const pcf::IndiProperty
     return 0;
 }
 
+INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_satMaskReload )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_satMaskReload, ipRecv );
+    if( !ipRecv.find( "request" ) )
+        return -1;
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        updateSwitchIfChanged( m_indiP_satMaskReload, "request", pcf::IndiElement::On, INDI_BUSY );
+        doSatMaskReload();
+        clearRequest( m_indiP_satMaskReload );
+    }
+    return 0;
+}
+
 INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_stop )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_stop, ipRecv );
@@ -4047,7 +4273,26 @@ INDI_NEWCALLBACK_DEFN( iefcCtrl, m_indiP_stop )( const pcf::IndiProperty &ipRecv
 INDI_SETCALLBACK_DEFN( iefcCtrl, m_indiP_remoteExptime )( const pcf::IndiProperty &ipRecv )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_remoteExptime, ipRecv );
-    parseIndiCurrentNumber( ipRecv, m_remoteExp );
+    const double prev = m_remoteExp;
+    if( !parseIndiCurrentNumber( ipRecv, m_remoteExp ) )
+        return 0;
+    if( sameExptime( prev, m_remoteExp ) )
+        return 0;
+    std::ostringstream oss;
+    oss << "cam_name.exptime.current: ";
+    if( std::isfinite( prev ) )
+        oss << prev;
+    else
+        oss << "(unset)";
+    oss << " -> " << m_remoteExp << " s";
+    log<text_log>( oss.str() );
+    if( m_busy.load() )
+    {
+        log<text_log>( "dark rematch deferred until current job finishes",
+                       logPrio::LOG_WARNING );
+        return 0;
+    }
+    rematchLiveDark( "exptime change", true );
     return 0;
 }
 
