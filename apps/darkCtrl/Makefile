@@ -3,6 +3,6 @@ allall: all
 # Shared dark_metadata.txt schema (also used by psfRefCtrl and iefcCtrl).
 COMMON_INC := ../common/include
 CXXFLAGS += -I$(COMMON_INC)
-OTHER_HEADERS=$(COMMON_INC)/lina/dark_library.h
+OTHER_HEADERS=$(COMMON_INC)/lina/dark_library.h $(COMMON_INC)/lina/dark_library_fits.h
 TARGET=darkCtrl
 include ../../Make/magAOXApp.mk

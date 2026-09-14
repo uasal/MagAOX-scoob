@@ -1,8 +1,9 @@
 /** \file darkCtrl.hpp
   * \brief MagAO-X app that builds a camera dark library (exptime sweep + shutter).
   *
- * Writes dark_lib_path/dark_NNN.fits and dark_lib_path/dark_metadata.txt
- * (CSV of camera parameters) for psfRefCtrl / iefcCtrl.
+  * Writes dark_lib_path/dark_NNN.fits with library metadata in the FITS header.
+  * `generate_dark_metadata` (also run after a capture sweep) scans every FITS
+  * file in `dark_lib_path` and writes dark_metadata.txt for psfRefCtrl / iefcCtrl.
   *
   * \ingroup darkCtrl_files
   */
@@ -38,6 +39,7 @@
 #include "../../magaox_git_version.h"
 
 #include <lina/dark_library.h>
+#include <lina/dark_library_fits.h>
 
 /** \defgroup darkCtrl MagAO-X dark library builder
   * \ingroup app_files
@@ -53,9 +55,10 @@ class darkCtrl : public MagAOXApp<true>
   public:
     enum class Job : int
     {
-        Idle = 0,
-        Build,
-        Stop
+        Idle = 0,          ///< No pending work
+        Build,             ///< Capture darks and stamp FITS headers
+        GenerateMetadata,  ///< Rebuild dark_metadata.txt from FITS headers
+        Stop               ///< Abort an in-flight capture
     };
 
     ~darkCtrl() noexcept
@@ -65,7 +68,7 @@ class darkCtrl : public MagAOXApp<true>
   protected:
     std::string m_shmCamInput{ "camsci_sim" }; ///< Frame input (e.g. llowfscSim output)
     std::string m_camName{ "nsv455sim" }; ///< INDI device to query/set camera params
-    std::string m_darkLibPath{ "./darks_lib" };
+    std::string m_darkLibPath{ "./darks_lib" }; ///< Directory of dark FITS files / dark_metadata.txt
     std::string m_shutterDevice{ "llowfscsim" }; ///< INDI device that owns shutter toggle
 
     unsigned m_darkNImages{ 20 };
@@ -170,6 +173,10 @@ class darkCtrl : public MagAOXApp<true>
 
     pcf::IndiProperty m_indiP_darkLibBuild;
     INDI_NEWCALLBACK_DECL( darkCtrl, m_indiP_darkLibBuild );
+
+    /// Rebuild dark_metadata.txt from FITS headers in `dark_lib_path`.
+    pcf::IndiProperty m_indiP_generateDarkMetadata;
+    INDI_NEWCALLBACK_DECL( darkCtrl, m_indiP_generateDarkMetadata );
     pcf::IndiProperty m_indiP_stop;
     INDI_NEWCALLBACK_DECL( darkCtrl, m_indiP_stop );
     pcf::IndiProperty m_indiP_status;
@@ -232,10 +239,16 @@ class darkCtrl : public MagAOXApp<true>
     int grabMean( unsigned nframes, unsigned wait_frames, std::vector<float> &out, uint32_t &w,
                   uint32_t &h, unsigned *n_collected = nullptr );
     int ensureDir( const std::string &dir );
-    int saveFitsF32( const std::string &path, const std::vector<float> &im, uint32_t w,
-                     uint32_t h );
+    int saveFitsF32( const std::string &path /**< [in] output FITS path */,
+                     const std::vector<float> &im /**< [in] row-major image */,
+                     uint32_t w /**< [in] width */,
+                     uint32_t h /**< [in] height */,
+                     const lina::DarkLibraryEntry &meta /**< [in] FITS header metadata */ );
 
-    int doDarkLibBuild();
+    int doDarkLibBuild(); ///< Capture the exposure sweep and stamp FITS headers.
+
+    /// Scan `dark_lib_path` FITS headers and write dark_metadata.txt.
+    int doGenerateDarkMetadata();
 };
 
 namespace
@@ -296,7 +309,8 @@ void darkCtrl::setupConfig()
                 "string",
                 "INDI camera device to query/set (exptime/emgain/fps/blacklevel/bitDepth/ROI)." );
     config.add( "dark.dark_lib_path", "", "dark.dark_lib_path", argType::Required, "dark",
-                "dark_lib_path", false, "string", "Directory for dark_NNN.fits + dark_metadata.txt." );
+                "dark_lib_path", false, "string",
+                "Directory of dark FITS files; generate_dark_metadata writes dark_metadata.txt here." );
     config.add( "dark.shutter_device", "", "dark.shutter_device", argType::Required, "dark",
                 "shutter_device", false, "string",
                 "INDI device that owns shutter toggle (e.g. llowfscsim)." );
@@ -369,6 +383,7 @@ int darkCtrl::appStartup()
         return -1;
 
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_darkLibBuild, "dark_lib_build" );
+    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_generateDarkMetadata, "generate_dark_metadata" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_stop, "stop" );
 
     REG_INDI_NEWPROP_NOCB( m_indiP_status, "status", pcf::IndiProperty::Text );
@@ -494,6 +509,8 @@ int darkCtrl::runJob( Job j )
 {
     if( j == Job::Build )
         return doDarkLibBuild();
+    if( j == Job::GenerateMetadata )
+        return doGenerateDarkMetadata();
     return 0;
 }
 
@@ -925,13 +942,15 @@ int darkCtrl::ensureDir( const std::string &dir )
 }
 
 int darkCtrl::saveFitsF32( const std::string &path, const std::vector<float> &im, uint32_t w,
-                           uint32_t h )
+                           uint32_t h, const lina::DarkLibraryEntry &meta )
 {
     try
     {
+        mx::fits::fitsHeader head;
+        lina::append_dark_entry_header( head, meta );
         mx::fits::fitsFile<float> ff;
-        // mxlib: write(fname, data, d1, d2, d3) — d3=1 for a 2D image
-        if( ff.write( path, im.data(), static_cast<int>( w ), static_cast<int>( h ), 1 ) < 0 )
+        // mxlib: write(fname, data, d1, d2, d3, head) — d3=1 for a 2D image
+        if( ff.write( path, im.data(), static_cast<int>( w ), static_cast<int>( h ), 1, head ) < 0 )
         {
             return log<software_error, -1>(
                 { __FILE__, __LINE__, "FITS write failed: " + path } );
@@ -943,6 +962,30 @@ int darkCtrl::saveFitsF32( const std::string &path, const std::vector<float> &im
             { __FILE__, __LINE__, std::string( "FITS write failed: " ) + e.what() } );
     }
     return 0;
+}
+
+int darkCtrl::doGenerateDarkMetadata()
+{
+    setStatus( "generate_dark_metadata: starting" );
+    if( m_darkLibPath.empty() )
+        return log<software_error, -1>( { __FILE__, __LINE__, "dark_lib_path is empty" } );
+
+    try
+    {
+        std::vector<std::string> skipped;
+        const auto entries = lina::generate_dark_library_manifest_from_fits( m_darkLibPath, &skipped );
+        for( const auto &s : skipped )
+            log<text_log>( "generate_dark_metadata: skipped " + s, logPrio::LOG_WARNING );
+        log<text_log>( "generate_dark_metadata: indexed " + std::to_string( entries.size() ) +
+                       " darks in " + m_darkLibPath + "/" + lina::kDarkMetadataFile );
+        setStatus( "generate_dark_metadata: done (" + std::to_string( entries.size() ) + " darks)" );
+        return 0;
+    }
+    catch( const std::exception &e )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, std::string( "generate_dark_metadata: " ) + e.what() } );
+    }
 }
 
 int darkCtrl::doDarkLibBuild()
@@ -1014,7 +1057,7 @@ int darkCtrl::doDarkLibBuild()
         }
     } restore{ this, exptime_start, fps_start, restore_fps };
 
-    std::vector<lina::DarkLibraryEntry> entries;
+    unsigned n_written = 0;
 
     for( size_t i = 0; i < times.size(); ++i )
     {
@@ -1022,7 +1065,7 @@ int darkCtrl::doDarkLibBuild()
             break;
         setStatus( "dark_lib_build: exptime=" + std::to_string( times[i] ) );
         if( applyCamExpForDark( times[i] ) < 0 )
-            return -1;
+            break;
         mx::sys::milliSleep( static_cast<unsigned>( m_settle_s * 1000 ) );
 
         double stamp_exptime = 0.0;
@@ -1059,18 +1102,19 @@ int darkCtrl::doDarkLibBuild()
             }
         }
         if( !stamp_err.empty() )
-            return log<software_error, -1>( { __FILE__, __LINE__, stamp_err } );
+        {
+            log<software_error>( { __FILE__, __LINE__, stamp_err } );
+            break;
+        }
 
         std::vector<float> dark;
         uint32_t w = 0, h = 0;
         unsigned collected = 0;
         if( grabMean( m_darkNImages, m_camNFrameDelay, dark, w, h, &collected ) < 0 )
-            return -1;
+            break;
 
         char rel[64];
         std::snprintf( rel, sizeof( rel ), "dark_%03zu.fits", i );
-        if( saveFitsF32( m_darkLibPath + "/" + rel, dark, w, h ) < 0 )
-            return -1;
 
         lina::DarkLibraryEntry e;
         e.exptime = stamp_exptime;
@@ -1087,17 +1131,10 @@ int darkCtrl::doDarkLibBuild()
         e.roi_height = stamp_roi_h;
         e.gain = stamp_emgain;
         e.blacklevel = stamp_blacklevel;
-        entries.push_back( e );
 
-        try
-        {
-            lina::write_dark_library_manifest( m_darkLibPath, entries );
-        }
-        catch( const std::exception &ex )
-        {
-            return log<software_error, -1>(
-                { __FILE__, __LINE__, std::string( "failed to write dark_metadata.txt: " ) + ex.what() } );
-        }
+        if( saveFitsF32( m_darkLibPath + "/" + rel, dark, w, h, e ) < 0 )
+            break;
+        ++n_written;
 
         log<text_log>( "dark_lib_build: wrote " + m_darkLibPath + "/" + rel +
                        " (exptime=" + std::to_string( stamp_exptime ) + " s, ndark=" +
@@ -1107,12 +1144,15 @@ int darkCtrl::doDarkLibBuild()
                        ", blacklevel=" + std::to_string( stamp_blacklevel ) + ")" );
     }
 
-    if( entries.empty() )
+    if( n_written == 0 )
         return log<software_error, -1>( { __FILE__, __LINE__, "no darks written" } );
 
+    if( doGenerateDarkMetadata() < 0 )
+        return -1;
+
     setStatus( "dark_lib_build: done" );
-    log<text_log>( "dark_lib_build wrote " + std::to_string( entries.size() ) + " darks + " +
-                   m_darkLibPath + "/" + lina::kDarkMetadataFile );
+    log<text_log>( "dark_lib_build wrote " + std::to_string( n_written ) + " darks under " +
+                   m_darkLibPath );
     return 0;
 }
 
@@ -1233,6 +1273,21 @@ INDI_NEWCALLBACK_DEFN( darkCtrl, m_indiP_darkLibBuild )( const pcf::IndiProperty
         updateSwitchIfChanged( m_indiP_darkLibBuild, "request", pcf::IndiElement::On, INDI_BUSY );
         queueJob( Job::Build );
         clearRequest( m_indiP_darkLibBuild );
+    }
+    return 0;
+}
+
+INDI_NEWCALLBACK_DEFN( darkCtrl, m_indiP_generateDarkMetadata )( const pcf::IndiProperty &ipRecv )
+{
+    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_generateDarkMetadata, ipRecv );
+    if( !ipRecv.find( "request" ) )
+        return -1;
+    if( ipRecv["request"].getSwitchState() == pcf::IndiElement::On )
+    {
+        updateSwitchIfChanged( m_indiP_generateDarkMetadata, "request", pcf::IndiElement::On,
+                               INDI_BUSY );
+        queueJob( Job::GenerateMetadata );
+        clearRequest( m_indiP_generateDarkMetadata );
     }
     return 0;
 }

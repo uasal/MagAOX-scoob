@@ -10,6 +10,7 @@ cam_name=nsv455sim
 # INDI device that owns shutter.toggle (On=closed), e.g. llowfscSim
 shutter_device=llowfscsim
 dark_lib_path=/opt/MagAOX/data/darks/camsci
+# generate_dark_metadata scans this directory's FITS headers into dark_metadata.txt
 
 dark_n_images=20
 dark_exptimes=0.001,0.01,0.1,0.5,1,5,10

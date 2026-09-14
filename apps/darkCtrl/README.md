@@ -43,11 +43,11 @@ getINDI -d dark  # or your usual INDI client
 - For each exposure:
   - If `cam_name.fast_cam` is **On**: set `exptime` only (leave fps unchanged), wait for `cam_exptime`
   - If `fast_cam` is **Off** or **absent** (real cameras): set `exptime`, wait for `cam_exptime`, then set max `fps` (≈ `1/exptime`). Missing `fast_cam` is not an error.
-- Writes `dark_lib_path/dark_NNN.fits` plus `dark_lib_path/dark_metadata.txt` (CSV of camera parameters per dark)
-- Stamps metadata: `shm_cam_input` (frame stream), `cam_name` (INDI device), plus live `cam_name` currents: `exptime`, `emgain`, `blacklevel`, `bitDepth`, `roi_region_{x,y,w,h}`
+- Writes `dark_lib_path/dark_NNN.fits` with library metadata **in the FITS header**
+- Header keywords (HIERARCH for names longer than 8 characters): `EXPTIME`, `NDARK`, `SHM_CAM_INPUT`, `CAM_NAME`, `WIDTH`, `HEIGHT`, `BITDEPTH`, `ROI_X`, `ROI_Y`, `ROI_WIDTH`, `ROI_HEIGHT`, `EMGAIN`, `BLACKLEVEL`
 - `ndark` is the number of frames actually averaged
 - The build **fails** (does not write `nan`) if those camera currents were never received. Check `getINDI nsvsim.{exptime,emgain,blacklevel,bitDepth,roi_region_*}` (or your `cam_name`).
-- `dark_metadata.txt` is rewritten after each dark so a mid-build failure still leaves a usable library.
+- After a sweep (or via **`generate_dark_metadata`**), every `*.fits` / `*.fit` in `dark_lib_path` is parsed and `dark_metadata.txt` is rebuilt. Drop extra darks into the directory (e.g. `dark_0.050000s.fits`) as long as they have those header cards, then toggle `generate_dark_metadata`. `iefcCtrl.reload_dark_lib` will then see the new files.
 - When the build finishes (success, stop, or error after the shutter was closed), the shutter is opened (`shutter_device.shutter` Off) and `cam_name.exptime` is restored to the value from before the sweep. If `fast_cam` is Off/absent, fps is restored too.
 
 Rebuild/install `darkCtrl`, `psfRefCtrl`, and `iefcCtrl`, then **regenerate** the dark library.
@@ -80,7 +80,9 @@ Rebuild/install `darkCtrl`, `psfRefCtrl`, and `iefcCtrl`, then **regenerate** th
 | `cam_bitdepth` | RO `current` from `cam_name.bitDepth.current` |
 | `cam_roi_x` / `cam_roi_y` | RO from `cam_name.roi_region_x/y.current` |
 | `cam_roi_width` / `cam_roi_height` | RO from `cam_name.roi_region_w/h.current` |
-| `dark_lib_build` | Request: build the library |
+| `dark_lib_path` | Directory of dark FITS files (capture output and generate input) |
+| `dark_lib_build` | Request: capture the library (writes FITS headers, then regenerates `dark_metadata.txt`) |
+| `generate_dark_metadata` | Request: parse FITS headers in `dark_lib_path` and write `dark_metadata.txt` |
 | `stop` | Abort in-progress build |
 
 Camera get/set is always on **`cam_name`**, e.g. `getINDI nsvsim.exptime.current` / `setINDI nsvsim.exptime.target=0.01`. This app only mirrors `.current` (no local `target` for those props).
