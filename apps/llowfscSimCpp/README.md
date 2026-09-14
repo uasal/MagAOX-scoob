@@ -5,8 +5,8 @@ Sets up core XWCTk functionality, shmim management, INDI setup, app loop in C++ 
 
 How embedded CPython works: a dedicated worker thread
 creates `esc.single` once (Python) and then calls `M.snap_camsci()` /
-`M.snap_camlo()` at the camera fps cadence. INDI, ImageStreamIO, and the loop
-timer stay in C++.
+`M.snap_camlo()`. A new `dm01disp` post wakes the snap immediately (timeout ≈
+camera period if the DM is idle). INDI, ImageStreamIO, and the wait stay in C++.
 
 Fraunhofer snap is slow. `snap_camsci` is still GPU Python (`calc_wfs_camsci`). 
 This is the limitation for going faster 
@@ -47,3 +47,23 @@ Optimizations done by the C++ to gain slightly faster computation:
 - Cache the astropy flux conversion (it ran every frame)
 - Cast to float32 on GPU and reuse a host buffer for DtoH
 - Removed milk transpose on every frame due to added compute time
+
+## DM-to-camera latency
+
+While streaming, the worker **waits on `shm_dm_total` (default `dm01disp`)** with a
+timeout of about one camera period minus the last snap duration. A new DM
+command therefore starts a snap immediately instead of sitting until the next
+fps sleep. Extra queued DM posts are flushed so the snap uses the latest
+command. If the DM is idle, the timeout still produces frames near camera fps.
+
+INDI **`dm_latency`** (group `sim`, read-only):
+
+| Element | Meaning |
+|---------|---------|
+| `current` | Last frame: camera publish time minus milk DM `writetime` [s] |
+| `avg` | Mean of `current` over the last 1 s [s] |
+| `frames` | Same mean in camera frames (`avg` × fps) |
+
+`writetime` is the ImageStreamIO stamp from cacao/milk when the DM buffer was
+written. If that stamp is zero, latency falls back to “after DM wait until
+publish” (grab + snap + publish). `avg` / `frames` update once per second.

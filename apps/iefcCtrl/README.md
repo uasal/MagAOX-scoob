@@ -54,7 +54,7 @@ See `iefcCtrl.conf.sample`. Important:
   (no fallback timeout).
 - `cam_name` — INDI science-camera device. Set/query `cam_name.exptime` / `cam_name.emgain` there (`*.target` to command, `*.current` is what iefc stores for dark matching).
 - `shm_cam_input` — ImageStreamIO stream; also the dark-library match key
-- `dark_lib_path` / `reload_dark_lib` — load darks built by **darkCtrl** (`dark_metadata.txt` + `dark_NNN.fits`) for `shm_cam_input`
+- `dark_lib_path` / `reload_dark_lib` — load darks built by **darkCtrl** (`dark_metadata.txt` + FITS files) for `shm_cam_input`. After dropping new FITS into that directory, run darkCtrl `generate_dark_metadata` then `reload_dark_lib`.
 - Ref-PSF: acquisition now in **psfRefCtrl** (`take_ref`); iefc has `reload_psf_ref` to load packages
 - Paths:
   - `psf_dir` — ref-PSF / Imax package (from psfRefCtrl; loaded by `reload_psf_ref` / calibrate / `cl_run`)

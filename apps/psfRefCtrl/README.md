@@ -52,7 +52,7 @@ getINDI -d psfref  # or your usual INDI client
 
 ## Requirements
 
-- `dark_lib_path` must be set and contain `dark_metadata.txt` + `dark_NNN.fits` (built by `darkCtrl`)
+- `dark_lib_path` must be set and contain `dark_metadata.txt` plus dark FITS files (built / indexed by `darkCtrl`)
 - `fsm_name` must respond to `x.target` / `y.target` [nm]
 - `cam_name` must publish `exptime`, `emgain`, `blacklevel` (SET subscriptions)
 
@@ -72,7 +72,7 @@ getINDI -d psfref  # or your usual INDI client
 | `shm_cam_input` | Camera ImageStreamIO name (frames + dark-library match key) |
 | `cam_name` | INDI camera device for exptime/emgain/blacklevel |
 | `fsm_name` | INDI FSM device for tip/tilt positioning [nm] |
-| `dark_lib_path` | Directory containing `dark_metadata.txt` + `dark_NNN.fits` (REQUIRED) |
+| `dark_lib_path` | Directory containing `dark_metadata.txt` + dark FITS files (REQUIRED) |
 | `dir` | Package output directory |
 | `n_frames` | Frames averaged for reference PSF |
 | `fsm_poke_tip` | FSM poke tip offset [nm] |

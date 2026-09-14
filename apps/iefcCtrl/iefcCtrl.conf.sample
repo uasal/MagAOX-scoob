@@ -24,7 +24,7 @@ cam_name=camsci
 #   cal_dir — calibration package (response/control matrices from calibrate; used by cl_run)
 #   dm_cmd_path — closed-loop DM command FITS archive ({shm_dm_mode}_cl_{N}.fits)
 #   psf_dir — ref-PSF / Imax package (from psfRefCtrl; loaded by reload_psf_ref / calibrate / cl_run)
-#   dark_lib_path — dark library from darkCtrl (dark_metadata.txt + dark_NNN.fits)
+#   dark_lib_path — dark library from darkCtrl (dark_metadata.txt + FITS files)
 # NOTE: PSF acquisition is now in psfRefCtrl (take_ref). Use reload_psf_ref here to reload the package.
 cal_dir=./cal_a
 dm_cmd_path=./dm_cmds

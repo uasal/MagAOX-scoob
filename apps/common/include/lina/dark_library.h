@@ -1,20 +1,29 @@
 #pragma once
 
-/// Shared dark-library schema used by darkCtrl, psfRefCtrl, and iefcCtrl.
-///
-/// Lives in apps/common/include (not under any one app) so the writer and
-/// readers cannot drift. Include with -I../common/include and
-/// `#include <lina/dark_library.h>`.
-///
-/// Directory layout (dark_lib_path):
-///   dark_000.fits
-///   dark_001.fits
-///   ...
-///   dark_metadata.txt   (CSV; canonical)
-///
-/// Match key is shm_cam_input (ImageStreamIO name), not the INDI cam_name device.
-/// Legacy: dark_library.txt (space-separated) and darks/dark_NNN.fits are still read.
-/// Old CSVs that only have a cam_name column treat that value as shm_cam_input.
+/** \file dark_library.h
+  * \brief Shared dark-library schema used by darkCtrl, psfRefCtrl, and iefcCtrl.
+  *
+  * Lives in apps/common/include (not under any one app) so the writer and
+  * readers cannot drift. Include with -I../common/include and
+  * `#include <lina/dark_library.h>`.
+  *
+  * Directory layout (`dark_lib_path`):
+  *   dark_000.fits          (or any *.fits / *.fit dropped into the directory)
+  *   dark_0.050000s.fits
+  *   ...
+  *   dark_metadata.txt      (CSV index generated from FITS headers)
+  *
+  * Source of truth for per-image metadata is the FITS header. darkCtrl writes
+  * these keywords (HIERARCH for names longer than 8 characters):
+  *   EXPTIME, NDARK, SHM_CAM_INPUT, CAM_NAME, WIDTH, HEIGHT, BITDEPTH,
+  *   ROI_X, ROI_Y, ROI_WIDTH, ROI_HEIGHT, EMGAIN, BLACKLEVEL
+  * `dark_metadata.txt` is produced by scanning those headers (INDI
+  * `generate_dark_metadata`, or at the end of a darkCtrl capture sweep).
+  *
+  * Match key is shm_cam_input (ImageStreamIO name), not the INDI cam_name device.
+  * Legacy: dark_library.txt (space-separated) and darks/dark_NNN.fits are still read.
+  * Old CSVs that only have a cam_name column treat that value as shm_cam_input.
+  */
 
 #include <cctype>
 #include <cerrno>
@@ -152,6 +161,60 @@ inline std::string lower( std::string s )
     return s;
 }
 
+/// Strip FITS string quotes (`'value'`) and surrounding whitespace.
+inline std::string unquote_fits_value( std::string s )
+{
+    s = trim( s );
+    if( s.size() >= 2 && s.front() == '\'' && s.back() == '\'' )
+    {
+        s = s.substr( 1, s.size() - 2 );
+        std::string out;
+        out.reserve( s.size() );
+        for( std::size_t i = 0; i < s.size(); ++i )
+        {
+            if( s[i] == '\'' && i + 1 < s.size() && s[i + 1] == '\'' )
+            {
+                out.push_back( '\'' );
+                ++i;
+            }
+            else
+                out.push_back( s[i] );
+        }
+        s = std::move( out );
+    }
+    return trim( s );
+}
+
+/// Map a FITS or CSV key onto the canonical dark_metadata.txt column name.
+/** Accepts HIERARCH-prefixed names, the 8-character FITS abbreviations, and
+  * the long CSV names. Unknown keys are returned lowercased.
+  */
+inline std::string canonical_dark_field_name( std::string k )
+{
+    k = lower( trim( k ) );
+    const std::string hier = "hierarch ";
+    if( k.size() > hier.size() && k.compare( 0, hier.size(), hier ) == 0 )
+        k = trim( k.substr( hier.size() ) );
+
+    if( k == "shmcam" || k == "shm_cam" || k == "shmcamin" )
+        return "shm_cam_input";
+    if( k == "camname" || k == "camera" )
+        return "cam_name";
+    if( k == "bit_depth" || k == "bitpixcam" )
+        return "bitdepth";
+    if( k == "roi_w" || k == "roiw" )
+        return "roi_width";
+    if( k == "roi_h" || k == "roih" )
+        return "roi_height";
+    if( k == "gain" )
+        return "emgain";
+    if( k == "blacklvl" || k == "blacklev" )
+        return "blacklevel";
+    if( k == "relative_path" )
+        return "filename";
+    return k;
+}
+
 inline DarkLibraryEntry entry_from_fields( const std::map<std::string, std::string> &f )
 {
     DarkLibraryEntry e;
@@ -183,6 +246,26 @@ inline DarkLibraryEntry entry_from_fields( const std::map<std::string, std::stri
     const std::string em = get( "emgain" );
     e.gain = parse_dbl( em.empty() ? get( "gain" ) : em );
     e.blacklevel = parse_dbl( get( "blacklevel" ) );
+    return e;
+}
+
+/// Build an entry from FITS/CSV keys of mixed case or alias spelling.
+inline DarkLibraryEntry entry_from_header_fields( const std::map<std::string, std::string> &raw,
+                                                   const std::string &relpath = {} )
+{
+    std::map<std::string, std::string> f;
+    for( const auto &kv : raw )
+    {
+        const std::string name = canonical_dark_field_name( kv.first );
+        if( name.empty() || name == "simple" || name == "bitpix" || name == "naxis" ||
+            name == "naxis1" || name == "naxis2" || name == "naxis3" || name == "extend" ||
+            name == "comment" || name == "history" || name == "longstrn" || name == "continue" )
+            continue;
+        f[name] = unquote_fits_value( kv.second );
+    }
+    auto e = entry_from_fields( f );
+    if( !relpath.empty() )
+        e.relpath = relpath;
     return e;
 }
 
@@ -297,6 +380,10 @@ inline std::vector<DarkLibraryEntry> load_manifest_file( const std::string &path
 }
 
 } // namespace darklib_detail
+
+using darklib_detail::canonical_dark_field_name;
+using darklib_detail::entry_from_header_fields;
+using darklib_detail::unquote_fits_value;
 
 inline std::vector<DarkLibraryEntry> load_dark_library_manifest( const std::string &lib_dir )
 {
