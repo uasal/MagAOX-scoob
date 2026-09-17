@@ -25,11 +25,25 @@ directory.
 | `wccAstrometry.hpp` | Source detection, catalog matching, multi-sensor boresight solution |
 | `wccJSON.hpp` | Minimal JSON reader for the visit file |
 | `wccVisit.hpp` | The visit file model |
+| `wccVisitIndi.hpp` | The INDI contract by which visitCtrl publishes a visit |
+| `wccIndiRate.hpp` | The 1 Hz INDI rate limit and a gate that enforces it |
 | `wccSensorConfig.hpp` | The shared sensor-section config loader |
 
 Everything except `wccSensorConfig.hpp` depends only on the standard library and
 Eigen. `wccSensorConfig.hpp` additionally needs `mx::app::appConfigurator`, which
 is why it is separate: the rest can be compiled and tested without any of MagAO-X.
+
+Three of these headers exist specifically so that separate applications cannot drift
+apart on a shared convention, and the compiler enforces it:
+
+- `wccSensorConfig.hpp` — the sensor array geometry. If `wccSim` and `wccCtrl`
+  disagreed, the controller would solve astrometry against a different array than the
+  simulator rendered.
+- `wccVisitIndi.hpp` — the property and element names carrying a visit. A rename
+  breaks the publisher and all consumers at once rather than silently at runtime.
+- `offsetBoresight()` in `wccFocalPlane.hpp` — the field-angle offset convention,
+  shared by the telescope that must move when commanded and the simulator that must
+  render what it now sees.
 
 ## What was ported from Python, and where it differs
 
@@ -135,6 +149,19 @@ g++ -o /tmp/wccCommon_test /tmp/testMain.o /tmp/wccCommon_test.o && /tmp/wccComm
 - `matrixDFT`, `psfGenerator` and `sensorNoise` are **not** thread safe; each owns
   a cache or RNG state. Give every worker thread its own. A built `psfBank` is
   immutable and can be shared.
+
+## The 1 Hz INDI limit
+
+`wccIndiRate.hpp` carries the interval every WCC application holds its INDI reads
+and writes to. The INDI server serializes all property updates through one set of
+FIFOs, so several applications each publishing at tens of hertz will saturate it and
+start dropping devices.
+
+This is a real constraint on the control loops, not just on status reporting: it puts
+a 1 s floor on the fast guiding loop. `clampIndiPeriod()` raises a shorter requested
+period rather than letting it through, so the limit shows up in the configuration and
+the log instead of as mysterious INDI instability. `rateGate` is for code paths
+called more often than that, such as a worker thread, that still need to emit INDI.
 
 ## Units
 

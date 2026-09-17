@@ -1,10 +1,29 @@
 # wccCtrl
 
-The WCC high-level logic controller. It ingests a visit file, configures the sensor
-array, solves astrometry across many cameras at once, offsets the telescope until
-the guide star lands on its target pixel, checks and corrects roll, then narrows
-the guide and roll cameras to a small region of interest and hands off to the
-centroid controllers for fast guiding.
+The WCC high-level logic controller. It configures the sensor array, solves
+astrometry across many cameras at once, offsets the telescope until the guide star
+lands on its target pixel, checks and corrects roll, then narrows the guide and roll
+cameras to a small region of interest and hands off to the centroid controllers for
+fast guiding.
+
+**It does not read the visit file.** [`visitCtrl`](../visitCtrl/README.md) parses it
+and republishes every parameter over INDI; `wccCtrl` subscribes to that. One parser
+in the system means one interpretation of the schema. The visit arrives
+asynchronously, so `wccCtrl` waits until the whole set of properties has been
+delivered before promoting it — a partially delivered visit is never acted on — and
+drops it again if `visitCtrl` stops reporting `LOADED` rather than running a stale
+one. Promotion only happens between sequences, since a visit changing mid-acquisition
+would move the target out from under the sequencer.
+
+```
+   visitCtrl ──(target, stars, acq + tracking params)──▶ wccCtrl
+                                                           │ offset x/y/roll
+                                                           ▼
+                                                      telescopeSim
+                                                           │ current pointing
+                                                           ▼
+                                                        wccSim ──▶ frames ──▶ wccCtrl
+```
 
 ## The sequence
 
@@ -103,9 +122,9 @@ controller stages `roi_region_*` and then sends the request switch.
 
 ## Visit file
 
-`wcc_visit.sample.json` is the annotated reference. It uses
-`data/LAZ_072226_001_R001.json` as the baseline schema and adds what an
-acquisition sequence needs but that file does not carry:
+`wcc_visit.sample.json` is the annotated reference, read by `visitCtrl` rather than
+by this application. It uses `data/LAZ_072226_001_R001.json` as the baseline schema
+and adds what an acquisition sequence needs but that file does not carry:
 
 - `TARGET_ACQUISITION.TA_SENSORS` — per sensor exposure time, frame rate, gain and
   ROI for the full-frame pass, plus `STREAM: false` to drop a sensor from the
@@ -119,11 +138,16 @@ acquisition sequence needs but that file does not carry:
 Every added field has a default, so an unmodified LAZ-format file still loads and
 runs on the configured defaults.
 
-**Star selection degrades rather than failing.** The visit file offers several
-ranked guide and roll star candidates. `wccCtrl` walks the ranks and takes the
-first whose guide star *and* a roll star both land on sensors this controller
-actually has configured. A partially populated array therefore falls back to a
-lower-ranked but usable pair instead of refusing to observe.
+**Rank selection belongs to `visitCtrl`**, which publishes one already-chosen pair.
+`wccCtrl` only has to resolve that pair onto sensor indices. If either star is on a
+sensor this controller does not have configured, the visit is refused with a message
+naming the sensor, and the operator moves `visitCtrl`'s `select_rank` to a pair that
+fits the array. Putting the choice next to the visit data, where every candidate is
+visible, is clearer than having the consumer silently fall back.
+
+Per-sensor acquisition overrides from `TA_SENSORS` are not mirrored over INDI: the
+acquisition parameters apply to every participating sensor. That is the
+simplification moving the parser out bought.
 
 ## Handoff to centroidCtrl
 
@@ -147,8 +171,6 @@ enable toggle. All three names are configurable.
 
 | Property | Type | Purpose |
 |---|---|---|
-| `visit_file` | text | Path to the visit file |
-| `load` | request | Parse the visit file |
 | `start` | request | Begin the acquisition sequence |
 | `abort` | request | Stop the sequence, return to `LOADED` |
 | `acq_state` | text (RO) | `state`, `message` |
@@ -167,11 +189,16 @@ what the process started with.
 ## Trying it out
 
 ```bash
-/opt/MagAOX/bin/wccCtrl -n wccctrl
-xindi wccctrl.visit_file.target=/opt/MagAOX/config/wcc_visit.json
-xindi wccctrl.load.request=On
+# visitCtrl owns the visit file
+xindi visitctrl.visit_file.target=/opt/MagAOX/config/wcc_visit.json
+xindi visitctrl.load.toggle=On
+
+# telescopeSim slews to it, wccSim renders what the mount sees
+xindi telescopesim.start_visit.toggle=On
+xindi wccsim.streaming.toggle=On
+
+# then acquire
 xindi wccctrl.start.request=On
-# watch it go
 xindi -m wccctrl.acq_state wccctrl.acq_status
 ```
 
@@ -183,13 +210,19 @@ xindi -m wccctrl.acq_state wccctrl.acq_status
   calibration.
 - The fast loop is proportional only. There is no integrator and no feed-forward,
   so it will show a steady-state lag under a constant drift rate.
+- **The fast loop runs at 1 Hz, not faster.** All INDI traffic in the WCC
+  applications is held to that, because the INDI server serializes every property
+  update and faster traffic from several apps at once will overload it and start
+  dropping devices. `track.period` below 1.0 is raised to 1.0 with a log message
+  rather than silently exceeded. A genuinely fast loop would have to bypass INDI, for
+  example by having the centroid controllers and the offset path meet in shared
+  memory.
 - Roll during acquisition assumes the pointing error has already been removed,
   which is why the roll check runs after the guide star converges. A large
   simultaneous pointing and roll error will need more than one pass.
 - The visit file's `NPOSANG`, `ROLCOUNT`, `DA01`-style dither blocks and the
   `ESC_PARAMETERS` / `LLOWFWS` sections are parsed but unused; this app covers
   target acquisition and guiding only.
-- INDI subscriptions cannot be withdrawn, so loading a second visit that names
-  different centroid controllers adds subscriptions rather than replacing them.
-  Harmless, but a long-running process that cycles through many visits will
-  accumulate them.
+- INDI subscriptions cannot be withdrawn, so a second visit naming different
+  centroid controllers adds subscriptions rather than replacing them. Harmless, but a
+  long-running process cycling through many visits will accumulate them.

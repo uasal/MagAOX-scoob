@@ -15,13 +15,19 @@ the analytic Airy pattern by that directory's test suite.
 ## How it fits together
 
 ```
-                    ┌──────────────┐
-   star catalog ───▶ │              │  roi/fps/exptime/emgain (INDI SET)
-   (gsc31 CSV)      │    wccSim    │ ◀────────────────  nsvCtrlSim / nsvCtrl / any
-                    │              │                    dev::stdCamera camera
-   pointing ──────▶ │              │ ──────────────▶  nsv18sim, hwk09sim, ...
-   (INDI or local)   └──────────────┘                    (uint16 shmim per sensor)
+                       ┌──────────────┐
+   star catalog ─────▶ │              │ ◀── roi / fps / exptime / emgain
+   (gsc31 CSV)         │              │     from nsvCtrlSim, nsvCtrl, or any
+                       │    wccSim    │     dev::stdCamera camera
+   current pointing ─▶ │              │
+   from telescopeSim   │              │ ──▶ nsv18sim, hwk09sim, ...
+                       └──────────────┘     (uint16 shmim per sensor)
 ```
+
+Three inputs, and it needs all three to render a frame: the **star catalog** for
+what is out there, each **camera's** commanded ROI and exposure time for how that
+sensor is currently reading out, and the **telescope's current pointing** for where
+the array is looking. Change any one and the images follow.
 
 For every configured sensor, `wccSim` subscribes to that camera's `fps`,
 `exptime`, `emgain`, `bitDepth` and `roi_region_*` properties. When a camera is
@@ -37,15 +43,21 @@ synthetic sky into a real camera's configuration.
 
 Two modes, selected by whether `pointing.tel_device` is set:
 
-- **Empty (default).** `wccSim` owns the pointing. It accepts absolute
-  `pointing` (`ra`, `dec`, `pa`) and relative `offset` (`x`, `y` in arcsec,
-  `roll` in degrees) commands. This is what makes the whole acquisition loop
-  demonstrable with no telescope present — `wccCtrl` sends its offsets straight
-  to `wccSim` and the star field moves accordingly.
-- **Set.** The pointing is slaved to that device's pointing property, and local
-  `pointing`/`offset` commands are rejected with a warning. Use this against
-  `tcsInterface` or a telescope simulator, where the telescope is the authority
-  and `wccSim` merely reports what the sky looks like from where it is pointed.
+- **Set (default: `telescopesim`).** The pointing is slaved to that device's
+  `pointing` property, which reports where the mount *currently* is with jitter
+  included, and local `pointing`/`offset` commands are rejected with a warning. This
+  is the normal configuration: the telescope is the authority and `wccSim` renders
+  what the sky looks like from wherever it is pointed. `wccCtrl` therefore closes its
+  loop through the mount rather than through a back channel to the simulator.
+  Pointing this at `tcsInterface` instead needs only `tel_property=telpos` and
+  `tel_pa_element=rotoff`.
+- **Empty.** `wccSim` owns the pointing and accepts absolute `pointing` and relative
+  `offset` commands directly. Useful for exercising the renderer without a mount in
+  the loop.
+
+The offset conversion is shared with `telescopeSim` through
+`wccCommon::offsetBoresight`, so a commanded field-angle correction and the resulting
+image motion cannot disagree.
 
 ## Frames, and what limits the rate
 
@@ -155,6 +167,12 @@ xindi wccsim.offset.x=30 wccsim.offset.y=-10
 ```
 
 `sim.start_streaming=true` skips the toggle if you want frames immediately.
+
+Note that `appLogic`, and therefore the camera and pointing values it reads plus the
+status it publishes, runs at 1 Hz — the limit every WCC application holds its INDI
+traffic to. The per-sensor render threads are *not* rate limited; they run at
+whatever frame rate each camera asks for. So a ROI or exposure change takes effect
+within about a second, and frames continue at full rate throughout.
 
 ## Known limitations
 
