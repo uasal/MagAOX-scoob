@@ -732,6 +732,48 @@ inline int focalPlaneModel::sensorForField( double fieldX, double fieldY ) const
     return -1;
 }
 
+/// Apply a focal plane field angle offset to a boresight.
+/** Moves a boresight by an offset expressed in focal plane axes, in arcseconds,
+ * through the same tangent plane chain a sensor WCS uses. Both the telescope,
+ * which must move when commanded, and the simulator, which must render what the
+ * telescope now sees, need this to agree exactly, so it lives here rather than in
+ * either application.
+ *
+ * \ingroup wccCommon
+ */
+inline void offsetBoresight( double ra /**< [in] current right ascension [deg] */,
+                             double dec /**< [in] current declination [deg] */,
+                             double positionAngle /**< [in] position angle of focal plane +Y [deg] */,
+                             double parity /**< [in] handedness of focal plane X, +1 or -1 */,
+                             double fieldX /**< [in] offset along focal plane X [arcsec] */,
+                             double fieldY /**< [in] offset along focal plane Y [arcsec] */,
+                             double &newRA /**< [out] offset right ascension [deg], in [0,360) */,
+                             double &newDec /**< [out] offset declination [deg] */ )
+{
+    skyWCS bore;
+    bore.setReference( ra, dec );
+    bore.setReferencePixel( 0, 0 );
+
+    const double cpa = std::cos( positionAngle * deg2rad );
+    const double spa = std::sin( positionAngle * deg2rad );
+    const double p = ( parity < 0 ) ? -1.0 : 1.0;
+
+    // The same M = R(PA) * P chain focalPlaneModel::chain() builds, with one
+    // arcsecond per unit instead of one detector pixel.
+    bore.setCDMatrix( arcsec2deg * cpa * p, arcsec2deg * spa, -arcsec2deg * spa * p, arcsec2deg * cpa );
+
+    bore.pix2world( fieldX, fieldY, newRA, newDec );
+
+    if( newDec > 90.0 )
+    {
+        newDec = 90.0;
+    }
+    if( newDec < -90.0 )
+    {
+        newDec = -90.0;
+    }
+}
+
 inline double focalPlaneModel::roiSearchRadius( size_t iSensor, const roiSpec &roi, double marginPix ) const
 {
     if( iSensor >= m_sensors.size() )

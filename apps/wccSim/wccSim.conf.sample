@@ -32,15 +32,22 @@ id_column=gsc2ID
 mag_limit=21
 
 [pointing]
-# Leave tel_device empty to let wccSim own the pointing and accept local
-# pointing and offset commands. That makes the whole acquisition loop
-# demonstrable with no telescope present. Set it to a telescope device, e.g.
-# tcsi, to slave the simulation to real reported pointing instead.
-tel_device=
-tel_property=telpos
+# Normally telescopeSim, whose pointing property reports where the mount currently
+# is with jitter included. wccSim then renders exactly what that pointing sees, so
+# the images move when the mount moves.
+#
+# Leave tel_device empty to let wccSim own the pointing and accept local pointing
+# and offset commands directly, which is useful for testing the renderer without a
+# mount in the loop.
+#
+# For MagAO-X tcsInterface instead use:
+#   tel_property=telpos
+#   tel_pa_element=rotoff
+tel_device=telescopesim
+tel_property=pointing
 tel_ra_element=ra
 tel_dec_element=dec
-tel_pa_element=rotoff
+tel_pa_element=pa
 # Startup boresight. This is the gsc31_north.csv field centre.
 ra=192.317
 dec=26.84316038

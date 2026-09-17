@@ -10,6 +10,7 @@ OTHER_HEADERS = ../wccCommon/wccUnits.hpp \
                 ../wccCommon/wccStarCatalog.hpp \
                 ../wccCommon/wccFocalPlane.hpp \
                 ../wccCommon/wccSensorModel.hpp \
+                ../wccCommon/wccIndiRate.hpp \
                 ../wccCommon/wccSensorConfig.hpp
 
 TARGET = wccSim

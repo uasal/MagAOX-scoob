@@ -120,6 +120,8 @@ apps_tic = \
 # Apps with simulator mode
 apps_sim = \
 	trippLitePDU \
+	visitCtrl \
+	telescopeSim \
 	wccSim \
 	wccCtrl
 
@@ -167,10 +169,12 @@ all_buildable_apps = \
 	sysMonitor \
 	t2wOffloader \
 	tcsInterface \
+	telescopeSim \
 	timeSeriesSimulator \
 	trippLitePDU \
 	ttmModulator \
 	usbtempMon \
+	visitCtrl \
 	w2tcsOffloader \
 	wccCtrl \
 	wccSim \

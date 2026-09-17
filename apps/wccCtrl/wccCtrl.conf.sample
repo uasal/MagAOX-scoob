@@ -5,10 +5,18 @@
 # astrometry against a different array geometry than the simulator rendered.
 
 [visit]
-# May also be set at runtime: point visit_file at a path and send the load
-# request. Everything the visit supplies is then republished on the visit and
-# visit_params properties, so what the sequence is using is never implicit.
-path=/opt/MagAOX/config/wcc_visit.json
+# wccCtrl does NOT read the visit file. visitCtrl parses it and republishes every
+# parameter over INDI, and this is the device to read that from. Keeping one parser
+# in the system means one interpretation of the schema.
+#
+# The visit arrives asynchronously: wccCtrl waits until the whole set of properties
+# has been delivered before promoting it, so a partially delivered visit is never
+# acted on. If visitCtrl stops reporting a loaded visit, wccCtrl drops it rather
+# than running a stale one.
+device=visitctrl
+
+# Begin the acquisition sequence as soon as a complete visit arrives, rather than
+# waiting for a start request. Leave false during commissioning.
 auto_start=false
 
 #-----------------------------------------------------------------------------
@@ -108,7 +116,14 @@ centroid_x_element=x
 centroid_y_element=y
 centroid_enable_property=loop
 max_offset_arcsec=5
-period=0.05
+
+# Interval between fast loop corrections. Every WCC application holds its INDI
+# traffic to 1 Hz, because the INDI server serializes all property updates and
+# faster traffic from several apps at once will overload it. Anything below 1.0 is
+# raised to 1.0 with a log message rather than silently exceeding the limit, so this
+# is effectively the floor.
+period=1.0
+
 deadband_px=0.05
 
 #-----------------------------------------------------------------------------

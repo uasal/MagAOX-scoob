@@ -1,0 +1,62 @@
+# Sample MagAO-X config for telescopeSim, the WCC telescope simulator.
+# Install as /opt/MagAOX/config/telescopesim.conf (process name comes from the proclist).
+#
+# telescopeSim is the authority on where the telescope is pointed. wccSim reads its
+# pointing property to decide what the sky looks like; wccCtrl sends corrections to
+# offset and watches teldata to know when a move has finished.
+#
+# Sequence to run a visit:
+#   xindi visitctrl.visit_file.target=/opt/MagAOX/config/wcc_visit.json
+#   xindi visitctrl.load.toggle=On
+#   xindi telescopesim.start_visit.toggle=On     # slews to the visit target
+#   xindi wccsim.streaming.toggle=On             # images follow the mount
+#
+# All INDI traffic is held to 1 Hz, so the reported pointing updates once a second.
+# Mount motion is integrated against measured elapsed time, so that rate sets the
+# reporting granularity rather than the slew fidelity.
+
+[visit]
+# The visitCtrl instance to take targets from. Leave empty to disable start_visit
+# and drive the mount only with goto_target and offset.
+device=visitctrl
+
+[sim]
+# Slew and rotation rates. A 1 deg/s slew crosses a degree of sky in a second, so
+# raise these if you want acquisition sequences to run quickly in simulation.
+slew_rate=1.0
+roll_rate=1.0
+
+# Pointing jitter, rms per axis, in arcsec. This is what the guiding loop has to
+# work against, so it should be a few times the guide tolerance to be interesting
+# but well inside the acquisition search radius. 0 gives a perfectly steady mount,
+# which is useful when debugging the astrometric solution itself.
+jitter=0.2
+
+# Roll jitter, rms, in degrees.
+jitter_roll=0.002
+
+# Systematic drift along the focal plane axes, in arcsec/min. Non-zero exercises
+# the fast loop's ability to keep up with a moving target; note the loop is
+# proportional only, so a constant drift leaves a steady-state lag.
+drift_x=0.0
+drift_y=0.0
+
+# Time spent settling after arriving before teldata reports tracking. wccCtrl waits
+# for this before it re-solves, so it should reflect real mount settling.
+settle_time=2.0
+
+# Distance below which the mount is considered to have arrived, in arcsec.
+arrive_tol=1.0
+
+# Handedness of focal plane X against increasing RA. MUST match wccSim and wccCtrl,
+# otherwise a commanded correction moves the sky the wrong way.
+parity=-1
+
+# Pointing at startup. This is the gsc31_north.csv field centre, so the bundled
+# sample visit is a short slew away.
+ra=192.317
+dec=26.84316038
+pa=0.0
+
+# RNG seed for the jitter, so a run is reproducible.
+seed=8675309

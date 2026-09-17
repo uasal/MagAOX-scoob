@@ -77,12 +77,14 @@ class wccCtrlTester : public wccCtrl
         return sensorByName( n );
     }
 
-    /// Install a visit directly, bypassing the file, then resolve its stars.
-    int testSelectStars( const MagAOX::wcc::visitFile &vf )
+    /// Install a resolved selection directly, then resolve its stars onto sensors.
+    /** Bypasses the INDI mirroring so the sensor matching can be tested on its own.
+     */
+    int testResolveStars( const MagAOX::wcc::visitSelection &sel )
     {
-        m_visit = vf;
-        m_visitLoaded = true;
-        return selectStars();
+        m_selection = sel;
+        m_selection.m_valid = true;
+        return resolveStars();
     }
 
     /// Index into the sensor list of the selected guide sensor.
@@ -115,6 +117,12 @@ class wccCtrlTester : public wccCtrl
         return acqState();
     }
 
+    /// The fast loop period actually in use, after rate-limit clamping.
+    double trackPeriod()
+    {
+        return m_trackPeriod;
+    }
+
     /// Convert a pixel displacement on a sensor into a field shift.
     void testPixelToFieldShift( size_t i, double x, double y, double dx, double dy, double &fx, double &fy )
     {
@@ -141,6 +149,7 @@ inline std::string writeCtrlConfig( const std::string &path /**< [in] where to w
 {
     std::ofstream fout( path );
 
+    fout << "[visit]\ndevice=visitsim\n";
     fout << "[telescope]\ndevice=telsim\ndiameter=6.5\nf_number=12.0\nparity=-1\n";
     fout << "[catalog]\npath=/dev/null\n";
     fout << "[acq]\nsensors=" << sensors << "\n";
@@ -262,12 +271,56 @@ TEST_CASE( "wccCtrl parses its configuration and rejects unusable ones", "[wccCt
         const std::string path = "/tmp/wccCtrl_test_config_notel.conf";
         {
             std::ofstream fout( path );
+            fout << "[visit]\ndevice=visitsim\n";
             fout << "[catalog]\npath=/dev/null\n";
             fout << "[acq]\nsensors=A\n";
             fout << "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
         }
 
         REQUIRE( app.testLoadConfigFile( path ) < 0 );
+
+        std::remove( path.c_str() );
+    }
+
+    SECTION( "a missing visit device is rejected" )
+    {
+        // wccCtrl reads the visit from visitCtrl over INDI, so without that device
+        // there is nothing to read and the sequence could never start.
+        wccCtrlTester app;
+
+        const std::string path = "/tmp/wccCtrl_test_config_novisit.conf";
+        {
+            std::ofstream fout( path );
+            fout << "[telescope]\ndevice=telsim\n";
+            fout << "[catalog]\npath=/dev/null\n";
+            fout << "[acq]\nsensors=A\n";
+            fout << "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
+        }
+
+        REQUIRE( app.testLoadConfigFile( path ) < 0 );
+
+        std::remove( path.c_str() );
+    }
+
+    SECTION( "the fast loop period is clamped to the INDI rate limit" )
+    {
+        wccCtrlTester app;
+
+        const std::string path = writeCtrlConfig(
+            "/tmp/wccCtrl_test_config_rate.conf", "A",
+            "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n" );
+
+        // Append a period well below the limit.
+        {
+            std::ofstream fout( path, std::ios::app );
+            fout << "[track]\nperiod=0.02\n";
+        }
+
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
+
+        // Silently running the loop faster than 1 Hz would overload the INDI server,
+        // so the requested period is raised rather than honoured.
+        REQUIRE( app.trackPeriod() == Approx( MagAOX::wcc::indiMinPeriod ).epsilon( 1e-12 ) );
 
         std::remove( path.c_str() );
     }
@@ -297,7 +350,7 @@ TEST_CASE( "wccCtrl selects the best usable guide and roll star pair", "[wccCtrl
 {
     // clang-format off
     #ifdef WCCCTRL_TEST_DOXYGEN_REF
-    wccCtrl::selectStars;
+    wccCtrl::resolveStars;
     wccCtrl::pixelToFieldShift;
     #endif
     // clang-format on
@@ -314,56 +367,47 @@ TEST_CASE( "wccCtrl selects the best usable guide and roll star pair", "[wccCtrl
 
     REQUIRE( app.testLoadConfigFile( path ) == 0 );
 
-    SECTION( "rank 1 is skipped when its sensor is not configured" )
+    SECTION( "a star pair on configured sensors resolves to sensor indices" )
     {
-        // Rank 1 sits on IMX-18, which this array does not have. Rank 2 is on
-        // IMX-19, which it does, so rank 2 must be chosen rather than failing.
-        const std::string doc = R"({
-          "RA_PROP":10.0,"DEC_PROP":20.0,
-          "GUIDE_STAR":[
-            {"RANK":1,"SENSOR":"IMX-18","RA":10.1,"DEC":20.1,"X_WCC":-849.9,"Y_WCC":-68.8},
-            {"RANK":2,"SENSOR":"IMX-19","RA":10.2,"DEC":20.2,"X_WCC":-666.3,"Y_WCC":-109.3}],
-          "ROLL_STAR":[
-            {"RANK":1,"SENSOR":"HAWK-09","RA":9.9,"DEC":19.9,"X_WCC":1029.5,"Y_WCC":59.3},
-            {"RANK":2,"SENSOR":"HAWK-08","RA":9.8,"DEC":19.8,"X_WCC":786.5,"Y_WCC":102.1}]
-        })";
+        // visitCtrl has already chosen the rank, so wccCtrl only has to find the
+        // sensors. HAWK-08 must match the configured HWK-08.
+        MagAOX::wcc::visitSelection sel;
+        sel.m_ra = 10.0;
+        sel.m_dec = 20.0;
+        sel.m_rank = 2;
+        sel.m_guide.m_rank = 2;
+        sel.m_guide.m_sensor = "IMX-19";
+        sel.m_guide.m_ra = 10.2;
+        sel.m_guide.m_dec = 20.2;
+        sel.m_roll.m_rank = 2;
+        sel.m_roll.m_sensor = "HAWK-08";
+        sel.m_roll.m_ra = 9.8;
+        sel.m_roll.m_dec = 19.8;
 
-        MagAOX::wcc::jsonParser p;
-        MagAOX::wcc::jsonValue root;
-        REQUIRE( p.parse( doc, root ) == 0 );
-
-        MagAOX::wcc::visitFile vf;
-        std::string err;
-        REQUIRE( vf.loadJSON( root, err ) == 0 );
-
-        REQUIRE( app.testSelectStars( vf ) == 0 );
+        REQUIRE( app.testResolveStars( sel ) == 0 );
         REQUIRE( app.guideSensor() == 0 );
-        REQUIRE( app.guideStar().m_rank == 2 );
-        REQUIRE( app.guideStar().m_sensor == "IMX-19" );
-
-        // The roll star of the same rank is preferred, and HAWK-08 must match the
-        // configured HWK-08.
         REQUIRE( app.rollSensor() == 1 );
+        REQUIRE( app.guideStar().m_sensor == "IMX-19" );
         REQUIRE( app.rollStar().m_sensor == "HAWK-08" );
     }
 
-    SECTION( "no usable pair is an error" )
+    SECTION( "a star on an unconfigured sensor is an error" )
     {
-        const std::string doc = R"({
-          "RA_PROP":10.0,"DEC_PROP":20.0,
-          "GUIDE_STAR":[{"RANK":1,"SENSOR":"IMX-99","RA":10.1,"DEC":20.1,"X_WCC":0,"Y_WCC":0}],
-          "ROLL_STAR":[{"RANK":1,"SENSOR":"IMX-98","RA":9.9,"DEC":19.9,"X_WCC":0,"Y_WCC":0}]
-        })";
+        // The array holds only IMX-19 and HWK-08, so this pair cannot be used and
+        // the operator has to move visitCtrl's select_rank to one that fits.
+        MagAOX::wcc::visitSelection sel;
+        sel.m_ra = 10.0;
+        sel.m_dec = 20.0;
+        sel.m_guide.m_sensor = "IMX-99";
+        sel.m_roll.m_sensor = "HWK-08";
 
-        MagAOX::wcc::jsonParser p;
-        MagAOX::wcc::jsonValue root;
-        REQUIRE( p.parse( doc, root ) == 0 );
+        REQUIRE( app.testResolveStars( sel ) < 0 );
 
-        MagAOX::wcc::visitFile vf;
-        std::string err;
-        REQUIRE( vf.loadJSON( root, err ) == 0 );
+        // Also when only the roll star is missing.
+        sel.m_guide.m_sensor = "IMX-19";
+        sel.m_roll.m_sensor = "IMX-98";
 
-        REQUIRE( app.testSelectStars( vf ) < 0 );
+        REQUIRE( app.testResolveStars( sel ) < 0 );
     }
 
     SECTION( "a pixel displacement converts to a field shift at the plate scale" )

@@ -27,10 +27,12 @@
 
 #include "../wccCommon/wccAstrometry.hpp"
 #include "../wccCommon/wccFocalPlane.hpp"
+#include "../wccCommon/wccIndiRate.hpp"
 #include "../wccCommon/wccSensorConfig.hpp"
 #include "../wccCommon/wccSkyWCS.hpp"
 #include "../wccCommon/wccStarCatalog.hpp"
 #include "../wccCommon/wccVisit.hpp"
+#include "../wccCommon/wccVisitIndi.hpp"
 
 /** \defgroup wccCtrl WCC Acquisition Controller
  * \brief High level logic controller for WCC target acquisition and guiding.
@@ -237,9 +239,15 @@ class wccCtrl : public MagAOXApp<true>
      *@{
      */
   protected:
-    std::string m_visitPath; ///< Path to the visit file.
+    /// INDI device publishing the visit, normally visitCtrl.
+    /** wccCtrl does not read the visit file. visitCtrl parses it and republishes
+     * every parameter, which keeps one parser and one interpretation of the schema
+     * in the system.
+     */
+    std::string m_visitDevice;
 
-    bool m_autoStart{ false }; ///< Whether to begin the sequence as soon as the visit loads.
+    /// Whether to begin the sequence as soon as a complete visit arrives.
+    bool m_autoStart{ false };
     ///@}
 
     /** \name Telescope Interface Configuration - Data
@@ -376,9 +384,27 @@ class wccCtrl : public MagAOXApp<true>
      *@{
      */
   protected:
-    wcc::visitFile m_visit; ///< The loaded visit.
+    /// The visit as mirrored from visitCtrl over INDI.
+    /** Assembled by setCallBack_remote() as the properties arrive, then promoted to
+     * the working configuration by visitFromIndi() once complete.
+     */
+    wcc::visitSelection m_selection;
 
-    bool m_visitLoaded{ false }; ///< True once a visit has loaded successfully.
+    std::mutex m_selMutex; ///< Guards m_selection and the arrival flags below.
+
+    /// Which of the visit properties have arrived, so completeness can be tested.
+    bool m_haveTarget{ false };
+
+    bool m_haveGuideIndi{ false }; ///< Guide star property has arrived.
+
+    bool m_haveRollIndi{ false }; ///< Roll star property has arrived.
+
+    bool m_haveAcqParams{ false }; ///< Acquisition parameters have arrived.
+
+    /// The loader state visitCtrl reports; only LOADED is acted on.
+    std::string m_visitState;
+
+    bool m_visitLoaded{ false }; ///< True once a complete visit has been promoted.
 
     /// The star catalog. Immutable after appStartup.
     wcc::starCatalog m_catalog;
@@ -477,11 +503,28 @@ class wccCtrl : public MagAOXApp<true>
      *@{
      */
   protected:
-    pcf::IndiProperty m_indiP_visitFile; ///< Path to the visit file.
-    INDI_NEWCALLBACK_DECL( wccCtrl, m_indiP_visitFile );
+    /// Subscribed visitCtrl properties, held so they stay registered.
+    pcf::IndiProperty m_indiP_vTarget;
 
-    pcf::IndiProperty m_indiP_load; ///< Request switch that loads the visit file.
-    INDI_NEWCALLBACK_DECL( wccCtrl, m_indiP_load );
+    pcf::IndiProperty m_indiP_vTargetInfo;
+
+    pcf::IndiProperty m_indiP_vGuideStar;
+
+    pcf::IndiProperty m_indiP_vGuideStarInfo;
+
+    pcf::IndiProperty m_indiP_vRollStar;
+
+    pcf::IndiProperty m_indiP_vRollStarInfo;
+
+    pcf::IndiProperty m_indiP_vAcqParams;
+
+    pcf::IndiProperty m_indiP_vTrackParams;
+
+    pcf::IndiProperty m_indiP_vTrackDevices;
+
+    pcf::IndiProperty m_indiP_vConfigSensors;
+
+    pcf::IndiProperty m_indiP_vStatus;
 
     pcf::IndiProperty m_indiP_start; ///< Request switch that begins the sequence.
     INDI_NEWCALLBACK_DECL( wccCtrl, m_indiP_start );
@@ -561,22 +604,41 @@ class wccCtrl : public MagAOXApp<true>
      *@{
      */
   protected:
-    /// Load and validate the visit file, resolving the guide and roll stars onto sensors.
-    /** \returns 0 on success
-     * \returns -1 if the file will not load or its stars cannot be placed on configured sensors
+    /// True once every visit property needed to run a sequence has arrived.
+    /** \returns true if the mirrored visit is complete and visitCtrl reports LOADED
      */
-    int loadVisit();
+    bool visitComplete();
 
-    /// Resolve the highest ranked guide and roll star pair that lands on configured sensors.
-    /** The visit file offers several ranked candidates. The first rank whose guide
-     * star and roll star both fall on sensors this controller knows about is used,
-     * so a partially configured array degrades to a lower ranked but usable pair
-     * rather than failing outright.
+    /// Promote the mirrored visit to the working configuration.
+    /** Applies the visit's tolerances and tracking parameters over the configured
+     * defaults, marks which sensors take part in the solution, and resolves the
+     * guide and roll stars onto sensor indices.
      *
      * \returns 0 on success
-     * \returns -1 if no rank yields a usable pair
+     * \returns -1 if the visit is incomplete or its stars are not on configured sensors
      */
-    int selectStars();
+    int visitFromIndi();
+
+    /// Resolve the selected guide and roll stars onto configured sensor indices.
+    /** Rank selection belongs to visitCtrl, which publishes one already-chosen pair,
+     * so this only has to find the sensors. If either star is on a sensor this
+     * controller does not have configured the visit is unusable, and the operator
+     * should move visitCtrl's `select_rank` to a pair that fits the array.
+     *
+     * \returns 0 on success
+     * \returns -1 if either star is not on a configured sensor
+     */
+    int resolveStars();
+
+    /// The acquisition configuration for one sensor.
+    /** The per sensor overrides the visit file's TA_SENSORS block could carry are not
+     * mirrored over INDI: the acquisition parameters apply to every participating
+     * sensor. That is the simplification that moving the parser out bought, and it
+     * matches how the array is actually configured in practice.
+     *
+     * \returns the configuration to command
+     */
+    wcc::visitSensorConfig sensorConfigFor( const std::string &name /**< [in] logical sensor name */ );
     ///@}
 
     /** \name Sequencer
@@ -863,8 +925,9 @@ inline wccCtrl::wccCtrl() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED
     // No PDU: this is a pure software controller.
     m_powerMgtEnabled = false;
 
-    // The sequencer thread carries the work; appLogic only publishes status.
-    m_loopPause = 200000000; // 200 ms
+    // The sequencer thread carries the work; appLogic only publishes status. Every
+    // WCC application holds its INDI traffic to 1 Hz.
+    m_loopPause = wcc::indiLoopPause;
 
     return;
 }
@@ -876,10 +939,11 @@ inline wccCtrl::~wccCtrl() noexcept
 
 inline void wccCtrl::setupConfig()
 {
-    config.add( "visit.path", "", "visit.path", argType::Required, "visit", "path", false, "string",
-                "Path to the visit file. May also be set at runtime through the visit_file property." );
+    config.add( "visit.device", "", "visit.device", argType::Required, "visit", "device", false, "string",
+                "INDI device publishing the visit, normally visitCtrl. wccCtrl does not read the visit file "
+                "itself." );
     config.add( "visit.auto_start", "", "visit.auto_start", argType::Required, "visit", "auto_start", false,
-                "bool", "Begin the acquisition sequence as soon as the visit loads." );
+                "bool", "Begin the acquisition sequence as soon as a complete visit arrives." );
 
     config.add( "telescope.device", "", "telescope.device", argType::Required, "telescope", "device", false,
                 "string", "INDI device pointing offsets are sent to, e.g. tcsi or a simulator." );
@@ -1014,7 +1078,7 @@ inline void wccCtrl::setupConfig()
 
 inline int wccCtrl::loadConfigImpl( mx::app::appConfigurator &_config )
 {
-    _config( m_visitPath, "visit.path" );
+    _config( m_visitDevice, "visit.device" );
     _config( m_autoStart, "visit.auto_start" );
 
     _config( m_telDevice, "telescope.device" );
@@ -1106,6 +1170,27 @@ inline int wccCtrl::loadConfigImpl( mx::app::appConfigurator &_config )
             { __FILE__, __LINE__, "telescope.device is not set; there is nothing to send offsets to" } );
     }
 
+    if( m_visitDevice.empty() )
+    {
+        return log<software_critical, -1>(
+            { __FILE__, __LINE__,
+              "visit.device is not set; wccCtrl reads the visit from visitCtrl over INDI and has nothing to "
+              "read without it" } );
+    }
+
+    // The fast loop sends INDI offsets, so its period is subject to the same 1 Hz
+    // limit. Clamping here rather than silently exceeding it keeps the constraint
+    // visible in the configuration.
+    if( m_trackPeriod < wcc::indiMinPeriod )
+    {
+        log<text_log>( "track.period raised from " + std::to_string( m_trackPeriod ) + " to " +
+                           std::to_string( wcc::indiMinPeriod ) +
+                           " s: INDI traffic is limited to 1 Hz to avoid overloading the server",
+                       logPrio::LOG_NOTICE );
+
+        m_trackPeriod = wcc::indiMinPeriod;
+    }
+
     m_focalPlane.setTelescope( m_diameter, m_fNumber, m_parity );
 
     for( const std::string &name : m_sensorNames )
@@ -1168,11 +1253,6 @@ inline int wccCtrl::appStartup()
     log<text_log>( "loaded " + std::to_string( m_catalog.size() ) + " sources from " + m_catalogPath );
 
     // ---------------------------------------------------------- local INDI
-    CREATE_REG_INDI_NEW_TEXT( m_indiP_visitFile, "visit_file", "Visit file path", "visit" );
-    m_indiP_visitFile["current"].set( m_visitPath );
-    m_indiP_visitFile["target"].set( m_visitPath );
-
-    CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_load, "load" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_start, "start" );
     CREATE_REG_INDI_NEW_REQUESTSWITCH( m_indiP_abort, "abort" );
 
@@ -1269,6 +1349,42 @@ inline int wccCtrl::appStartup()
         m_bindings[m_indiP_telPos.createUniqueKey()] = rb;
     }
 
+    // ------------------------------------------------- visitCtrl subscription
+    {
+        const std::pair<pcf::IndiProperty *, const char *> vprops[] = {
+            { &m_indiP_vTarget, wcc::visitIndi::propTarget },
+            { &m_indiP_vTargetInfo, wcc::visitIndi::propTargetInfo },
+            { &m_indiP_vGuideStar, wcc::visitIndi::propGuideStar },
+            { &m_indiP_vGuideStarInfo, wcc::visitIndi::propGuideStarInfo },
+            { &m_indiP_vRollStar, wcc::visitIndi::propRollStar },
+            { &m_indiP_vRollStarInfo, wcc::visitIndi::propRollStarInfo },
+            { &m_indiP_vAcqParams, wcc::visitIndi::propAcqParams },
+            { &m_indiP_vTrackParams, wcc::visitIndi::propTrackParams },
+            { &m_indiP_vTrackDevices, wcc::visitIndi::propTrackDevices },
+            { &m_indiP_vConfigSensors, wcc::visitIndi::propConfigSensors },
+            { &m_indiP_vStatus, wcc::visitIndi::propStatus },
+        };
+
+        for( const auto &vp : vprops )
+        {
+            const std::string devName = m_visitDevice;
+            const std::string propName = vp.second;
+
+            if( registerIndiPropertySet( *vp.first, devName, propName, st_setCallBack_remote ) < 0 )
+            {
+                return log<software_error, -1>(
+                    { __FILE__, __LINE__, "failed to subscribe to " + devName + "." + propName } );
+            }
+
+            remoteBinding rb;
+            rb.m_sensor = nullptr;
+            rb.m_what = std::string( "visit_" ) + propName;
+            m_bindings[vp.first->createUniqueKey()] = rb;
+        }
+
+        log<text_log>( "reading the visit from " + m_visitDevice );
+    }
+
     if( !m_telDoneProperty.empty() )
     {
         if( registerIndiPropertySet( m_indiP_telDone, m_telDevice, m_telDoneProperty, st_setCallBack_remote ) < 0 )
@@ -1289,18 +1405,9 @@ inline int wccCtrl::appStartup()
                        std::to_string( m_telSettleTime ) + " s settle" );
     }
 
-    // -------------------------------------------------------- visit and thread
-    if( !m_visitPath.empty() )
-    {
-        if( loadVisit() < 0 )
-        {
-            // A bad visit at startup is recoverable: the operator can point
-            // visit_file somewhere else and request load again.
-            log<text_log>( "startup visit file did not load; waiting for a load request",
-                           logPrio::LOG_WARNING );
-        }
-    }
-
+    // ------------------------------------------------------------- sequencer
+    // There is nothing to load here: the visit arrives asynchronously from
+    // visitCtrl and appLogic promotes it once complete.
     m_sequencer = std::thread( sequencerStart, this );
 
     state( stateCodes::READY );
@@ -1313,6 +1420,44 @@ inline int wccCtrl::appStartup()
 
 inline int wccCtrl::appLogic()
 {
+    // Promote a newly arrived visit here rather than in the INDI callback, so the
+    // driver thread is never held while sensors are matched and subscriptions added.
+    // Only do so between sequences: a visit that changes mid-acquisition would move
+    // the target out from under the sequencer.
+    {
+        const wccAcqState cur = acqState();
+
+        if( cur == wccAcqState::idle || cur == wccAcqState::loaded || cur == wccAcqState::failed ||
+            cur == wccAcqState::complete )
+        {
+            if( !m_visitLoaded && visitComplete() )
+            {
+                visitFromIndi();
+            }
+            else if( m_visitLoaded )
+            {
+                // visitCtrl unloaded or failed: drop the visit rather than run a stale one.
+                std::string vs;
+
+                { //mutex scope
+                    std::lock_guard<std::mutex> lock( m_selMutex );
+                    vs = m_visitState;
+                }
+
+                if( vs != wcc::visitIndi::stateLoaded )
+                {
+                    m_visitLoaded = false;
+                    m_haveGuideStar = false;
+                    m_haveRollStar = false;
+
+                    setAcqState( wccAcqState::idle, m_visitDevice + " no longer reports a loaded visit" );
+                    log<text_log>( m_visitDevice + " no longer reports a loaded visit; dropping it",
+                                   logPrio::LOG_NOTICE );
+                }
+            }
+        }
+    }
+
     const wccAcqState s = acqState();
 
     if( s == wccAcqState::failed )
@@ -1379,97 +1524,108 @@ inline int wccCtrl::sensorByName( const std::string &name ) const
     return -1;
 }
 
-inline int wccCtrl::loadVisit()
+inline bool wccCtrl::visitComplete()
 {
-    std::string err;
-    wcc::visitFile vf;
+    std::lock_guard<std::mutex> lock( m_selMutex );
 
-    if( vf.load( m_visitPath, err ) < 0 )
-    {
-        setAcqState( wccAcqState::idle, "visit load failed: " + err );
-        return log<software_error, -1>( { __FILE__, __LINE__, "visit load failed: " + err } );
+    // The roll star is optional in principle, but the sequence checks and corrects
+    // roll, so require it rather than discovering it is missing mid-sequence.
+    return m_visitState == wcc::visitIndi::stateLoaded && m_haveTarget && m_haveGuideIndi &&
+           m_haveRollIndi && m_haveAcqParams;
+}
+
+inline int wccCtrl::visitFromIndi()
+{
+    wcc::visitSelection sel;
+
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_selMutex );
+
+        if( m_visitState != wcc::visitIndi::stateLoaded || !m_haveTarget || !m_haveGuideIndi ||
+            !m_haveAcqParams )
+        {
+            return -1;
+        }
+
+        m_selection.m_valid = true;
+        sel = m_selection;
     }
 
-    m_visit = vf;
-    m_visitLoaded = true;
+    // The visit supersedes the configured defaults. Publishing both on visit_params
+    // is what makes which one won unambiguous.
+    m_guideTolPix = sel.m_guideTolPix;
+    m_rollTolPix = sel.m_rollTolPix;
+    m_maxIterations = sel.m_maxIterations;
 
-    // Visit file values supersede the configured defaults.
-    m_guideTolPix = m_visit.guideTolPix();
-    m_rollTolPix = m_visit.rollTolPix();
-    m_maxIterations = m_visit.maxIterations();
+    m_trackROIW = sel.m_tracking.m_roiW;
+    m_trackROIH = sel.m_tracking.m_roiH;
+    m_trackFps = sel.m_tracking.m_frameRate;
+    m_trackExpTime = sel.m_tracking.m_expTime;
+    m_trackGain = sel.m_tracking.m_loopGain;
+    m_trackRollGain = sel.m_tracking.m_rollGain;
 
-    const wcc::visitTracking &tr = m_visit.tracking();
-    m_trackROIW = tr.m_roiW;
-    m_trackROIH = tr.m_roiH;
-    m_trackFps = tr.m_frameRate;
-    m_trackExpTime = tr.m_expTime;
-    m_trackGain = tr.m_loopGain;
-    m_trackRollGain = tr.m_rollGain;
-
-    // Mark which sensors take part in the astrometric solution. An empty
-    // CONFIG_SENSORS list means use every configured sensor.
-    const std::vector<std::string> &cs = m_visit.configSensors();
+    // Mark which sensors take part in the astrometric solution. An empty list means
+    // use every configured sensor.
+    m_nInSolution = 0;
 
     for( std::unique_ptr<wccCtrlSensor> &sen : m_sensors )
     {
-        if( cs.empty() )
+        if( sel.m_configSensors.empty() )
         {
             sen->m_inSolution = true;
-            continue;
         }
-
-        sen->m_inSolution = false;
-
-        for( const std::string &n : cs )
+        else
         {
-            if( wcc::normalizeSensorName( n ) == wcc::normalizeSensorName( sen->m_name ) )
+            sen->m_inSolution = false;
+
+            for( const std::string &n : sel.m_configSensors )
             {
-                sen->m_inSolution = true;
-                break;
+                if( wcc::normalizeSensorName( n ) == wcc::normalizeSensorName( sen->m_name ) )
+                {
+                    sen->m_inSolution = true;
+                    break;
+                }
             }
         }
-    }
 
-    m_nInSolution = 0;
-    for( std::unique_ptr<wccCtrlSensor> &sen : m_sensors )
-    {
         if( sen->m_inSolution )
         {
             ++m_nInSolution;
         }
     }
 
-    const int nInSolution = m_nInSolution;
-
-    if( nInSolution == 0 )
+    if( m_nInSolution == 0 )
     {
-        setAcqState( wccAcqState::idle,
-                     "none of the visit's CONFIG_SENSORS matches a configured sensor" );
+        setAcqState( wccAcqState::idle, "none of the visit's sensors matches a configured sensor" );
+        m_visitLoaded = false;
+
         return log<software_error, -1>(
-            { __FILE__, __LINE__, "none of the visit's CONFIG_SENSORS matches a configured sensor" } );
+            { __FILE__, __LINE__, "none of the visit's sensors matches a configured sensor" } );
     }
 
-    if( selectStars() < 0 )
+    if( resolveStars() < 0 )
     {
+        m_visitLoaded = false;
         return -1;
     }
 
-    // The centroid controller device names come from the visit file, so they can
-    // only be subscribed to now.
-    registerCentroidSubscription( tr.m_centroidGuide, true );
-    registerCentroidSubscription( tr.m_centroidRoll, false );
+    // The centroid controller names come from the visit, so they can only be
+    // subscribed to now.
+    registerCentroidSubscription( sel.m_tracking.m_centroidGuide, true );
+    registerCentroidSubscription( sel.m_tracking.m_centroidRoll, false );
 
-    // Point the geometry model at the requested pointing until the telescope
-    // reports its own.
-    m_focalPlane.setPointing( m_visit.ra(), m_visit.dec(), m_visit.rollPA() );
+    // Predict against the requested pointing until the telescope reports its own.
+    m_focalPlane.setPointing( sel.m_ra, sel.m_dec, sel.m_rollPA );
 
-    setAcqState( wccAcqState::loaded, "visit " + m_visit.target() + " loaded" );
+    m_visitLoaded = true;
 
-    log<text_log>( "visit " + m_visit.target() + " loaded from " + m_visitPath + ": ra " +
-                   std::to_string( m_visit.ra() ) + " dec " + std::to_string( m_visit.dec() ) + " rollPA " +
-                   std::to_string( m_visit.rollPA() ) + ", " + std::to_string( nInSolution ) +
-                   " sensors in the solution, guide star on " + m_guideStar.m_sensor + ", roll star on " +
-                   m_rollStarSel.m_sensor );
+    setAcqState( wccAcqState::loaded, "visit " + sel.m_targetName + " received from " + m_visitDevice );
+
+    log<text_log>( "visit " + sel.m_targetName + " received from " + m_visitDevice + ": ra " +
+                   std::to_string( sel.m_ra ) + " dec " + std::to_string( sel.m_dec ) + " rollPA " +
+                   std::to_string( sel.m_rollPA ) + ", rank " + std::to_string( sel.m_rank ) + ", " +
+                   std::to_string( m_nInSolution ) + " sensors in the solution, guide star on " +
+                   m_sensors[m_guideSensor]->m_name + ", roll star on " + m_sensors[m_rollSensor]->m_name );
 
     if( m_autoStart )
     {
@@ -1479,86 +1635,70 @@ inline int wccCtrl::loadVisit()
     return 0;
 }
 
-inline int wccCtrl::selectStars()
+inline int wccCtrl::resolveStars()
 {
     m_haveGuideStar = false;
     m_haveRollStar = false;
     m_guideSensor = -1;
     m_rollSensor = -1;
 
-    // Walk the guide stars in rank order and take the first whose sensor is
-    // configured and which has a roll star of the same rank on a configured
-    // sensor. Falling back to a lower rank beats failing on a partial array.
-    for( const wcc::visitStar &gs : m_visit.guideStars() )
-    {
-        const int gi = sensorByName( gs.m_sensor );
+    wcc::visitStar guide, roll;
 
-        if( gi < 0 )
-        {
-            log<text_log>( "guide star rank " + std::to_string( gs.m_rank ) + " is on unconfigured sensor " +
-                               gs.m_sensor + "; trying the next rank",
-                           logPrio::LOG_NOTICE );
-            continue;
-        }
-
-        // Prefer a roll star of the same rank, then any roll star.
-        const wcc::visitStar *rs = nullptr;
-        int ri = -1;
-
-        for( const wcc::visitStar &cand : m_visit.rollStars() )
-        {
-            if( cand.m_rank != gs.m_rank )
-            {
-                continue;
-            }
-
-            const int i = sensorByName( cand.m_sensor );
-
-            if( i >= 0 )
-            {
-                rs = &cand;
-                ri = i;
-                break;
-            }
-        }
-
-        if( rs == nullptr )
-        {
-            for( const wcc::visitStar &cand : m_visit.rollStars() )
-            {
-                const int i = sensorByName( cand.m_sensor );
-
-                if( i >= 0 )
-                {
-                    rs = &cand;
-                    ri = i;
-                    break;
-                }
-            }
-        }
-
-        if( rs == nullptr )
-        {
-            continue;
-        }
-
-        m_guideStar = gs;
-        m_guideSensor = gi;
-        m_haveGuideStar = true;
-
-        m_rollStarSel = *rs;
-        m_rollSensor = ri;
-        m_haveRollStar = true;
-
-        return 0;
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_selMutex );
+        guide = m_selection.m_guide;
+        roll = m_selection.m_roll;
     }
 
-    setAcqState( wccAcqState::idle, "no guide and roll star pair lands on configured sensors" );
+    const int gi = sensorByName( guide.m_sensor );
 
-    return log<software_error, -1>(
-        { __FILE__, __LINE__, "no guide and roll star pair lands on configured sensors" } );
+    if( gi < 0 )
+    {
+        setAcqState( wccAcqState::idle, "guide star is on unconfigured sensor " + guide.m_sensor );
+
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              "guide star is on unconfigured sensor " + guide.m_sensor +
+                  "; move visitCtrl select_rank to a pair that fits this array" } );
+    }
+
+    const int ri = sensorByName( roll.m_sensor );
+
+    if( ri < 0 )
+    {
+        setAcqState( wccAcqState::idle, "roll star is on unconfigured sensor " + roll.m_sensor );
+
+        return log<software_error, -1>(
+            { __FILE__, __LINE__,
+              "roll star is on unconfigured sensor " + roll.m_sensor +
+                  "; move visitCtrl select_rank to a pair that fits this array" } );
+    }
+
+    m_guideStar = guide;
+    m_guideSensor = gi;
+    m_haveGuideStar = true;
+
+    m_rollStarSel = roll;
+    m_rollSensor = ri;
+    m_haveRollStar = true;
+
+    return 0;
 }
 
+inline wcc::visitSensorConfig wccCtrl::sensorConfigFor( const std::string &name )
+{
+    wcc::visitSensorConfig out;
+    out.m_name = name;
+
+    std::lock_guard<std::mutex> lock( m_selMutex );
+
+    out.m_expTime = m_selection.m_taExpTime;
+    out.m_frameRate = m_selection.m_taFrameRate;
+    out.m_gain = -1;   // leave the camera at whatever gain it has
+    out.m_stream = true;
+
+    return out;
+}
 //------------------------------------------------------------------------
 // Sequencer
 //------------------------------------------------------------------------
@@ -1873,9 +2013,17 @@ inline void wccCtrl::sequencerExec()
 
         setAcqState( wccAcqState::tracking, "guiding on centroids" );
 
+        std::string cg, cr;
+
+        { //mutex scope
+            std::lock_guard<std::mutex> lock( m_selMutex );
+            cg = m_selection.m_tracking.m_centroidGuide;
+            cr = m_selection.m_tracking.m_centroidRoll;
+        }
+
         log<text_log>( "acquisition complete: guide error " + std::to_string( m_guideErrPix ) +
-                       " px, roll error " + std::to_string( m_rollErrPix ) + " px; tracking on " +
-                       m_visit.tracking().m_centroidGuide + " and " + m_visit.tracking().m_centroidRoll );
+                       " px, roll error " + std::to_string( m_rollErrPix ) + " px; tracking on " + cg +
+                       " and " + cr );
     }
 }
 
@@ -1892,7 +2040,7 @@ inline int wccCtrl::configureSensors()
             continue;
         }
 
-        const wcc::visitSensorConfig vsc = m_visit.sensorConfigFor( sen->m_name );
+        const wcc::visitSensorConfig vsc = sensorConfigFor( sen->m_name );
 
         if( !vsc.m_stream )
         {
@@ -2091,9 +2239,11 @@ inline void wccCtrl::predictPointing( double &ra, double &dec, double &pa )
 
     // Without a telescope report, the visit file's requested pointing is the best
     // available prior. The solver's search radius absorbs the difference.
-    ra = m_visit.ra();
-    dec = m_visit.dec();
-    pa = m_visit.rollPA();
+    std::lock_guard<std::mutex> slock( m_selMutex );
+
+    ra = m_selection.m_ra;
+    dec = m_selection.m_dec;
+    pa = m_selection.m_rollPA;
 }
 
 inline int wccCtrl::frameWCS( const wccCtrlSensor *sen, wcc::skyWCS &wcs )
@@ -2549,9 +2699,13 @@ inline int wccCtrl::reconfigureForTracking()
 
 inline int wccCtrl::startCentroidControllers()
 {
-    const wcc::visitTracking &tr = m_visit.tracking();
+    std::string devs[2];
 
-    const std::string devs[2] = { tr.m_centroidGuide, tr.m_centroidRoll };
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_selMutex );
+        devs[0] = m_selection.m_tracking.m_centroidGuide;
+        devs[1] = m_selection.m_tracking.m_centroidRoll;
+    }
 
     for( const std::string &dev : devs )
     {
@@ -2573,7 +2727,7 @@ inline int wccCtrl::startCentroidControllers()
         }
     }
 
-    if( tr.m_centroidGuide.empty() && tr.m_centroidRoll.empty() )
+    if( devs[0].empty() && devs[1].empty() )
     {
         log<text_log>( "the visit file names no centroid controllers, so the fast loop will idle until "
                        "TRACKING.CENTROID_DEVICE_GUIDE and CENTROID_DEVICE_ROLL are supplied",
@@ -3196,6 +3350,147 @@ inline int wccCtrl::setCallBack_remote( const pcf::IndiProperty &ipRecv )
 
     const remoteBinding &rb = it->second;
 
+    // -------------------------------------------------------- visit from INDI
+    // The visit is mirrored property by property as it arrives. appLogic waits for
+    // the set to be complete before promoting it, so a partially delivered visit is
+    // never acted on.
+    if( rb.m_what.rfind( "visit_", 0 ) == 0 )
+    {
+        using namespace wcc::visitIndi;
+
+        const std::string which = rb.m_what.substr( 6 );
+
+        auto readStar = [&]( wcc::visitStar &star ) {
+            double v = 0;
+
+            if( elementValue( ipRecv, elRank, v ) )
+            {
+                star.m_rank = static_cast<int>( v );
+            }
+            elementValue( ipRecv, elRA, star.m_ra );
+            elementValue( ipRecv, elDec, star.m_dec );
+            elementValue( ipRecv, elFieldX, star.m_fieldX );
+            elementValue( ipRecv, elFieldY, star.m_fieldY );
+            elementValue( ipRecv, elMag, star.m_mag );
+            elementValue( ipRecv, elTargetX, star.m_targetX );
+            elementValue( ipRecv, elTargetY, star.m_targetY );
+            elementValue( ipRecv, elExpTime, star.m_expTimeFG );
+            elementValue( ipRecv, elFrameRate, star.m_frameRateFG );
+
+            if( elementValue( ipRecv, elROIW, v ) )
+            {
+                star.m_roiWFG = static_cast<int>( v );
+            }
+            if( elementValue( ipRecv, elROIH, v ) )
+            {
+                star.m_roiHFG = static_cast<int>( v );
+            }
+        };
+
+        auto readText = [&]( const std::string &el, std::string &into ) {
+            try
+            {
+                if( ipRecv.find( el ) )
+                {
+                    into = ipRecv[el].getValue();
+                }
+            }
+            catch( ... )
+            {
+            }
+        };
+
+        std::lock_guard<std::mutex> lock( m_selMutex );
+
+        if( which == propTarget )
+        {
+            elementValue( ipRecv, elRA, m_selection.m_ra );
+            elementValue( ipRecv, elDec, m_selection.m_dec );
+            elementValue( ipRecv, elRollPA, m_selection.m_rollPA );
+            m_haveTarget = true;
+        }
+        else if( which == propTargetInfo )
+        {
+            readText( elName, m_selection.m_targetName );
+            readText( elProgID, m_selection.m_programID );
+            readText( elObsID, m_selection.m_obsID );
+            readText( elVisitID, m_selection.m_visitID );
+        }
+        else if( which == propGuideStar )
+        {
+            readStar( m_selection.m_guide );
+            m_selection.m_rank = m_selection.m_guide.m_rank;
+            m_haveGuideIndi = true;
+        }
+        else if( which == propGuideStarInfo )
+        {
+            readText( elID, m_selection.m_guide.m_id );
+            readText( elSensor, m_selection.m_guide.m_sensor );
+            readText( elCatalog, m_selection.m_guide.m_catalogName );
+        }
+        else if( which == propRollStar )
+        {
+            readStar( m_selection.m_roll );
+            m_haveRollIndi = true;
+        }
+        else if( which == propRollStarInfo )
+        {
+            readText( elID, m_selection.m_roll.m_id );
+            readText( elSensor, m_selection.m_roll.m_sensor );
+            readText( elCatalog, m_selection.m_roll.m_catalogName );
+        }
+        else if( which == propAcqParams )
+        {
+            double v = 0;
+            elementValue( ipRecv, elTAExpTime, m_selection.m_taExpTime );
+            elementValue( ipRecv, elTAFrameRate, m_selection.m_taFrameRate );
+            elementValue( ipRecv, elGuideTol, m_selection.m_guideTolPix );
+            elementValue( ipRecv, elRollTol, m_selection.m_rollTolPix );
+
+            if( elementValue( ipRecv, elMaxIter, v ) )
+            {
+                m_selection.m_maxIterations = std::max( 1, static_cast<int>( v ) );
+            }
+
+            m_haveAcqParams = true;
+        }
+        else if( which == propTrackParams )
+        {
+            double v = 0;
+
+            if( elementValue( ipRecv, elROIW, v ) && v >= 4 )
+            {
+                m_selection.m_tracking.m_roiW = static_cast<int>( v );
+            }
+            if( elementValue( ipRecv, elROIH, v ) && v >= 4 )
+            {
+                m_selection.m_tracking.m_roiH = static_cast<int>( v );
+            }
+
+            elementValue( ipRecv, elFrameRate, m_selection.m_tracking.m_frameRate );
+            elementValue( ipRecv, elExpTime, m_selection.m_tracking.m_expTime );
+            elementValue( ipRecv, elLoopGain, m_selection.m_tracking.m_loopGain );
+            elementValue( ipRecv, elRollGain, m_selection.m_tracking.m_rollGain );
+        }
+        else if( which == propTrackDevices )
+        {
+            readText( elCentroidGuide, m_selection.m_tracking.m_centroidGuide );
+            readText( elCentroidRoll, m_selection.m_tracking.m_centroidRoll );
+        }
+        else if( which == propConfigSensors )
+        {
+            std::string list;
+            readText( elList, list );
+            m_selection.setConfigSensorList( list );
+        }
+        else if( which == propStatus )
+        {
+            readText( elState, m_visitState );
+        }
+
+        return 0;
+    }
+
     // --------------------------------------------------------- telescope pos
     if( rb.m_what == "telpos" )
     {
@@ -3386,30 +3681,37 @@ inline void wccCtrl::updateStatus()
 
     if( m_visitLoaded )
     {
-        updateIfChanged( m_indiP_visit, "target", m_visit.target() );
+        wcc::visitSelection sel;
+
+        { //mutex scope
+            std::lock_guard<std::mutex> slock2( m_selMutex );
+            sel = m_selection;
+        }
+
+        updateIfChanged( m_indiP_visit, "target", sel.m_targetName );
         updateIfChanged( m_indiP_visit, "guide_sensor",
                          m_guideSensor >= 0 ? m_sensors[m_guideSensor]->m_name : std::string( "none" ) );
         updateIfChanged( m_indiP_visit, "roll_sensor",
                          m_rollSensor >= 0 ? m_sensors[m_rollSensor]->m_name : std::string( "none" ) );
-        updateIfChanged( m_indiP_visit, "ra", std::to_string( m_visit.ra() ) );
-        updateIfChanged( m_indiP_visit, "dec", std::to_string( m_visit.dec() ) );
-        updateIfChanged( m_indiP_visit, "rollpa", std::to_string( m_visit.rollPA() ) );
+        updateIfChanged( m_indiP_visit, "ra", std::to_string( sel.m_ra ) );
+        updateIfChanged( m_indiP_visit, "dec", std::to_string( sel.m_dec ) );
+        updateIfChanged( m_indiP_visit, "rollpa", std::to_string( sel.m_rollPA ) );
         updateIfChanged( m_indiP_visit, "guide_star", m_haveGuideStar ? m_guideStar.m_id : std::string( "none" ) );
         updateIfChanged( m_indiP_visit, "roll_star",
                          m_haveRollStar ? m_rollStarSel.m_id : std::string( "none" ) );
-        updateIfChanged( m_indiP_visit, "centroid_guide", m_visit.tracking().m_centroidGuide );
-        updateIfChanged( m_indiP_visit, "centroid_roll", m_visit.tracking().m_centroidRoll );
+        updateIfChanged( m_indiP_visit, "centroid_guide", sel.m_tracking.m_centroidGuide );
+        updateIfChanged( m_indiP_visit, "centroid_roll", sel.m_tracking.m_centroidRoll );
 
         // These are the values the running sequence is actually using. They come
-        // from the visit file when it supplies them and from configuration
-        // otherwise, so publishing them removes any ambiguity about which won.
+        // from the visit when it supplies them and from configuration otherwise, so
+        // publishing them removes any ambiguity about which won.
         updateIfChanged( m_indiP_visitParams, "guide_tol_px", m_guideTolPix );
         updateIfChanged( m_indiP_visitParams, "roll_tol_px", m_rollTolPix );
         updateIfChanged( m_indiP_visitParams, "max_iterations", static_cast<double>( m_maxIterations ) );
-        updateIfChanged( m_indiP_visitParams, "ta_exptime", m_visit.taExpTime() );
-        updateIfChanged( m_indiP_visitParams, "ta_frame_rate", m_visit.taFrameRate() );
+        updateIfChanged( m_indiP_visitParams, "ta_exptime", sel.m_taExpTime );
+        updateIfChanged( m_indiP_visitParams, "ta_frame_rate", sel.m_taFrameRate );
         updateIfChanged( m_indiP_visitParams, "n_config_sensors",
-                         static_cast<double>( m_visit.configSensors().size() ) );
+                         static_cast<double>( sel.m_configSensors.size() ) );
         updateIfChanged( m_indiP_visitParams, "n_in_solution", static_cast<double>( m_nInSolution ) );
         updateIfChanged( m_indiP_visitParams, "track_roi_w", static_cast<double>( m_trackROIW ) );
         updateIfChanged( m_indiP_visitParams, "track_roi_h", static_cast<double>( m_trackROIH ) );
@@ -3437,58 +3739,6 @@ inline void wccCtrl::updateStatus()
                                             : -1.0 );
         updateIfChanged( m_indiP_trackStatus, "corrections", static_cast<double>( m_trackCorrections ) );
     }
-}
-
-INDI_NEWCALLBACK_DEFN( wccCtrl, m_indiP_visitFile )
-( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_visitFile, ipRecv );
-
-    std::string target;
-
-    if( indiTargetUpdate( m_indiP_visitFile, target, ipRecv, false ) < 0 )
-    {
-        return -1;
-    }
-
-    m_visitPath = target;
-    updateIfChanged( m_indiP_visitFile, "current", m_visitPath );
-
-    log<text_log>( "visit_file -> " + m_visitPath + " (send load to read it)" );
-
-    return 0;
-}
-
-INDI_NEWCALLBACK_DEFN( wccCtrl, m_indiP_load )
-( const pcf::IndiProperty &ipRecv )
-{
-    INDI_VALIDATE_CALLBACK_PROPS( m_indiP_load, ipRecv );
-
-    if( !ipRecv.find( "request" ) )
-    {
-        return 0;
-    }
-
-    if( ipRecv["request"].getSwitchState() != pcf::IndiElement::On )
-    {
-        return 0;
-    }
-
-    updateSwitchIfChanged( m_indiP_load, "request", pcf::IndiElement::Off, INDI_IDLE );
-
-    const wccAcqState s = acqState();
-
-    if( s != wccAcqState::idle && s != wccAcqState::loaded && s != wccAcqState::failed &&
-        s != wccAcqState::complete )
-    {
-        log<text_log>( "load rejected: a sequence is running in state " + wccAcqStateName( s ),
-                       logPrio::LOG_WARNING );
-        return 0;
-    }
-
-    loadVisit();
-
-    return 0;
 }
 
 INDI_NEWCALLBACK_DEFN( wccCtrl, m_indiP_start )
@@ -3526,7 +3776,7 @@ INDI_NEWCALLBACK_DEFN( wccCtrl, m_indiP_start )
 
     m_startRequest = true;
 
-    log<text_log>( "acquisition sequence requested for " + m_visit.target() );
+    log<text_log>( "acquisition sequence requested" );
 
     return 0;
 }

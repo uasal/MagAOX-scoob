@@ -78,11 +78,13 @@
 ../apps/sysMonitor/tests/sysMonitor_test
 ../apps/t2wOffloader/tests/t2wOffloader_test
 ../apps/tcsInterface/tests/tcsInterface_test
+../apps/telescopeSim/tests/telescopeSim_test
 ../apps/timeSeriesSimulator/tests/timeSeriesSimulator_test
 ../apps/trippLitePDU/tests/trippLitePDU_test
 ../apps/ttmModulator/tests/ttmModulator_test
 ../apps/usbtempMon/tests/usbtempMon_test
 ../apps/userGainCtrl/tests/userGainCtrl_test
+../apps/visitCtrl/tests/visitCtrl_test
 ../apps/w2tcsOffloader/tests/w2tcsOffloader_test
 ../apps/wccCommon/tests/wccCommon_test
 ../apps/wccCtrl/tests/wccCtrl_test

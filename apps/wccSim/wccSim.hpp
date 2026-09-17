@@ -26,6 +26,7 @@
 #include "../../magaox_git_version.h"
 
 #include "../wccCommon/wccFocalPlane.hpp"
+#include "../wccCommon/wccIndiRate.hpp"
 #include "../wccCommon/wccPSF.hpp"
 #include "../wccCommon/wccPhotometry.hpp"
 #include "../wccCommon/wccSensorConfig.hpp"
@@ -192,15 +193,19 @@ class wccSim : public MagAOXApp<true>
      */
   protected:
     /// INDI telescope device supplying the pointing. Empty means wccSim owns the pointing.
+    /** Normally `telescopeSim`, whose `pointing` property reports where the mount
+     * currently is, jitter included. Pointing this at `tcsInterface` instead needs
+     * only the element names below changed to `telpos` / `rotoff`.
+     */
     std::string m_telDevice;
 
-    std::string m_telProperty{ "telpos" }; ///< Telescope property carrying the pointing.
+    std::string m_telProperty{ "pointing" }; ///< Telescope property carrying the current pointing.
 
     std::string m_telRAElement{ "ra" }; ///< Element carrying right ascension [deg].
 
     std::string m_telDecElement{ "dec" }; ///< Element carrying declination [deg].
 
-    std::string m_telPAElement{ "rotoff" }; ///< Element carrying the position angle [deg].
+    std::string m_telPAElement{ "pa" }; ///< Element carrying the position angle [deg].
 
     double m_startRA{ 0 }; ///< Boresight right ascension at startup [deg].
 
@@ -477,8 +482,10 @@ inline wccSim::wccSim() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED )
     // No PDU: the simulator is always available.
     m_powerMgtEnabled = false;
 
-    // The workers carry the frame cadence; appLogic only publishes status.
-    m_loopPause = 200000000; // 200 ms
+    // The per sensor worker threads carry the frame cadence, which is unbounded and
+    // set by each camera. appLogic only reads INDI and publishes status, so it runs
+    // at the 1 Hz limit every WCC application holds itself to.
+    m_loopPause = wcc::indiLoopPause;
 
     return;
 }
@@ -1809,23 +1816,11 @@ INDI_NEWCALLBACK_DEFN( wccSim, m_indiP_offset )
         pa = m_pa;
     }
 
-    // The offset is a focal plane field angle, so convert it through a tangent
-    // plane about the current boresight with the array's parity and roll applied.
-    // This is the same chain the sensor WCS uses, which keeps a commanded offset
-    // and the resulting image motion consistent to the projection's own accuracy.
-    wcc::skyWCS bore;
-    bore.setReference( ra, dec );
-    bore.setReferencePixel( 0, 0 );
-
-    const double cpa = std::cos( pa * wcc::deg2rad );
-    const double spa = std::sin( pa * wcc::deg2rad );
-    const double p = m_parity;
-
-    bore.setCDMatrix( wcc::arcsec2deg * cpa * p, wcc::arcsec2deg * spa, -wcc::arcsec2deg * spa * p,
-                      wcc::arcsec2deg * cpa );
-
+    // The offset is a focal plane field angle. offsetBoresight() applies the same
+    // tangent plane chain the sensor WCS uses, and is shared with telescopeSim so a
+    // commanded correction and the resulting image motion cannot disagree.
     double nra, ndec;
-    bore.pix2world( dx, dy, nra, ndec );
+    wcc::offsetBoresight( ra, dec, pa, m_parity, dx, dy, nra, ndec );
 
     applyPointing( nra, ndec, pa + droll );
 

@@ -1,0 +1,27 @@
+# Sample MagAO-X config for visitCtrl, the WCC visit file loader.
+# Install as /opt/MagAOX/config/visitctrl.conf (process name comes from the proclist).
+#
+# visitCtrl is the only application that parses a visit file. It reads the JSON and
+# republishes every parameter as INDI properties, which telescopeSim and wccCtrl
+# then consume. That keeps one parser and one interpretation of the schema.
+#
+# Operating it is two controls:
+#   xindi visitctrl.visit_file.target=/opt/MagAOX/config/wcc_visit.json
+#   xindi visitctrl.load.toggle=On
+# Toggling load off clears the published visit, so a stale selection can never be
+# mistaken for a current one.
+
+[visit]
+# Path of the visit file. May be changed at runtime through the visit_file
+# property; this is just the startup default.
+path=/opt/MagAOX/config/wcc_visit.json
+
+# Read the file at startup rather than waiting for a load request. Leave false
+# during commissioning so nothing is published until an operator asks for it.
+load_at_startup=false
+
+# A visit file offers several ranked guide and roll star candidates. 0 publishes
+# the highest ranked pair available; set a specific rank to force that pair.
+# Changing select_rank at runtime republishes from the already-parsed file without
+# re-reading it.
+select_rank=0
