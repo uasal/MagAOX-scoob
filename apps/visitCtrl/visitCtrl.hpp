@@ -9,6 +9,7 @@
 #define visitCtrl_hpp
 
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <vector>
