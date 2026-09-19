@@ -7,12 +7,15 @@
 
 #include "../../../tests/testXWC.hpp"
 
+#include <cmath>
+
 #include "../wccAstrometry.hpp"
 #include "../wccFocalPlane.hpp"
 #include "../wccJSON.hpp"
 #include "../wccMDFT.hpp"
 #include "../wccPSF.hpp"
 #include "../wccPhotometry.hpp"
+#include "../wccPointingShmim.hpp"
 #include "../wccSensorModel.hpp"
 #include "../wccSkyWCS.hpp"
 #include "../wccStarCatalog.hpp"
@@ -1069,6 +1072,9 @@ TEST_CASE( "sensor model noise and stamp accumulation are correct", "[wccCommon]
     fastRandom::poisson;
     accumulateStamp;
     sensorNoise::apply;
+    analogGainLinear;
+    analogGainDecibels;
+    clampAnalogGainCode;
     sensorNoise::digitize;
     #endif
     // clang-format on
@@ -1300,9 +1306,15 @@ TEST_CASE( "sensor model noise and stamp accumulation are correct", "[wccCommon]
         REQUIRE( dn[4] == 20000 );
         REQUIRE( sat >= 2 );
 
-        // Gain converts electrons into DN.
+        // Analog gain multiplies electrons, including the noise already in them.
         ns.digitize( f, dn, sc, 4.0, 16 );
+        REQUIRE( dn[2] == 400 );
+
+        // Conversion gain is electrons per DN at 0 dB analog gain.
+        sc.m_conversionGain = 4.0;
+        ns.digitize( f, dn, sc, 1.0, 16 );
         REQUIRE( dn[2] == 25 );
+        sc.m_conversionGain = 1.0;
 
         // A 12 bit converter saturates at 4095.
         ns.digitize( f, dn, sc, 1.0, 12 );
@@ -1320,6 +1332,94 @@ TEST_CASE( "sensor model noise and stamp accumulation are correct", "[wccCommon]
         REQUIRE( noiseModeName( noiseMode::off ) == "off" );
         REQUIRE( noiseModeName( noiseMode::read ) == "read" );
         REQUIRE( noiseModeName( noiseMode::full ) == "full" );
+    }
+}
+
+/// Verify IMX-style analog gain codes and high-rate pointing sample collection.
+/**
+ * \ingroup wccCommon_unit_test
+ */
+TEST_CASE( "analog gain and pointing samples follow the CMOS and shmim contracts",
+           "[wccCommon][analogGain][pointingShmim]" )
+{
+    // clang-format off
+    #ifdef WCCCOMMON_TEST_DOXYGEN_REF
+    analogGainLinear;
+    analogGainDecibels;
+    clampAnalogGainCode;
+    packPointing;
+    unpackPointing;
+    collectPointingSamples;
+    assignSampleWeights;
+    pointingBufferDepth;
+    #endif
+    // clang-format on
+
+    SECTION( "IMX 0.1 dB codes multiply electrons, including at the register limits" )
+    {
+        REQUIRE( clampAnalogGainCode( -3 ) == 0 );
+        REQUIRE( clampAnalogGainCode( 120 ) == 120 );
+        REQUIRE( clampAnalogGainCode( 300 ) == 255 );
+
+        REQUIRE( analogGainDecibels( 0 ) == Approx( 0.0 ).epsilon( 1e-12 ) );
+        REQUIRE( analogGainDecibels( 120 ) == Approx( 12.0 ).epsilon( 1e-12 ) );
+        REQUIRE( analogGainDecibels( 255 ) == Approx( 25.5 ).epsilon( 1e-12 ) );
+
+        // Sony: G_dB = 20 log10(G). Code 0 is unity, 200 is 20 dB = 10x.
+        REQUIRE( analogGainLinear( 0 ) == Approx( 1.0 ).epsilon( 1e-12 ) );
+        REQUIRE( analogGainLinear( 200 ) == Approx( 10.0 ).epsilon( 1e-12 ) );
+        REQUIRE( analogGainLinear( 120 ) == Approx( std::pow( 10.0, 12.0 / 20.0 ) ).epsilon( 1e-12 ) );
+    }
+
+    SECTION( "a pointing ring covering an exposure keeps chronological order and total time" )
+    {
+        REQUIRE( pointingBufferDepth( 1000.0, 8.0 ) == 8000 );
+        REQUIRE( pointingBufferDepth( 0.0, 8.0 ) == 1 );
+
+        const uint32_t depth = 8;
+        std::vector<double> data( depth * pointingNAxes, 0.0 );
+        std::vector<double> times( depth, 0.0 );
+
+        for( uint32_t i = 0; i < depth; ++i )
+        {
+            packPointing( data.data() + i * pointingNAxes, 10.0 + 0.001 * i, 20.0, 1.0 * i );
+            times[i] = 100.0 + 0.001 * i;
+        }
+
+        // Last written slice is 7, eight writes, exposure [100.003, 100.007].
+        std::vector<pointingSample> samples;
+        REQUIRE( collectPointingSamples( data.data(), times.data(), depth, 7, 8, 100.003, 100.007, 0.001,
+                                         samples ) > 0 );
+
+        REQUIRE( samples.front().m_time <= 100.003 + 1e-12 );
+        REQUIRE( samples.back().m_ra == Approx( 10.007 ).epsilon( 1e-12 ) );
+
+        double sumDt = 0;
+        for( const pointingSample &s : samples )
+        {
+            sumDt += s.m_dt;
+        }
+        REQUIRE( sumDt == Approx( 0.004 ).margin( 1e-12 ) );
+    }
+
+    SECTION( "two pointings in one exposure split the flux between two pixels" )
+    {
+        // A 1-pixel stamp makes the trail a pair of pixels rather than overlapping cores.
+        const int s = 2;
+        std::vector<float> stamp( s * s, 0.0f );
+        stamp[s * ( s / 2 ) + s / 2] = 1.0f;
+
+        const int w = 32, h = 16;
+        std::vector<float> frame( static_cast<size_t>( w ) * h, 0.0f );
+        int bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+
+        REQUIRE( accumulateStamp( frame, w, h, stamp.data(), s, 8, 8, 100.0, bx0, by0, bx1, by1 ) ==
+                 Approx( 100.0 ).epsilon( 1e-5 ) );
+        REQUIRE( accumulateStamp( frame, w, h, stamp.data(), s, 12, 8, 50.0, bx0, by0, bx1, by1 ) ==
+                 Approx( 50.0 ).epsilon( 1e-5 ) );
+
+        REQUIRE( frame[8 * w + 8] == Approx( 100.0f ).margin( 1e-4 ) );
+        REQUIRE( frame[8 * w + 12] == Approx( 50.0f ).margin( 1e-4 ) );
     }
 }
 

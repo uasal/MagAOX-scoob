@@ -11,9 +11,11 @@
 #   xindi telescopesim.start_visit.toggle=On     # slews to the visit target
 #   xindi wccsim.streaming.toggle=On             # images follow the mount
 #
-# All INDI traffic is held to 1 Hz, so the reported pointing updates once a second.
-# Mount motion is integrated against measured elapsed time, so that rate sets the
-# reporting granularity rather than the slew fidelity.
+# All INDI traffic is held to 1 Hz. High-rate pointing is a separate ImageStreamIO
+# stream (default `telpointing`): a 3x1xN circular buffer of doubles, axes RA, Dec,
+# PA in degrees, written at pointing.write_hz (1000 Hz by default). wccSim reads
+# that history when it integrates a camera exposure, so a long exposure streaks
+# with the mount. Mount motion is integrated against measured elapsed time.
 
 [visit]
 # The visitCtrl instance to take targets from. Leave empty to disable start_visit
@@ -60,3 +62,16 @@ pa=0.0
 
 # RNG seed for the jitter, so a run is reproducible.
 seed=8675309
+
+# Jitter correlation time in seconds. 0 is white (a new independent draw every
+# write). A finite value makes the pointing wander smoothly, which is what a long
+# camera exposure should integrate into a streak rather than a blob.
+jitter_tau=0.05
+
+[pointing]
+# High-rate boresight, read by wccSim. 3x1xN doubles: ra, dec, pa [deg].
+shmim=telpointing
+# Write rate in Hz. Raise it for finer streaks; lower it if the box is loaded.
+write_hz=1000
+# Circular-buffer span in seconds. Must cover the longest camera exposure.
+history_s=8

@@ -32,15 +32,17 @@ id_column=gsc2ID
 mag_limit=21
 
 [pointing]
-# Normally telescopeSim, whose pointing property reports where the mount currently
-# is with jitter included. wccSim then renders exactly what that pointing sees, so
-# the images move when the mount moves.
+# High-rate pointing is a 3x1xN double shmim (ra, dec, pa in degrees) written by
+# telescopeSim. wccSim integrates every sample that fell inside the exposure, so
+# a long exposure streaks with the mount. INDI pointing is 1 Hz status / fallback.
 #
-# Leave tel_device empty to let wccSim own the pointing and accept local pointing
-# and offset commands directly, which is useful for testing the renderer without a
-# mount in the loop.
+# Leave shmim empty to render from the 1 Hz INDI pointing (or local commands if
+# tel_device is also empty).
+shmim=telpointing
+write_hz=1000
 #
-# For MagAO-X tcsInterface instead use:
+# INDI telescope device. Used as a 1 Hz fallback and for status. For MagAO-X
+# tcsInterface instead use:
 #   tel_property=telpos
 #   tel_pa_element=rotoff
 tel_device=telescopesim
@@ -102,6 +104,10 @@ dark_current=0.05
 read_noise=1.2
 quantum_efficiency=0.8
 full_well=65535
+# Analog gain: camera emgain is a code 0-255, 0.1 dB per step, multiplying electrons.
+conversion_gain=1.0
+gain_step_db=0.1
+gain_code_max=255
 
 [IMX-19]
 indi_device=nsv19
@@ -119,6 +125,10 @@ dark_current=0.05
 read_noise=1.2
 quantum_efficiency=0.8
 full_well=65535
+# Analog gain: camera emgain is a code 0-255, 0.1 dB per step, multiplying electrons.
+conversion_gain=1.0
+gain_step_db=0.1
+gain_code_max=255
 
 [IMX-21]
 indi_device=nsv21
@@ -136,6 +146,10 @@ dark_current=0.05
 read_noise=1.2
 quantum_efficiency=0.8
 full_well=65535
+# Analog gain: camera emgain is a code 0-255, 0.1 dB per step, multiplying electrons.
+conversion_gain=1.0
+gain_step_db=0.1
+gain_code_max=255
 
 [HWK-08]
 indi_device=hwk08
@@ -153,6 +167,10 @@ dark_current=0.05
 read_noise=0.28
 quantum_efficiency=0.7
 full_well=65535
+# Analog gain: camera emgain is a code 0-255, 0.1 dB per step, multiplying electrons.
+conversion_gain=1.0
+gain_step_db=0.1
+gain_code_max=255
 
 [HWK-09]
 indi_device=hwk09
@@ -170,3 +188,7 @@ dark_current=0.05
 read_noise=0.28
 quantum_efficiency=0.7
 full_well=65535
+# Analog gain: camera emgain is a code 0-255, 0.1 dB per step, multiplying electrons.
+conversion_gain=1.0
+gain_step_db=0.1
+gain_code_max=255

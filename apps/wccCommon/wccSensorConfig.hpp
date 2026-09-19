@@ -53,6 +53,9 @@ namespace wcc
  * | read_noise         | read noise [e- rms]                                  |
  * | quantum_efficiency | detector quantum efficiency [e-/photon]              |
  * | full_well          | saturation level [e-]                                |
+ * | conversion_gain    | electrons per DN at 0 dB analog gain                 |
+ * | gain_step_db       | analog gain register step [dB per code], IMX is 0.1  |
+ * | gain_code_max      | inclusive maximum analog gain code, default 255      |
  *
  * \returns 0 on success
  * \returns -1 if the resulting geometry or bandpass is unusable, with err set
@@ -113,6 +116,24 @@ int loadSensorGeometry( configT &cfg /**< [in,out] the application configuration
     getD( "bandwidth", sc.m_bandwidth );
     getD( "pivot_wavelength", sc.m_pivotWavelength );
     getD( "full_well", sc.m_fullWellDepth );
+    getD( "conversion_gain", sc.m_conversionGain );
+    getD( "gain_step_db", sc.m_gainStepDb );
+    getI( "gain_code_max", sc.m_gainCodeMax );
+
+    if( sc.m_conversionGain <= 0 )
+    {
+        sc.m_conversionGain = 1.0;
+    }
+
+    if( sc.m_gainStepDb <= 0 )
+    {
+        sc.m_gainStepDb = 0.1;
+    }
+
+    if( sc.m_gainCodeMax < 0 )
+    {
+        sc.m_gainCodeMax = 255;
+    }
 
     if( sc.m_pixelSize <= 0 || sc.m_fullW < 1 || sc.m_fullH < 1 )
     {

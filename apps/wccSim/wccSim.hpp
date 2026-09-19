@@ -12,9 +12,11 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -29,6 +31,7 @@
 #include "../wccCommon/wccIndiRate.hpp"
 #include "../wccCommon/wccPSF.hpp"
 #include "../wccCommon/wccPhotometry.hpp"
+#include "../wccCommon/wccPointingShmim.hpp"
 #include "../wccCommon/wccSensorConfig.hpp"
 #include "../wccCommon/wccSensorModel.hpp"
 #include "../wccCommon/wccSkyWCS.hpp"
@@ -45,10 +48,15 @@
  * Each configured sensor is tied to an INDI camera device, real or simulated.
  * wccSim subscribes to that device's `fps`, `exptime`, `emgain` and
  * `roi_region_*` properties, so when a camera is reconfigured the simulated
- * frames follow it with no operator action. Telescope pointing comes either from
- * a telescope device over INDI or from wccSim's own `pointing` property, and the
- * sensor array geometry maps the boresight onto each sensor's own world
- * coordinate system.
+ * frames follow it with no operator action. `emgain` is an IMX-style analog gain
+ * code, 0 to 255 in 0.1 dB steps, and multiplies collected electrons and the
+ * noise already in them.
+ *
+ * High-rate telescope pointing is read from the `telpointing` shmim (a 3×1×N
+ * circular buffer of RA, Dec, PA) so a long exposure integrates the mount motion
+ * that occurred during it and streaks. INDI pointing is kept as a 1 Hz fallback
+ * and status report. Camera frames are still published at the source camera's
+ * frame rate.
  *
  * <a href="../handbook/operating/software/apps/wccSim.html">Application Documentation</a>
  *
@@ -99,7 +107,7 @@ struct wccSimSensor
 
     double m_expTime{ 1.0 }; ///< Commanded exposure time [s].
 
-    double m_gain{ 1.0 }; ///< Commanded camera gain, applied as electrons per DN.
+    int m_gainCode{ 0 }; ///< Commanded analog gain code, 0 to 255 in 0.1 dB steps.
 
     int m_bitDepth{ 16 }; ///< Commanded ADC bit depth.
 
@@ -207,6 +215,11 @@ class wccSim : public MagAOXApp<true>
 
     std::string m_telPAElement{ "pa" }; ///< Element carrying the position angle [deg].
 
+    /// ImageStreamIO stream carrying high-rate pointing. Empty falls back to INDI.
+    std::string m_pointingShmim{ wcc::pointingShmimDefault };
+
+    double m_pointingWriteHz{ wcc::pointingWriteHzDefault }; ///< Nominal pointing sample rate [Hz].
+
     double m_startRA{ 0 }; ///< Boresight right ascension at startup [deg].
 
     double m_startDec{ 0 }; ///< Boresight declination at startup [deg].
@@ -284,6 +297,12 @@ class wccSim : public MagAOXApp<true>
     std::atomic<bool> m_shutdownWorkers{ false }; ///< Tells the worker threads to exit.
 
     std::thread m_bankBuilder; ///< Thread that builds the PSF banks at startup.
+
+    IMAGE m_pointingStream{}; ///< Opened pointing stream, owned by telescopeSim.
+
+    bool m_pointingStreamOpen{ false }; ///< True while the pointing stream is mapped.
+
+    std::mutex m_pointingStreamMutex; ///< Guards opening and closing m_pointingStream.
 
     /// What a subscribed remote property updates.
     struct remoteBinding
@@ -397,21 +416,37 @@ class wccSim : public MagAOXApp<true>
     void sensorWorkerExec( wccSimSensor *sen /**< [in] the sensor */ );
 
     /// Render one frame for a sensor into an electron buffer.
-    /** \returns the number of stars placed
+    /** When `samples` has more than one pointing, each star is placed once per
+     * sample scaled by that sample's duration, so a moving boresight streaks.
+     *
+     * \returns the number of distinct stars placed
      * \returns -1 on an error
      */
     int renderFrame( const wcc::sensorConfig &sc /**< [in] sensor geometry and detector parameters */,
                      const wcc::psfBank &bnk /**< [in] PSF bank for this sensor */,
                      const wcc::roiSpec &roi /**< [in] region of interest to render */,
-                     double expTime /**< [in] exposure time [s] */,
-                     double ra /**< [in] boresight right ascension [deg] */,
-                     double dec /**< [in] boresight declination [deg] */,
-                     double pa /**< [in] boresight position angle [deg] */,
+                     const std::vector<wcc::pointingSample> &samples /**< [in] pointing history for this exposure */,
                      std::vector<float> &frame /**< [out] electrons, row major */,
                      int &bx0 /**< [out] illuminated bounding box min column */,
                      int &by0 /**< [out] illuminated bounding box min row */,
                      int &bx1 /**< [out] illuminated bounding box max column */,
                      int &by1 /**< [out] illuminated bounding box max row */ );
+
+    /// Collect the pointing samples that fall inside an exposure.
+    /** Prefers the high-rate pointing shmim. If that stream is not available,
+     * a single sample is taken from the 1 Hz INDI/local pointing.
+     *
+     * \returns the number of samples
+     * \returns -1 if no pointing is available
+     */
+    int snapshotPointing( double expTime /**< [in] exposure length [s] */,
+                          std::vector<wcc::pointingSample> &samples /**< [out] chronological samples */ );
+
+    /// Open the pointing shmim if it exists.
+    /** \returns 0 on success
+     * \returns -1 if the stream cannot be opened
+     */
+    int openPointingStream();
 
     /// Create or resize a sensor's output stream to match a ROI.
     /** \returns 0 on success
@@ -540,6 +575,11 @@ inline void wccSim::setupConfig()
                 "Boresight declination at startup [deg]." );
     config.add( "pointing.pa", "", "pointing.pa", argType::Required, "pointing", "pa", false, "double",
                 "Position angle of focal plane +Y, east of north, at startup [deg]." );
+    config.add( "pointing.shmim", "", "pointing.shmim", argType::Required, "pointing", "shmim", false, "string",
+                "ImageStreamIO stream carrying high-rate pointing from telescopeSim. Empty uses INDI only." );
+    config.add( "pointing.write_hz", "", "pointing.write_hz", argType::Required, "pointing", "write_hz", false,
+                "double",
+                "Nominal pointing sample rate [Hz], used to space samples if the stream has no timestamps." );
 
     config.add( "sim.sensors", "", "sim.sensors", argType::Required, "sim", "sensors", false, "vector<string>",
                 "Comma separated sensor names. Each needs a configuration section of the same name." );
@@ -590,6 +630,13 @@ inline int wccSim::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_startRA, "pointing.ra" );
     _config( m_startDec, "pointing.dec" );
     _config( m_startPA, "pointing.pa" );
+    _config( m_pointingShmim, "pointing.shmim" );
+    _config( m_pointingWriteHz, "pointing.write_hz" );
+
+    if( m_pointingWriteHz <= 0 )
+    {
+        m_pointingWriteHz = wcc::pointingWriteHzDefault;
+    }
 
     _config( m_sensorNames, "sim.sensors" );
     _config( m_npixPupil, "sim.npix_pupil" );
@@ -847,6 +894,8 @@ inline int wccSim::appStartup()
         sen->m_ipStatus.add( pcf::IndiElement( "roi_w" ) );
         sen->m_ipStatus.add( pcf::IndiElement( "roi_h" ) );
         sen->m_ipStatus.add( pcf::IndiElement( "nstars" ) );
+        sen->m_ipStatus.add( pcf::IndiElement( "gain_code" ) );
+        sen->m_ipStatus.add( pcf::IndiElement( "analog_gain" ) );
         sen->m_ipStatus.add( pcf::IndiElement( "render_ms" ) );
         sen->m_ipStatus.add( pcf::IndiElement( "frames" ) );
         sen->m_ipStatus.add( pcf::IndiElement( "saturated" ) );
@@ -965,6 +1014,16 @@ inline int wccSim::appShutdown()
         {
             ImageStreamIO_destroyIm( &sen->m_stream );
             sen->m_streamOpen = false;
+        }
+    }
+
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
+
+        if( m_pointingStreamOpen )
+        {
+            ImageStreamIO_closeIm( &m_pointingStream );
+            m_pointingStreamOpen = false;
         }
     }
 
@@ -1150,27 +1209,19 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
 
         const double tStart = mx::sys::get_curr_time();
 
-        // Snapshot the live camera parameters and the boresight.
-        double fps, expTime, gain;
-        int bitDepth;
+        // Snapshot the live camera parameters. Pointing comes from the shmim
+        // history covering this exposure, not from the 1 Hz INDI copy.
+        double fps, expTime;
+        int gainCode, bitDepth;
         wcc::roiSpec roi;
 
         { //mutex scope
             std::lock_guard<std::mutex> lock( sen->m_mutex );
             fps = sen->m_fps;
             expTime = sen->m_expTime;
-            gain = sen->m_gain;
+            gainCode = sen->m_gainCode;
             bitDepth = sen->m_bitDepth;
             roi = sen->m_roi;
-        }
-
-        double ra, dec, pa;
-
-        { //mutex scope
-            std::lock_guard<std::mutex> lock( m_pointingMutex );
-            ra = m_ra;
-            dec = m_dec;
-            pa = m_pa;
         }
 
         const int w = roi.imageW();
@@ -1182,9 +1233,17 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
             continue;
         }
 
+        std::vector<wcc::pointingSample> samples;
+
+        if( snapshotPointing( expTime, samples ) < 1 )
+        {
+            mx::sys::milliSleep( 50 );
+            continue;
+        }
+
         int bx0 = w, by0 = h, bx1 = -1, by1 = -1;
 
-        const int nStars = renderFrame( sc, *bnk, roi, expTime, ra, dec, pa, frame, bx0, by0, bx1, by1 );
+        const int nStars = renderFrame( sc, *bnk, roi, samples, frame, bx0, by0, bx1, by1 );
 
         if( nStars < 0 )
         {
@@ -1195,7 +1254,8 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
 
         noise.apply( frame, w, h, sc, expTime, bx0, by0, bx1, by1 );
 
-        const size_t sat = noise.digitize( frame, pixels, sc, gain, bitDepth );
+        const double analog = wcc::analogGainLinear( gainCode, sc.m_gainStepDb );
+        const size_t sat = noise.digitize( frame, pixels, sc, analog, bitDepth );
 
         if( ensureStream( sen, static_cast<uint32_t>( w ), static_cast<uint32_t>( h ) ) == 0 )
         {
@@ -1258,10 +1318,7 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
 inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
                                 const wcc::psfBank &bnk,
                                 const wcc::roiSpec &roi,
-                                double expTime,
-                                double ra,
-                                double dec,
-                                double pa,
+                                const std::vector<wcc::pointingSample> &samples,
                                 std::vector<float> &frame,
                                 int &bx0,
                                 int &by0,
@@ -1271,38 +1328,12 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
     const int w = roi.imageW();
     const int h = roi.imageH();
 
-    if( w < 1 || h < 1 )
+    if( w < 1 || h < 1 || samples.empty() )
     {
         return -1;
     }
 
     frame.assign( static_cast<size_t>( w ) * static_cast<size_t>( h ), 0.0f );
-
-    // The focal plane model is shared and its pointing changes, so build a local
-    // copy of the geometry at the snapshotted boresight rather than locking here.
-    wcc::focalPlaneModel fp;
-    fp.setTelescope( m_diameter, m_fNumber, m_parity );
-    fp.setPointing( ra, dec, pa );
-    fp.addSensor( sc );
-
-    wcc::skyWCS wcs;
-
-    if( fp.roiWCS( 0, roi, wcs ) < 0 )
-    {
-        return -1;
-    }
-
-    // Search a cone that covers the ROI plus a margin, so stars just outside can
-    // still land part of their PSF on the detector. The Python simulator gets the
-    // same effect with an oversized array and a crop.
-    const double margin = m_starMargin * bnk.samples();
-    const double radius = fp.roiSearchRadius( 0, roi, margin );
-
-    double cra, cdec;
-    wcs.pix2world( 0.5 * ( w - 1 ), 0.5 * ( h - 1 ), cra, cdec );
-
-    std::vector<size_t> hits;
-    m_catalog.coneSearch( cra, cdec, radius, hits, m_magLimit );
 
     wcc::photometryConfig phot;
     phot.m_pivotWavelength = sc.m_pivotWavelength;
@@ -1312,52 +1343,174 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
     phot.m_quantumEfficiency = sc.m_quantumEfficiency;
 
     const double half = 0.5 * bnk.samples();
-    int placed = 0;
+    const double margin = m_starMargin * bnk.samples();
+    std::set<size_t> placed;
 
-    for( size_t i : hits )
+    for( const wcc::pointingSample &samp : samples )
     {
-        const wcc::starEntry &s = m_catalog[i];
-
-        double x, y;
-
-        if( !wcs.world2pix( s.m_ra, s.m_dec, x, y ) )
+        if( !( samp.m_dt > 0 ) )
         {
             continue;
         }
 
-        // Reject stars whose stamp cannot touch the frame at all.
-        if( x < -half || y < -half || x > w - 1 + half || y > h - 1 + half )
+        // Local geometry at this sample's boresight. The shared model is only a
+        // 1 Hz status copy and is not safe to mutate from a worker.
+        wcc::focalPlaneModel fp;
+        fp.setTelescope( m_diameter, m_fNumber, m_parity );
+        fp.setPointing( samp.m_ra, samp.m_dec, samp.m_pa );
+        fp.addSensor( sc );
+
+        wcc::skyWCS wcs;
+
+        if( fp.roiWCS( 0, roi, wcs ) < 0 )
         {
             continue;
         }
 
-        const double flux = wcc::abMagToElectrons( s.m_mag, expTime, phot );
+        const double radius = fp.roiSearchRadius( 0, roi, margin );
 
-        if( !( flux > 0 ) )
+        double cra, cdec;
+        wcs.pix2world( 0.5 * ( w - 1 ), 0.5 * ( h - 1 ), cra, cdec );
+
+        std::vector<size_t> hits;
+        m_catalog.coneSearch( cra, cdec, radius, hits, m_magLimit );
+
+        for( size_t i : hits )
         {
-            continue;
-        }
+            const wcc::starEntry &s = m_catalog[i];
 
-        // Split into an integer pixel and a sub-pixel remainder. The bank already
-        // holds the PSF shifted by the remainder, so placement is exact to within
-        // half a bank step.
-        const int ix = static_cast<int>( std::floor( x + 0.5 ) );
-        const int iy = static_cast<int>( std::floor( y + 0.5 ) );
+            double x, y;
 
-        const float *stamp = bnk.lookup( x - ix, y - iy );
+            if( !wcs.world2pix( s.m_ra, s.m_dec, x, y ) )
+            {
+                continue;
+            }
 
-        if( stamp == nullptr )
-        {
-            continue;
-        }
+            if( x < -half || y < -half || x > w - 1 + half || y > h - 1 + half )
+            {
+                continue;
+            }
 
-        if( wcc::accumulateStamp( frame, w, h, stamp, bnk.samples(), ix, iy, flux, bx0, by0, bx1, by1 ) > 0 )
-        {
-            ++placed;
+            const double flux = wcc::abMagToElectrons( s.m_mag, samp.m_dt, phot );
+
+            if( !( flux > 0 ) )
+            {
+                continue;
+            }
+
+            const int ix = static_cast<int>( std::floor( x + 0.5 ) );
+            const int iy = static_cast<int>( std::floor( y + 0.5 ) );
+
+            const float *stamp = bnk.lookup( x - ix, y - iy );
+
+            if( stamp == nullptr )
+            {
+                continue;
+            }
+
+            if( wcc::accumulateStamp( frame, w, h, stamp, bnk.samples(), ix, iy, flux, bx0, by0, bx1, by1 ) > 0 )
+            {
+                placed.insert( i );
+            }
         }
     }
 
-    return placed;
+    return static_cast<int>( placed.size() );
+}
+
+inline int wccSim::openPointingStream()
+{
+    if( m_pointingShmim.empty() )
+    {
+        return -1;
+    }
+
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
+
+        if( m_pointingStreamOpen )
+        {
+            return 0;
+        }
+
+        if( ImageStreamIO_openIm( &m_pointingStream, m_pointingShmim.c_str() ) != IMAGESTREAMIO_SUCCESS )
+        {
+            return -1;
+        }
+
+        if( m_pointingStream.md == nullptr || m_pointingStream.md->size[0] < wcc::pointingNAxes )
+        {
+            ImageStreamIO_closeIm( &m_pointingStream );
+            return -1;
+        }
+
+        m_pointingStreamOpen = true;
+    }
+
+    log<text_log>( "opened pointing stream " + m_pointingShmim );
+
+    return 0;
+}
+
+inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSample> &samples )
+{
+    samples.clear();
+
+    const double tEnd = mx::sys::get_curr_time();
+    const double tStart = tEnd - std::max( expTime, 1.0e-6 );
+
+    if( !m_pointingShmim.empty() && !m_pointingStreamOpen )
+    {
+        openPointingStream();
+    }
+
+    if( m_pointingStreamOpen && m_pointingStream.md != nullptr && m_pointingStream.array.raw != nullptr )
+    {
+        const IMAGE *im = &m_pointingStream;
+        const uint32_t depth = ( im->md->naxis >= 3 && im->md->size[2] > 0 ) ? im->md->size[2] : 1;
+        const uint64_t cnt1 = im->md->cnt1;
+        const uint64_t nWritten = im->md->cnt0;
+
+        const double *data = reinterpret_cast<const double *>( im->array.raw );
+        std::vector<double> times;
+
+        if( im->writetimearray != nullptr )
+        {
+            times.resize( depth );
+
+            for( uint32_t i = 0; i < depth; ++i )
+            {
+                times[i] = static_cast<double>( im->writetimearray[i].tv_sec ) +
+                           1.0e-9 * static_cast<double>( im->writetimearray[i].tv_nsec );
+            }
+        }
+
+        const double dtNom = ( m_pointingWriteHz > 0 ) ? 1.0 / m_pointingWriteHz : 1.0e-3;
+
+        if( wcc::collectPointingSamples( data, times.empty() ? nullptr : times.data(), depth, cnt1, nWritten,
+                                         tStart, tEnd, dtNom, samples ) > 0 )
+        {
+            // Keep the 1 Hz INDI copy in step with the latest high-rate sample so
+            // the published pointing property still means "where the mount is".
+            applyPointing( samples.back().m_ra, samples.back().m_dec, samples.back().m_pa );
+            return static_cast<int>( samples.size() );
+        }
+    }
+
+    wcc::pointingSample s;
+
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_pointingMutex );
+        s.m_ra = m_ra;
+        s.m_dec = m_dec;
+        s.m_pa = m_pa;
+    }
+
+    s.m_time = tEnd;
+    s.m_dt = std::max( expTime, 1.0e-6 );
+    samples.push_back( s );
+
+    return 1;
 }
 
 inline int wccSim::ensureStream( wccSimSensor *sen, uint32_t w, uint32_t h )
@@ -1590,9 +1743,12 @@ inline int wccSim::setCallBack_remote( const pcf::IndiProperty &ipRecv )
     }
     else if( rb.m_what == "emgain" )
     {
-        // stdCamera emgain maps to CMOS analog gain on these detectors, which
-        // scales electrons per DN rather than the collected signal.
-        sen->m_gain = ( v > 0 ) ? v : 1.0;
+        // stdCamera emgain is the IMX analog-gain register: 0 to 255 in 0.1 dB
+        // steps. It multiplies electrons, including the noise already in them.
+        const int hi = ( rb.m_sensor != nullptr )
+                           ? m_focalPlane.sensor( rb.m_sensor->m_index ).m_gainCodeMax
+                           : wcc::analogGainCodeMax;
+        sen->m_gainCode = wcc::clampAnalogGainCode( v, wcc::analogGainCodeMin, hi );
     }
     else if( rb.m_what == "bitDepth" )
     {
@@ -1700,17 +1856,21 @@ inline void wccSim::updateStatus()
     for( std::unique_ptr<wccSimSensor> &sen : m_sensors )
     {
         double fps, expTime;
+        int gainCode;
         wcc::roiSpec roi;
 
         { //mutex scope
             std::lock_guard<std::mutex> slock( sen->m_mutex );
             fps = sen->m_fps;
             expTime = sen->m_expTime;
+            gainCode = sen->m_gainCode;
             roi = sen->m_roi;
         }
 
         const uint64_t frames = sen->m_frames.load();
         totalFrames += frames;
+
+        const wcc::sensorConfig &sc = m_focalPlane.sensor( sen->m_index );
 
         updateIfChanged( sen->m_ipStatus, "fps", fps );
         updateIfChanged( sen->m_ipStatus, "achieved_fps", sen->m_achievedFps.load() );
@@ -1720,6 +1880,8 @@ inline void wccSim::updateStatus()
         updateIfChanged( sen->m_ipStatus, "roi_w", static_cast<double>( roi.m_w ) );
         updateIfChanged( sen->m_ipStatus, "roi_h", static_cast<double>( roi.m_h ) );
         updateIfChanged( sen->m_ipStatus, "nstars", static_cast<double>( sen->m_nStars.load() ) );
+        updateIfChanged( sen->m_ipStatus, "gain_code", static_cast<double>( gainCode ) );
+        updateIfChanged( sen->m_ipStatus, "analog_gain", wcc::analogGainLinear( gainCode, sc.m_gainStepDb ) );
         updateIfChanged( sen->m_ipStatus, "render_ms", sen->m_renderMs.load() );
         updateIfChanged( sen->m_ipStatus, "frames", static_cast<double>( frames ) );
         updateIfChanged( sen->m_ipStatus, "saturated", static_cast<double>( sen->m_saturated.load() ) );
@@ -1756,10 +1918,10 @@ INDI_NEWCALLBACK_DEFN( wccSim, m_indiP_pointing )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_pointing, ipRecv );
 
-    if( !m_telDevice.empty() )
+    if( !m_telDevice.empty() || !m_pointingShmim.empty() )
     {
-        log<text_log>( "pointing command ignored: the pointing is slaved to " + m_telDevice + "." +
-                           m_telProperty,
+        log<text_log>( "pointing command ignored: high-rate pointing comes from " +
+                           ( m_pointingShmim.empty() ? m_telDevice + "." + m_telProperty : m_pointingShmim ),
                        logPrio::LOG_WARNING );
         return 0;
     }
@@ -1790,9 +1952,10 @@ INDI_NEWCALLBACK_DEFN( wccSim, m_indiP_offset )
 {
     INDI_VALIDATE_CALLBACK_PROPS( m_indiP_offset, ipRecv );
 
-    if( !m_telDevice.empty() )
+    if( !m_telDevice.empty() || !m_pointingShmim.empty() )
     {
-        log<text_log>( "offset command ignored: the pointing is slaved to " + m_telDevice + "." + m_telProperty,
+        log<text_log>( "offset command ignored: high-rate pointing comes from " +
+                           ( m_pointingShmim.empty() ? m_telDevice + "." + m_telProperty : m_pointingShmim ),
                        logPrio::LOG_WARNING );
         return 0;
     }

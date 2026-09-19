@@ -7,11 +7,15 @@
  * and start dropping devices. The WCC applications therefore hold all of their
  * INDI reads and writes to 1 Hz.
  *
- * That is a real constraint on the control loops, not just on status reporting: it
- * puts a 1 s floor on the fast guiding loop's correction interval. The loops are
- * written with a configurable period which is clamped to this floor rather than
- * silently exceeding it, so the limit is visible in the configuration instead of
- * buried.
+ * High-rate data does not go over INDI. Telescope pointing is written to an
+ * ImageStreamIO stream at a configurable rate (see `wccPointingShmim.hpp`) so
+ * `wccSim` can integrate mount motion during a camera exposure. Camera frames
+ * themselves are also shmims, published at each camera's own frame rate.
+ *
+ * The 1 Hz floor is still a real constraint on INDI-only control loops, not just
+ * on status reporting. Those loops are written with a configurable period which
+ * is clamped to this floor rather than silently exceeding it, so the limit is
+ * visible in the configuration instead of buried.
  *
  * \ingroup wccCommon_files
  */

@@ -17,23 +17,25 @@ the analytic Airy pattern by that directory's test suite.
 ```
                        ┌──────────────┐
    star catalog ─────▶ │              │ ◀── roi / fps / exptime / emgain
-   (gsc31 CSV)         │              │     from nsvCtrlSim, nsvCtrl, or any
+    (gsc31 CSV)         │              │     from nsvCtrlSim, nsvCtrl, or any
                        │    wccSim    │     dev::stdCamera camera
-   current pointing ─▶ │              │
+   telpointing shmim ─▶ │              │
    from telescopeSim   │              │ ──▶ nsv18sim, hwk09sim, ...
-                       └──────────────┘     (uint16 shmim per sensor)
+                       └──────────────┘     (uint16 shmim per sensor, at camera fps)
 ```
 
 Three inputs, and it needs all three to render a frame: the **star catalog** for
 what is out there, each **camera's** commanded ROI and exposure time for how that
-sensor is currently reading out, and the **telescope's current pointing** for where
-the array is looking. Change any one and the images follow.
+sensor is currently reading out, and the **telescope pointing history** for where
+the array was looking during the exposure. Change any one and the images follow.
 
 For every configured sensor, `wccSim` subscribes to that camera's `fps`,
-`exptime`, `emgain`, `bitDepth` and `roi_region_*` properties. When a camera is
-reconfigured — for instance when `wccCtrl` narrows it from full frame to 128×128
-for guiding — the simulated frames follow on the next frame, resizing the output
-stream as needed. Nothing has to be told twice.
+`exptime`, `emgain`, `bitDepth` and `roi_region_*` properties. `emgain` is an
+IMX455-style analog gain **code**, 0 to 255, at 0.1 dB per step. It multiplies
+collected electrons and the noise already in them (`G = 10^(0.1 * code / 20)`).
+When a camera is reconfigured — for instance when `wccCtrl` narrows it from full
+frame to 128×128 for guiding — the simulated frames follow it with no operator
+action.
 
 The camera being simulated does not have to be simulated itself: pointing `wccSim`
 at a real `nsvCtrl` works identically, which is how the same simulator can inject
@@ -41,30 +43,28 @@ synthetic sky into a real camera's configuration.
 
 ## Pointing
 
-Two modes, selected by whether `pointing.tel_device` is set:
+High-rate pointing is a shmim, not INDI. `telescopeSim` writes `telpointing` (a
+3×1×N circular buffer of RA, Dec, PA in degrees) at `pointing.write_hz`. When
+`wccSim` publishes a camera frame it collects every sample whose timestamp falls
+inside `[now - exptime, now]` and places each star once per sample, scaled by that
+sample's duration. A 1 s exposure of a wandering mount therefore streaks. Camera
+output streams still publish at the camera's own frame rate.
 
-- **Set (default: `telescopesim`).** The pointing is slaved to that device's
-  `pointing` property, which reports where the mount *currently* is with jitter
-  included, and local `pointing`/`offset` commands are rejected with a warning. This
-  is the normal configuration: the telescope is the authority and `wccSim` renders
-  what the sky looks like from wherever it is pointed. `wccCtrl` therefore closes its
-  loop through the mount rather than through a back channel to the simulator.
-  Pointing this at `tcsInterface` instead needs only `tel_property=telpos` and
-  `tel_pa_element=rotoff`.
-- **Empty.** `wccSim` owns the pointing and accepts absolute `pointing` and relative
-  `offset` commands directly. Useful for exercising the renderer without a mount in
-  the loop.
+INDI pointing is 1 Hz status, and a fallback if the shmim is not yet open.
+`pointing.tel_device` / local `pointing` and `offset` commands work as before when
+`pointing.shmim` is left empty.
 
 The offset conversion is shared with `telescopeSim` through
-`wccCommon::offsetBoresight`, so a commanded field-angle correction and the resulting
-image motion cannot disagree.
+`wccCommon::offsetBoresight`, so a commanded correction and the resulting image
+motion cannot disagree.
 
 ## Frames, and what limits the rate
 
 Each sensor has its own worker thread. Per frame it snapshots the live camera
-parameters and the boresight, builds that ROI's world coordinate system, cone
-searches the catalog over the ROI footprint plus a margin, adds a flux-scaled PSF
-stamp per star, applies the noise model, digitizes, and publishes.
+parameters, reads the pointing history for the exposure, builds that ROI's world
+coordinate system at each sample, cone searches, adds a flux-scaled PSF stamp per
+star per sample, applies the noise model, digitizes with analog gain, and
+publishes.
 
 The published stream is created exactly as `dev::frameGrabber` creates one —
 `naxis` 3, `size[0]` = width, uint16, temporal circular buffer — so downstream
@@ -108,7 +108,7 @@ that for a 2× improvement in placement accuracy, which is rarely the right trad
 | `offset` | number `x`, `y`, `roll` | Relative offset in arcsec and degrees; self-clearing |
 | `catalog` | number (RO) | `nsources`, `mag_min`, `mag_max` |
 | `sim_status` | number (RO) | `nsensors`, `banks_ready`, `frames` |
-| `cam_<SENSOR>` | number (RO) | Per sensor: `fps`, `achieved_fps`, `exptime`, `roi_*`, `nstars`, `render_ms`, `frames`, `saturated` |
+| `cam_<SENSOR>` | number (RO) | Per sensor: `fps`, `achieved_fps`, `exptime`, `roi_*`, `nstars`, `gain_code`, `analog_gain`, `render_ms`, `frames`, `saturated` |
 
 Sensor names contain hyphens, which are not valid in INDI property names, so
 `cam_IMX-18` is published as `cam_IMX_18`.
@@ -157,22 +157,18 @@ visible. See `wccCtrl`'s `visit` and `visit_params` properties.
 With a camera simulator and a controller:
 
 ```bash
-# start a camera per sensor (nsvCtrlSim, one instance per sensor)
-# then the simulator
+# start telescopeSim, then a camera per sensor, then the simulator
+/opt/MagAOX/bin/telescopeSim -n telesim
 /opt/MagAOX/bin/wccSim -n wccsim
-# turn on frame publication
 xindi wccsim.streaming.toggle=On
-# move the boresight and watch the field shift
-xindi wccsim.offset.x=30 wccsim.offset.y=-10
 ```
 
+Look at `nsv18sim` (or whatever `shmim_out` is), not the camera device stream.
 `sim.start_streaming=true` skips the toggle if you want frames immediately.
 
-Note that `appLogic`, and therefore the camera and pointing values it reads plus the
-status it publishes, runs at 1 Hz — the limit every WCC application holds its INDI
-traffic to. The per-sensor render threads are *not* rate limited; they run at
-whatever frame rate each camera asks for. So a ROI or exposure change takes effect
-within about a second, and frames continue at full rate throughout.
+Camera ROI / fps / exptime still arrive over INDI at 1 Hz. Pointing does not: it
+is the `telpointing` shmim at `pointing.write_hz`. The per-sensor render threads
+run at whatever frame rate each camera asks for.
 
 ## Known limitations
 

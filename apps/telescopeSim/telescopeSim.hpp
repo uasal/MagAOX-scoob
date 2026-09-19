@@ -11,10 +11,14 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
+#include <ctime>
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 
+#include <ImageStreamIO/ImageStreamIO.h>
 #include <mx/sys/timeUtils.hpp>
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
@@ -22,6 +26,7 @@
 
 #include "../wccCommon/wccFocalPlane.hpp"
 #include "../wccCommon/wccIndiRate.hpp"
+#include "../wccCommon/wccPointingShmim.hpp"
 #include "../wccCommon/wccSensorModel.hpp"
 #include "../wccCommon/wccSkyWCS.hpp"
 #include "../wccCommon/wccUnits.hpp"
@@ -35,23 +40,29 @@
  * that wanders by a configurable amount so downstream guiding has something real
  * to correct.
  *
- * It is the authority on where the telescope is pointed. `wccSim` reads the
- * `pointing` property to decide what the sky looks like, and `wccCtrl` sends
- * corrections to `offset` and watches `teldata` to know when a move is done. The
- * property and element names match what `wccCtrl` expects from a real
- * `tcsInterface` closely enough that pointing it at either is a configuration
- * change rather than a code change.
+ * It is the authority on where the telescope is pointed. The current pointing is
+ * written to an ImageStreamIO stream at a configurable rate (1000 Hz by default)
+ * so `wccSim` can integrate mount motion during a camera exposure. The same
+ * pointing is also published on the INDI `pointing` property at 1 Hz, which is
+ * what `wccCtrl` and operators read. `wccCtrl` sends corrections to `offset` and
+ * watches `teldata` to know when a move is done. The property and element names
+ * match what `wccCtrl` expects from a real `tcsInterface` closely enough that
+ * pointing it at either is a configuration change rather than a code change.
  *
  * \par Interface summary
  * | property      | type   | purpose                                              |
  * |---------------|--------|------------------------------------------------------|
  * | `start_visit` | toggle | Slew to the target `visitCtrl` is publishing         |
- * | `pointing`    | number | Current pointing: `ra`, `dec`, `pa`. Read by wccSim  |
+ * | `pointing`    | number | Current pointing: `ra`, `dec`, `pa` (1 Hz INDI)      |
  * | `target`      | number | Where it is going: `ra`, `dec`, `pa`                 |
  * | `teldata`     | number | `slewing`, `tracking`, `settling`. Done detection    |
  * | `tel_status`  | text   | `state`, `message`                                   |
  * | `offset`      | number | Relative correction: `x`, `y` [arcsec], `roll` [deg] |
  * | `goto_target` | number | Absolute command: `ra`, `dec`, `pa`                  |
+ *
+ * High-rate pointing lives on the `telpointing` shmim (configurable): a 3×1×N
+ * circular buffer of doubles, axes RA, Dec, PA in degrees, written at
+ * `pointing.write_hz`.
  *
  * <a href="../handbook/operating/software/apps/telescopeSim.html">Application Documentation</a>
  *
@@ -141,6 +152,16 @@ class telescopeSim : public MagAOXApp<true>
     double m_startPA{ 0 }; ///< Position angle at startup [deg].
 
     uint64_t m_seed{ 8675309 }; ///< RNG seed for the jitter.
+
+    /// ImageStreamIO stream the high-rate pointing is written to.
+    std::string m_pointingShmim{ wcc::pointingShmimDefault };
+
+    double m_writeHz{ wcc::pointingWriteHzDefault }; ///< Pointing shmim write rate [Hz].
+
+    double m_historyS{ wcc::pointingHistorySDefault }; ///< Circular-buffer span [s].
+
+    /// Correlation time of the pointing jitter [s]. 0 is white (independent draws).
+    double m_jitterTau{ 0.05 };
     ///@}
 
     /** \name Mount State - Data
@@ -180,6 +201,28 @@ class telescopeSim : public MagAOXApp<true>
     double m_lastUpdate{ 0 }; ///< Time of the last motion update [s].
 
     wcc::fastRandom m_rng; ///< Jitter generator.
+
+    /// Instantaneous jitter state [arcsec], evolved as an Ornstein-Uhlenbeck process.
+    double m_jx{ 0 };
+
+    double m_jy{ 0 }; ///< Instantaneous Y jitter [arcsec].
+
+    double m_jroll{ 0 }; ///< Instantaneous roll jitter [deg].
+    ///@}
+
+    /** \name Pointing Stream - Data
+     *@{
+     */
+  protected:
+    IMAGE m_pointingStream{}; ///< High-rate pointing ImageStreamIO stream.
+
+    bool m_pointingStreamOpen{ false }; ///< True while m_pointingStream is created.
+
+    uint32_t m_pointingDepth{ 1 }; ///< Circular buffer length of the pointing stream.
+
+    std::thread m_pointingThread; ///< Worker that advances the mount and writes the shmim.
+
+    std::atomic<bool> m_shutdownPointing{ false }; ///< Tells the pointing thread to exit.
     ///@}
 
     /** \name Visit Subscription - Data
@@ -258,8 +301,9 @@ class telescopeSim : public MagAOXApp<true>
 
   protected:
     /// Advance the mount toward its target and apply jitter.
-    /** Called once per appLogic tick, which is the 1 Hz INDI rate limit, so the
-     * elapsed time is measured rather than assumed.
+    /** Called from the pointing worker at the shmim write rate, and from unit
+     * tests. Elapsed time is measured rather than assumed, so the write rate
+     * sets the jitter bandwidth rather than the slew fidelity.
      */
     void updateMount();
 
@@ -271,6 +315,21 @@ class telescopeSim : public MagAOXApp<true>
 
     /// Publish the pointing, target, motion flags and status.
     void publishState();
+
+    /// Create the high-rate pointing stream.
+    /** \returns 0 on success
+     * \returns -1 if the stream cannot be created
+     */
+    int ensurePointingStream();
+
+    /// Write the current reported pointing into the next circular-buffer slice.
+    void writePointingShmim();
+
+    /// Thread entry for the pointing worker.
+    static void pointingWorkerStart( telescopeSim *s /**< [in] this */ );
+
+    /// Advance the mount and write the pointing shmim at m_writeHz.
+    void pointingWorkerExec();
 
     /// Shared SET callback for the subscribed visitCtrl properties.
     /** \returns 0 always, so an unexpected property is ignored rather than fatal
@@ -296,9 +355,7 @@ inline telescopeSim::telescopeSim() : MagAOXApp( MAGAOX_CURRENT_SHA1, MAGAOX_REP
     // Pure software: no PDU.
     m_powerMgtEnabled = false;
 
-    // Every WCC application holds its INDI traffic to 1 Hz. The mount motion is
-    // integrated against measured elapsed time, so this rate sets the reporting
-    // granularity rather than the slew fidelity.
+    // INDI stays at 1 Hz. The pointing worker writes the shmim at pointing.write_hz.
     m_loopPause = wcc::indiLoopPause;
 
     return;
@@ -340,6 +397,18 @@ inline void telescopeSim::setupConfig()
                 "Position angle at startup [deg]." );
     config.add( "sim.seed", "", "sim.seed", argType::Required, "sim", "seed", false, "int",
                 "RNG seed for the jitter, so a run is reproducible." );
+    config.add( "sim.jitter_tau", "", "sim.jitter_tau", argType::Required, "sim", "jitter_tau", false,
+                "double",
+                "Jitter correlation time [s]. 0 is white (independent draws each write). A finite value "
+                "makes the pointing wander smoothly so a long exposure streaks rather than blobs." );
+
+    config.add( "pointing.shmim", "", "pointing.shmim", argType::Required, "pointing", "shmim", false, "string",
+                "ImageStreamIO stream the high-rate pointing is written to. 3x1xN doubles: ra, dec, pa." );
+    config.add( "pointing.write_hz", "", "pointing.write_hz", argType::Required, "pointing", "write_hz", false,
+                "double", "Pointing shmim write rate [Hz]. 0 disables the stream and updates only at 1 Hz." );
+    config.add( "pointing.history_s", "", "pointing.history_s", argType::Required, "pointing", "history_s",
+                false, "double",
+                "Circular-buffer span [s]. Must cover the longest camera exposure wccSim will integrate." );
 }
 
 inline int telescopeSim::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -367,6 +436,33 @@ inline int telescopeSim::loadConfigImpl( mx::app::appConfigurator &_config )
             m_seed = static_cast<uint64_t>( seed );
         }
     }
+
+    _config( m_jitterTau, "sim.jitter_tau" );
+    _config( m_pointingShmim, "pointing.shmim" );
+    _config( m_writeHz, "pointing.write_hz" );
+    _config( m_historyS, "pointing.history_s" );
+
+    if( m_jitterTau < 0 )
+    {
+        m_jitterTau = 0;
+    }
+
+    if( m_writeHz < 0 )
+    {
+        m_writeHz = 0;
+    }
+
+    if( m_historyS <= 0 )
+    {
+        m_historyS = wcc::pointingHistorySDefault;
+    }
+
+    if( m_pointingShmim.empty() )
+    {
+        m_pointingShmim = wcc::pointingShmimDefault;
+    }
+
+    m_pointingDepth = wcc::pointingBufferDepth( m_writeHz, m_historyS );
 
     if( m_slewRate <= 0 )
     {
@@ -506,18 +602,35 @@ inline int telescopeSim::appStartup()
 
     m_lastUpdate = mx::sys::get_curr_time();
 
+    if( m_writeHz > 0 )
+    {
+        if( ensurePointingStream() < 0 )
+        {
+            return -1;
+        }
+
+        m_shutdownPointing = false;
+        m_pointingThread = std::thread( pointingWorkerStart, this );
+    }
+
     state( stateCodes::READY );
 
     log<text_log>( "telescopeSim ready at ra " + std::to_string( m_startRA ) + " dec " +
                    std::to_string( m_startDec ) + " pa " + std::to_string( m_startPA ) + ", slew rate " +
-                   std::to_string( m_slewRate ) + " deg/s, jitter " + std::to_string( m_jitter ) + " arcsec rms" );
+                   std::to_string( m_slewRate ) + " deg/s, jitter " + std::to_string( m_jitter ) +
+                   " arcsec rms, pointing shmim " + m_pointingShmim + " at " + std::to_string( m_writeHz ) +
+                   " Hz" );
 
     return 0;
 }
 
 inline int telescopeSim::appLogic()
 {
-    updateMount();
+    if( m_writeHz <= 0 )
+    {
+        // No pointing thread: keep the 1 Hz INDI tick as the mount clock.
+        updateMount();
+    }
 
     telSimState st;
 
@@ -548,6 +661,25 @@ inline int telescopeSim::appLogic()
 
 inline int telescopeSim::appShutdown()
 {
+    m_shutdownPointing = true;
+
+    try
+    {
+        if( m_pointingThread.joinable() )
+        {
+            m_pointingThread.join();
+        }
+    }
+    catch( ... )
+    {
+    }
+
+    if( m_pointingStreamOpen )
+    {
+        ImageStreamIO_destroyIm( &m_pointingStream );
+        m_pointingStreamOpen = false;
+    }
+
     return 0;
 }
 
@@ -669,18 +801,43 @@ inline void telescopeSim::updateMount()
     // ---------------------------------------------------------------- jitter
     // Jitter is applied to the reported pointing, not accumulated into the
     // commanded one, so it is a wander about where the mount actually is rather
-    // than a random walk that would run away.
-    double jx = 0, jy = 0;
-
-    if( m_jitter > 0 && ( m_state == telSimState::tracking || m_state == telSimState::settling ) )
+    // than a random walk that would run away. A finite correlation time makes
+    // successive writes a smooth trail, which is what a long exposure should
+    // integrate into a streak; tau = 0 is white, matching the original 1 Hz draws.
+    if( m_state == telSimState::tracking || m_state == telSimState::settling )
     {
-        jx = m_jitter * m_rng.normal();
-        jy = m_jitter * m_rng.normal();
+        auto ouStep = [&]( double &x, double sigma ) {
+            if( !( sigma > 0 ) )
+            {
+                x = 0;
+                return;
+            }
+
+            if( m_jitterTau <= 0 )
+            {
+                x = sigma * m_rng.normal();
+                return;
+            }
+
+            const double a = std::exp( -dt / m_jitterTau );
+            const double s = sigma * std::sqrt( std::max( 0.0, 1.0 - a * a ) );
+            x = a * x + s * m_rng.normal();
+        };
+
+        ouStep( m_jx, m_jitter );
+        ouStep( m_jy, m_jitter );
+        ouStep( m_jroll, m_jitterRoll );
+    }
+    else
+    {
+        m_jx = 0;
+        m_jy = 0;
+        m_jroll = 0;
     }
 
-    if( jx != 0 || jy != 0 )
+    if( m_jx != 0 || m_jy != 0 )
     {
-        wcc::offsetBoresight( m_baseRA, m_baseDec, m_basePA, m_parity, jx, jy, m_reportRA, m_reportDec );
+        wcc::offsetBoresight( m_baseRA, m_baseDec, m_basePA, m_parity, m_jx, m_jy, m_reportRA, m_reportDec );
     }
     else
     {
@@ -688,11 +845,108 @@ inline void telescopeSim::updateMount()
         m_reportDec = m_baseDec;
     }
 
-    m_reportPA = m_basePA;
+    m_reportPA = m_basePA + m_jroll;
+}
 
-    if( m_jitterRoll > 0 && ( m_state == telSimState::tracking || m_state == telSimState::settling ) )
+inline int telescopeSim::ensurePointingStream()
+{
+    if( m_pointingStreamOpen )
     {
-        m_reportPA += m_jitterRoll * m_rng.normal();
+        return 0;
+    }
+
+    if( m_pointingDepth < 1 )
+    {
+        m_pointingDepth = 1;
+    }
+
+    uint32_t sizes[3] = { wcc::pointingNAxes, 1, m_pointingDepth };
+
+    if( ImageStreamIO_createIm_gpu( &m_pointingStream, m_pointingShmim.c_str(), 3, sizes, IMAGESTRUCT_DOUBLE, -1,
+                                    1, IMAGE_NB_SEMAPHORE, 0, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0 ) !=
+        IMAGESTREAMIO_SUCCESS )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "failed to create pointing stream " + m_pointingShmim } );
+    }
+
+    m_pointingStream.md->cnt1 = m_pointingDepth - 1;
+    m_pointingStreamOpen = true;
+
+    log<text_log>( "created pointing stream " + m_pointingShmim + " 3x1x" + std::to_string( m_pointingDepth ) +
+                   " double at " + std::to_string( m_writeHz ) + " Hz" );
+
+    return 0;
+}
+
+inline void telescopeSim::writePointingShmim()
+{
+    if( !m_pointingStreamOpen || m_pointingStream.md == nullptr )
+    {
+        return;
+    }
+
+    double ra, dec, pa;
+
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_mountMutex );
+        ra = m_reportRA;
+        dec = m_reportDec;
+        pa = m_reportPA;
+    }
+
+    m_pointingStream.md->write = 1;
+
+    const uint64_t slice =
+        ( m_pointingDepth > 1 ) ? ( m_pointingStream.md->cnt1 + 1 ) % m_pointingDepth : 0;
+
+    double *dest = reinterpret_cast<double *>( m_pointingStream.array.raw ) + slice * wcc::pointingNAxes;
+    wcc::packPointing( dest, ra, dec, pa );
+
+    clock_gettime( CLOCK_REALTIME, &m_pointingStream.md->writetime );
+    m_pointingStream.md->atime = m_pointingStream.md->writetime;
+
+    if( m_pointingStream.writetimearray != nullptr )
+    {
+        m_pointingStream.writetimearray[slice] = m_pointingStream.md->writetime;
+    }
+
+    m_pointingStream.md->cnt1 = slice;
+
+    ImageStreamIO_UpdateIm( &m_pointingStream );
+
+    m_pointingStream.md->write = 0;
+}
+
+inline void telescopeSim::pointingWorkerStart( telescopeSim *s )
+{
+    s->pointingWorkerExec();
+}
+
+inline void telescopeSim::pointingWorkerExec()
+{
+    const double period = ( m_writeHz > 0 ) ? 1.0 / m_writeHz : 0.001;
+    double next = mx::sys::get_curr_time();
+
+    while( !m_shutdownPointing.load() && !m_shutdown )
+    {
+        updateMount();
+        writePointingShmim();
+
+        next += period;
+        const double now = mx::sys::get_curr_time();
+        const double remain = next - now;
+
+        if( remain > 0 )
+        {
+            mx::sys::microSleep( static_cast<unsigned>( remain * 1e6 ) );
+        }
+        else
+        {
+            // Fell behind: do not try to catch up a backlog of writes, which
+            // would burst-fill the buffer with stale timestamps.
+            next = now;
+        }
     }
 }
 

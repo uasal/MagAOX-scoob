@@ -39,6 +39,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "wccFocalPlane.hpp"
@@ -96,6 +97,77 @@ inline std::string noiseModeName( noiseMode m /**< [in] the mode */ )
     default:
         return "full";
     }
+}
+
+/// Default IMX455-style analog gain register limits and step.
+/** The camera `emgain` property is a code 0 to 255. Each step is 0.1 dB, and
+ * the linear electron multiplier follows the Sony relation
+ * \f$ G_{\mathrm{dB}} = 20\log_{10} G \f$, so both signal and the noise already
+ * present in electrons are multiplied.
+ *
+ * \ingroup wccCommon
+ */
+constexpr int analogGainCodeMin = 0;
+
+/// Inclusive maximum analog gain code for an 8-bit IMX-style register.
+/** \ingroup wccCommon
+ */
+constexpr int analogGainCodeMax = 255;
+
+/// Analog gain register step [dB per code] for IMX455.
+/** \ingroup wccCommon
+ */
+constexpr double analogGainStepDb = 0.1;
+
+/// Clamp a camera gain code into a valid analog-gain register value.
+/** \returns the clamped code
+ *
+ * \ingroup wccCommon
+ */
+inline int clampAnalogGainCode( double v /**< [in] raw code, often from INDI emgain */,
+                                int lo = analogGainCodeMin /**< [in] inclusive minimum */,
+                                int hi = analogGainCodeMax /**< [in] inclusive maximum */ )
+{
+    int c = static_cast<int>( std::lround( v ) );
+
+    if( lo > hi )
+    {
+        std::swap( lo, hi );
+    }
+
+    return std::max( lo, std::min( hi, c ) );
+}
+
+/// Analog gain in decibels for a register code.
+/** \returns code times the step, never negative
+ *
+ * \ingroup wccCommon
+ */
+inline double analogGainDecibels( int code /**< [in] analog gain register code */,
+                                  double stepDb = analogGainStepDb /**< [in] dB per code */ )
+{
+    if( code < 0 )
+    {
+        code = 0;
+    }
+
+    if( !( stepDb > 0 ) )
+    {
+        stepDb = analogGainStepDb;
+    }
+
+    return static_cast<double>( code ) * stepDb;
+}
+
+/// Linear electron multiplier for an IMX-style analog gain code.
+/** \returns \f$ 10^{0.1\,\mathrm{code}/20} \f$ at the default 0.1 dB step
+ *
+ * \ingroup wccCommon
+ */
+inline double analogGainLinear( int code /**< [in] analog gain register code */,
+                                double stepDb = analogGainStepDb /**< [in] dB per code */ )
+{
+    return std::pow( 10.0, analogGainDecibels( code, stepDb ) / 20.0 );
 }
 
 /// xoshiro256+ pseudo random generator with Gaussian and Poisson draws.
@@ -359,12 +431,17 @@ class sensorNoise
                 int by1 /**< [in] illuminated bounding box max row, inclusive */ );
 
     /// Convert an electron frame to digital numbers, clipping at full well and the ADC range.
-    /** \returns the number of pixels that saturated
+    /** Analog gain multiplies the electron image — signal, shot noise, dark and
+     * read noise — the way a CMOS PGA does. Conversion gain then maps the
+     * amplified charge to DN. Full well is applied in electrons before the PGA;
+     * the ADC clips after it.
+     *
+     * \returns the number of pixels that saturated
      */
     size_t digitize( const std::vector<float> &frame /**< [in] electrons, row major */,
                      std::vector<uint16_t> &out /**< [out] digital numbers, sized to frame */,
                      const sensorConfig &sensor /**< [in] detector parameters */,
-                     double gain /**< [in] electrons per DN; values at or below 0 mean unity */,
+                     double analogGain /**< [in] linear electron multiplier; values at or below 0 mean unity */,
                      int bitDepth /**< [in] ADC bit depth, 8 to 16 */ );
 };
 
@@ -467,13 +544,14 @@ inline void sensorNoise::apply( std::vector<float> &frame,
 inline size_t sensorNoise::digitize( const std::vector<float> &frame,
                                      std::vector<uint16_t> &out,
                                      const sensorConfig &sensor,
-                                     double gain,
+                                     double analogGain,
                                      int bitDepth )
 {
     const int bits = std::min( 16, std::max( 8, bitDepth ) );
     const double adcMax = ( bits >= 16 ) ? 65535.0 : static_cast<double>( ( 1u << bits ) - 1u );
     const double wellMax = ( sensor.m_fullWellDepth > 0 ) ? sensor.m_fullWellDepth : adcMax;
-    const double g = ( gain > 0 ) ? gain : 1.0;
+    const double g = ( analogGain > 0 ) ? analogGain : 1.0;
+    const double conv = ( sensor.m_conversionGain > 0 ) ? sensor.m_conversionGain : 1.0;
 
     out.resize( frame.size() );
 
@@ -489,7 +567,8 @@ inline size_t sensorNoise::digitize( const std::vector<float> &frame,
             ++saturated;
         }
 
-        double dn = e / g;
+        // PGA multiplies the electron image, including the noise already in it.
+        double dn = ( e * g ) / conv;
 
         if( dn <= 0 )
         {

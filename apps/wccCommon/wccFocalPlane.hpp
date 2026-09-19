@@ -200,6 +200,18 @@ struct sensorConfig
 
     double m_fullWellDepth{ 65535.0 }; ///< Saturation level [e-].
 
+    /// Electrons per DN at 0 dB analog gain.
+    /** Analog gain (the camera `emgain` code) multiplies electrons; this then
+     * converts the amplified charge into digital numbers.
+     */
+    double m_conversionGain{ 1.0 };
+
+    /// Analog gain register step [dB per code]. IMX455 uses 0.1.
+    double m_gainStepDb{ 0.1 };
+
+    /// Inclusive maximum analog gain code. IMX455-style controls use 0 to 255.
+    int m_gainCodeMax{ 255 };
+
     /// Column of the sensor optical center, resolving the negative sentinel.
     double centerX() const;
 

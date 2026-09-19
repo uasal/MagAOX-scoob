@@ -3,22 +3,23 @@
 Simulates a telescope mount: takes a target from the visit, slews there at a finite
 rate, then tracks with configurable jitter.
 
-It is the **authority on where the telescope is pointed**. `wccSim` reads its
-`pointing` property to decide what the sky looks like, and `wccCtrl` sends
-corrections to `offset` and watches `teldata` to know when a move is done. That
-makes the whole acquisition and guiding loop runnable with no hardware.
+It is the **authority on where the telescope is pointed**. The current pointing is
+written to the `telpointing` ImageStreamIO stream at a configurable rate (1000 Hz
+by default) so `wccSim` can integrate mount motion during a camera exposure. The
+same pointing is published on INDI at 1 Hz for operators and `wccCtrl`. `wccCtrl`
+sends corrections to `offset` and watches `teldata` to know when a move is done.
 
 ## Where it sits
 
 ```
    visit .json ──▶ visitCtrl ──(target ra/dec/rollpa)──▶ telescopeSim
                        │                                     │
-                       │ (acq + tracking params)             │ pointing (current)
+                       │ (acq + tracking params)             │ telpointing shmim (1 kHz)
                        ▼                                     ▼
                     wccCtrl ──(offset x/y/roll)────────▶ telescopeSim
                        ▲                                     │
-                       │ frames                              │
-                    wccSim ◀───────(current pointing)─────────┘
+                       │ frames (camera fps)                 │ pointing INDI (1 Hz)
+                    wccSim ◀───────(pointing history)─────────┘
 ```
 
 `wccCtrl` never talks to `wccSim`; it commands the telescope, the telescope reports
@@ -30,7 +31,7 @@ physics rather than through a back channel.
 | property | type | purpose |
 |---|---|---|
 | `start_visit` | toggle | Slew to the target `visitCtrl` is publishing |
-| `pointing` | number (RO) | Current pointing: `ra`, `dec`, `pa`. **This is what wccSim reads** |
+| `pointing` | number (RO) | Current pointing: `ra`, `dec`, `pa`. 1 Hz INDI status |
 | `target` | number (RO) | Where it is going: `ra`, `dec`, `pa` |
 | `teldata` | number (RO) | `slewing`, `settling`, `tracking` — done detection |
 | `tel_status` | text (RO) | `state`, `message` |
@@ -44,21 +45,26 @@ change.
 `start_visit` is refused unless `visitCtrl` reports `visit_status.state == LOADED`,
 so it cannot slew to a half-delivered or stale target.
 
+The high-rate pointing stream is a 3×1×N circular buffer of doubles named
+`telpointing` by default (configurable as `pointing.shmim`). Axes are RA, Dec and
+PA in degrees, matching the INDI property. `pointing.write_hz` is the write rate
+and `pointing.history_s` sizes the buffer so a full camera exposure can be
+reconstructed from samples that have already been written.
+
 ## The mount model
 
 States are `IDLE → SLEWING → SETTLING → TRACKING`.
 
-Motion is integrated against **measured** elapsed time, not against the tick rate,
-so the 1 Hz INDI limit sets how often the pointing is reported rather than how
-faithfully the slew is simulated. A step that covers the whole remaining distance
-arrives on that step — reporting arrival a tick late would waste a full second on
-every small guiding correction, which at 1 Hz is the whole correction interval.
+Motion is integrated against **measured** elapsed time, not against the tick rate.
+INDI stays at 1 Hz; the pointing worker writes the shmim at `pointing.write_hz`.
+A step that covers the whole remaining distance arrives on that step.
 
 Jitter is applied to the **reported** pointing, not accumulated into the commanded
-one. That makes it a wander about where the mount actually is rather than a random
-walk that would drift away without bound. The unit tests assert exactly this: the
-base pointing never moves while jitter is active, and the radial offset has the
-mean and rms two independent Gaussian axes imply.
+one. With `jitter_tau` > 0 it is an Ornstein-Uhlenbeck wander (smooth at kHz, the
+configured rms in the long run), which a long exposure integrates into a streak.
+`jitter_tau = 0` is white, matching the original independent 1 Hz draws. The unit
+tests assert that the base pointing never moves while jitter is active, and that
+the radial offset has the mean and rms two independent Gaussian axes imply.
 
 `drift_x` / `drift_y` are separate and *do* accumulate, which is the point: they
 give the guiding loop a systematic error to chase. Note the loop is proportional
@@ -71,6 +77,10 @@ See `telescopeSim.conf.sample`, which is annotated. The parameters that matter m
 - `jitter` — pointing jitter rms per axis, in arcsec. Should be a few times the
   guide tolerance to be interesting but well inside the acquisition search radius.
   Set to 0 when debugging the astrometric solution itself.
+- `jitter_tau` — jitter correlation time in seconds. 0 is white; ~0.05 s streaks
+  a 1 s exposure instead of turning it into a blob.
+- `pointing.write_hz` — pointing shmim write rate. 1000 Hz by default. 0 disables
+  the stream and updates only at the 1 Hz INDI tick.
 - `slew_rate` — raise it well above a real mount's if you want simulated
   acquisition sequences to finish quickly.
 - `settle_time` — `wccCtrl` waits for this before it re-solves, so it should

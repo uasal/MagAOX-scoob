@@ -134,6 +134,18 @@ class telescopeSimTester : public telescopeSim
     {
         m_settleTime = s;
     }
+
+    /// Configured pointing write rate [Hz].
+    double writeHz()
+    {
+        return m_writeHz;
+    }
+
+    /// Configured pointing stream name.
+    const std::string &pointingShmim()
+    {
+        return m_pointingShmim;
+    }
 };
 /** \endcond
  */
@@ -236,6 +248,20 @@ TEST_CASE( "telescopeSim reads configuration and rejects bad rates", "[telescope
 
         REQUIRE( telSimStateName( telSimState::slewing ) == "SLEWING" );
         REQUIRE( telSimStateName( telSimState::tracking ) == "TRACKING" );
+    }
+
+    SECTION( "the pointing shmim write rate is configurable" )
+    {
+        telescopeSimTester app;
+        const std::string path =
+            writeTelConfig( "/tmp/telescopeSim_test_pointing.conf",
+                            "[pointing]\nshmim=telpointing\nwrite_hz=500\nhistory_s=2\n" );
+
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
+        REQUIRE( app.writeHz() == Approx( 500.0 ).epsilon( 1e-12 ) );
+        REQUIRE( app.pointingShmim() == "telpointing" );
+
+        std::remove( path.c_str() );
     }
 }
 

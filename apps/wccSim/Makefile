@@ -11,7 +11,8 @@ OTHER_HEADERS = ../wccCommon/wccUnits.hpp \
                 ../wccCommon/wccFocalPlane.hpp \
                 ../wccCommon/wccSensorModel.hpp \
                 ../wccCommon/wccIndiRate.hpp \
-                ../wccCommon/wccSensorConfig.hpp
+                ../wccCommon/wccSensorConfig.hpp \
+                ../wccCommon/wccPointingShmim.hpp
 
 TARGET = wccSim
 
