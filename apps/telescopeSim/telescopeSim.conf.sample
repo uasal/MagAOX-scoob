@@ -12,10 +12,11 @@
 #   xindi wccsim.streaming.toggle=On             # images follow the mount
 #
 # All INDI traffic is held to 1 Hz. High-rate pointing is a separate ImageStreamIO
-# stream (default `telpointing`): a 3x1xN circular buffer of doubles, axes RA, Dec,
-# PA in degrees, written at pointing.write_hz (1000 Hz by default). wccSim reads
-# that history when it integrates a camera exposure, so a long exposure streaks
-# with the mount. Mount motion is integrated against measured elapsed time.
+# stream (default `telpointing`): a 4x1xN circular buffer of doubles, axes RA, Dec,
+# PA [deg] and simulated time [s]. Each write is one tick of duration 1/write_hz.
+# The writer is not paced to the computer clock by default, because the WCC
+# simulators are allowed to run faster than real time (a 100 s exposure at 10 fps
+# is valid). wccSim correlates samples by simulated time, not CLOCK_REALTIME.
 
 [visit]
 # The visitCtrl instance to take targets from. Leave empty to disable start_visit
@@ -69,9 +70,16 @@ seed=8675309
 jitter_tau=0.05
 
 [pointing]
-# High-rate boresight, read by wccSim. 3x1xN doubles: ra, dec, pa [deg].
+# High-rate boresight, read by wccSim. 4x1xN doubles: ra, dec, pa [deg], sim_time [s].
 shmim=telpointing
-# Write rate in Hz. Raise it for finer streaks; lower it if the box is loaded.
-write_hz=1000
-# Circular-buffer span in seconds. Must cover the longest camera exposure.
-history_s=8
+# Pointing tick rate in Hz of simulated time, not the computer clock. Each write
+# advances the mount by 1/write_hz seconds of sim-time and appends one slice.
+# 5000 Hz means a 1 s camera exposure integrates 5000 samples of the path.
+# wccSim's pointing.write_hz must match. 0 disables the stream.
+write_hz=5000
+# Circular-buffer span in seconds of simulated time. Must cover the longest camera
+# exposure (a 100 s exposure needs history_s >= 100).
+history_s=120
+# If true, sleep so writes match write_hz in wall-clock time. Leave false: the
+# rest of the sim is unconstrained, and exposures are correlated by sim-time.
+pace_wallclock=false

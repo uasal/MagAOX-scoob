@@ -41,13 +41,16 @@
  * to correct.
  *
  * It is the authority on where the telescope is pointed. The current pointing is
- * written to an ImageStreamIO stream at a configurable rate (1000 Hz by default)
- * so `wccSim` can integrate mount motion during a camera exposure. The same
- * pointing is also published on the INDI `pointing` property at 1 Hz, which is
- * what `wccCtrl` and operators read. `wccCtrl` sends corrections to `offset` and
- * watches `teldata` to know when a move is done. The property and element names
- * match what `wccCtrl` expects from a real `tcsInterface` closely enough that
- * pointing it at either is a configuration change rather than a code change.
+ * written to an ImageStreamIO stream at a configurable tick rate (5000 Hz of
+ * simulated time by default) so `wccSim` can integrate mount motion during a
+ * camera exposure. Each write is one tick of duration `1/write_hz`; the writer is
+ * not paced to the computer clock unless `pointing.pace_wallclock` is set, because
+ * the rest of the WCC simulators are allowed to run faster than real time. The
+ * same pointing is also published on the INDI `pointing` property at 1 Hz, which
+ * is what `wccCtrl` and operators read. `wccCtrl` sends corrections to `offset`
+ * and watches `teldata` to know when a move is done. The property and element
+ * names match what `wccCtrl` expects from a real `tcsInterface` closely enough
+ * that pointing it at either is a configuration change rather than a code change.
  *
  * \par Interface summary
  * | property      | type   | purpose                                              |
@@ -60,9 +63,9 @@
  * | `offset`      | number | Relative correction: `x`, `y` [arcsec], `roll` [deg] |
  * | `goto_target` | number | Absolute command: `ra`, `dec`, `pa`                  |
  *
- * High-rate pointing lives on the `telpointing` shmim (configurable): a 3×1×N
- * circular buffer of doubles, axes RA, Dec, PA in degrees, written at
- * `pointing.write_hz`.
+ * High-rate pointing lives on the `telpointing` shmim (configurable): a 4×1×N
+ * circular buffer of doubles, axes RA, Dec, PA [deg] and simulated time [s],
+ * written at `pointing.write_hz` ticks of simulated time per second.
  *
  * <a href="../handbook/operating/software/apps/telescopeSim.html">Application Documentation</a>
  *
@@ -156,9 +159,12 @@ class telescopeSim : public MagAOXApp<true>
     /// ImageStreamIO stream the high-rate pointing is written to.
     std::string m_pointingShmim{ wcc::pointingShmimDefault };
 
-    double m_writeHz{ wcc::pointingWriteHzDefault }; ///< Pointing shmim write rate [Hz].
+    double m_writeHz{ wcc::pointingWriteHzDefault }; ///< Pointing tick rate [Hz of simulated time].
 
-    double m_historyS{ wcc::pointingHistorySDefault }; ///< Circular-buffer span [s].
+    double m_historyS{ wcc::pointingHistorySDefault }; ///< Circular-buffer span [s of simulated time].
+
+    /// If true, the pointing worker sleeps to match write_hz in wall-clock time.
+    bool m_paceWallclock{ false };
 
     /// Correlation time of the pointing jitter [s]. 0 is white (independent draws).
     double m_jitterTau{ 0.05 };
@@ -196,9 +202,11 @@ class telescopeSim : public MagAOXApp<true>
 
     double m_reportPA{ 0 }; ///< Reported position angle [deg].
 
-    double m_settleStart{ 0 }; ///< When settling began [s].
+    double m_settleStart{ 0 }; ///< Simulated time at which settling began [s].
 
-    double m_lastUpdate{ 0 }; ///< Time of the last motion update [s].
+    double m_lastUpdate{ 0 }; ///< Wall-clock time of the last updateMount() call [s].
+
+    double m_simTime{ 0 }; ///< Simulated time, advanced by 1/write_hz on each pointing tick [s].
 
     wcc::fastRandom m_rng; ///< Jitter generator.
 
@@ -300,10 +308,17 @@ class telescopeSim : public MagAOXApp<true>
     virtual int appShutdown();
 
   protected:
-    /// Advance the mount toward its target and apply jitter.
-    /** Called from the pointing worker at the shmim write rate, and from unit
-     * tests. Elapsed time is measured rather than assumed, so the write rate
-     * sets the jitter bandwidth rather than the slew fidelity.
+    /// Advance the mount by `dt` seconds of simulated time and apply jitter.
+    /** This is the mount clock. The pointing worker calls it once per shmim
+     * write with `dt = 1/write_hz`. Wall-clock time is not involved.
+     */
+    void advanceMount( double dt /**< [in] simulated time step [s] */ );
+
+    /// Advance the mount by measured wall-clock time.
+    /** Used only when the pointing worker is disabled (`write_hz` 0) so the
+     * 1 Hz INDI tick remains a usable mount clock, and to ignore a huge clock
+     * step rather than teleporting. Prefer `advanceMount` when the simulated
+     * time step is known.
      */
     void updateMount();
 
@@ -328,7 +343,7 @@ class telescopeSim : public MagAOXApp<true>
     /// Thread entry for the pointing worker.
     static void pointingWorkerStart( telescopeSim *s /**< [in] this */ );
 
-    /// Advance the mount and write the pointing shmim at m_writeHz.
+    /// Advance simulated time by 1/write_hz, write a pointing slice, optionally pace to wall-clock.
     void pointingWorkerExec();
 
     /// Shared SET callback for the subscribed visitCtrl properties.
@@ -403,12 +418,18 @@ inline void telescopeSim::setupConfig()
                 "makes the pointing wander smoothly so a long exposure streaks rather than blobs." );
 
     config.add( "pointing.shmim", "", "pointing.shmim", argType::Required, "pointing", "shmim", false, "string",
-                "ImageStreamIO stream the high-rate pointing is written to. 3x1xN doubles: ra, dec, pa." );
+                "ImageStreamIO stream the high-rate pointing is written to. 4x1xN doubles: ra, dec, pa, sim_time." );
     config.add( "pointing.write_hz", "", "pointing.write_hz", argType::Required, "pointing", "write_hz", false,
-                "double", "Pointing shmim write rate [Hz]. 0 disables the stream and updates only at 1 Hz." );
+                "double",
+                "Pointing tick rate [Hz of simulated time]. Each write advances the mount by 1/write_hz. "
+                "0 disables the stream and updates only at the 1 Hz INDI tick." );
     config.add( "pointing.history_s", "", "pointing.history_s", argType::Required, "pointing", "history_s",
                 false, "double",
-                "Circular-buffer span [s]. Must cover the longest camera exposure wccSim will integrate." );
+                "Circular-buffer span [s of simulated time]. Must cover the longest camera exposure." );
+    config.add( "pointing.pace_wallclock", "", "pointing.pace_wallclock", argType::Required, "pointing",
+                "pace_wallclock", false, "bool",
+                "If true, sleep so writes match write_hz in wall-clock time. Default false: the sim is not "
+                "required to run in real time, and exposures are correlated by simulated ticks." );
 }
 
 inline int telescopeSim::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -441,6 +462,7 @@ inline int telescopeSim::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_pointingShmim, "pointing.shmim" );
     _config( m_writeHz, "pointing.write_hz" );
     _config( m_historyS, "pointing.history_s" );
+    _config( m_paceWallclock, "pointing.pace_wallclock" );
 
     if( m_jitterTau < 0 )
     {
@@ -500,6 +522,8 @@ inline int telescopeSim::loadConfigImpl( mx::app::appConfigurator &_config )
     m_targetRA = m_startRA;
     m_targetDec = m_startDec;
     m_targetPA = m_startPA;
+    m_simTime = 0;
+    m_settleStart = 0;
 
     return 0;
 }
@@ -619,7 +643,8 @@ inline int telescopeSim::appStartup()
                    std::to_string( m_startDec ) + " pa " + std::to_string( m_startPA ) + ", slew rate " +
                    std::to_string( m_slewRate ) + " deg/s, jitter " + std::to_string( m_jitter ) +
                    " arcsec rms, pointing shmim " + m_pointingShmim + " at " + std::to_string( m_writeHz ) +
-                   " Hz" );
+                   " Hz of simulated time" +
+                   std::string( m_paceWallclock ? ", paced to wall-clock" : "" ) );
 
     return 0;
 }
@@ -686,9 +711,6 @@ inline int telescopeSim::appShutdown()
 inline void telescopeSim::updateMount()
 {
     const double now = mx::sys::get_curr_time();
-
-    std::lock_guard<std::mutex> lock( m_mountMutex );
-
     const double dt = now - m_lastUpdate;
     m_lastUpdate = now;
 
@@ -697,6 +719,20 @@ inline void telescopeSim::updateMount()
         // First call, a clock step, or a long stall: do not integrate a huge slew.
         return;
     }
+
+    advanceMount( dt );
+}
+
+inline void telescopeSim::advanceMount( double dt )
+{
+    if( !( dt > 0 ) || !std::isfinite( dt ) )
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock( m_mountMutex );
+
+    m_simTime += dt;
 
     // ----------------------------------------------------------------- drift
     if( m_state == telSimState::tracking && ( m_drift != 0 || m_driftY != 0 ) )
@@ -783,13 +819,13 @@ inline void telescopeSim::updateMount()
         if( atPosition && atRoll )
         {
             m_state = telSimState::settling;
-            m_settleStart = now;
+            m_settleStart = m_simTime;
             m_message = "settling";
         }
     }
     else if( m_state == telSimState::settling )
     {
-        if( now - m_settleStart >= m_settleTime )
+        if( m_simTime - m_settleStart >= m_settleTime )
         {
             m_state = telSimState::tracking;
             m_message = "tracking";
@@ -873,8 +909,8 @@ inline int telescopeSim::ensurePointingStream()
     m_pointingStream.md->cnt1 = m_pointingDepth - 1;
     m_pointingStreamOpen = true;
 
-    log<text_log>( "created pointing stream " + m_pointingShmim + " 3x1x" + std::to_string( m_pointingDepth ) +
-                   " double at " + std::to_string( m_writeHz ) + " Hz" );
+    log<text_log>( "created pointing stream " + m_pointingShmim + " 4x1x" + std::to_string( m_pointingDepth ) +
+                   " double at " + std::to_string( m_writeHz ) + " Hz of simulated time" );
 
     return 0;
 }
@@ -886,13 +922,14 @@ inline void telescopeSim::writePointingShmim()
         return;
     }
 
-    double ra, dec, pa;
+    double ra, dec, pa, simTime;
 
     { //mutex scope
         std::lock_guard<std::mutex> lock( m_mountMutex );
         ra = m_reportRA;
         dec = m_reportDec;
         pa = m_reportPA;
+        simTime = m_simTime;
     }
 
     m_pointingStream.md->write = 1;
@@ -901,7 +938,7 @@ inline void telescopeSim::writePointingShmim()
         ( m_pointingDepth > 1 ) ? ( m_pointingStream.md->cnt1 + 1 ) % m_pointingDepth : 0;
 
     double *dest = reinterpret_cast<double *>( m_pointingStream.array.raw ) + slice * wcc::pointingNAxes;
-    wcc::packPointing( dest, ra, dec, pa );
+    wcc::packPointing( dest, ra, dec, pa, simTime );
 
     clock_gettime( CLOCK_REALTIME, &m_pointingStream.md->writetime );
     m_pointingStream.md->atime = m_pointingStream.md->writetime;
@@ -925,15 +962,24 @@ inline void telescopeSim::pointingWorkerStart( telescopeSim *s )
 
 inline void telescopeSim::pointingWorkerExec()
 {
-    const double period = ( m_writeHz > 0 ) ? 1.0 / m_writeHz : 0.001;
+    const double dtSim = ( m_writeHz > 0 ) ? 1.0 / m_writeHz : 0.001;
     double next = mx::sys::get_curr_time();
 
     while( !m_shutdownPointing.load() && !m_shutdown )
     {
-        updateMount();
+        // One write is one tick of simulated time, regardless of how fast this
+        // loop actually runs. Camera exposures are correlated by tick count /
+        // sim-time, not by CLOCK_REALTIME.
+        advanceMount( dtSim );
         writePointingShmim();
 
-        next += period;
+        if( !m_paceWallclock )
+        {
+            std::this_thread::yield();
+            continue;
+        }
+
+        next += dtSim;
         const double now = mx::sys::get_curr_time();
         const double remain = next - now;
 
@@ -943,8 +989,7 @@ inline void telescopeSim::pointingWorkerExec()
         }
         else
         {
-            // Fell behind: do not try to catch up a backlog of writes, which
-            // would burst-fill the buffer with stale timestamps.
+            // Fell behind: do not try to catch up a backlog of writes.
             next = now;
         }
     }

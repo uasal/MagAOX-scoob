@@ -32,14 +32,24 @@ id_column=gsc2ID
 mag_limit=21
 
 [pointing]
-# High-rate pointing is a 3x1xN double shmim (ra, dec, pa in degrees) written by
-# telescopeSim. wccSim integrates every sample that fell inside the exposure, so
-# a long exposure streaks with the mount. INDI pointing is 1 Hz status / fallback.
+# High-rate pointing is a 4x1xN double shmim (ra, dec, pa [deg], sim_time [s])
+# written by telescopeSim. An exposure of T seconds integrates the ticks whose
+# simulated times fall in [now - T, now], where now is the newest slice's
+# sim-time — not the computer clock. The nsv camera fps does not run in real
+# time, so a wall-clock window would park the PSF on the last sample.
 #
 # Leave shmim empty to render from the 1 Hz INDI pointing (or local commands if
-# tel_device is also empty).
+# tel_device is also empty). write_hz must match telescopeSim.
 shmim=telpointing
-write_hz=1000
+# Pointing tick rate in Hz of simulated time, not wall-clock. Each telescopeSim
+# write is one tick of duration 1/write_hz. 5000 Hz means a 1 s exposure
+# integrates 5000 mount samples. Must match telescopeSim's pointing.write_hz.
+write_hz=5000
+# Keep every pointing tick (0). The renderer histograms ticks into PSF-bank
+# cells (see psf_substeps) so a 5000 Hz trail is one splat per occupied cell,
+# not 5000 stamp placements per star. A positive value time-averages the trail
+# before rendering; leave 0 unless you are debugging.
+max_samples=0
 #
 # INDI telescope device. Used as a 1 Hz fallback and for status. For MagAO-X
 # tcsInterface instead use:
@@ -62,8 +72,14 @@ sensors=IMX-18,IMX-19,IMX-21,HWK-08,HWK-09
 npix_pupil=256
 # PSF postage stamp size. 48 covers the core and first rings at this plate scale.
 psf_samples=48
-# Sub-pixel placement bins per axis. Worst placement error is 0.5/psf_substeps
-# pixels, so 8 gives 0.0625 px.
+# Sub-pixel bins per axis of the PSF bank. This is the spatial resolution of the
+# science trail: each pointing tick is quantized onto this grid, then ticks that
+# share a cell are coalesced. Worst placement error is 0.5/psf_substeps pixels
+# (8 → 0.0625 px). Raising it makes a long exposure's path finer and startup
+# slower (banks scale as psf_substeps²). The dwell-map shmim is the camera frame
+# size with a 1 at every detector pixel that hosted a bank cell, so overlay it
+# on shmim_out to see the path; finer substeps change which cells (and therefore
+# which pixels) are occupied.
 psf_substeps=8
 star_margin=1.0
 # off  : signal plus pedestals only, fastest and fully repeatable
@@ -78,6 +94,10 @@ circ_buff_length=1
 default_fps=4
 default_exp_time=1.0
 start_streaming=false
+# Publish a same-size occupancy shmim per sensor (shmim_out + "dwell", e.g.
+# nsv18simdwell). Pixels are 0 except 1 at each (x,y) a PSF stamp was placed, so
+# you can overlay it on the camera stream and see the trail. Set false to skip.
+dwell_map=true
 
 #-----------------------------------------------------------------------------
 # One section per sensor. The name must match an entry in sim.sensors, and must
@@ -91,6 +111,8 @@ start_streaming=false
 [IMX-18]
 indi_device=nsv18
 shmim_out=nsv18sim
+# Optional occupancy stream; defaults to shmim_out + "dwell" (nsv18simdwell).
+# shmim_dwell=nsv18simdwell
 pixel_size=3.76
 full_w=9576
 full_h=6388

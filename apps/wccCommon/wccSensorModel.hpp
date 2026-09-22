@@ -27,7 +27,11 @@
  * noise is only evaluated on pixels a star stamp actually touched, tracked by
  * bounding box, and the Gaussian read noise generator is a xoshiro256+ RNG with
  * a two-at-a-time polar Box-Muller. noiseMode lets an operator trade fidelity
- * against frame rate.
+ * against frame rate. A several-kHz pointing trail is accumulated by histogram
+ * into the PSF bank's sub-pixel cells (`addTrailSample` / `accumulateTrail`),
+ * which is the dwell-map convolution of the path with the PSF at the bank's
+ * native resolution: every tick contributes flux, but identical placements
+ * splat once.
  *
  * \ingroup wccCommon_files
  */
@@ -39,10 +43,12 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "wccFocalPlane.hpp"
+#include "wccPSF.hpp"
 
 namespace MagAOX
 {
@@ -378,6 +384,151 @@ inline double accumulateStamp( std::vector<float> &frame /**< [in,out] frame, ro
     }
 
     return landed;
+}
+
+/// Pack a PSF-bank placement cell: nearest integer pixel plus sub-pixel bins.
+/** ix and iy are stored as 24-bit two's complement, enough for any WCC ROI
+ * including stamps that hang off the edge.
+ *
+ * \ingroup wccCommon
+ */
+inline uint64_t packStampCell( int ix /**< [in] nearest-pixel column */,
+                               int iy /**< [in] nearest-pixel row */,
+                               int binX /**< [in] psfBank column bin */,
+                               int binY /**< [in] psfBank row bin */ )
+{
+    const uint64_t x = static_cast<uint64_t>( static_cast<uint32_t>( ix ) & 0x00ffffffu );
+    const uint64_t y = static_cast<uint64_t>( static_cast<uint32_t>( iy ) & 0x00ffffffu );
+    const uint64_t bx = static_cast<uint64_t>( binX ) & 0xffu;
+    const uint64_t by = static_cast<uint64_t>( binY ) & 0xffu;
+
+    return ( x << 40 ) | ( y << 16 ) | ( bx << 8 ) | by;
+}
+
+/// Unpack a cell packed by packStampCell().
+/** \ingroup wccCommon
+ */
+inline void unpackStampCell( uint64_t key /**< [in] packed cell */,
+                             int &ix /**< [out] nearest-pixel column */,
+                             int &iy /**< [out] nearest-pixel row */,
+                             int &binX /**< [out] psfBank column bin */,
+                             int &binY /**< [out] psfBank row bin */ )
+{
+    binY = static_cast<int>( key & 0xffu );
+    binX = static_cast<int>( ( key >> 8 ) & 0xffu );
+
+    const uint32_t y24 = static_cast<uint32_t>( ( key >> 16 ) & 0x00ffffffu );
+    const uint32_t x24 = static_cast<uint32_t>( ( key >> 40 ) & 0x00ffffffu );
+
+    iy = static_cast<int>( static_cast<int32_t>( y24 << 8 ) >> 8 );
+    ix = static_cast<int>( static_cast<int32_t>( x24 << 8 ) >> 8 );
+}
+
+/// Add one trail sample into a dwell histogram quantized to the PSF bank.
+/** This is the discrete convolution of the pointing path with the PSF at the
+ * bank's native resolution: many kHz of ticks that land in the same sub-pixel
+ * cell are the same stamp, so they collapse to one scaled splat. Flux of every
+ * sample is conserved.
+ *
+ * \ingroup wccCommon
+ */
+inline void addTrailSample( std::unordered_map<uint64_t, double> &cells /**< [in,out] dwell histogram */,
+                            const psfBank &bnk /**< [in] sub-pixel PSF bank */,
+                            double x /**< [in] star column in the published ROI [pixels] */,
+                            double y /**< [in] star row in the published ROI [pixels] */,
+                            double flux /**< [in] electrons to add at this tick */ )
+{
+    if( !( flux > 0 ) || !bnk.valid() )
+    {
+        return;
+    }
+
+    const int ix = static_cast<int>( std::floor( x + 0.5 ) );
+    const int iy = static_cast<int>( std::floor( y + 0.5 ) );
+    const int bx = bnk.binFor( x - ix );
+    const int by = bnk.binFor( y - iy );
+
+    cells[packStampCell( ix, iy, bx, by )] += flux;
+}
+
+/// Splat a coalesced dwell histogram into a frame.
+/** One accumulateStamp per occupied PSF-bank cell. Equivalent to placing a
+ * stamp at every original tick, but without repeating identical placements.
+ *
+ * \returns the flux that landed inside the frame [electrons]
+ *
+ * \ingroup wccCommon
+ */
+inline double accumulateTrail( std::vector<float> &frame /**< [in,out] frame, row major, w by h */,
+                               int w /**< [in] frame width [pixels] */,
+                               int h /**< [in] frame height [pixels] */,
+                               const psfBank &bnk /**< [in] sub-pixel PSF bank */,
+                               const std::unordered_map<uint64_t, double> &cells /**< [in] dwell histogram */,
+                               int &bx0 /**< [in,out] bounding box min column */,
+                               int &by0 /**< [in,out] bounding box min row */,
+                               int &bx1 /**< [in,out] bounding box max column, inclusive */,
+                               int &by1 /**< [in,out] bounding box max row, inclusive */ )
+{
+    double landed = 0;
+
+    for( const auto &cell : cells )
+    {
+        if( !( cell.second > 0 ) )
+        {
+            continue;
+        }
+
+        int ix = 0, iy = 0, binX = 0, binY = 0;
+        unpackStampCell( cell.first, ix, iy, binX, binY );
+
+        const float *stamp = bnk.stamp( binX, binY );
+
+        if( stamp == nullptr )
+        {
+            continue;
+        }
+
+        landed += accumulateStamp( frame, w, h, stamp, bnk.samples(), ix, iy, cell.second, bx0, by0, bx1, by1 );
+    }
+
+    return landed;
+}
+
+/// Mark the detector pixel of a PSF-bank cell on a same-size occupancy map.
+/** The dwell map is the camera frame: 0 everywhere except 1 at each `(ix, iy)`
+ * where a stamp was placed. Sub-pixel bins of the same pixel share that 1,
+ * which is what lets the map overlay the image in rtimv.
+ *
+ * \ingroup wccCommon
+ */
+inline void markDwellMap( std::vector<uint16_t> &dwell /**< [in,out] occupancy, row major, w by h */,
+                          int w /**< [in] frame width [pixels] */,
+                          int h /**< [in] frame height [pixels] */,
+                          int ix /**< [in] stamp origin column */,
+                          int iy /**< [in] stamp origin row */ )
+{
+    if( ix < 0 || iy < 0 || ix >= w || iy >= h )
+    {
+        return;
+    }
+
+    dwell[static_cast<size_t>( iy ) * static_cast<size_t>( w ) + static_cast<size_t>( ix )] = 1;
+}
+
+/// Mark every occupied PSF-bank cell of a coalesced trail on a dwell map.
+/** \ingroup wccCommon
+ */
+inline void markDwellFromCells( std::vector<uint16_t> &dwell /**< [in,out] occupancy, row major, w by h */,
+                                int w /**< [in] frame width [pixels] */,
+                                int h /**< [in] frame height [pixels] */,
+                                const std::unordered_map<uint64_t, double> &cells /**< [in] dwell histogram */ )
+{
+    for( const auto &cell : cells )
+    {
+        int ix = 0, iy = 0, binX = 0, binY = 0;
+        unpackStampCell( cell.first, ix, iy, binX, binY );
+        markDwellMap( dwell, w, h, ix, iy );
+    }
 }
 
 /// Detector noise and digitization applied to an accumulated electron frame.

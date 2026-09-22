@@ -7,7 +7,10 @@
 
 #include "../../../tests/testXWC.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <unordered_map>
 
 #include "../wccAstrometry.hpp"
 #include "../wccFocalPlane.hpp"
@@ -298,6 +301,7 @@ TEST_CASE( "psfGenerator reproduces the analytic Airy pattern", "[wccCommon][psf
     psfGenerator::psf;
     psfBank::build;
     psfBank::lookup;
+    psfBank::stamp;
     #endif
     // clang-format on
 
@@ -547,6 +551,64 @@ TEST_CASE( "psfGenerator reproduces the analytic Airy pattern", "[wccCommon][psf
                 }
                 REQUIRE( s == Approx( 1.0 ).epsilon( 1e-6 ) );
             }
+        }
+
+        REQUIRE( bank.stamp( 2, 2 ) == bank.lookup( bank.binCenter( 2 ), bank.binCenter( 2 ) ) );
+        REQUIRE( bank.stamp( -1, 0 ) == nullptr );
+        REQUIRE( bank.stamp( 0, 4 ) == nullptr );
+
+        SECTION( "a kHz trail coalesces into bank cells and conserves flux" )
+        {
+            // 5000 ticks on one sub-pixel cell are one splat of the summed flux,
+            // which is the dwell-map convolution at the bank's native resolution.
+            std::unordered_map<uint64_t, double> cells;
+            const int nTick = 5000;
+            const double dtFlux = 0.002;
+
+            for( int i = 0; i < nTick; ++i )
+            {
+                addTrailSample( cells, bank, 10.0, 12.0, dtFlux );
+            }
+
+            REQUIRE( cells.size() == 1 );
+
+            const int w = 40, h = 40;
+            std::vector<float> coalesced( static_cast<size_t>( w ) * h, 0.0f );
+            std::vector<float> direct( static_cast<size_t>( w ) * h, 0.0f );
+            int bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+            int cx0 = w, cy0 = h, cx1 = -1, cy1 = -1;
+
+            const int ix = static_cast<int>( std::floor( 10.0 + 0.5 ) );
+            const int iy = static_cast<int>( std::floor( 12.0 + 0.5 ) );
+            const float *st = bank.lookup( 10.0 - ix, 12.0 - iy );
+
+            REQUIRE( accumulateTrail( coalesced, w, h, bank, cells, bx0, by0, bx1, by1 ) ==
+                     Approx( nTick * dtFlux ).epsilon( 1e-5 ) );
+            REQUIRE( accumulateStamp( direct, w, h, st, bank.samples(), ix, iy, nTick * dtFlux, cx0, cy0, cx1,
+                                     cy1 ) == Approx( nTick * dtFlux ).epsilon( 1e-5 ) );
+
+            for( size_t i = 0; i < coalesced.size(); ++i )
+            {
+                REQUIRE( coalesced[i] == Approx( direct[i] ).margin( 1e-5 ) );
+            }
+
+            // A walk at the bank step produces one cell per distinct sub-pixel,
+            // not one time-averaged blob.
+            cells.clear();
+            const int nStep = 8;
+            for( int i = 0; i < nStep; ++i )
+            {
+                addTrailSample( cells, bank, 10.0 + 0.25 * i, 12.0, 1.0 );
+            }
+
+            REQUIRE( cells.size() == nStep );
+
+            double sum = 0;
+            for( const auto &c : cells )
+            {
+                sum += c.second;
+            }
+            REQUIRE( sum == Approx( static_cast<double>( nStep ) ).margin( 1e-12 ) );
         }
 
         REQUIRE( bank.build( gen, 2, 4, 3.76 ) == -1 );
@@ -1349,9 +1411,17 @@ TEST_CASE( "analog gain and pointing samples follow the CMOS and shmim contracts
     clampAnalogGainCode;
     packPointing;
     unpackPointing;
-    collectPointingSamples;
-    assignSampleWeights;
+    collectPointingTicks;
+    collectPointingExposure;
+    binPointingSamples;
+    ticksForExposure;
     pointingBufferDepth;
+    packStampCell;
+    unpackStampCell;
+    addTrailSample;
+    accumulateTrail;
+    markDwellMap;
+    markDwellFromCells;
     #endif
     // clang-format on
 
@@ -1371,35 +1441,147 @@ TEST_CASE( "analog gain and pointing samples follow the CMOS and shmim contracts
         REQUIRE( analogGainLinear( 120 ) == Approx( std::pow( 10.0, 12.0 / 20.0 ) ).epsilon( 1e-12 ) );
     }
 
-    SECTION( "a pointing ring covering an exposure keeps chronological order and total time" )
+    SECTION( "stamp-cell keys round trip, including pixels off the frame" )
     {
-        REQUIRE( pointingBufferDepth( 1000.0, 8.0 ) == 8000 );
+        int ix = 0, iy = 0, bx = 0, by = 0;
+        unpackStampCell( packStampCell( -3, 12, 7, 2 ), ix, iy, bx, by );
+        REQUIRE( ix == -3 );
+        REQUIRE( iy == 12 );
+        REQUIRE( bx == 7 );
+        REQUIRE( by == 2 );
+
+        unpackStampCell( packStampCell( 9576, -1, 0, 255 ), ix, iy, bx, by );
+        REQUIRE( ix == 9576 );
+        REQUIRE( iy == -1 );
+        REQUIRE( bx == 0 );
+        REQUIRE( by == 255 );
+    }
+
+    SECTION( "a dwell map is the frame size with 1s only at PSF placement pixels" )
+    {
+        const int w = 32, h = 16;
+        std::vector<uint16_t> dwell( static_cast<size_t>( w ) * h, 7 );
+
+        dwell.assign( static_cast<size_t>( w ) * h, 0 );
+        markDwellMap( dwell, w, h, 8, 8 );
+        markDwellMap( dwell, w, h, 12, 8 );
+        markDwellMap( dwell, w, h, -1, 0 );
+        markDwellMap( dwell, w, h, 0, 99 );
+
+        REQUIRE( dwell[8 * w + 8] == 1 );
+        REQUIRE( dwell[8 * w + 12] == 1 );
+        REQUIRE( dwell[0] == 0 );
+
+        std::unordered_map<uint64_t, double> cells;
+        cells[packStampCell( 3, 4, 1, 2 )] = 10.0;
+        markDwellFromCells( dwell, w, h, cells );
+        REQUIRE( dwell[4 * w + 3] == 1 );
+    }
+
+    SECTION( "a pointing ring covering an exposure keeps chronological order and equal weights" )
+    {
+        REQUIRE( ticksForExposure( 100.0, 5000.0 ) == 500000 );
+        REQUIRE( ticksForExposure( 0.0, 5000.0 ) == 1 );
+        REQUIRE( pointingBufferDepth( 5000.0, 120.0 ) == 600000 );
         REQUIRE( pointingBufferDepth( 0.0, 8.0 ) == 1 );
 
         const uint32_t depth = 8;
         std::vector<double> data( depth * pointingNAxes, 0.0 );
-        std::vector<double> times( depth, 0.0 );
 
         for( uint32_t i = 0; i < depth; ++i )
         {
-            packPointing( data.data() + i * pointingNAxes, 10.0 + 0.001 * i, 20.0, 1.0 * i );
-            times[i] = 100.0 + 0.001 * i;
+            packPointing( data.data() + i * pointingNAxes, 10.0 + 0.001 * i, 20.0, 1.0 * i, 1.0 + 0.001 * i );
         }
 
-        // Last written slice is 7, eight writes, exposure [100.003, 100.007].
+        // Last written slice is 7. Simulated now is 1.007 s; a 0.003 s exposure
+        // should take the four ticks at 1.004 .. 1.007, equally weighted.
         std::vector<pointingSample> samples;
-        REQUIRE( collectPointingSamples( data.data(), times.data(), depth, 7, 8, 100.003, 100.007, 0.001,
-                                         samples ) > 0 );
+        REQUIRE( collectPointingExposure( data.data(), pointingNAxes, depth, 7, 8, 0.003, 1000.0, samples ) ==
+                 4 );
 
-        REQUIRE( samples.front().m_time <= 100.003 + 1e-12 );
+        REQUIRE( samples.front().m_time == Approx( 1.004 ).margin( 1e-12 ) );
         REQUIRE( samples.back().m_ra == Approx( 10.007 ).epsilon( 1e-12 ) );
+        REQUIRE( samples.front().m_ra == Approx( 10.004 ).epsilon( 1e-12 ) );
+
+        double sumDt = 0;
+        double minDt = samples.front().m_dt;
+        double maxDt = samples.front().m_dt;
+
+        for( const pointingSample &s : samples )
+        {
+            sumDt += s.m_dt;
+            minDt = std::min( minDt, s.m_dt );
+            maxDt = std::max( maxDt, s.m_dt );
+        }
+
+        REQUIRE( sumDt == Approx( 0.003 ).margin( 1e-12 ) );
+        REQUIRE( maxDt == Approx( minDt ).margin( 1e-15 ) );
+    }
+
+    SECTION( "a 3-axis stream falls back to tick count" )
+    {
+        const uint32_t nAxes = 3;
+        const uint32_t depth = 8;
+        std::vector<double> data( depth * nAxes, 0.0 );
+
+        for( uint32_t i = 0; i < depth; ++i )
+        {
+            data[i * nAxes + 0] = 10.0 + 0.001 * i;
+            data[i * nAxes + 1] = 20.0;
+            data[i * nAxes + 2] = 1.0 * i;
+        }
+
+        std::vector<pointingSample> samples;
+        REQUIRE( collectPointingExposure( data.data(), nAxes, depth, 7, 8, 0.004, 1000.0, samples ) == 4 );
+        REQUIRE( samples.back().m_ra == Approx( 10.007 ).epsilon( 1e-12 ) );
+        REQUIRE( samples.front().m_ra == Approx( 10.004 ).epsilon( 1e-12 ) );
+    }
+
+    SECTION( "an exposure longer than the history uses every tick without parking flux on the last sample" )
+    {
+        const uint32_t depth = 5;
+        std::vector<double> data( depth * pointingNAxes, 0.0 );
+
+        for( uint32_t i = 0; i < depth; ++i )
+        {
+            packPointing( data.data() + i * pointingNAxes, 10.0 + i, 20.0, 0.0, 0.001 * ( i + 1 ) );
+        }
+
+        std::vector<pointingSample> samples;
+        REQUIRE( collectPointingExposure( data.data(), pointingNAxes, depth, 4, 5, 10.0, 1000.0, samples ) ==
+                 5 );
 
         double sumDt = 0;
         for( const pointingSample &s : samples )
         {
             sumDt += s.m_dt;
+            REQUIRE( s.m_dt == Approx( 2.0 ).margin( 1e-12 ) );
         }
-        REQUIRE( sumDt == Approx( 0.004 ).margin( 1e-12 ) );
+
+        REQUIRE( sumDt == Approx( 10.0 ).margin( 1e-12 ) );
+        REQUIRE( samples.front().m_ra == Approx( 10.0 ).margin( 1e-12 ) );
+        REQUIRE( samples.back().m_ra == Approx( 14.0 ).margin( 1e-12 ) );
+    }
+
+    SECTION( "binning a trail conserves time and keeps the path" )
+    {
+        std::vector<pointingSample> samples( 8 );
+
+        for( size_t i = 0; i < samples.size(); ++i )
+        {
+            samples[i].m_ra = 10.0 + 0.1 * static_cast<double>( i );
+            samples[i].m_dec = 20.0;
+            samples[i].m_pa = 0.0;
+            samples[i].m_time = 0.001 * static_cast<double>( i );
+            samples[i].m_dt = 0.001;
+        }
+
+        binPointingSamples( samples, 2 );
+        REQUIRE( samples.size() == 2 );
+
+        REQUIRE( samples[0].m_dt + samples[1].m_dt == Approx( 0.008 ).margin( 1e-12 ) );
+        REQUIRE( samples[0].m_ra == Approx( 10.15 ).margin( 1e-12 ) );
+        REQUIRE( samples[1].m_ra == Approx( 10.55 ).margin( 1e-12 ) );
     }
 
     SECTION( "two pointings in one exposure split the flux between two pixels" )

@@ -44,11 +44,17 @@ synthetic sky into a real camera's configuration.
 ## Pointing
 
 High-rate pointing is a shmim, not INDI. `telescopeSim` writes `telpointing` (a
-3×1×N circular buffer of RA, Dec, PA in degrees) at `pointing.write_hz`. When
-`wccSim` publishes a camera frame it collects every sample whose timestamp falls
-inside `[now - exptime, now]` and places each star once per sample, scaled by that
-sample's duration. A 1 s exposure of a wandering mount therefore streaks. Camera
-output streams still publish at the camera's own frame rate.
+4×1×N circular buffer of RA, Dec, PA in degrees and simulated time in seconds) at
+`pointing.write_hz` ticks of simulated time. When `wccSim` publishes a camera frame
+it collects every tick whose sim-time falls inside `[now - exptime, now]`, where
+`now` is the newest slice — not the computer clock. Each tick contributes flux at
+that boresight. Ticks that land in the same PSF-bank sub-pixel cell are coalesced
+into one splat, which is the dwell-map convolution of the pointing path with the
+PSF at the bank's native resolution (`psf_substeps`, 8 by default, 0.0625 px). A
+1 s exposure at 5000 Hz therefore uses all 5000 samples; the renderer does not
+time-average them down to 512 placements. `pointing.max_samples` is an optional
+debug throttle (0, the default, keeps every tick). Camera output streams still
+publish at the camera's own commanded frame rate.
 
 INDI pointing is 1 Hz status, and a fallback if the shmim is not yet open.
 `pointing.tel_device` / local `pointing` and `offset` commands work as before when
@@ -62,16 +68,19 @@ motion cannot disagree.
 
 Each sensor has its own worker thread. Per frame it snapshots the live camera
 parameters, reads the pointing history for the exposure, builds that ROI's world
-coordinate system at each sample, cone searches, adds a flux-scaled PSF stamp per
-star per sample, applies the noise model, digitizes with analog gain, and
-publishes.
+coordinate system at each sample, cone searches once, histograms each star's
+trail into PSF-bank cells, splats each occupied cell, applies the noise model,
+digitizes with analog gain, and publishes.
 
 The published stream is created exactly as `dev::frameGrabber` creates one —
 `naxis` 3, `size[0]` = width, uint16, temporal circular buffer — so downstream
-consumers and `rtimv` cannot tell it from a real camera.
+consumers and `rtimv` cannot tell it from a real camera. A second stream,
+`shmim_out` + `dwell`, is the same size with a 1 at every detector pixel a PSF
+stamp landed on and 0 elsewhere, for overlaying the trail.
 
 Cost is dominated by the noise model at large ROIs, because that is the only
-per-pixel work: star placement is proportional to the number of stars, not to the
+per-pixel work: star placement is proportional to the number of occupied
+PSF-bank cells along each trail, not to the pointing write rate and not to the
 frame size. A full 61-megapixel IMX frame costs roughly 0.3 s in `full` noise
 mode. If a worker cannot keep up it says so once per second, naming the achieved
 rate and what to change:
@@ -164,11 +173,14 @@ xindi wccsim.streaming.toggle=On
 ```
 
 Look at `nsv18sim` (or whatever `shmim_out` is), not the camera device stream.
-`sim.start_streaming=true` skips the toggle if you want frames immediately.
+A same-size occupancy stream `nsv18simdwell` is published beside it: 0 everywhere
+except 1 at each detector pixel a PSF stamp was placed, so you can overlay it on
+the image and see the trail. `sim.start_streaming=true` skips the toggle if you
+want frames immediately.
 
 Camera ROI / fps / exptime still arrive over INDI at 1 Hz. Pointing does not: it
-is the `telpointing` shmim at `pointing.write_hz`. The per-sensor render threads
-run at whatever frame rate each camera asks for.
+is the `telpointing` shmim, correlated by simulated time at `pointing.write_hz`.
+The per-sensor render threads run at whatever frame rate each camera asks for.
 
 ## Known limitations
 

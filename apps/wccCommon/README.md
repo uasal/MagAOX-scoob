@@ -21,13 +21,13 @@ directory.
 | `wccPhotometry.hpp` | AB magnitude to photoelectrons |
 | `wccStarCatalog.hpp` | GSC 3.1 style CSV ingest with a declination-sorted cone search |
 | `wccFocalPlane.hpp` | Sensor array layout, region of interest conventions, and per-sensor WCS |
-| `wccSensorModel.hpp` | PSF stamp accumulation, detector noise, IMX analog gain, digitization |
+| `wccSensorModel.hpp` | PSF stamp accumulation, kHz trail coalescing into PSF-bank cells, detector noise, IMX analog gain, digitization |
 | `wccAstrometry.hpp` | Source detection, catalog matching, multi-sensor boresight solution |
 | `wccJSON.hpp` | Minimal JSON reader for the visit file |
 | `wccVisit.hpp` | The visit file model |
 | `wccVisitIndi.hpp` | The INDI contract by which visitCtrl publishes a visit |
 | `wccIndiRate.hpp` | The 1 Hz INDI rate limit and a gate that enforces it |
-| `wccPointingShmim.hpp` | The 3×1×N RA/Dec/PA ImageStreamIO contract for high-rate pointing |
+| `wccPointingShmim.hpp` | The 4×1×N RA/Dec/PA/sim-time ImageStreamIO contract for high-rate pointing |
 | `wccSensorConfig.hpp` | The shared sensor-section config loader |
 
 Everything except `wccSensorConfig.hpp` depends only on the standard library and
@@ -44,7 +44,9 @@ apart on a shared convention, and the compiler enforces it:
   breaks the publisher and all consumers at once rather than silently at runtime.
 - `wccPointingShmim.hpp` — the high-rate pointing stream layout. `telescopeSim`
   writes it and `wccSim` reads it; a change in axis order would otherwise silently
-  smear every exposure.
+  smear every exposure. Correlation is by simulated time packed in the fourth
+  axis, not by the computer clock, because the simulators are not required to run
+  in real time.
 - `offsetBoresight()` in `wccFocalPlane.hpp` — the field-angle offset convention,
   shared by the telescope that must move when commanded and the simulator that must
   render what it now sees.

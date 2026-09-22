@@ -4,17 +4,20 @@ Simulates a telescope mount: takes a target from the visit, slews there at a fin
 rate, then tracks with configurable jitter.
 
 It is the **authority on where the telescope is pointed**. The current pointing is
-written to the `telpointing` ImageStreamIO stream at a configurable rate (1000 Hz
-by default) so `wccSim` can integrate mount motion during a camera exposure. The
-same pointing is published on INDI at 1 Hz for operators and `wccCtrl`. `wccCtrl`
-sends corrections to `offset` and watches `teldata` to know when a move is done.
+written to the `telpointing` ImageStreamIO stream at a configurable tick rate
+(5000 Hz of simulated time by default) so `wccSim` can integrate mount motion
+during a camera exposure. Each write is one tick of duration `1/write_hz`; the
+writer is not paced to the computer clock unless `pointing.pace_wallclock` is set.
+The same pointing is published on INDI at 1 Hz for operators and `wccCtrl`.
+`wccCtrl` sends corrections to `offset` and watches `teldata` to know when a move
+is done.
 
 ## Where it sits
 
 ```
    visit .json ──▶ visitCtrl ──(target ra/dec/rollpa)──▶ telescopeSim
                        │                                     │
-                       │ (acq + tracking params)             │ telpointing shmim (1 kHz)
+                       │ (acq + tracking params)             │ telpointing shmim (sim ticks)
                        ▼                                     ▼
                     wccCtrl ──(offset x/y/roll)────────▶ telescopeSim
                        ▲                                     │
@@ -45,18 +48,23 @@ change.
 `start_visit` is refused unless `visitCtrl` reports `visit_status.state == LOADED`,
 so it cannot slew to a half-delivered or stale target.
 
-The high-rate pointing stream is a 3×1×N circular buffer of doubles named
-`telpointing` by default (configurable as `pointing.shmim`). Axes are RA, Dec and
-PA in degrees, matching the INDI property. `pointing.write_hz` is the write rate
-and `pointing.history_s` sizes the buffer so a full camera exposure can be
-reconstructed from samples that have already been written.
+The high-rate pointing stream is a 4×1×N circular buffer of doubles named
+`telpointing` by default (configurable as `pointing.shmim`). Axes are RA, Dec, PA
+in degrees, and simulated time in seconds. `pointing.write_hz` is the tick rate of
+**simulated** time — not wall-clock — and `pointing.history_s` sizes the buffer so
+the longest camera exposure can be reconstructed from ticks that have already been
+written. `wccSim` correlates an exposure of `T` seconds with the ticks whose
+sim-time falls in `[now - T, now]`, where `now` is the newest slice. The computer
+clock is not involved, which is required because the camera simulators are allowed
+to run faster than real time (a 100 s exposure at 10 fps is a valid command).
 
 ## The mount model
 
 States are `IDLE → SLEWING → SETTLING → TRACKING`.
 
-Motion is integrated against **measured** elapsed time, not against the tick rate.
-INDI stays at 1 Hz; the pointing worker writes the shmim at `pointing.write_hz`.
+Motion is integrated in **simulated** time. The pointing worker advances the mount
+by `1/write_hz` on every write. It does not sleep to match that rate in wall-clock
+time unless `pointing.pace_wallclock` is true. INDI stays at 1 Hz.
 A step that covers the whole remaining distance arrives on that step.
 
 Jitter is applied to the **reported** pointing, not accumulated into the commanded
@@ -79,8 +87,12 @@ See `telescopeSim.conf.sample`, which is annotated. The parameters that matter m
   Set to 0 when debugging the astrometric solution itself.
 - `jitter_tau` — jitter correlation time in seconds. 0 is white; ~0.05 s streaks
   a 1 s exposure instead of turning it into a blob.
-- `pointing.write_hz` — pointing shmim write rate. 1000 Hz by default. 0 disables
-  the stream and updates only at the 1 Hz INDI tick.
+- `pointing.write_hz` — pointing tick rate in Hz of simulated time. 5000 Hz by
+  default. 0 disables the stream and updates only at the 1 Hz INDI tick.
+- `pointing.history_s` — circular-buffer span in seconds of simulated time. Must
+  cover the longest camera exposure.
+- `pointing.pace_wallclock` — if true, sleep so writes match `write_hz` in real
+  time. Default false.
 - `slew_rate` — raise it well above a real mount's if you want simulated
   acquisition sequences to finish quickly.
 - `settle_time` — `wccCtrl` waits for this before it re-solves, so it should
@@ -112,6 +124,9 @@ anywhere.
   `wccCommon::offsetBoresight`. Everything else about the two apps' geometry is
   independently configured and has to be kept consistent by hand — `parity` in
   particular.
+- With `pace_wallclock=false` (the default) simulated time can run far ahead of
+  wall-clock, so consecutive camera frames integrate disjoint stretches of mount
+  motion. Set `pace_wallclock=true` if you want writes to track real time.
 
 ## Tests
 

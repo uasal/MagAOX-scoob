@@ -55,21 +55,25 @@ class telescopeSimTester : public telescopeSim
         commandTarget( ra, dec, pa, "test" );
     }
 
-    /// Advance the mount model once.
+    /// Advance the mount model once using wall-clock elapsed time.
     void testUpdate()
     {
         updateMount();
     }
 
-    /// Pretend this many seconds have passed, so a step can be forced.
-    /** Both the update baseline and the settle start move, because both are
-     * measured against the same clock and only one of them advancing would let a
-     * settle expire or stall spuriously.
+    /// Advance the mount by this many seconds of simulated time.
+    void testAdvance( double seconds )
+    {
+        advanceMount( seconds );
+    }
+
+    /// Pretend this many wall-clock seconds have passed for updateMount().
+    /** Only the wall-clock baseline moves. Settle is measured in simulated time
+     * and is advanced with testAdvance, not here.
      */
     void testRewind( double seconds )
     {
         m_lastUpdate -= seconds;
-        m_settleStart -= seconds;
     }
 
     /// The mount state.
@@ -203,6 +207,7 @@ TEST_CASE( "telescopeSim reads configuration and rejects bad rates", "[telescope
         REQUIRE( app.baseDec() == Approx( 26.84316038 ).epsilon( 1e-12 ) );
         REQUIRE( app.reportRA() == Approx( 192.317 ).epsilon( 1e-12 ) );
         REQUIRE( app.st() == telSimState::idle );
+        REQUIRE( app.writeHz() == Approx( 5000.0 ).epsilon( 1e-12 ) );
 
         std::remove( path.c_str() );
     }
@@ -275,6 +280,7 @@ TEST_CASE( "telescopeSim slews at a finite rate then settles", "[telescopeSim]" 
     #ifdef TELESCOPESIM_TEST_DOXYGEN_REF
     telescopeSim::commandTarget;
     telescopeSim::updateMount;
+    telescopeSim::advanceMount;
     #endif
     // clang-format on
 
@@ -288,14 +294,10 @@ TEST_CASE( "telescopeSim slews at a finite rate then settles", "[telescopeSim]" 
         app.testCommand( 192.317 + 5.0, 26.84316038, 0.0 );
         REQUIRE( app.st() == telSimState::slewing );
 
-        // Prime the elapsed-time baseline, then step one simulated second at a time.
-        app.testUpdate();
-
         int steps = 0;
         while( app.st() == telSimState::slewing && steps < 20 )
         {
-            app.testRewind( 1.0 );
-            app.testUpdate();
+            app.testAdvance( 1.0 );
             ++steps;
         }
 
@@ -306,8 +308,7 @@ TEST_CASE( "telescopeSim slews at a finite rate then settles", "[telescopeSim]" 
         // With settle_time 0 the next update promotes it to tracking.
         REQUIRE( ( app.st() == telSimState::settling || app.st() == telSimState::tracking ) );
 
-        app.testRewind( 1.0 );
-        app.testUpdate();
+        app.testAdvance( 1.0 );
         REQUIRE( app.st() == telSimState::tracking );
 
         // And it arrived at the target, not past it.
@@ -320,20 +321,16 @@ TEST_CASE( "telescopeSim slews at a finite rate then settles", "[telescopeSim]" 
         app.setSettle( 5.0 );
         app.testCommand( 192.317 + 0.1, 26.84316038, 0.0 );
 
-        app.testUpdate();
-        app.testRewind( 1.0 );
-        app.testUpdate();
+        app.testAdvance( 1.0 );
 
         // Arrived, so settling; not yet tracking.
         REQUIRE( app.st() == telSimState::settling );
 
-        app.testRewind( 1.0 );
-        app.testUpdate();
+        app.testAdvance( 1.0 );
         REQUIRE( app.st() == telSimState::settling );
 
         // Past the settle time it promotes.
-        app.testRewind( 6.0 );
-        app.testUpdate();
+        app.testAdvance( 6.0 );
         REQUIRE( app.st() == telSimState::tracking );
     }
 
@@ -341,9 +338,7 @@ TEST_CASE( "telescopeSim slews at a finite rate then settles", "[telescopeSim]" 
     {
         app.testCommand( 192.317, 26.84316038, 3.0 );
 
-        app.testUpdate();
-        app.testRewind( 1.0 );
-        app.testUpdate();
+        app.testAdvance( 1.0 );
 
         // One second at 1 deg/s covers one degree of the three.
         REQUIRE( app.basePA() == Approx( 1.0 ).margin( 1e-6 ) );
@@ -383,8 +378,7 @@ TEST_CASE( "telescopeSim jitter is bounded and does not random walk", "[telescop
 
         for( int i = 0; i < 20; ++i )
         {
-            app.testRewind( 1.0 );
-            app.testUpdate();
+            app.testAdvance( 1.0 );
             REQUIRE( app.reportRA() == Approx( app.baseRA() ).margin( 1e-12 ) );
             REQUIRE( app.reportDec() == Approx( app.baseDec() ).margin( 1e-12 ) );
         }
@@ -404,8 +398,7 @@ TEST_CASE( "telescopeSim jitter is bounded and does not random walk", "[telescop
 
         for( int i = 0; i < n; ++i )
         {
-            app.testRewind( 1.0 );
-            app.testUpdate();
+            app.testAdvance( 1.0 );
 
             // Offset of the reported pointing from the commanded one, in arcsec.
             const double d = MagAOX::wcc::angularSeparation( app.baseRA(), app.baseDec(), app.reportRA(),
@@ -432,8 +425,7 @@ TEST_CASE( "telescopeSim jitter is bounded and does not random walk", "[telescop
         app.setJitter( 5.0, 0.5 );
         app.forceState( telSimState::idle );
 
-        app.testRewind( 1.0 );
-        app.testUpdate();
+        app.testAdvance( 1.0 );
 
         REQUIRE( app.reportRA() == Approx( app.baseRA() ).margin( 1e-12 ) );
         REQUIRE( app.reportPA() == Approx( app.basePA() ).margin( 1e-12 ) );

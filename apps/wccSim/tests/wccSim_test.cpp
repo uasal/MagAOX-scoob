@@ -77,6 +77,12 @@ class wccSimTester : public wccSim
         return m_sensors[i]->m_shmimOut;
     }
 
+    /// A sensor's dwell occupancy stream name.
+    std::string sensorDwellStream( size_t i )
+    {
+        return m_sensors[i]->m_shmimDwell;
+    }
+
     /// A sensor's PSF bank key.
     std::string sensorBankKey( size_t i )
     {
@@ -208,6 +214,8 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
         // overridable per sensor.
         REQUIRE( app.sensorStream( 0 ) == "nsv18sim" );
         REQUIRE( app.sensorStream( 1 ) == "hwk09custom" );
+        REQUIRE( app.sensorDwellStream( 0 ) == "nsv18simdwell" );
+        REQUIRE( app.sensorDwellStream( 1 ) == "hwk09customdwell" );
 
         // Different pixel pitches must not share a PSF bank.
         REQUIRE( app.sensorBankKey( 0 ) != app.sensorBankKey( 1 ) );

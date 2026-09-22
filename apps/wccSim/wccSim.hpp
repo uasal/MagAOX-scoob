@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 #include <map>
@@ -19,6 +20,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <ImageStreamIO/ImageStreamIO.h>
@@ -52,11 +54,15 @@
  * code, 0 to 255 in 0.1 dB steps, and multiplies collected electrons and the
  * noise already in them.
  *
- * High-rate telescope pointing is read from the `telpointing` shmim (a 3×1×N
- * circular buffer of RA, Dec, PA) so a long exposure integrates the mount motion
- * that occurred during it and streaks. INDI pointing is kept as a 1 Hz fallback
- * and status report. Camera frames are still published at the source camera's
- * frame rate.
+ * High-rate telescope pointing is read from the `telpointing` shmim (a 4×1×N
+ * circular buffer of RA, Dec, PA, and simulated time). An exposure of `T`
+ * seconds integrates the ticks whose simulated times fall in `[now - T, now]`,
+ * where "now" is the newest slice's sim-time, not the computer clock. The WCC
+ * simulators are not required to run in real time, so wall-clock windows would
+ * park the PSF on whichever sample happened to be written last. Camera frames
+ * are still published at the source camera's commanded frame rate. A same-size
+ * occupancy shmim (`shmim_out` + `dwell`) marks a 1 at each detector pixel a
+ * PSF stamp was placed so the trail can be overlaid on the image.
  *
  * <a href="../handbook/operating/software/apps/wccSim.html">Application Documentation</a>
  *
@@ -93,6 +99,9 @@ struct wccSimSensor
 
     std::string m_shmimOut; ///< ImageStreamIO stream frames are published to.
 
+    /// Occupancy stream of PSF placement pixels, same size as m_shmimOut. Empty disables it.
+    std::string m_shmimDwell;
+
     std::string m_bankKey; ///< Key of the shared PSF bank this sensor uses.
 
     uint64_t m_seed{ 1 }; ///< RNG seed for this sensor's noise.
@@ -124,6 +133,14 @@ struct wccSimSensor
     uint32_t m_streamW{ 0 }; ///< Width the stream was created at [pixels].
 
     uint32_t m_streamH{ 0 }; ///< Height the stream was created at [pixels].
+
+    IMAGE m_dwellStream{}; ///< Occupancy ImageStreamIO stream, same size as m_stream.
+
+    bool m_dwellStreamOpen{ false }; ///< True while m_dwellStream is created.
+
+    uint32_t m_dwellW{ 0 }; ///< Width the dwell stream was created at [pixels].
+
+    uint32_t m_dwellH{ 0 }; ///< Height the dwell stream was created at [pixels].
     ///@}
 
     /** \name Worker and Statistics - Data
@@ -218,7 +235,10 @@ class wccSim : public MagAOXApp<true>
     /// ImageStreamIO stream carrying high-rate pointing. Empty falls back to INDI.
     std::string m_pointingShmim{ wcc::pointingShmimDefault };
 
-    double m_pointingWriteHz{ wcc::pointingWriteHzDefault }; ///< Nominal pointing sample rate [Hz].
+    double m_pointingWriteHz{ wcc::pointingWriteHzDefault }; ///< Pointing tick rate [Hz of simulated time].
+
+    /// Optional time-decimation of the pointing trail. 0 keeps every tick.
+    uint32_t m_pointingMaxSamples{ wcc::pointingMaxSamplesDefault };
 
     double m_startRA{ 0 }; ///< Boresight right ascension at startup [deg].
 
@@ -255,6 +275,9 @@ class wccSim : public MagAOXApp<true>
     double m_defaultExpTime{ 1.0 }; ///< Exposure time used before a camera reports one [s].
 
     bool m_startStreaming{ false }; ///< Whether to begin publishing without an operator toggle.
+
+    /// If true, each sensor also publishes a same-size occupancy map of PSF placement pixels.
+    bool m_dwellMap{ true };
     ///@}
 
     /** \name Simulation State - Data
@@ -416,8 +439,10 @@ class wccSim : public MagAOXApp<true>
     void sensorWorkerExec( wccSimSensor *sen /**< [in] the sensor */ );
 
     /// Render one frame for a sensor into an electron buffer.
-    /** When `samples` has more than one pointing, each star is placed once per
-     * sample scaled by that sample's duration, so a moving boresight streaks.
+    /** Every pointing tick contributes flux. Ticks that land in the same
+     * PSF-bank sub-pixel cell are coalesced so a several-kHz trail is one splat
+     * per occupied cell, which is the dwell-map convolution of the path with
+     * the PSF at the bank's native resolution.
      *
      * \returns the number of distinct stars placed
      * \returns -1 on an error
@@ -430,11 +455,13 @@ class wccSim : public MagAOXApp<true>
                      int &bx0 /**< [out] illuminated bounding box min column */,
                      int &by0 /**< [out] illuminated bounding box min row */,
                      int &bx1 /**< [out] illuminated bounding box max column */,
-                     int &by1 /**< [out] illuminated bounding box max row */ );
+                     int &by1 /**< [out] illuminated bounding box max row */,
+                     std::vector<uint16_t> *dwellMap = nullptr /**< [out] optional occupancy map, 1 at each PSF (x,y) */ );
 
-    /// Collect the pointing samples that fall inside an exposure.
-    /** Prefers the high-rate pointing shmim. If that stream is not available,
-     * a single sample is taken from the 1 Hz INDI/local pointing.
+    /// Collect the pointing ticks that cover an exposure of simulated time.
+    /** Prefers the high-rate pointing shmim, correlated by simulated time (or
+     * by tick count if the stream has no sim-time axis). If that stream is not
+     * available, a single sample is taken from the 1 Hz INDI/local pointing.
      *
      * \returns the number of samples
      * \returns -1 if no pointing is available
@@ -462,6 +489,21 @@ class wccSim : public MagAOXApp<true>
      */
     int publishFrame( wccSimSensor *sen /**< [in,out] the sensor */,
                       const std::vector<uint16_t> &pixels /**< [in] digital numbers, row major */ );
+
+    /// Create or resize a sensor's dwell occupancy stream to match a ROI.
+    /** \returns 0 on success
+     * \returns -1 if the stream cannot be created
+     */
+    int ensureDwellStream( wccSimSensor *sen /**< [in,out] the sensor */,
+                           uint32_t w /**< [in] width [pixels] */,
+                           uint32_t h /**< [in] height [pixels] */ );
+
+    /// Publish a binary occupancy map to a sensor's dwell stream.
+    /** \returns 0 on success
+     * \returns -1 if the stream is not open or is the wrong size
+     */
+    int publishDwell( wccSimSensor *sen /**< [in,out] the sensor */,
+                      const std::vector<uint16_t> &dwell /**< [in] 0/1 occupancy, row major */ );
     ///@}
 
     /** \name INDI Helpers
@@ -579,7 +621,12 @@ inline void wccSim::setupConfig()
                 "ImageStreamIO stream carrying high-rate pointing from telescopeSim. Empty uses INDI only." );
     config.add( "pointing.write_hz", "", "pointing.write_hz", argType::Required, "pointing", "write_hz", false,
                 "double",
-                "Nominal pointing sample rate [Hz], used to space samples if the stream has no timestamps." );
+                "Pointing tick rate [Hz of simulated time], must match telescopeSim. 5000 Hz means a 1 s "
+                "exposure integrates 5000 mount samples. Used if the stream has no sim-time axis." );
+    config.add( "pointing.max_samples", "", "pointing.max_samples", argType::Required, "pointing", "max_samples",
+                false, "int",
+                "Optional time-decimation of the pointing trail. 0 (default) keeps every tick; "
+                "the renderer coalesces identical PSF-bank cells so a kHz trail stays cheap." );
 
     config.add( "sim.sensors", "", "sim.sensors", argType::Required, "sim", "sensors", false, "vector<string>",
                 "Comma separated sensor names. Each needs a configuration section of the same name." );
@@ -588,7 +635,8 @@ inline void wccSim::setupConfig()
     config.add( "sim.psf_samples", "", "sim.psf_samples", argType::Required, "sim", "psf_samples", false, "int",
                 "PSF postage stamp size on a side [pixels]." );
     config.add( "sim.psf_substeps", "", "sim.psf_substeps", argType::Required, "sim", "psf_substeps", false, "int",
-                "Sub-pixel PSF bank bins per axis. Placement error is 0.5/substeps pixels." );
+                "Sub-pixel PSF bank bins per axis. Placement error is 0.5/substeps pixels. This is the "
+                "spatial resolution of the science trail; the dwell-map shmim marks those placement pixels." );
     config.add( "sim.star_margin", "", "sim.star_margin", argType::Required, "sim", "star_margin", false, "double",
                 "Cone search margin beyond the ROI, in PSF stamp widths." );
     config.add( "sim.noise_mode", "", "sim.noise_mode", argType::Required, "sim", "noise_mode", false, "string",
@@ -605,6 +653,8 @@ inline void wccSim::setupConfig()
                 false, "double", "Exposure time used before a camera reports one [s]." );
     config.add( "sim.start_streaming", "", "sim.start_streaming", argType::Required, "sim", "start_streaming",
                 false, "bool", "Begin publishing at startup rather than waiting for the streaming toggle." );
+    config.add( "sim.dwell_map", "", "sim.dwell_map", argType::Required, "sim", "dwell_map", false, "bool",
+                "Publish a same-size occupancy shmim per sensor (1 at each PSF placement pixel, else 0)." );
 }
 
 inline int wccSim::loadConfigImpl( mx::app::appConfigurator &_config )
@@ -633,6 +683,12 @@ inline int wccSim::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_pointingShmim, "pointing.shmim" );
     _config( m_pointingWriteHz, "pointing.write_hz" );
 
+    {
+        int maxSamples = static_cast<int>( m_pointingMaxSamples );
+        _config( maxSamples, "pointing.max_samples" );
+        m_pointingMaxSamples = ( maxSamples < 0 ) ? 0 : static_cast<uint32_t>( maxSamples );
+    }
+
     if( m_pointingWriteHz <= 0 )
     {
         m_pointingWriteHz = wcc::pointingWriteHzDefault;
@@ -659,6 +715,7 @@ inline int wccSim::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_defaultFps, "sim.default_fps" );
     _config( m_defaultExpTime, "sim.default_exp_time" );
     _config( m_startStreaming, "sim.start_streaming" );
+    _config( m_dwellMap, "sim.dwell_map" );
 
     m_noiseMode = wcc::parseNoiseMode( m_noiseModeStr );
 
@@ -719,6 +776,13 @@ inline int wccSim::loadConfigImpl( mx::app::appConfigurator &_config )
         sen->m_name = sc.m_name;
         sen->m_indiDevice = indiDevice;
         sen->m_shmimOut = shmimOut;
+        sen->m_shmimDwell = m_dwellMap ? ( shmimOut + "dwell" ) : std::string();
+        wcc::sensorConfigString( _config, name, "shmim_dwell", sen->m_shmimDwell );
+
+        if( !m_dwellMap )
+        {
+            sen->m_shmimDwell.clear();
+        }
         sen->m_bankKey = bankKey( sc );
         sen->m_fps = m_defaultFps;
         sen->m_expTime = m_defaultExpTime;
@@ -1015,6 +1079,12 @@ inline int wccSim::appShutdown()
             ImageStreamIO_destroyIm( &sen->m_stream );
             sen->m_streamOpen = false;
         }
+
+        if( sen->m_dwellStreamOpen )
+        {
+            ImageStreamIO_destroyIm( &sen->m_dwellStream );
+            sen->m_dwellStreamOpen = false;
+        }
     }
 
     { //mutex scope
@@ -1176,6 +1246,7 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
     std::shared_ptr<const wcc::psfBank> bnk;
     std::vector<float> frame;
     std::vector<uint16_t> pixels;
+    std::vector<uint16_t> dwell;
 
     wcc::sensorNoise noise( sen->m_seed );
     noise.mode( m_noiseMode );
@@ -1210,7 +1281,7 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
         const double tStart = mx::sys::get_curr_time();
 
         // Snapshot the live camera parameters. Pointing comes from the shmim
-        // history covering this exposure, not from the 1 Hz INDI copy.
+        // history covering this exposure in simulated time, not wall-clock.
         double fps, expTime;
         int gainCode, bitDepth;
         wcc::roiSpec roi;
@@ -1243,7 +1314,9 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
 
         int bx0 = w, by0 = h, bx1 = -1, by1 = -1;
 
-        const int nStars = renderFrame( sc, *bnk, roi, samples, frame, bx0, by0, bx1, by1 );
+        std::vector<uint16_t> *dwellPtr = sen->m_shmimDwell.empty() ? nullptr : &dwell;
+
+        const int nStars = renderFrame( sc, *bnk, roi, samples, frame, bx0, by0, bx1, by1, dwellPtr );
 
         if( nStars < 0 )
         {
@@ -1260,6 +1333,12 @@ inline void wccSim::sensorWorkerExec( wccSimSensor *sen )
         if( ensureStream( sen, static_cast<uint32_t>( w ), static_cast<uint32_t>( h ) ) == 0 )
         {
             publishFrame( sen, pixels );
+        }
+
+        if( dwellPtr != nullptr &&
+            ensureDwellStream( sen, static_cast<uint32_t>( w ), static_cast<uint32_t>( h ) ) == 0 )
+        {
+            publishDwell( sen, dwell );
         }
 
         const double tEnd = mx::sys::get_curr_time();
@@ -1323,17 +1402,23 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
                                 int &bx0,
                                 int &by0,
                                 int &bx1,
-                                int &by1 )
+                                int &by1,
+                                std::vector<uint16_t> *dwellMap )
 {
     const int w = roi.imageW();
     const int h = roi.imageH();
 
-    if( w < 1 || h < 1 || samples.empty() )
+    if( w < 1 || h < 1 || samples.empty() || !bnk.valid() )
     {
         return -1;
     }
 
     frame.assign( static_cast<size_t>( w ) * static_cast<size_t>( h ), 0.0f );
+
+    if( dwellMap != nullptr )
+    {
+        dwellMap->assign( static_cast<size_t>( w ) * static_cast<size_t>( h ), 0 );
+    }
 
     wcc::photometryConfig phot;
     phot.m_pivotWavelength = sc.m_pivotWavelength;
@@ -1344,44 +1429,82 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
 
     const double half = 0.5 * bnk.samples();
     const double margin = m_starMargin * bnk.samples();
-    std::set<size_t> placed;
+
+    wcc::focalPlaneModel fp;
+    fp.setTelescope( m_diameter, m_fNumber, m_parity );
+    fp.addSensor( sc );
+
+    // One WCS per tick. Cone search once, with the radius grown by how far the
+    // boresight wandered, so a star that drifts into the ROI mid-exposure is
+    // still found without repeating the catalog query thousands of times.
+    std::vector<wcc::skyWCS> wcs;
+    wcs.resize( samples.size() );
+
+    double extraDeg = 0;
+    double extraPA = 0;
+    const wcc::pointingSample &s0 = samples.front();
 
     for( const wcc::pointingSample &samp : samples )
     {
-        if( !( samp.m_dt > 0 ) )
+        extraDeg = std::max( extraDeg, wcc::angularSeparation( s0.m_ra, s0.m_dec, samp.m_ra, samp.m_dec ) );
+        extraPA = std::max( extraPA, std::fabs( samp.m_pa - s0.m_pa ) );
+    }
+
+    const size_t iMid = samples.size() / 2;
+    fp.setPointing( samples[iMid].m_ra, samples[iMid].m_dec, samples[iMid].m_pa );
+
+    const double r0 = fp.roiSearchRadius( 0, roi, 0 );
+    const double radius = fp.roiSearchRadius( 0, roi, margin ) + extraDeg + r0 * extraPA * wcc::deg2rad;
+
+    wcc::skyWCS wcsMid;
+
+    if( fp.roiWCS( 0, roi, wcsMid ) < 0 )
+    {
+        return -1;
+    }
+
+    double cra, cdec;
+    wcsMid.pix2world( 0.5 * ( w - 1 ), 0.5 * ( h - 1 ), cra, cdec );
+
+    std::vector<size_t> hits;
+    m_catalog.coneSearch( cra, cdec, radius, hits, m_magLimit );
+
+    for( size_t i = 0; i < samples.size(); ++i )
+    {
+        fp.setPointing( samples[i].m_ra, samples[i].m_dec, samples[i].m_pa );
+
+        if( fp.roiWCS( 0, roi, wcs[i] ) < 0 )
+        {
+            return -1;
+        }
+    }
+
+    std::unordered_map<uint64_t, double> cells;
+    cells.reserve( 256 );
+    std::set<size_t> placed;
+
+    for( size_t iStar : hits )
+    {
+        const wcc::starEntry &s = m_catalog[iStar];
+        const double rate = wcc::abMagToElectrons( s.m_mag, 1.0, phot );
+
+        if( !( rate > 0 ) )
         {
             continue;
         }
 
-        // Local geometry at this sample's boresight. The shared model is only a
-        // 1 Hz status copy and is not safe to mutate from a worker.
-        wcc::focalPlaneModel fp;
-        fp.setTelescope( m_diameter, m_fNumber, m_parity );
-        fp.setPointing( samp.m_ra, samp.m_dec, samp.m_pa );
-        fp.addSensor( sc );
+        cells.clear();
 
-        wcc::skyWCS wcs;
-
-        if( fp.roiWCS( 0, roi, wcs ) < 0 )
+        for( size_t i = 0; i < samples.size(); ++i )
         {
-            continue;
-        }
-
-        const double radius = fp.roiSearchRadius( 0, roi, margin );
-
-        double cra, cdec;
-        wcs.pix2world( 0.5 * ( w - 1 ), 0.5 * ( h - 1 ), cra, cdec );
-
-        std::vector<size_t> hits;
-        m_catalog.coneSearch( cra, cdec, radius, hits, m_magLimit );
-
-        for( size_t i : hits )
-        {
-            const wcc::starEntry &s = m_catalog[i];
+            if( !( samples[i].m_dt > 0 ) )
+            {
+                continue;
+            }
 
             double x, y;
 
-            if( !wcs.world2pix( s.m_ra, s.m_dec, x, y ) )
+            if( !wcs[i].world2pix( s.m_ra, s.m_dec, x, y ) )
             {
                 continue;
             }
@@ -1391,27 +1514,22 @@ inline int wccSim::renderFrame( const wcc::sensorConfig &sc,
                 continue;
             }
 
-            const double flux = wcc::abMagToElectrons( s.m_mag, samp.m_dt, phot );
+            wcc::addTrailSample( cells, bnk, x, y, rate * samples[i].m_dt );
+        }
 
-            if( !( flux > 0 ) )
-            {
-                continue;
-            }
+        if( cells.empty() )
+        {
+            continue;
+        }
 
-            const int ix = static_cast<int>( std::floor( x + 0.5 ) );
-            const int iy = static_cast<int>( std::floor( y + 0.5 ) );
+        if( wcc::accumulateTrail( frame, w, h, bnk, cells, bx0, by0, bx1, by1 ) > 0 )
+        {
+            placed.insert( iStar );
+        }
 
-            const float *stamp = bnk.lookup( x - ix, y - iy );
-
-            if( stamp == nullptr )
-            {
-                continue;
-            }
-
-            if( wcc::accumulateStamp( frame, w, h, stamp, bnk.samples(), ix, iy, flux, bx0, by0, bx1, by1 ) > 0 )
-            {
-                placed.insert( i );
-            }
+        if( dwellMap != nullptr )
+        {
+            wcc::markDwellFromCells( *dwellMap, w, h, cells );
         }
     }
 
@@ -1438,7 +1556,7 @@ inline int wccSim::openPointingStream()
             return -1;
         }
 
-        if( m_pointingStream.md == nullptr || m_pointingStream.md->size[0] < wcc::pointingNAxes )
+        if( m_pointingStream.md == nullptr || m_pointingStream.md->size[0] < 3 )
         {
             ImageStreamIO_closeIm( &m_pointingStream );
             return -1;
@@ -1456,9 +1574,6 @@ inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSa
 {
     samples.clear();
 
-    const double tEnd = mx::sys::get_curr_time();
-    const double tStart = tEnd - std::max( expTime, 1.0e-6 );
-
     if( !m_pointingShmim.empty() && !m_pointingStreamOpen )
     {
         openPointingStream();
@@ -1467,29 +1582,19 @@ inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSa
     if( m_pointingStreamOpen && m_pointingStream.md != nullptr && m_pointingStream.array.raw != nullptr )
     {
         const IMAGE *im = &m_pointingStream;
+        const uint32_t nAxes = im->md->size[0];
         const uint32_t depth = ( im->md->naxis >= 3 && im->md->size[2] > 0 ) ? im->md->size[2] : 1;
         const uint64_t cnt1 = im->md->cnt1;
         const uint64_t nWritten = im->md->cnt0;
-
         const double *data = reinterpret_cast<const double *>( im->array.raw );
-        std::vector<double> times;
 
-        if( im->writetimearray != nullptr )
+        if( wcc::collectPointingExposure( data, nAxes, depth, cnt1, nWritten, expTime, m_pointingWriteHz,
+                                          samples ) > 0 )
         {
-            times.resize( depth );
+            // 0 keeps every tick. Spatial coalescing in renderFrame is what
+            // makes a kHz trail cheap, not this optional time average.
+            wcc::binPointingSamples( samples, m_pointingMaxSamples );
 
-            for( uint32_t i = 0; i < depth; ++i )
-            {
-                times[i] = static_cast<double>( im->writetimearray[i].tv_sec ) +
-                           1.0e-9 * static_cast<double>( im->writetimearray[i].tv_nsec );
-            }
-        }
-
-        const double dtNom = ( m_pointingWriteHz > 0 ) ? 1.0 / m_pointingWriteHz : 1.0e-3;
-
-        if( wcc::collectPointingSamples( data, times.empty() ? nullptr : times.data(), depth, cnt1, nWritten,
-                                         tStart, tEnd, dtNom, samples ) > 0 )
-        {
             // Keep the 1 Hz INDI copy in step with the latest high-rate sample so
             // the published pointing property still means "where the mount is".
             applyPointing( samples.back().m_ra, samples.back().m_dec, samples.back().m_pa );
@@ -1506,7 +1611,7 @@ inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSa
         s.m_pa = m_pa;
     }
 
-    s.m_time = tEnd;
+    s.m_time = 0;
     s.m_dt = std::max( expTime, 1.0e-6 );
     samples.push_back( s );
 
@@ -1585,6 +1690,81 @@ inline int wccSim::publishFrame( wccSimSensor *sen, const std::vector<uint16_t> 
     return 0;
 }
 
+inline int wccSim::ensureDwellStream( wccSimSensor *sen, uint32_t w, uint32_t h )
+{
+    if( sen->m_shmimDwell.empty() )
+    {
+        return -1;
+    }
+
+    if( sen->m_dwellStreamOpen && sen->m_dwellW == w && sen->m_dwellH == h )
+    {
+        return 0;
+    }
+
+    if( sen->m_dwellStreamOpen )
+    {
+        ImageStreamIO_destroyIm( &sen->m_dwellStream );
+        sen->m_dwellStreamOpen = false;
+    }
+
+    uint32_t sizes[3] = { w, h, static_cast<uint32_t>( m_circBuffLength ) };
+
+    if( ImageStreamIO_createIm_gpu( &sen->m_dwellStream, sen->m_shmimDwell.c_str(), 3, sizes, IMAGESTRUCT_UINT16,
+                                    -1, 1, IMAGE_NB_SEMAPHORE, 0, CIRCULAR_BUFFER | ZAXIS_TEMPORAL, 0 ) !=
+        IMAGESTREAMIO_SUCCESS )
+    {
+        return log<software_error, -1>(
+            { __FILE__, __LINE__, "failed to create dwell stream " + sen->m_shmimDwell } );
+    }
+
+    sen->m_dwellStream.md->cnt1 = m_circBuffLength - 1;
+
+    sen->m_dwellStreamOpen = true;
+    sen->m_dwellW = w;
+    sen->m_dwellH = h;
+
+    log<text_log>( "created dwell stream " + sen->m_shmimDwell + " " + std::to_string( w ) + "x" +
+                   std::to_string( h ) + " uint16 occupancy for " + sen->m_name );
+
+    return 0;
+}
+
+inline int wccSim::publishDwell( wccSimSensor *sen, const std::vector<uint16_t> &dwell )
+{
+    if( !sen->m_dwellStreamOpen || sen->m_dwellStream.md == nullptr )
+    {
+        return -1;
+    }
+
+    const size_t npix = static_cast<size_t>( sen->m_dwellW ) * static_cast<size_t>( sen->m_dwellH );
+
+    if( dwell.size() < npix )
+    {
+        return -1;
+    }
+
+    sen->m_dwellStream.md->write = 1;
+
+    const uint64_t slice =
+        ( m_circBuffLength > 1 ) ? ( sen->m_dwellStream.md->cnt1 + 1 ) % m_circBuffLength : 0;
+
+    uint16_t *dest = sen->m_dwellStream.array.UI16 + slice * npix;
+
+    memcpy( dest, dwell.data(), npix * sizeof( uint16_t ) );
+
+    clock_gettime( CLOCK_REALTIME, &sen->m_dwellStream.md->writetime );
+    sen->m_dwellStream.md->atime = sen->m_dwellStream.md->writetime;
+
+    sen->m_dwellStream.md->cnt1 = slice;
+
+    ImageStreamIO_UpdateIm( &sen->m_dwellStream );
+
+    sen->m_dwellStream.md->write = 0;
+
+    return 0;
+}
+
 //------------------------------------------------------------------------
 // INDI
 //------------------------------------------------------------------------
@@ -1628,7 +1808,8 @@ inline int wccSim::registerSensorSubscriptions( wccSimSensor *sen )
     }
 
     log<text_log>( sen->m_name + " tracking INDI device " + sen->m_indiDevice + ", publishing to " +
-                   sen->m_shmimOut );
+                   sen->m_shmimOut +
+                   ( sen->m_shmimDwell.empty() ? std::string() : ( ", dwell " + sen->m_shmimDwell ) ) );
 
     return 0;
 }

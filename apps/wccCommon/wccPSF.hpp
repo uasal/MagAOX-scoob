@@ -13,9 +13,13 @@
  * frame rate. The only thing that changes from star to star is the sub-pixel
  * offset and the total flux, so psfBank precomputes the PSF on a quantized grid
  * of sub-pixel offsets once at startup. Placing a star then costs one lookup and
- * one scaled accumulation. The residual placement error is bounded by half a
- * bank step, which subSteps controls, and psfGenerator is still available for an
- * exact per star computation when fidelity matters more than rate.
+ * one scaled accumulation. A several-kHz pointing trail is histogrammed into
+ * those same bins (`addTrailSample`), which is the dwell-map convolution of the
+ * path with the PSF at the bank's native resolution: every tick contributes
+ * flux, identical placements splat once. The residual placement error is bounded
+ * by half a bank step, which subSteps controls, and psfGenerator is still
+ * available for an exact per star computation when fidelity matters more than
+ * rate.
  *
  * \ingroup wccCommon_files
  */
@@ -494,6 +498,13 @@ class psfBank
     const float *lookup( double fracX /**< [in] offset along columns [pixels] */,
                          double fracY /**< [in] offset along rows [pixels] */ ) const;
 
+    /// Stamp at an explicit sub-pixel bin, without wrapping a fractional offset.
+    /** \returns a pointer to samples*samples floats with unit sum
+     * \returns nullptr if the bank is not built or the bin is out of range
+     */
+    const float *stamp( int binX /**< [in] column bin, in [0, subSteps) */,
+                        int binY /**< [in] row bin, in [0, subSteps) */ ) const;
+
     /// Bin index for a fractional offset, exposed for testing and diagnostics.
     /** \returns the bin index in [0, subSteps)
      */
@@ -623,6 +634,24 @@ inline const float *psfBank::lookup( double fracX, double fracY ) const
 
     const size_t idx = static_cast<size_t>( binFor( fracY ) ) * static_cast<size_t>( m_subSteps ) +
                        static_cast<size_t>( binFor( fracX ) );
+
+    if( idx >= m_stamps.size() || m_stamps[idx].empty() )
+    {
+        return nullptr;
+    }
+
+    return m_stamps[idx].data();
+}
+
+inline const float *psfBank::stamp( int binX, int binY ) const
+{
+    if( !valid() || binX < 0 || binY < 0 || binX >= m_subSteps || binY >= m_subSteps )
+    {
+        return nullptr;
+    }
+
+    const size_t idx = static_cast<size_t>( binY ) * static_cast<size_t>( m_subSteps ) +
+                       static_cast<size_t>( binX );
 
     if( idx >= m_stamps.size() || m_stamps[idx].empty() )
     {
