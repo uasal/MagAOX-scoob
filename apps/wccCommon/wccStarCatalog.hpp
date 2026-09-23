@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include "wccNumeric.hpp"
 #include "wccSkyWCS.hpp"
 #include "wccUnits.hpp"
 
@@ -309,7 +310,7 @@ inline int starCatalog::load( const std::string &path,
             continue;
         }
 
-        if( !std::isfinite( s.m_ra ) || !std::isfinite( s.m_dec ) || !std::isfinite( s.m_mag ) )
+        if( !isFinite( s.m_ra ) || !isFinite( s.m_dec ) || !isFinite( s.m_mag ) )
         {
             ++m_skipped;
             continue;

@@ -44,6 +44,8 @@ shmim=telpointing
 # Pointing tick rate in Hz of simulated time, not wall-clock. Each telescopeSim
 # write is one tick of duration 1/write_hz. 5000 Hz means a 1 s exposure
 # integrates 5000 mount samples. Must match telescopeSim's pointing.write_hz.
+# telescopeSim also publishes this live as write_hz / history_s (current/target);
+# wccSim subscribes to those properties and reopens telpointing when they change.
 write_hz=5000
 # Keep every pointing tick (0). The renderer histograms ticks into PSF-bank
 # cells (see psf_substeps) so a 5000 Hz trail is one splat per occupied cell,

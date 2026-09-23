@@ -35,6 +35,7 @@
 
 #include "wccFocalPlane.hpp"
 #include "wccJSON.hpp"
+#include "wccNumeric.hpp"
 
 namespace MagAOX
 {
@@ -454,7 +455,7 @@ inline int visitFile::loadJSON( const jsonValue &root, std::string &err )
     m_dec = root.num( "DEC_PROP" );
     m_rollPA = root.num( "ROLLPA", 0.0 );
 
-    if( !std::isfinite( m_ra ) || !std::isfinite( m_dec ) )
+    if( !isFinite( m_ra ) || !isFinite( m_dec ) )
     {
         err = "visit file RA_PROP or DEC_PROP is not a finite number";
         return -1;

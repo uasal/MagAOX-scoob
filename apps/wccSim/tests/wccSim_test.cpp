@@ -112,6 +112,18 @@ class wccSimTester : public wccSim
     {
         return indiSafeName( s );
     }
+
+    /// Overlay a live write_hz SET, as a SET from telescopeSim would.
+    void testApplyPointingCfg( double writeHz )
+    {
+        applyTelescopePointingCfg( writeHz );
+    }
+
+    /// Configured pointing tick rate [Hz of simulated time].
+    double pointingWriteHz()
+    {
+        return m_pointingWriteHz;
+    }
 };
 /** \endcond
  */
@@ -160,6 +172,8 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
     #ifdef WCCSIM_TEST_DOXYGEN_REF
     wccSim::loadSensorSection;
     wccSim::bankKey;
+    wccSim::applyTelescopePointingCfg;
+    wccSim::closePointingStream;
     #endif
     // clang-format on
 
@@ -300,6 +314,33 @@ TEST_CASE( "wccSim builds its sensor array from configuration", "[wccSim]" )
 
         REQUIRE( app.testLoadConfigFile( path ) == 0 );
         REQUIRE( app.noise() == MagAOX::wcc::noiseMode::read );
+
+        std::remove( path.c_str() );
+    }
+
+    SECTION( "a live write_hz is stored for the next exposure" )
+    {
+        wccSimTester app;
+
+        const std::string path = "/tmp/wccSim_test_config_pointing.cfg";
+        {
+            std::ofstream fout( path );
+            fout << "[catalog]\npath=/dev/null\n";
+            fout << "[sim]\nsensors=A\n";
+            fout << "[pointing]\nwrite_hz=5000\n";
+            fout << "[A]\nindi_device=a\npixel_size=3.76\nfull_w=512\nfull_h=512\n";
+        }
+
+        REQUIRE( app.testLoadConfigFile( path ) == 0 );
+        REQUIRE( app.pointingWriteHz() == Approx( 5000.0 ).epsilon( 1e-12 ) );
+
+        app.testApplyPointingCfg( 2500.0 );
+        REQUIRE( app.pointingWriteHz() == Approx( 2500.0 ).epsilon( 1e-12 ) );
+
+        // Non-positive values leave the last valid rate, which is the fallback
+        // collectPointingExposure uses if the stream has no sim-time axis.
+        app.testApplyPointingCfg( 0.0 );
+        REQUIRE( app.pointingWriteHz() == Approx( 2500.0 ).epsilon( 1e-12 ) );
 
         std::remove( path.c_str() );
     }

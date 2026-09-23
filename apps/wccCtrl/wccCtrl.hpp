@@ -28,6 +28,7 @@
 #include "../wccCommon/wccAstrometry.hpp"
 #include "../wccCommon/wccFocalPlane.hpp"
 #include "../wccCommon/wccIndiRate.hpp"
+#include "../wccCommon/wccNumeric.hpp"
 #include "../wccCommon/wccSensorConfig.hpp"
 #include "../wccCommon/wccSkyWCS.hpp"
 #include "../wccCommon/wccStarCatalog.hpp"
@@ -3324,7 +3325,7 @@ inline bool wccCtrl::elementValue( const pcf::IndiProperty &ip, const std::strin
         char *end = nullptr;
         const double v = std::strtod( s.c_str(), &end );
 
-        if( end == s.c_str() || !std::isfinite( v ) )
+        if( end == s.c_str() || !wcc::isFinite( v ) )
         {
             return false;
         }

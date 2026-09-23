@@ -8,7 +8,8 @@ OTHER_HEADERS = ../wccCommon/wccUnits.hpp \
                 ../wccCommon/wccJSON.hpp \
                 ../wccCommon/wccVisit.hpp \
                 ../wccCommon/wccVisitIndi.hpp \
-                ../wccCommon/wccIndiRate.hpp
+                ../wccCommon/wccIndiRate.hpp \
+                ../wccCommon/wccNumeric.hpp
 
 TARGET = visitCtrl
 

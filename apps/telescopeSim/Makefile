@@ -9,6 +9,7 @@ OTHER_HEADERS = ../wccCommon/wccUnits.hpp \
                 ../wccCommon/wccVisit.hpp \
                 ../wccCommon/wccVisitIndi.hpp \
                 ../wccCommon/wccIndiRate.hpp \
+                ../wccCommon/wccNumeric.hpp \
                 ../wccCommon/wccPointingShmim.hpp
 
 TARGET = telescopeSim

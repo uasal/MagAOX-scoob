@@ -58,7 +58,10 @@ publish at the camera's own commanded frame rate.
 
 INDI pointing is 1 Hz status, and a fallback if the shmim is not yet open.
 `pointing.tel_device` / local `pointing` and `offset` commands work as before when
-`pointing.shmim` is left empty.
+`pointing.shmim` is left empty. `wccSim` also subscribes to `tel_device.write_hz`
+and `tel_device.history_s`. A SET of either closes the pointing mmap so the next frame
+reopens the (possibly resized) `telpointing` stream and, if `write_hz` is present,
+updates the tick-rate fallback used when the stream has no sim-time axis.
 
 The offset conversion is shared with `telescopeSim` through
 `wccCommon::offsetBoresight`, so a commanded correction and the resulting image

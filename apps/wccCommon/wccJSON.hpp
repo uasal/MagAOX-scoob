@@ -30,6 +30,8 @@
 #include <utility>
 #include <vector>
 
+#include "wccNumeric.hpp"
+
 namespace MagAOX
 {
 namespace wcc
@@ -419,7 +421,7 @@ inline int jsonValue::asInt( int def ) const
 
     const double v = asDouble( static_cast<double>( def ) );
 
-    if( !std::isfinite( v ) )
+    if( !isFinite( v ) )
     {
         return def;
     }

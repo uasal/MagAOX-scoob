@@ -31,6 +31,7 @@
 
 #include "../wccCommon/wccFocalPlane.hpp"
 #include "../wccCommon/wccIndiRate.hpp"
+#include "../wccCommon/wccNumeric.hpp"
 #include "../wccCommon/wccPSF.hpp"
 #include "../wccCommon/wccPhotometry.hpp"
 #include "../wccCommon/wccPointingShmim.hpp"
@@ -63,6 +64,8 @@
  * are still published at the source camera's commanded frame rate. A same-size
  * occupancy shmim (`shmim_out` + `dwell`) marks a 1 at each detector pixel a
  * PSF stamp was placed so the trail can be overlaid on the image.
+ * `telescopeSim.write_hz` and `history_s` (`current` / `target`) are subscribed
+ * so a live change of the pointing buffer closes and reopens this mmap.
  *
  * <a href="../handbook/operating/software/apps/wccSim.html">Application Documentation</a>
  *
@@ -332,7 +335,7 @@ class wccSim : public MagAOXApp<true>
     {
         wccSimSensor *m_sensor{ nullptr }; ///< Sensor the property belongs to, null for the telescope.
 
-        std::string m_what; ///< Parameter selector: fps, exptime, emgain, bitDepth, roi_*, or telpos.
+        std::string m_what; ///< Parameter selector: fps, exptime, emgain, bitDepth, roi_*, telpos, write_hz, or history_s.
     };
 
     /// Subscriptions indexed by pcf::IndiProperty::createUniqueKey().
@@ -358,6 +361,12 @@ class wccSim : public MagAOXApp<true>
 
     /// Telescope pointing property, registered when m_telDevice is configured.
     pcf::IndiProperty m_indiP_telPos;
+
+    /// Telescope write_hz property, registered when m_telDevice is configured.
+    pcf::IndiProperty m_indiP_telWriteHz;
+
+    /// Telescope history_s property, registered when m_telDevice is configured.
+    pcf::IndiProperty m_indiP_telHistoryS;
     ///@}
 
   public:
@@ -474,6 +483,15 @@ class wccSim : public MagAOXApp<true>
      * \returns -1 if the stream cannot be opened
      */
     int openPointingStream();
+
+    /// Unmap the pointing shmim so a recreate on telescopeSim can be picked up.
+    void closePointingStream();
+
+    /// Apply a live write_hz SET from the telescope device.
+    /** Updates the local write_hz fallback and closes the mmap so the next
+     * snapshot reopens the (possibly resized) stream.
+     */
+    void applyTelescopePointingCfg( double writeHz /**< [in] tick rate [Hz], or NaN to keep */ );
 
     /// Create or resize a sensor's output stream to match a ROI.
     /** \returns 0 on success
@@ -985,6 +1003,32 @@ inline int wccSim::appStartup()
         rb.m_what = "telpos";
         m_bindings[m_indiP_telPos.createUniqueKey()] = rb;
 
+        if( registerIndiPropertySet( m_indiP_telWriteHz, m_telDevice, wcc::pointingWriteHzIndiProperty,
+                                     st_setCallBack_remote ) < 0 )
+        {
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "failed to subscribe to " + m_telDevice + "." + wcc::pointingWriteHzIndiProperty } );
+        }
+
+        remoteBinding cfgHz;
+        cfgHz.m_sensor = nullptr;
+        cfgHz.m_what = "write_hz";
+        m_bindings[m_indiP_telWriteHz.createUniqueKey()] = cfgHz;
+
+        if( registerIndiPropertySet( m_indiP_telHistoryS, m_telDevice, wcc::pointingHistoryIndiProperty,
+                                     st_setCallBack_remote ) < 0 )
+        {
+            return log<software_error, -1>(
+                { __FILE__, __LINE__,
+                  "failed to subscribe to " + m_telDevice + "." + wcc::pointingHistoryIndiProperty } );
+        }
+
+        remoteBinding cfgHist;
+        cfgHist.m_sensor = nullptr;
+        cfgHist.m_what = "history_s";
+        m_bindings[m_indiP_telHistoryS.createUniqueKey()] = cfgHist;
+
         log<text_log>( "pointing slaved to " + m_telDevice + "." + m_telProperty + " (" + m_telRAElement + ", " +
                        m_telDecElement + ", " + m_telPAElement + "); local pointing and offset are ignored" );
     }
@@ -1087,15 +1131,7 @@ inline int wccSim::appShutdown()
         }
     }
 
-    { //mutex scope
-        std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
-
-        if( m_pointingStreamOpen )
-        {
-            ImageStreamIO_closeIm( &m_pointingStream );
-            m_pointingStreamOpen = false;
-        }
-    }
+    closePointingStream();
 
     return 0;
 }
@@ -1570,6 +1606,32 @@ inline int wccSim::openPointingStream()
     return 0;
 }
 
+inline void wccSim::closePointingStream()
+{
+    { //mutex scope
+        std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
+
+        if( m_pointingStreamOpen )
+        {
+            ImageStreamIO_closeIm( &m_pointingStream );
+            m_pointingStreamOpen = false;
+        }
+    }
+}
+
+inline void wccSim::applyTelescopePointingCfg( double writeHz )
+{
+    if( writeHz > 0 )
+    {
+        { //mutex scope
+            std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
+            m_pointingWriteHz = writeHz;
+        }
+    }
+
+    closePointingStream();
+}
+
 inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSample> &samples )
 {
     samples.clear();
@@ -1579,17 +1641,30 @@ inline int wccSim::snapshotPointing( double expTime, std::vector<wcc::pointingSa
         openPointingStream();
     }
 
-    if( m_pointingStreamOpen && m_pointingStream.md != nullptr && m_pointingStream.array.raw != nullptr )
+    if( m_pointingStreamOpen )
     {
-        const IMAGE *im = &m_pointingStream;
-        const uint32_t nAxes = im->md->size[0];
-        const uint32_t depth = ( im->md->naxis >= 3 && im->md->size[2] > 0 ) ? im->md->size[2] : 1;
-        const uint64_t cnt1 = im->md->cnt1;
-        const uint64_t nWritten = im->md->cnt0;
-        const double *data = reinterpret_cast<const double *>( im->array.raw );
+        int collected = 0;
 
-        if( wcc::collectPointingExposure( data, nAxes, depth, cnt1, nWritten, expTime, m_pointingWriteHz,
-                                          samples ) > 0 )
+        { //mutex scope
+            std::lock_guard<std::mutex> lock( m_pointingStreamMutex );
+
+            if( m_pointingStreamOpen && m_pointingStream.md != nullptr &&
+                m_pointingStream.array.raw != nullptr )
+            {
+                const IMAGE *im = &m_pointingStream;
+                const uint32_t nAxes = im->md->size[0];
+                const uint32_t depth = ( im->md->naxis >= 3 && im->md->size[2] > 0 ) ? im->md->size[2] : 1;
+                const uint64_t cnt1 = im->md->cnt1;
+                const uint64_t nWritten = im->md->cnt0;
+                const double *data = reinterpret_cast<const double *>( im->array.raw );
+                const double writeHz = m_pointingWriteHz;
+
+                collected = wcc::collectPointingExposure( data, nAxes, depth, cnt1, nWritten, expTime, writeHz,
+                                                          samples );
+            }
+        }
+
+        if( collected > 0 )
         {
             // 0 keeps every tick. Spatial coalescing in renderFrame is what
             // makes a kHz trail cheap, not this optional time average.
@@ -1840,7 +1915,7 @@ inline bool wccSim::elementValue( const pcf::IndiProperty &ip, const std::string
         char *end = nullptr;
         const double v = std::strtod( s.c_str(), &end );
 
-        if( end == s.c_str() || !std::isfinite( v ) )
+        if( end == s.c_str() || !wcc::isFinite( v ) )
         {
             return false;
         }
@@ -1869,6 +1944,23 @@ inline int wccSim::setCallBack_remote( const pcf::IndiProperty &ipRecv )
     // ------------------------------------------------------------ telescope
     if( rb.m_sensor == nullptr )
     {
+        if( rb.m_what == "write_hz" )
+        {
+            double writeHz = 0;
+            if( !elementValue( ipRecv, "current", writeHz ) )
+            {
+                elementValue( ipRecv, "target", writeHz );
+            }
+            applyTelescopePointingCfg( writeHz );
+            return 0;
+        }
+
+        if( rb.m_what == "history_s" )
+        {
+            closePointingStream();
+            return 0;
+        }
+
         double ra = 0, dec = 0, pa = 0;
         bool haveRA = elementValue( ipRecv, m_telRAElement, ra );
         bool haveDec = elementValue( ipRecv, m_telDecElement, dec );

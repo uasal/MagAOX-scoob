@@ -1,15 +1,27 @@
 # Sample MagAO-X config for telescopeSim, the WCC telescope simulator.
 # Install as /opt/MagAOX/config/telescopesim.conf (process name comes from the proclist).
 #
-# telescopeSim is the authority on where the telescope is pointed. wccSim reads its
-# pointing property to decide what the sky looks like; wccCtrl sends corrections to
-# offset and watches teldata to know when a move has finished.
+# telescopeSim is the authority on where the telescope is pointed. The 1 Hz INDI
+# pointing property (ra, dec, pa) is for operators and wccCtrl. wccSim reads the
+# high-rate telpointing shmim; wccCtrl sends corrections to offset and watches
+# teldata to know when a move has finished.
 #
 # Sequence to run a visit:
 #   xindi visitctrl.visit_file.target=/opt/MagAOX/config/wcc_visit.json
 #   xindi visitctrl.load.toggle=On
 #   xindi telescopesim.start_visit.toggle=On     # slews to the visit target
 #   xindi wccsim.streaming.toggle=On             # images follow the mount
+#
+# Without a visit, stage coordinates then submit:
+#   xindi telescopesim.goto_target.ra=192.5
+#   xindi telescopesim.goto_target.dec=26.84
+#   xindi telescopesim.goto_target.pa=0
+#   xindi telescopesim.goto.toggle=On
+#
+# Tracking starts stopped (stop_tracking=On) until goto or start_visit, or until
+#   xindi telescopesim.stop_tracking.toggle=Off
+# which tracks wherever the mount points. While stopped the mount drifts at
+# idle_drift_rate; while tracking it drifts at tracking_drift_rate.
 #
 # All INDI traffic is held to 1 Hz. High-rate pointing is a separate ImageStreamIO
 # stream (default `telpointing`): a 4x1xN circular buffer of doubles, axes RA, Dec,
@@ -20,29 +32,48 @@
 
 [visit]
 # The visitCtrl instance to take targets from. Leave empty to disable start_visit
-# and drive the mount only with goto_target and offset.
+# and drive the mount only with goto_target + goto, and offset.
 device=visitctrl
 
 [sim]
 # Slew and rotation rates. A 1 deg/s slew crosses a degree of sky in a second, so
 # raise these if you want acquisition sequences to run quickly in simulation.
+# The rates, jitters, settle_time, arrive_tol and jitter_tau are also live MagAO-X
+# numbers (xindi telescopesim.jitter_x.target=0.5) and take effect on the next
+# pointing tick. Each is its own property so setting one cannot rewrite the others.
 slew_rate=1.0
 roll_rate=1.0
 
-# Pointing jitter, rms per axis, in arcsec. This is what the guiding loop has to
-# work against, so it should be a few times the guide tolerance to be interesting
-# but well inside the acquisition search radius. 0 gives a perfectly steady mount,
-# which is useful when debugging the astrometric solution itself.
-jitter=0.2
+# Pointing jitter, rms, in arcsec, along focal plane X and Y (the camera's image
+# axes, through PA and parity). This is what the guiding loop has to work against,
+# so it should be a few times the guide tolerance to be interesting but well inside
+# the acquisition search radius. 0 gives a perfectly steady axis, which is useful
+# when debugging the astrometric solution itself. The older `jitter=` key is still
+# accepted and sets both axes; jitter_x / jitter_y override it.
+jitter_x=0.2
+jitter_y=0.2
 
-# Roll jitter, rms, in degrees.
+# Roll jitter: rotation about the boresight (image rotation), rms, in degrees.
+# Separate from jitter_x / jitter_y.
 jitter_roll=0.002
 
-# Systematic drift along the focal plane axes, in arcsec/min. Non-zero exercises
-# the fast loop's ability to keep up with a moving target; note the loop is
-# proportional only, so a constant drift leaves a steady-state lag.
-drift_x=0.0
-drift_y=0.0
+# Drift while tracking, per axis: ra and dec in arcsec/s, pa in deg/s. This is the
+# residual error guiding has to remove; the loop is proportional only, so a
+# constant drift leaves a steady-state lag. The ra rate is arcsec of right
+# ascension, not scaled by cos(Dec). Live as tracking_drift_rate.{ra,dec,pa}.
+tracking_drift_ra=0.0
+tracking_drift_dec=0.0
+tracking_drift_pa=0.0
+
+# Drift while not tracking (stop_tracking On, or before the first goto): what the
+# sky does to a stopped mount. 15.041 arcsec/s in RA is sidereal for an equatorial
+# mount. Live as idle_drift_rate.{ra,dec,pa}.
+idle_drift_ra=15.041
+idle_drift_dec=0.0
+idle_drift_pa=0.0
+
+# drift_x / drift_y (focal plane, arcsec/min) are retired. They are still accepted
+# so older configs load, but ignored; use tracking_drift_* instead.
 
 # Time spent settling after arriving before teldata reports tracking. wccCtrl waits
 # for this before it re-solves, so it should reflect real mount settling.
@@ -76,6 +107,10 @@ shmim=telpointing
 # advances the mount by 1/write_hz seconds of sim-time and appends one slice.
 # 5000 Hz means a 1 s camera exposure integrates 5000 samples of the path.
 # wccSim's pointing.write_hz must match. 0 disables the stream.
+# Live as MagAO-X numbers write_hz and history_s (current/target). A change that
+# alters the buffer depth stops the pointing worker, recreates the shmim, and
+# starts the worker again; wccSim reopens it on that SET. Live jitter / slew_rate
+# / etc. do not recreate the stream.
 write_hz=5000
 # Circular-buffer span in seconds of simulated time. Must cover the longest camera
 # exposure (a 100 s exposure needs history_s >= 100).

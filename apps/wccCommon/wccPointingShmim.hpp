@@ -22,6 +22,8 @@
  *
  * N is `write_hz * history_s`. The writer advances simulated time by `1/write_hz`
  * on every write and is not paced to wall-clock unless configured to be.
+ * `telescopeSim` publishes `write_hz` and `history_s` as MagAO-X standard
+ * numbers (`current` / `target`); a change that alters N recreates the stream.
  *
  * \ingroup wccCommon_files
  */
@@ -81,6 +83,22 @@ constexpr double pointingWriteHzDefault = 5000.0;
  * \ingroup wccCommon
  */
 constexpr double pointingHistorySDefault = 120.0;
+
+/// INDI property on telescopeSim for the pointing tick rate.
+/** MagAO-X standard number (`current` / `target`). `wccSim` subscribes so a
+ * live change can close and reopen the pointing shmim.
+ *
+ * \ingroup wccCommon
+ */
+constexpr const char *pointingWriteHzIndiProperty = "write_hz";
+
+/// INDI property on telescopeSim for the pointing history span.
+/** MagAO-X standard number (`current` / `target`). `wccSim` subscribes so a
+ * live change can close and reopen the pointing shmim.
+ *
+ * \ingroup wccCommon
+ */
+constexpr const char *pointingHistoryIndiProperty = "history_s";
 
 /// Default time-decimation cap. 0 keeps every pointing tick.
 /** Spatial coalescing into PSF-bank cells is what makes a several-kHz trail

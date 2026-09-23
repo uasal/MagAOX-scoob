@@ -15,6 +15,7 @@ directory.
 | Header | Purpose |
 |---|---|
 | `wccUnits.hpp` | Physical constants and unit conversions, replacing `astropy.units` |
+| `wccNumeric.hpp` | `isFinite()`, a NaN/infinity test that survives the `-ffast-math` MagAO-X builds with (`std::isfinite` does not) |
 | `wccSkyWCS.hpp` | Gnomonic (TAN) world coordinate system, replacing `astropy.wcs` |
 | `wccMDFT.hpp` | Matrix triple-product DFT, a port of the `prysm` functions the Python simulator uses |
 | `wccPSF.hpp` | Pupil construction, broadband PSF generation, and the sub-pixel PSF bank |

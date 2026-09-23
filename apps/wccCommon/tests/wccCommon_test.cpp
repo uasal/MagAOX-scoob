@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <string>
 #include <unordered_map>
 
 #include "../wccAstrometry.hpp"
 #include "../wccFocalPlane.hpp"
 #include "../wccJSON.hpp"
 #include "../wccMDFT.hpp"
+#include "../wccNumeric.hpp"
 #include "../wccPSF.hpp"
 #include "../wccPhotometry.hpp"
 #include "../wccPointingShmim.hpp"
@@ -1416,6 +1419,8 @@ TEST_CASE( "analog gain and pointing samples follow the CMOS and shmim contracts
     binPointingSamples;
     ticksForExposure;
     pointingBufferDepth;
+    pointingWriteHzIndiProperty;
+    pointingHistoryIndiProperty;
     packStampCell;
     unpackStampCell;
     addTrailSample;
@@ -1484,6 +1489,8 @@ TEST_CASE( "analog gain and pointing samples follow the CMOS and shmim contracts
         REQUIRE( ticksForExposure( 0.0, 5000.0 ) == 1 );
         REQUIRE( pointingBufferDepth( 5000.0, 120.0 ) == 600000 );
         REQUIRE( pointingBufferDepth( 0.0, 8.0 ) == 1 );
+        REQUIRE( std::string( pointingWriteHzIndiProperty ) == "write_hz" );
+        REQUIRE( std::string( pointingHistoryIndiProperty ) == "history_s" );
 
         const uint32_t depth = 8;
         std::vector<double> data( depth * pointingNAxes, 0.0 );
@@ -1976,9 +1983,9 @@ TEST_CASE( "solveBoresight separates pointing from roll", "[wccCommon][astrometr
 
         boresightSolution bs;
         REQUIRE( solveBoresight( dup, bs ) == 0 );
-        REQUIRE( std::isfinite( bs.m_fieldX ) );
-        REQUIRE( std::isfinite( bs.m_fieldY ) );
-        REQUIRE( std::isfinite( bs.m_roll ) );
+        REQUIRE( isFinite( bs.m_fieldX ) );
+        REQUIRE( isFinite( bs.m_fieldY ) );
+        REQUIRE( isFinite( bs.m_roll ) );
     }
 
     SECTION( "no measurements is an error" )
@@ -2108,6 +2115,34 @@ TEST_CASE( "starCatalog reads a GSC 3.1 export and cone searches correctly",
         starCatalog cat;
         REQUIRE( cat.load( "/nonexistent/path/to/catalog.csv" ) == -1 );
         REQUIRE( cat.empty() );
+    }
+}
+
+/// Verify isFinite rejects NaN and infinity even under -ffast-math.
+/** MagAO-X builds with `-ffast-math`, which removes `std::isfinite` guards. The
+ * values are parsed from text, as INDI delivers them, so the compiler cannot
+ * constant-fold them.
+ *
+ * \ingroup wccCommon_unit_test
+ */
+TEST_CASE( "isFinite classifies NaN and infinity under fast-math", "[wccCommon][numeric]" )
+{
+    // clang-format off
+    #ifdef WCCCOMMON_TEST_DOXYGEN_REF
+    isFinite;
+    #endif
+    // clang-format on
+
+    for( const char *bad : { "nan", "-nan", "NaN", "inf", "-inf" } )
+    {
+        const double v = std::strtod( bad, nullptr );
+        REQUIRE_FALSE( isFinite( v ) );
+    }
+
+    for( const char *good : { "0", "-0", "0.5", "-1e300", "1e-310", "15.041" } )
+    {
+        const double v = std::strtod( good, nullptr );
+        REQUIRE( isFinite( v ) );
     }
 }
 
