@@ -46,6 +46,7 @@
 ../apps/filterWheelCtrl/tests/filterWheelCtrl_test
 ../apps/flipperCtrl/tests/flipperCtrl_test
 ../apps/flowRPM/tests/flowRPM_test
+../apps/hsfwCtrl/tests/hsfwCtrl_test
 ../apps/hwpTracker/tests/hwpTracker_test
 ../apps/indiTSAccumulator/tests/indiTSAccumulator_test
 ../apps/irisaoCtrl/tests/irisaoCtrl_test
