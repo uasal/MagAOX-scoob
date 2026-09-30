@@ -101,6 +101,7 @@
 ../apps/zaberLowLevel/tests/zaberLowLevel_test
 ../apps/zaberLowLevel/tests/zaberStage_test
 ../apps/zaberLowLevel/tests/zaberUtils_test
+../apps/zaberLowLevelBinary/tests/zaberLowLevelBinary_test
 
 ../apps/fsmCtrl/tests/fsmCtrl_test
 ../apps/fsmCtrl/tests/binaryUart_test
