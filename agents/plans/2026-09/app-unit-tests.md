@@ -49,3 +49,20 @@ Execution notes:
   to match its existing `tests/tests.list` entry and the `**/tests/*_test` gitignore rule.
 - 2026-09-30: `apps/dmCtrl/tests/template_test.cpp` was an uncompilable copy of the template skeleton; it is replaced
   by `dmCtrl_test.cpp`.
+- 2026-09-30: pupilAlign has no tests. Its header is a partial copy of pupilFit that cannot compile (duplicate
+  m_tgtShmim, many undeclared members and callbacks), so it needs rework before it can be tested.
+- 2026-09-30: App-side fixes needed before some of the new tests build (tests assume them; apps not changed here):
+  - `c_stdCamera_blacklevel` is required by dev::stdCamera but missing from andorCtrl, asiCtrl, cameraSim,
+    cred2Ctrl, ocam2KCtrl, picamCtrl, pixelinkCtrl, pvcamCtrl, qhyCtrl and zylaCtrl.
+  - qhyCtrl also lacks `c_stdCamera_synchro` and `setTempControl()`; zylaCtrl still uses the removed
+    `m_startup_*` stdCamera members (now `m_default_*`).
+  - dmRecon: missing `;` in the CPU modevals assignment and an unguarded `mx::cuda::cublasHandle` member.
+  - dmCtrl.hpp does not compile (summerDevice types without `dev::`, undefined PacketCallbacks), so only
+    dmCommands.hpp is tested.
+  - photonCounter::loadImageIntoStream() casts to `uint16_t*` for a float map.
+  - template is named with a C++ keyword, so its example test only compiles after renaming (not in tests.list).
+  - aguc8Ctrl uses `sysPath` as a member (test works around it); po4ao uses unqualified `eigenImage` (test works
+    around it).
+  - fsmCtrl's existing tests reference moved/removed summerDevice types and need rewriting.
+- 2026-09-30: `andorCtrl_test` was added to `EDT_TESTS` in tests/Makefile.one, since andorCtrl derives from
+  dev::edtCamera.
