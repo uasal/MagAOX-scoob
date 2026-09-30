@@ -76,6 +76,7 @@
 ../apps/psfFit/tests/psfFit_test
 ../apps/pupilFit/tests/pupilFit_test
 ../apps/pupilFit/tests/pupilFitter_test
+../apps/pvcamCtrl/tests/pvcamCtrl_test
 ../apps/pwfsSlopeCalc/tests/pwfsSlopeCalc_test
 ../apps/qhyCtrl/tests/qhyCtrl_test
 ../apps/refRMS/tests/refRMS_test
