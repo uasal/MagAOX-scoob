@@ -138,7 +138,7 @@ apps/pupilAlign/pupilAlign
 apps/pupilFit/pupilFit
 apps/pvcamCtrl/pvcamCtrl
 apps/pwfsSlopeCalc/pwfsSlopeCalc
-apps/photonCounter
+apps/photonCounter/photonCounter
 
 #r
 apps/rhusbMon/rhusbMon
