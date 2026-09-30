@@ -61,6 +61,7 @@
 ../apps/psfFit/tests/psfFit_test
 ../apps/pupilFit/tests/pupilFit_test
 ../apps/pwfsSlopeCalc/tests/pwfsSlopeCalc_test
+../apps/qhyCtrl/tests/qhyCtrl_test
 ../apps/refRMS/tests/refRMS_test
 ../apps/rhusbMon/tests/rhusbMon_test
 ../apps/rhusbMon/tests/rhusbMonParsers_test
