@@ -1,9 +1,10 @@
+###########################################################
+#          makefile for the fsmCtrl unit tests            #
+#                                                         #
+# `make` builds the tests and `make test` builds and      #
+# runs them.  See README.md and tests/magAOX_test.mk.     #
+###########################################################
 
-allall: all
+TESTS = fsmCtrl_test binaryUart_test
 
-OTHER_HEADERS=../fsmCtrl.hpp
-OTHER_OBJS=
-TARGET=fsmCtrl_test
-
-
-include ../../../tests/magAOX_test.mk 
+include ../../../tests/magAOX_test.mk
