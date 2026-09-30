@@ -22,6 +22,7 @@
 
 ../libMagAOX/tty/tests/ttyIOUtils_test
 
+../apps/acronameUsbHub/tests/acronameUsbHub_test
 ../apps/adcTracker/tests/adcTracker_test
 ../apps/aguc8Ctrl/tests/aguc8Ctrl_test
 ../apps/alignLoop/tests/alignLoop_test
