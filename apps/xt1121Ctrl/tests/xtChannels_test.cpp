@@ -1,6 +1,7 @@
 /** \file xtChannels_test.cpp
  * \brief Catch2 tests for the xtChannels struct.
  * \author Jared R. Males (jaredmales@gmail.com)
+ * \author Claude Code
  *
  * \ingroup xt1121Ctrl_files
  */
@@ -607,6 +608,15 @@ SCENARIO( "Setting channels from registers", "[xtChannels]" )
  */
 SCENARIO( "Setting registers from channels", "[xtChannels]" )
 {
+    // clang-format off
+    #ifdef XT1121CTRL_TEST_DOXYGEN_REF
+    xt1121Channels::setRegisters( *(uint16_t (*)[4])nullptr );
+    xt1121Channels::setChannel( 0 );
+    xt1121Channels::setInputOnly( 0 );
+    xt1121Channels::clearAll();
+    #endif
+    // clang-format on
+
     GIVEN( "A set of input registers to send to the device" )
     {
         int rv;
