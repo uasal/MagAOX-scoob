@@ -24,6 +24,7 @@
 
 ../apps/adcTracker/tests/adcTracker_test
 ../apps/alignLoop/tests/alignLoop_test
+../apps/asiCtrl/tests/asiCtrl_test
 ../apps/cacaoInterface/tests/cacaoInterface_test
 ../apps/cameraSim/tests/cameraSim_test
 ../apps/closedLoopIndi/tests/closedLoopIndi_test
