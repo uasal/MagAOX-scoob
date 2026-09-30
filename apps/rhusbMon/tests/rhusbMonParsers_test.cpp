@@ -1,6 +1,7 @@
 /** \file rhusbMonParsers_test.cpp
  * \brief Catch2 tests for the parsers in the rhusbMon app.
  * \author Jared R. Males (jaredmales@gmail.com)
+ * \author Claude Code
  *
  * \ingroup rhusbMon_files
  */
@@ -26,17 +27,16 @@ namespace libXWCTest
 namespace rhusbMonTest
 {
 
-/// Verify the RH USB parser helpers decode temperature and humidity replies and reject malformed input.
+/// Verify `RH::parseC()` decodes temperature replies and rejects malformed input.
 /**
  * \ingroup rhusbMon_unit_test
  */
 SCENARIO( "Parsing the temp response", "[rhusbMonParsers]" )
 {
     // clang-format off
-   #ifdef RHUSBMON_TEST_DOXYGEN_REF
-   RH::parseC( *(float *)nullptr, "" );
-   RH::parseH( *(float *)nullptr, "" );
-   #endif
+    #ifdef RHUSBMON_TEST_DOXYGEN_REF
+    RH::parseC( *(float *)nullptr, "" );
+    #endif
     // clang-format on
 
     GIVEN( "A valid response to C from the RH USB probe" )
@@ -154,8 +154,18 @@ SCENARIO( "Parsing the temp response", "[rhusbMonParsers]" )
     }
 }
 
+/// Verify `RH::parseH()` decodes humidity replies and rejects malformed and negative input.
+/**
+ * \ingroup rhusbMon_unit_test
+ */
 SCENARIO( "Parsing the humidity response", "[rhusbMonParsers]" )
 {
+    // clang-format off
+    #ifdef RHUSBMON_TEST_DOXYGEN_REF
+    RH::parseH( *(float *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to H from the RH USB probe" )
     {
         int rv;
