@@ -30,6 +30,7 @@
 ../apps/bmcCtrl/tests/bmcCtrl_test
 ../apps/cacaoInterface/tests/cacaoInterface_test
 ../apps/cameraSim/tests/cameraSim_test
+../apps/closedLoopIndi/tests/closedLoopIndi_indi_test
 ../apps/closedLoopIndi/tests/closedLoopIndi_test
 ../apps/dmCtrl/tests/dmCtrl_test
 ../apps/dmMode/tests/dmMode_test
