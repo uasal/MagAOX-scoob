@@ -46,6 +46,7 @@
 ../apps/modalPSDs/tests/modalPSDs_test
 ../apps/mzmqClient/tests/mzmqClient_test
 ../apps/mzmqServer/tests/mzmqServer_test
+../apps/nsvCtrl/tests/nsvCtrl_test
 ../apps/observerCtrl/tests/observerCtrl_test
 ../apps/ocam2KCtrl/tests/ocamUtils_test
 ../apps/ocam2KCtrl/tests/ocam2KCtrl_test
