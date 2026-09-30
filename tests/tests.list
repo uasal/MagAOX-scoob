@@ -27,6 +27,7 @@
 ../apps/alignLoop/tests/alignLoop_test
 ../apps/alpaoCtrl/tests/alpaoCtrl_test
 ../apps/asiCtrl/tests/asiCtrl_test
+../apps/bmcCtrl/tests/bmcCtrl_test
 ../apps/cacaoInterface/tests/cacaoInterface_test
 ../apps/cameraSim/tests/cameraSim_test
 ../apps/closedLoopIndi/tests/closedLoopIndi_test
