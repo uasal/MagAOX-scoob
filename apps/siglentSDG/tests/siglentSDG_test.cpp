@@ -1,8 +1,7 @@
 /** \file siglentSDG_test.cpp
  * \brief Catch2 tests for the siglentSDG app.
  * \author Jared R. Males (jaredmales@gmail.com)
- *
- * \ingroup siglentSDG_files
+ * \author Claude Code
  */
 
 #include "../../../tests/testXWC.hpp"
@@ -28,11 +27,13 @@ namespace siglentSDGTest
 {
 
 /// \cond DOXYGEN_SUPPRESS_TEST_HARNESS
+/// Test harness naming the siglentSDG channel properties for INDI callback validation.
 class siglentSDG_test : public siglentSDG
 {
 
   public:
-    siglentSDG_test( const std::string device )
+    /// Construct a harness with the given device name, and set the device and name of each channel property.
+    siglentSDG_test( const std::string device /**< [in] INDI device name */ )
     {
         m_configName = device;
 
@@ -89,8 +90,18 @@ SCENARIO( "INDI Callbacks", "[siglentSDG]" )
     XWCTEST_INDI_NEW_CALLBACK( siglentSDG, C2sync );
 }
 
+/// Verify `parseOUTP` extracts the channel and output state from `OUTP?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the OUTP? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseOUTP( *(int *)nullptr, *(int *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to OUTP from the SDG" )
     {
         int rv;
@@ -186,6 +197,12 @@ SCENARIO( "Parsing the OUTP? response", "[siglentSDG]" )
  */
 TEST_CASE( "auto pulse width from frequency", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    autoPulseWidthFromFrequency( 0.0 );
+    #endif
+    // clang-format on
+
     SECTION( "below 2 kHz uses 250 us target" )
     {
         REQUIRE( autoPulseWidthFromFrequency( 1000.0 ) == Approx( 0.00075 ) );
@@ -207,12 +224,18 @@ TEST_CASE( "auto pulse width from frequency", "[siglentSDG]" )
     }
 }
 
-} // namespace siglentSDGTest
-
-} // namespace libXWCTest
-
+/// Verify `parseBSWV` extracts the basic waveform parameters from `BSWV?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the BSWV? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseBSWV( *(int *)nullptr, *(std::string *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, *(double *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to BSWV from the SDG" )
     {
         int rv;
@@ -547,8 +570,18 @@ SCENARIO( "Parsing the BSWV? response", "[siglentSDG]" )
     }
 }
 
+/// Verify `parseMDWV` extracts the modulation state from `MDWV?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the MDWV? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseMDWV( *(int *)nullptr, *(std::string *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to MDWV from the SDG" )
     {
         int rv;
@@ -638,8 +671,18 @@ SCENARIO( "Parsing the MDWV? response", "[siglentSDG]" )
     }
 }
 
+/// Verify `parseSWWV` extracts the sweep state from `SWWV?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the SWWV? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseSWWV( *(int *)nullptr, *(std::string *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to SWWV from the SDG" )
     {
         int rv;
@@ -729,8 +772,18 @@ SCENARIO( "Parsing the SWWV? response", "[siglentSDG]" )
     }
 }
 
+/// Verify `parseBTWV` extracts the burst state from `BTWV?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the BTWV? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseBTWV( *(int *)nullptr, *(std::string *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to BTWV from the SDG" )
     {
         int rv;
@@ -820,8 +873,18 @@ SCENARIO( "Parsing the BTWV? response", "[siglentSDG]" )
     }
 }
 
+/// Verify `parseARWV` extracts the arbitrary-waveform index from `ARWV?` responses and rejects malformed ones.
+/**
+ * \ingroup siglentSDG_unit_test
+ */
 SCENARIO( "Parsing the ARWV? response", "[siglentSDG]" )
 {
+    // clang-format off
+    #ifdef SIGLENTSDG_TEST_DOXYGEN_REF
+    parseARWV( *(int *)nullptr, *(int *)nullptr, "" );
+    #endif
+    // clang-format on
+
     GIVEN( "A valid response to ARWV from the SDG" )
     {
         int rv;
@@ -910,4 +973,6 @@ SCENARIO( "Parsing the ARWV? response", "[siglentSDG]" )
     }
 }
 
-} // namespace siglentSDG_test
+} // namespace siglentSDGTest
+
+} // namespace libXWCTest
