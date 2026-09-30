@@ -6,7 +6,7 @@
  */
 
 #include "../../../tests/testXWC.hpp"
-#include "../../tests/testMacrosINDI.hpp"
+#include "../../../tests/testMacrosINDI.hpp"
 
 #include "../xInstGraph.hpp"
 
