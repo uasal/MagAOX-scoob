@@ -71,6 +71,7 @@
 ../apps/rhusbMon/tests/rhusbMonParsers_test
 ../apps/shmimIntegrator/tests/shmimIntegrator_test
 ../apps/siglentSDG/tests/siglentSDG_test
+../apps/smc100ccCtrl/tests/smc100ccCtrl_indi_test
 ../apps/smc100ccCtrl/tests/smc100ccCtrl_test
 ../apps/sparkleClock/tests/sparkleClock_test
 ../apps/sshDigger/tests/sshDigger_test
