@@ -106,6 +106,7 @@
 ../apps/usbtempMon/tests/usbtempMon_test
 ../apps/userGainCtrl/tests/userGainCtrl_test
 ../apps/w2tcsOffloader/tests/w2tcsOffloader_test
+../apps/wooferTweeterRecon/tests/wooferTweeterRecon_test
 ../apps/xindiserver/tests/xindiserver_test
 
 ../apps/xInstGraph/xigNodes/tests/xigNode_test
