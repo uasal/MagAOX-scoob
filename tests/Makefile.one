@@ -8,6 +8,10 @@
 #   TESTLIBS: Can include `TESTLIBS=-l<lib> where lib is a library needed by  #
 #             this test, which will be += to LDLIBS.                          #
 #                                                                             #
+# vendor SDK stubs:                                                           #
+#   -- if a `stubs/` directory exists next to the test source it is put first #
+#      on the include path, so stub headers shadow installed SDK headers      #
+#                                                                             #
 # notes:                                                                      #
 #   -- normally do not need to edit this file for new tests                   #
 #   -- add conditionals if setuid required, using thSetuid_tests as a guide   #
@@ -35,6 +39,15 @@ PATHNAME=$(dir $(TARGET))
 OBJNAME = $(PATHNAME)$(notdir $(BASENAME)).o
 TESTNAME = $(PATHNAME)$(notdir $(BASENAME))
 EDT_TESTS = ocam2KCtrl_test ocam2KCtrl_lifecycle_test cred2Ctrl_test cred2Ctrl_lifecycle_test
+
+# Vendor SDK stub headers for a test live in a `stubs/` directory next to the
+# test source.  They are put first on the include path so that they shadow any
+# installed SDK headers, keeping the test independent of vendor installs.
+TEST_STUBS_DIR := $(wildcard $(PATHNAME)stubs)
+ifneq ($(TEST_STUBS_DIR),)
+	CXXFLAGS := -I$(abspath $(TEST_STUBS_DIR)) $(CXXFLAGS)
+	CFLAGS := -I$(abspath $(TEST_STUBS_DIR)) $(CFLAGS)
+endif
 
 # add extra libraries for special cases
 
