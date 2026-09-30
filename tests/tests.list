@@ -103,6 +103,7 @@
 ../apps/tcsInterface/tests/tcsInterface_test
 ../apps/timeSeriesSimulator/tests/timeSeriesSimulator_test
 ../apps/trippLitePDU/tests/trippLitePDU_test
+../apps/ttmModulator/tests/ttmModulator_indi_test
 ../apps/ttmModulator/tests/ttmModulator_test
 ../apps/usbtempMon/tests/usbtempMon_test
 ../apps/userGainCtrl/tests/userGainCtrl_test
