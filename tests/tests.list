@@ -94,6 +94,7 @@
 ../apps/streamWriter/tests/streamWriter_lifecycle_test
 ../apps/strehlEstimator/tests/strehlEstimator_test
 ../apps/sysMonitor/tests/sysMonitor_test
+../apps/t2wOffloader/tests/t2wOffloader_indi_test
 ../apps/t2wOffloader/tests/t2wOffloader_test
 ../apps/tcsInterface/tests/tcsInterface_test
 ../apps/timeSeriesSimulator/tests/timeSeriesSimulator_test
