@@ -35,6 +35,7 @@
 ../apps/dmCtrl/tests/dmCtrl_test
 ../apps/dmMode/tests/dmMode_test
 ../apps/dmPokeCenter/tests/dmPokeCenter_test
+../apps/dmPokeXCorr/tests/dmPokeXCorr_indi_test
 ../apps/dmPokeXCorr/tests/dmPokeXCorr_test
 ../apps/dmSpeckle/tests/dmSpeckle_test
 ../apps/elliptecCtrl/tests/elliptecCtrl_indi_test
