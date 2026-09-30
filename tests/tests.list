@@ -28,6 +28,7 @@
 ../apps/alpaoCtrl/tests/alpaoCtrl_test
 ../apps/andorCtrl/tests/andorCtrl_test
 ../apps/asiCtrl/tests/asiCtrl_test
+../apps/baslerCtrl/tests/baslerCtrl_test
 ../apps/bmcCtrl/tests/bmcCtrl_test
 ../apps/cacaoInterface/tests/cacaoInterface_test
 ../apps/cameraSim/tests/cameraSim_test
