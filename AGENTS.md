@@ -116,6 +116,13 @@ Follow these code style and documentation rules exactly.
   - In the common app pattern, the `.cpp` file should contain only the main entrypoint, while the class declaration and out-of-class inline definitions live in the `.hpp`.
   - If deviating from this pattern for a specific app, preserve the local convention already established in that app or directory.
 
+23) Application Test Directory Layout
+  - Each C++ application keeps its unit tests in `apps/<app>/tests/`, with the test sources, a `Makefile`, and a `README.md`.
+  - The `Makefile` sets `TESTS = <app>_test [...]` (plus optional `TESTLIBS`) and includes `../../../tests/magAOX_test.mk`, so tests build through `tests/Makefile.one` with the same flags as the full suite.
+  - The `README.md` states what each test file covers, any harness/stub/fault-injection approach, and how to build and run the tests.
+  - Put vendor SDK stub headers in `apps/<app>/tests/stubs/`, and define the stubbed functions in the test source so each test stays a single translation unit.
+  - List every app test in `tests/tests.list`.
+
 When you finish:
 - Summarize what changed.
 - List affected files.

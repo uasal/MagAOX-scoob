@@ -24,6 +24,19 @@ Then to run all tests:
 $ bash ./testMagAOX.bash
 \endverbatim
 
+Each application also has a `tests` subfolder with its own `Makefile` and `README.md`.  The `Makefile` lists the
+application's tests and includes `tests/magAOX_test.mk`, which builds each one with `Makefile.one`.  From inside
+`apps/<app>/tests`:
+\verbatim
+$ make         # build the app's tests
+$ make test    # build and run the app's tests
+$ make rebuild # rebuild after editing the app header
+$ make clean
+\endverbatim
+
+Vendor SDK stub headers used by an application's tests go in `apps/<app>/tests/stubs`.  When that folder exists,
+`Makefile.one` puts it first on the include path so the stubs shadow any installed SDK.
+
 */
 
 /** \defgroup test_indi Tests of INDI Communications
