@@ -120,7 +120,7 @@ class zaberLowLevelBinary_test : public zaberLowLevelBinary
     }
 
     /// Get the cached device address for a configured stage.
-    int deviceAddressFor( size_t stageIndex ) const
+    int deviceAddressFor( size_t stageIndex )
     {
         return m_stages.at( stageIndex ).deviceAddress();
     }
@@ -139,7 +139,7 @@ class zaberLowLevelBinary_test : public zaberLowLevelBinary
     }
 
     /// Get the FSM state for recovery tests.
-    stateCodes::stateCodeT appState() const
+    stateCodes::stateCodeT appState()
     {
         return state();
     }
