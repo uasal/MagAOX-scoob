@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream> // for stringstreams
 #include <cstddef> // for nullptr
+#include <atomic>  // for std::atomic
 using namespace std;
 
 namespace MagAOX
@@ -240,12 +241,19 @@ namespace MagAOX
             const AdcAccumulator *ParamsPtr = nullptr;
             AdcAccumulator AdcVals[3];
 
+            /// Number of valid ADC replies processed so far, so pollers can detect a new reply.
+            std::atomic<uint64_t> m_replyCount{0};
+
+            /// If false, logReply does nothing. Cleared by fsmCtrl while the ADC stream is polling, so replies aren't logged at the poll rate.
+            std::atomic<bool> m_logReplies{true};
+
             void processReply(char const *Params, const size_t ParamsLen) override
             {
                 if ((NULL != Params) && (ParamsLen >= (3 * sizeof(AdcAccumulator))))
                 {
                     ParamsPtr = reinterpret_cast<const AdcAccumulator *>(Params);
                     std::copy(ParamsPtr, ParamsPtr + 3, AdcVals);
+                    ++m_replyCount;
                 }
                 else
                 {
@@ -262,6 +270,11 @@ namespace MagAOX
 
             void logReply() override
             {
+                if (!m_logReplies)
+                {
+                    return;
+                }
+
                 MagAOXAppT::log<text_log>("BinaryFSMAdcsCommand: ");
                 AdcVals[0].log();
                 AdcVals[1].log();

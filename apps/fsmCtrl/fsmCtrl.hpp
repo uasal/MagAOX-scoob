@@ -13,6 +13,12 @@
 #include <stdio.h>
 #include <cmath>  // For pow(), cos() and M_PI
 
+#include <atomic>
+#include <chrono>
+#include <iomanip>
+#include <limits>
+#include <mutex>
+#include <thread>
 #include <iostream>
 using namespace std;
 
@@ -75,6 +81,8 @@ namespace MagAOX
       const std::string INDI = "indi";
       const std::string LOCALHOST = "127.0.0.1";
       const std::string USB0 = "/dev/ttyUSB0";
+      const double ADC_MAX_RATE = 500.0;     ///< Hard upper limit on the ADC stream polling rate [Hz]
+      const double ADC_REPLY_TIMEOUT = 0.050; ///< Time to wait for an ADC reply before skipping the frame [s]
       ///@}
 
       /** \name Configurable Parameters
@@ -132,6 +140,40 @@ namespace MagAOX
       double m_adc2{0};
       double m_adc3{0};
 
+      /** \name ADC Stream
+       *@{
+       */
+      std::string m_adcShmimName; ///< Name of ADC output shmim. Defaults to <configName>_adcs.
+      std::atomic<double> m_adcStreamRate{0}; ///< ADC polling rate [Hz]. 0 turns the stream off. Can be set in config and from INDI.
+      bool m_adcStreamAvailable{false}; ///< True if the ADC shmim was created. If false, non-zero rates are rejected.
+
+      IMAGE m_adcImage; ///< The ADC output shmim.
+      bool m_adcImageOpen{false}; ///< True once m_adcImage has been created and must be destroyed at shutdown.
+
+      // ADC stream statistics. Used only by the ADC thread.
+      uint64_t m_adcPolls{0}; ///< ADC requests sent.
+      uint64_t m_adcOnTime{0}; ///< Replies received within ADC_REPLY_TIMEOUT.
+      uint64_t m_adcTimeouts{0}; ///< Requests with no reply within ADC_REPLY_TIMEOUT.
+      uint64_t m_adcLate{0}; ///< Replies that arrived after their request timed out (or were unexpected).
+      double m_adcRttMinMs{0}; ///< Shortest on-time reply time [ms].
+      double m_adcRttMaxMs{0}; ///< Longest on-time reply time [ms].
+      double m_adcRttSumMs{0}; ///< Sum of on-time reply times [ms].
+      double m_adcLateMaxMs{0}; ///< Longest reply time for late replies caught while settling after a timeout [ms].
+      std::chrono::steady_clock::time_point m_adcStatsStart; ///< Start of the current reporting interval.
+      uint64_t m_adcLastSeenCount{0}; ///< AdcsQuery already accounted for reply count; any increase is a late or unrequested reply.
+
+      /// Serializes access to the fsm serial link.
+      /** Acquire after m_indiMutex; never acquire m_indiMutex while holding this.
+       */
+      std::mutex m_serialMutex;
+
+      std::thread m_adcThread; ///< The ADC polling thread.
+      bool m_adcThreadInit{true}; ///< Synchronizer so the ADC thread waits until threadStart has finished initializing it.
+      pid_t m_adcThreadID{0}; ///< ADC thread PID.
+
+      pcf::IndiProperty m_adcThreadProp; ///< INDI property publishing the ADC thread details.
+      ///@}
+
     private:
       dev::sdevQuery *telemetryQuery = new TelemetryQuery();
       dev::sdevQuery *adcsQuery = new AdcsQuery();
@@ -152,6 +194,8 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_conversion_factors;
       pcf::IndiProperty m_indiP_input;
       pcf::IndiProperty m_indiP_query;
+      pcf::IndiProperty m_indiP_adcStreamRate; ///< ADC stream polling rate [Hz]. 0 is off.
+      pcf::IndiProperty m_indiP_adcStreamName; ///< Read-only name of the ADC shmim.
 
     public:
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val1);
@@ -166,6 +210,7 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_conversion_factors);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_input);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_query);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adcStreamRate);
 
     public:
       /// Default c'tor.
@@ -283,6 +328,80 @@ namespace MagAOX
        * INDI parameter's 'current' value.
        */
       void updateINDICurrentParams();
+
+      /** \name Serial Link Access
+       *
+       * All fsmCtrl traffic on the fsm serial link goes through here, so that m_serialMutex serializes it.
+       * @{
+       */
+
+      /// Send a query to the fsm while holding m_serialMutex.
+      void lockedQuery(dev::sdevQuery *query /**< [in] the query to send */,
+                       bool logIt = true /**< [in] if true, log the query's endLog text as summerDevice::query does */);
+
+      /// Process pending input from the fsm while holding m_serialMutex.
+      /** Only runs the base summerDevice::receive(), which routes complete replies to their queries.
+       * Does not update INDI or the m_adc and m_dac members.
+       */
+      void lockedRawReceive();
+      ///@}
+
+      /** \name ADC Stream
+       *
+       * Poll continuously the ADCs into a shmim.
+       * @{
+       */
+
+      /// Check whether an ADC stream rate is acceptable.
+      /**
+       * \returns true if rate is finite and in [0, ADC_MAX_RATE]
+       * \returns false otherwise
+       */
+      bool adcRateValid(double rate /**< [in] the requested rate [Hz] */);
+
+      /// Create the ADC output shmim, with the same shape as the command shmim.
+      /** If the configured shape has fewer than 3 pixels, the stream is not created, a warning is logged, and the
+       * ADC stream is disabled.
+       *
+       * \returns 0 on success, or if the stream is disabled because of its shape
+       * \returns -1 on error
+       */
+      int createAdcStream();
+
+      /// Write one set of ADC values to the ADC shmim and notify readers.
+      void writeAdcStream(const float *vals /**< [in] the 3 ADC values [V] */,
+                          const timespec &sendTime /**< [in] time the ADC request was sent */,
+                          const timespec &recvTime /**< [in] time the ADC reply was detected */);
+
+      /// Convert ADC to volts.
+      /**
+       * \returns the average voltage over the accumulated samples
+       * \returns NaN if the accumulator holds no samples
+       */
+      static double adcToVolts(const AdcAccumulator &acc /**< [in] the values returned by the fsm */);
+
+      /// Starter for the ADC thread. Calls adcThreadExec.
+      static void adcThreadStart(fsmCtrl *f /**< [in] a pointer to an fsmCtrl instance (normally this) */);
+
+      /// ADC thread main loop. Polls the ADCs at m_adcStreamRate while the fsm is OPERATING or READY.
+      void adcThreadExec();
+
+      /// Request ADCs once: send a request, wait for the reply, and write the result to the shmim.
+      /** On a timeout, waits up to one more ADC_REPLY_TIMEOUT for the late reply and drains it.
+       *
+       * \returns 0 on success, or if the poll was abandoned because of shutdown
+       * \returns 1 if no reply arrived within ADC_REPLY_TIMEOUT (frame skipped)
+       */
+      int pollAdcs();
+
+      /// Reset the ADC statistics and start a new reporting interval.
+      void resetAdcStats();
+
+      /// Log a summary of the ADC statistics if the reporting interval (5 s) has ended, then reset them.
+      /** By default logged as info, but logged as a warning if any requests timed out or any replies were late.
+       */
+      void reportAdcStats();
+      ///@}
 
       /** \name Telemeter Interface
        *
@@ -422,6 +541,9 @@ namespace MagAOX
 
       config.add("input.type", "", "input.type", argType::Optional, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'ttp'. Defaults to voltages.");
       config.add("input.toggle", "", "input.toggle", argType::Optional, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'. Defaults to shmim.");
+
+      config.add("adcStream.rate", "", "adcStream.rate", argType::Optional, "adcStream", "rate", false, "double", "ADC stream polling rate in Hz. 0 (the default) means off. Can be updated via INDI adc_stream_rate.");
+      config.add("adcStream.shmimName", "", "adcStream.shmimName", argType::Optional, "adcStream", "shmimName", false, "string", "Name of the ADC output shmim. Defaults to <configName>_adcs.");
       telemeterT::setupConfig(config);
     }
 
@@ -495,7 +617,23 @@ namespace MagAOX
         oss << "Config file sets m_inputToggle to a value other than 'shmim', or 'indi': " << m_inputToggle;
         log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
         return -1;
-      }      
+      }
+
+      /// ADC STREAM PARAMETERS ///
+      m_adcShmimName = configName() + "_adcs";
+      _config(m_adcShmimName, "adcStream.shmimName");
+
+      double adcRate = 0;
+      _config(adcRate, "adcStream.rate");
+      if (!adcRateValid(adcRate))
+      {
+        std::ostringstream oss;
+        oss << "adcStream.rate " << adcRate << " is invalid (must be 0 to " << ADC_MAX_RATE << " Hz). ADC stream is off.";
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+        adcRate = 0;
+      }
+      m_adcStreamRate = adcRate;
+
       return 0;
     }
 
@@ -622,6 +760,30 @@ namespace MagAOX
         }
       }
 
+      // Create the ADC shmim
+      if (createAdcStream() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error creating ADC stream"});
+      }
+
+      createStandardIndiNumber<double>(m_indiP_adcStreamRate, "adc_stream_rate", 0.0, ADC_MAX_RATE, 0.0, "%g");
+      m_indiP_adcStreamRate["current"] = m_adcStreamRate.load();
+      m_indiP_adcStreamRate["target"] = m_adcStreamRate.load();
+      if (registerIndiPropertyNew(m_indiP_adcStreamRate, INDI_NEWCALLBACK(m_indiP_adcStreamRate)) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "failed to register adc_stream_rate"});
+      }
+
+      registerIndiPropertyReadOnly(m_indiP_adcStreamName, "adc_stream", pcf::IndiProperty::Text, pcf::IndiProperty::ReadOnly, pcf::IndiProperty::Idle);
+      m_indiP_adcStreamName.add(pcf::IndiElement("name"));
+      m_indiP_adcStreamName["name"] = m_adcStreamAvailable ? m_adcShmimName : std::string("");
+
+      // Start ADC thread
+      if (threadStart(m_adcThread, m_adcThreadInit, m_adcThreadID, m_adcThreadProp, 0, "", "adcStream", this, adcThreadStart) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error starting ADC thread"});
+      }
+
       return 0;
     }
 
@@ -631,6 +793,9 @@ namespace MagAOX
       {
         return log<software_error, -1>({__FILE__, __LINE__});
       }
+
+      // Check that the ADC thread is still running
+      XWCAPP_THREAD_CHECK(m_adcThread, adcStream);
 
       // Set the INDI name, width & heigh properties to those of the shmim
       if (shmimMonitor::updateINDI() < 0)
@@ -669,10 +834,10 @@ namespace MagAOX
       if (state() == stateCodes::CONNECTED)
       {
         // // Get current adc values
-        dev::summerDevice<fsmCtrl>::query(adcsQuery);
+        lockedQuery(adcsQuery);
 
         // // Get current dac values
-        dev::summerDevice<fsmCtrl>::query(dacsQuery);
+        lockedQuery(dacsQuery);
 
         // Get telemetry
         // queryTelemetry();
@@ -707,6 +872,15 @@ namespace MagAOX
       shmimMonitor<fsmCtrl>::appShutdown();
       dev::summerDevice<fsmCtrl>::appShutdown();
 
+      // Stop the ADC thread before destroying the stream it writes
+      XWCAPP_THREAD_STOP(m_adcThread);
+
+      if (m_adcImageOpen)
+      {
+        ImageStreamIO_destroyIm(&m_adcImage);
+        m_adcImageOpen = false;
+      }
+
       return 0;
     }
 
@@ -719,12 +893,34 @@ namespace MagAOX
     }
 
     void fsmCtrl::receive() {
-      dev::summerDevice<fsmCtrl>::receive();
+      lockedRawReceive();
 
       // Once packet had been received, make sure updates are propagated.
       // Since we don't know the packet type, update all.
+      // These update INDI, so they run after the serial lock is released.
       receiveAdcs();
-      receiveDacs();  
+      receiveDacs();
+    }
+
+    void fsmCtrl::lockedQuery(dev::sdevQuery *query, bool logIt)
+    {
+      std::lock_guard<std::mutex> lock(m_serialMutex);
+
+      if (logIt)
+      {
+        dev::summerDevice<fsmCtrl>::query(query);
+      }
+      else
+      {
+        // Same as summerDevice::query but doesn't log each call
+        UartParser->TxBinaryPacket(query->getPayloadType(), query->getPayloadData(), query->getPayloadLen());
+      }
+    }
+
+    void fsmCtrl::lockedRawReceive()
+    {
+      std::lock_guard<std::mutex> lock(m_serialMutex);
+      dev::summerDevice<fsmCtrl>::receive();
     }
 
     //////////////
@@ -804,11 +1000,15 @@ namespace MagAOX
 
       DacsQuery *castDacsQuery = dynamic_cast<DacsQuery *>(dacsQuery);
 
-      castDacsQuery->setPayload(Setpoints, 3 * sizeof(uint32_t));
-      dev::summerDevice<fsmCtrl>::query(castDacsQuery);
+      { // Hold payload under the lock because DacsQuery::processReply reads it
+        std::lock_guard<std::mutex> lock(m_serialMutex);
 
-      // castDacsQuery->logReply();
-      castDacsQuery->resetPayload();
+        castDacsQuery->setPayload(Setpoints, 3 * sizeof(uint32_t));
+        dev::summerDevice<fsmCtrl>::query(castDacsQuery);
+
+        // castDacsQuery->logReply();
+        castDacsQuery->resetPayload();
+      }
 
       // m_dac1 = castDacsQuery->DacSetpoints[0];
       // m_dac2 = castDacsQuery->DacSetpoints[1];
@@ -831,9 +1031,9 @@ namespace MagAOX
 
     int fsmCtrl::recordTelem(const telem_fsm *)
     {
-      dev::summerDevice<fsmCtrl>::query(telemetryQuery);
-      
-      dev::summerDevice<fsmCtrl>::receive();
+      lockedQuery(telemetryQuery);
+
+      lockedRawReceive();
       telemetryQuery->logReply();
 
       return recordFsm(true);
@@ -844,9 +1044,15 @@ namespace MagAOX
       static CGraphFSMTelemetryPayload LastTelemetry; ///< Structure holding the previous fsm voltage measurement.
       TelemetryQuery *telemetryQueryPtr = dynamic_cast<TelemetryQuery *>(telemetryQuery);
 
-      if (!(LastTelemetry == telemetryQueryPtr->Telemetry) || force)
+      CGraphFSMTelemetryPayload currTelemetry;
+      { // The telemetry reply may be processed by any thread
+        std::lock_guard<std::mutex> lock(m_serialMutex);
+        currTelemetry = telemetryQueryPtr->Telemetry;
+      }
+
+      if (!(LastTelemetry == currTelemetry) || force)
       {
-        LastTelemetry = telemetryQueryPtr->Telemetry;
+        LastTelemetry = currTelemetry;
         telem<telem_fsm>({LastTelemetry.P1V2, LastTelemetry.P2V2, LastTelemetry.P28V, LastTelemetry.P2V5, LastTelemetry.P3V3A, LastTelemetry.P6V, LastTelemetry.P5V, LastTelemetry.P3V3D, LastTelemetry.P4V3, LastTelemetry.N5V, LastTelemetry.N6V, LastTelemetry.P150V});
       }
 
@@ -1039,6 +1245,304 @@ namespace MagAOX
       std::ostringstream oss;
       oss << "Created: " << m_shmimName << std::endl;
       log<text_log>(oss.str());
+
+      return 0;
+    }
+
+    /////////////////////////
+    // ADC STREAM
+    /////////////////////////
+
+    bool fsmCtrl::adcRateValid(double rate)
+    {
+      return std::isfinite(rate) && rate >= 0 && rate <= ADC_MAX_RATE;
+    }
+
+    int fsmCtrl::createAdcStream()
+    {
+      // Same shape as the command shmim
+      uint32_t imsize[3] = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 0};
+
+      if (static_cast<uint64_t>(imsize[0]) * imsize[1] < 3)
+      {
+        std::ostringstream oss;
+        oss << "Command shmim shape " << imsize[0] << "x" << imsize[1] << " has fewer than 3 pixels. ADC stream disabled.";
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+
+        m_adcStreamAvailable = false;
+        m_adcStreamRate = 0;
+        return 0;
+      }
+
+      // Always re-creates the file, so a stale stream with another shape can't survive
+      if (ImageStreamIO_createIm_gpu(&m_adcImage, m_adcShmimName.c_str(), 2, imsize, _DATATYPE_FLOAT, -1, 1, IMAGE_NB_SEMAPHORE, 0, MATH_DATA, 0) != IMAGESTREAMIO_SUCCESS)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "failed to create ADC shmim " + m_adcShmimName});
+      }
+
+      // Start from all zeros
+      for (uint64_t i = 0; i < static_cast<uint64_t>(imsize[0]) * imsize[1]; ++i)
+      {
+        m_adcImage.array.F[i] = 0;
+      }
+
+      m_adcImageOpen = true;
+      m_adcStreamAvailable = true;
+
+      log<software_info>({__FILE__, __LINE__, errno, "Created ADC stream: " + m_adcShmimName});
+
+      return 0;
+    }
+
+    void fsmCtrl::writeAdcStream(const float *vals, const timespec &sendTime, const timespec &recvTime)
+    {
+      m_adcImage.md->write = 1;
+
+      // The first 3 pixels hold the ADC values.
+      for (int i = 0; i < 3; ++i)
+      {
+        m_adcImage.array.F[i] = vals[i];
+      }
+
+      m_adcImage.md->atime = sendTime;
+      m_adcImage.md->writetime = recvTime;
+      m_adcImage.md->cnt0++;
+      m_adcImage.md->cnt1 = 0;
+
+      m_adcImage.md->write = 0;
+      ImageStreamIO_sempost(&m_adcImage, -1);
+    }
+
+    double fsmCtrl::adcToVolts(const AdcAccumulator &acc)
+    {
+      if (acc.NumAccums == 0)
+      {
+        return std::numeric_limits<double>::quiet_NaN();
+      }
+
+      // Same conversion as receiveAdcs
+      return (8.192 * (static_cast<double>(acc.Samples) / static_cast<double>(acc.NumAccums))) / 16777216.0;
+    }
+
+    void fsmCtrl::adcThreadStart(fsmCtrl *f)
+    {
+      f->adcThreadExec();
+    }
+
+    void fsmCtrl::adcThreadExec()
+    {
+      m_adcThreadID = syscall(SYS_gettid);
+
+      // Wait for the thread starter to finish initializing this thread.
+      while (m_adcThreadInit == true && m_shutdown == 0)
+      {
+        sleep(1);
+      }
+
+      using clock = std::chrono::steady_clock;
+      const auto idleSlice = std::chrono::milliseconds(20);
+
+      auto nextPoll = clock::now();
+
+      resetAdcStats();
+
+      while (m_shutdown == 0)
+      {
+        double rate = m_adcStreamRate.load();
+
+        AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
+
+        if (rate <= 0 || !m_adcStreamAvailable || (state() != stateCodes::OPERATING && state() != stateCodes::READY))
+        {
+          // When not streaming requests, ADC replies (e.g. from an INDI query) are logged as usual
+          castAdcsQuery->m_logReplies = true;
+
+          // Statistics start fresh when streaming restarts.
+          resetAdcStats();
+          m_adcLastSeenCount = castAdcsQuery->m_replyCount.load();
+
+          std::this_thread::sleep_for(idleSlice);
+          nextPoll = clock::now();
+          continue;
+        }
+
+        // Don't log every ADC reply when streaming
+        castAdcsQuery->m_logReplies = false;
+
+        pollAdcs();
+
+        reportAdcStats();
+
+        // If overran, restart from now
+        nextPoll += std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(1.0 / rate));
+        if (nextPoll < clock::now())
+        {
+          nextPoll = clock::now();
+          continue;
+        }
+
+        // Notice rate changes and shutdown
+        while (m_shutdown == 0 && m_adcStreamRate.load() == rate)
+        {
+          auto now = clock::now();
+          if (now >= nextPoll)
+          {
+            break;
+          }
+          std::this_thread::sleep_for(std::min<clock::duration>(nextPoll - now, idleSlice));
+        }
+      }
+    }
+
+    void fsmCtrl::resetAdcStats()
+    {
+      m_adcPolls = 0;
+      m_adcOnTime = 0;
+      m_adcTimeouts = 0;
+      m_adcLate = 0;
+      m_adcRttMinMs = 0;
+      m_adcRttMaxMs = 0;
+      m_adcRttSumMs = 0;
+      m_adcLateMaxMs = 0;
+      m_adcStatsStart = std::chrono::steady_clock::now();
+    }
+
+    void fsmCtrl::reportAdcStats()
+    {
+      double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_adcStatsStart).count();
+      if (elapsed < 5.0)
+      {
+        return;
+      }
+
+      std::ostringstream oss;
+      oss << "ADC stream (last " << std::fixed << std::setprecision(1) << elapsed << " s): " << m_adcPolls << " polls, " << m_adcOnTime << " on time, "
+          << m_adcTimeouts << " timed out, " << m_adcLate << " late replies; achieved " << m_adcOnTime / elapsed << " Hz";
+
+      if (m_adcOnTime > 0)
+      {
+        oss << "; reply time min/mean/max " << std::setprecision(2) << m_adcRttMinMs << "/" << m_adcRttSumMs / m_adcOnTime << "/" << m_adcRttMaxMs << " ms";
+      }
+
+      if (m_adcLateMaxMs > 0)
+      {
+        oss << "; slowest late reply " << std::setprecision(2) << m_adcLateMaxMs << " ms";
+      }
+
+      oss << " (timeout " << std::setprecision(0) << ADC_REPLY_TIMEOUT * 1000 << " ms)";
+
+      if (m_adcTimeouts > 0 || m_adcLate > 0)
+      {
+        log<software_warning>({__FILE__, __LINE__, oss.str()});
+      }
+      else
+      {
+        log<software_info>({__FILE__, __LINE__, oss.str()});
+      }
+
+      resetAdcStats();
+    }
+
+    int fsmCtrl::pollAdcs()
+    {
+      AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
+
+      using clock = std::chrono::steady_clock;
+      const auto timeout = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(ADC_REPLY_TIMEOUT));
+
+      // Drain pending input first; count any unexpected reply as late.
+      lockedRawReceive();
+
+      uint64_t startCount = castAdcsQuery->m_replyCount.load();
+      m_adcLate += startCount - m_adcLastSeenCount;
+      m_adcLastSeenCount = startCount;
+
+      timespec sendTime;
+      clock_gettime(CLOCK_REALTIME, &sendTime);
+      auto sendSteady = clock::now();
+      lockedQuery(adcsQuery, false);
+      ++m_adcPolls;
+
+      // Wait for the reply; release the lock between checks
+      timespec recvTime;
+      auto deadline = sendSteady + timeout;
+      while (true)
+      {
+        lockedRawReceive();
+
+        uint64_t count = castAdcsQuery->m_replyCount.load();
+        if (count != startCount)
+        {
+          clock_gettime(CLOCK_REALTIME, &recvTime);
+
+          double rttMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
+          if (m_adcOnTime == 0 || rttMs < m_adcRttMinMs)
+          {
+            m_adcRttMinMs = rttMs;
+          }
+          if (rttMs > m_adcRttMaxMs)
+          {
+            m_adcRttMaxMs = rttMs;
+          }
+          m_adcRttSumMs += rttMs;
+          ++m_adcOnTime;
+
+          // More than one reply means an earlier late one arrived in the same read
+          m_adcLate += count - startCount - 1;
+          m_adcLastSeenCount = count;
+          break;
+        }
+
+        if (m_shutdown)
+        {
+          return 0;
+        }
+
+        if (clock::now() > deadline)
+        {
+          // Skip this frame, then wait up to one more timeout for the late reply and drain it.
+          ++m_adcTimeouts;
+
+          auto settleDeadline = deadline + timeout;
+          while (m_shutdown == 0 && clock::now() < settleDeadline)
+          {
+            lockedRawReceive();
+
+            uint64_t settleCount = castAdcsQuery->m_replyCount.load();
+            if (settleCount != startCount)
+            {
+              double lateMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
+              if (lateMs > m_adcLateMaxMs)
+              {
+                m_adcLateMaxMs = lateMs;
+              }
+              m_adcLate += settleCount - startCount;
+              m_adcLastSeenCount = settleCount;
+              break;
+            }
+
+            std::this_thread::sleep_for(std::chrono::microseconds(150));
+          }
+
+          return 1;
+        }
+
+        std::this_thread::sleep_for(std::chrono::microseconds(150));
+      }
+
+      AdcAccumulator vals[3];
+      { // Copy the reply under lock
+        std::lock_guard<std::mutex> lock(m_serialMutex);
+        std::copy(castAdcsQuery->AdcVals, castAdcsQuery->AdcVals + 3, vals);
+      }
+
+      float volts[3];
+      for (int i = 0; i < 3; ++i)
+      {
+        volts[i] = static_cast<float>(adcToVolts(vals[i]));
+      }
+
+      writeAdcStream(volts, sendTime, recvTime);
 
       return 0;
     }
@@ -1432,13 +1936,13 @@ namespace MagAOX
         if (query_obj == "adc")
         {
           log<text_log>("INDI query ADCs.");
-          dev::summerDevice<fsmCtrl>::query(adcsQuery);
+          lockedQuery(adcsQuery);
           updateIfChanged(m_indiP_query, "query", "adc");
         }
         else if (query_obj == "dac")
         {
           log<text_log>("INDI query ADCs.");
-          dev::summerDevice<fsmCtrl>::query(dacsQuery);
+          lockedQuery(dacsQuery);
           updateIfChanged(m_indiP_query, "query", "dac");
         }
         else
@@ -1447,6 +1951,50 @@ namespace MagAOX
           updateIfChanged(m_indiP_query, "query", "none");
         }
       }
+    }
+
+    // callback from setting m_indiP_adcStreamRate - set the ADC stream rate
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adcStreamRate)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_adcStreamRate, ipRecv);
+
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+
+      double target;
+      if (indiTargetUpdate(m_indiP_adcStreamRate, target, ipRecv, false) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      if (!adcRateValid(target) || (target > 0 && !m_adcStreamAvailable))
+      {
+        std::ostringstream oss;
+        if (!m_adcStreamAvailable)
+        {
+          oss << "Rejected adc_stream_rate " << target << ": ADC stream is disabled (command shmim has fewer than 3 pixels)";
+        }
+        else
+        {
+          oss << "Rejected adc_stream_rate " << target << " (must be 0 to " << ADC_MAX_RATE << " Hz)";
+        }
+        log<software_error>({__FILE__, __LINE__, errno, oss.str()});
+
+        // Set the target to the rate being used
+        updateIfChanged(m_indiP_adcStreamRate, "target", m_adcStreamRate.load());
+        return -1;
+      }
+
+      m_adcStreamRate = target;
+
+      updateIfChanged(m_indiP_adcStreamRate, "current", target);
+      updateIfChanged(m_indiP_adcStreamRate, "target", target);
+
+      std::ostringstream oss;
+      oss << "ADC stream rate set to " << target << " Hz";
+      log<software_info>({__FILE__, __LINE__, errno, oss.str()});
+
+      return 0;
     }
 
     /////////
