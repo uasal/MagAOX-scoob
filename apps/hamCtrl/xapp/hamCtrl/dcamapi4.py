@@ -1,8 +1,6 @@
-# This was taken from the dcamsdk4 python examples for the Hamamatsu 22-UP camera
-
-# dcamapi4.py : Dec 16, 2022
+# dcamapi4.py : Apr 16, 2025
 #
-# Copyright (C) 2021-2022 Hamamatsu Photonics K.K.. All right reserved.
+# Copyright (C) 2021-2025 Hamamatsu Photonics K.K.. All right reserved.
 
 
 import platform
@@ -85,6 +83,7 @@ class DCAMERR(IntEnum):
     REQUIREDSNAP = -2147481540  # 0x8000083c, the capture mode is sequence on using device memory.
     LESSSYSTEMMEMORY = -2147481537  # 0x8000083f, the sysmte memory size is too small. PC doesn't have enough memory or is limited memory by 32bit OS.
     INVALID_SELECTEDLINES = -2147481534  # 0x80000842, the combination of selected lines values are invalid. e.g. DCAM_IDPROP_SELECTEDLINES_VPOS + DCAM_IDPROP_SELECTEDLINES_VSIZE is greater than the number of vertical lines of sensor.
+    INVALID_REALTIMEGAINCORRECTREGIONS = -2147481533  # 0x80000843, the combination of hpos and hsize for realtime correct region is invalid. e.g. DCAM_IDPROP_REALTIMECORRECTREGION_HPOS + DCAM_IDPROP_REALTIMECORRECTREGION_HSIZE is grater than the number of horizontal pixel.
     NOTSUPPORT = -2147479805  # 0x80000f03, camera does not support the function or property with current settings
     # camera or bus trouble
     FAILREADCAMERA = -2097147902  # 0x83001002, failed to read data from camera
@@ -215,6 +214,10 @@ class DCAMAPI_INITOPTION(IntEnum):
     ENDMARK = 0x00000000
 
 
+class DCAMDATA_KIND(IntEnum):
+    NONE = 0x00000000
+
+
 class DCAM_CODEPAGE(IntEnum):
     SHIFT_JIS = 932  # Shift JIS
     UTF16_LE = 1200  # UTF-16 (Little Endian)
@@ -222,6 +225,22 @@ class DCAM_CODEPAGE(IntEnum):
     UTF7 = 65000  # UTF-7 translation
     UTF8 = 65001  # UTF-8 translation
     NONE = 0
+
+
+class DCAMDEV_CAPDOMAIN(IntEnum):
+    FUNCTION = 0x00000000
+
+
+class DCAMDEV_CAPFLAG:
+    class FUNCTION(IntEnum):
+        """
+        DCAMDEV_CAPFLAG_*
+        """
+        FRAMESTAMP = 0x00000001
+        TIMESTAMP = 0x00000002
+        CAMERASTAMP = 0x00000004
+        NONE = 0x00000000
+    
 
 
 class DCAM_IDPROP(IntEnum):
@@ -308,6 +327,7 @@ class DCAM_IDPROP(IntEnum):
     REALTIMEGAINCORRECT_LEVEL = 3146112  # 0x00300180, R/W, mode,   "REALTIME GAIN CORRECT LEVEL"
     REALTIMEGAINCORRECT_INTERVAL = 3146128  # 0x00300190, R/W,  mode,   "REALTIME GAIN CORRECT INTERVAL"
     NUMBEROF_REALTIMEGAINCORRECTREGION = 3146144  # 0x003001A0
+    FULLWELL_MODE = 3146160  # 0x003001B0, R/W, mode,   "FULLWELL MODE"
     # color features
     VIVIDCOLOR = 3146240  # 0x00300200, R/W, mode,  "VIVID COLOR"
     WHITEBALANCEMODE = 3146256  # 0x00300210, R/W, mode,    "WHITEBALANCE MODE"
@@ -316,6 +336,7 @@ class DCAM_IDPROP(IntEnum):
     # 0x00300310 is reserved
     REALTIMEGAINCORRECTREGION_HPOS = 3149824  # 0x00301000, R/W,    long,   "REALTIME GAIN CORRECT REGION HPOS"
     REALTIMEGAINCORRECTREGION_HSIZE = 3153920  # 0x00302000, R/W,   long,   "REALTIME GAIN CORRECT REGION HSIZE"
+    # - 0x00304FFF for 256 REGIONs at least
     _REALTIMEGAINCORRECTIONREGION = 16  # 0x00000010, the offset of ID for Nth REALTIME GAIN CORRECT REGION parameter
     # Group: ALU
     # ALU
@@ -372,6 +393,7 @@ class DCAM_IDPROP(IntEnum):
     READOUT_DIRECTION = 4194608  # 0x00400130, R/W, mode,   "READOUT DIRECTION"
     READOUT_UNIT = 4194624  # 0x00400140, R/O, mode,    "READOUT UNIT"
     SHUTTER_MODE = 4194640  # 0x00400150, R/W, mode,    "SHUTTER MODE"
+    READOUT_FREQUENCY = 4194656  # 0x00400160, R/W, frequency, "READOUT FREQUENCY"
     # sensor mode
     SENSORMODE = 4194832  # 0x00400210, R/W, mode,  "SENSOR MODE"
     SENSORMODE_LINEBUNDLEHEIGHT = 4194896  # 0x00400250, R/W, long, "SENSOR MODE LINE BUNDLEHEIGHT"
@@ -561,6 +583,30 @@ class DCAMDEV_OPEN(Structure):
     def __init__(self):
         self.size = sizeof(DCAMDEV_OPEN)
         self.index = 0
+
+
+class DCAMDEV_CAPABILITY(Structure):
+    _pack_ = 8
+    _fields_ = [
+        ('size', c_int32),
+        ('domain', c_int32),
+        ('capflag', c_int32),  # out
+        ('kind', c_int32)
+    ]
+
+    def __init__(self):
+        self.size = sizeof(DCAMDEV_CAPABILITY)
+        self.domain = DCAMDEV_CAPDOMAIN.FUNCTION
+        self.kind = DCAMDATA_KIND.NONE
+    
+    def is_support_framestamp(self):
+        return True if self.capflag & DCAMDEV_CAPFLAG.FUNCTION.FRAMESTAMP else False
+    
+    def is_support_timestamp(self):
+        return True if self.capflag & DCAMDEV_CAPFLAG.FUNCTION.TIMESTAMP else False
+    
+    def is_support_camerastamp(self):
+        return True if self.capflag & DCAMDEV_CAPFLAG.FUNCTION.CAMERASTAMP else False
 
 
 class DCAMDEV_STRING(Structure):
@@ -1085,6 +1131,10 @@ class DCAMPROP:
         MEDIUM = 3
         LARGE = 4
 
+    class FULLWELL_MODE(IntEnum):
+        STANDARD = 0
+        HIGH = 1
+
     class MODE(IntEnum):
         OFF = 1
         ON = 2
@@ -1306,6 +1356,9 @@ dcamdev_open.restype = DCAMERR
 dcamdev_close = __dll.dcamdev_close
 dcamdev_close.argtypes = [c_void_p]
 dcamdev_close.restype = DCAMERR
+dcamdev_getcapability = __dll.dcamdev_getcapability
+dcamdev_getcapability.argtypes = [c_void_p, POINTER(DCAMDEV_CAPABILITY)]
+dcamdev_getcapability.restype = DCAMERR
 dcamdev_getstring = __dll.dcamdev_getstring
 dcamdev_getstring.argtypes = [c_void_p, POINTER(DCAMDEV_STRING)]
 dcamdev_getstring.restype = DCAMERR
