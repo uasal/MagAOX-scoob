@@ -1315,13 +1315,8 @@ namespace MagAOX
 
     double fsmCtrl::adcToVolts(const AdcAccumulator &acc)
     {
-      if (acc.NumAccums == 0)
-      {
-        return std::numeric_limits<double>::quiet_NaN();
-      }
-
-      // Same conversion as receiveAdcs
-      return (8.192 * (static_cast<double>(acc.Samples) / static_cast<double>(acc.NumAccums))) / 16777216.0;
+      // Same conversion as receiveAdcs (NaN if NumAccums is 0)
+      return acc.Volts();
     }
 
     void fsmCtrl::adcThreadStart(fsmCtrl *f)

@@ -10,6 +10,8 @@
 #include <sstream> // for stringstreams
 #include <cstddef> // for nullptr
 #include <atomic>  // for std::atomic
+#include <iomanip> // for std::setw, std::setfill
+#include <limits>  // for std::numeric_limits
 using namespace std;
 
 namespace MagAOX
@@ -95,28 +97,53 @@ namespace MagAOX
 
         /**
          * @brief Structure for the response payload of the ADC query command
+         *
+         * Matches the firmware's AdcAccumulator (include/cgraph/CGraphCommon.hpp &
+         * FineSteeringMirrorController/processor/CmdHandlersBinary.cpp):
+         * - bits 0-31 hold the sum of NumAccums ADC readings
+         * - bits 32-47 are reserved
+         * - bits 48-63 hold NumAccums.
          */
         union AdcAccumulator
         {
             uint64_t all;
             struct
             {
-                int64_t Samples : 24;
-                int64_t reserved : 24;
-                uint16_t NumAccums;
+                int64_t Samples : 32;    ///< Sum of NumAccums ADC readings.
+                int64_t reserved : 16;   ///< Bits 32-47; ignored.
+                uint64_t NumAccums : 16; ///< Number of ADC readings in the sum.
 
             } __attribute__((__packed__));
 
             AdcAccumulator() { all = 0; }
 
+            /// The average ADC reading in volts: Samples / NumAccums, scaled by 4.096 / 2^23 (from processor/CmdHandlersBinary.cpp).
+            /**
+             * \returns NaN if NumAccums is 0
+             */
+            double Volts() const
+            {
+                if (NumAccums == 0)
+                {
+                    return std::numeric_limits<double>::quiet_NaN();
+                }
+                return (4.096 * (static_cast<double>(Samples) / static_cast<double>(NumAccums))) / 8388608.0;
+            }
+
+            /// Log the decoded value, then the raw 8 bytes as NumAccums | reserved | sum.
             void log() const
             {
                 std::ostringstream oss;
-                oss << "AdcAccumulator: Samples: " << (double)Samples << " (x" << (unsigned long)(all >> 32) << (unsigned long)(all) << "), NumAccums: " << (unsigned long)NumAccums << "(0x" << (unsigned long)NumAccums << ")";
+                oss << "AdcAccumulator: " << std::scientific << std::setprecision(3) << Volts() << " V (avg " << std::fixed << std::setprecision(2)
+                    << (NumAccums == 0 ? 0.0 : static_cast<double>(Samples) / static_cast<double>(NumAccums)) << " ADC units = "
+                    << static_cast<int64_t>(Samples) << " / " << static_cast<unsigned>(NumAccums) << " readings); raw " << std::hex << std::setfill('0')
+                    << std::setw(4) << ((all >> 48) & 0xFFFF) << "|" << std::setw(4) << ((all >> 32) & 0xFFFF) << "|" << std::setw(8) << (all & 0xFFFFFFFF);
                 MagAOXAppT::log<text_log>(oss.str());
             }
 
         } __attribute__((__packed__));
+
+        static_assert(sizeof(AdcAccumulator) == 8, "AdcAccumulator must match the 8-byte firmware layout");
 
         // /**
         //  * @brief Base class for all the fsm queries
