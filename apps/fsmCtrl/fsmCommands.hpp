@@ -25,10 +25,14 @@ namespace MagAOX
          * tells the fsm what command is being sent.
          */
         static const uint16_t CGraphPayloadTypeFSMDacs = 0x2002U;              // Payload: 3 uint32's
-        static const uint16_t CGraphPayloadTypeFSMDacsFloatingPoint = 0x2003U; // Payload: 3 double-precision floats
-        static const uint16_t CGraphPayloadTypeFSMAdcs = 0x2004U;              // Payload: 3 AdcAcumulators
-        static const uint16_t CGraphPayloadTypeFSMAdcsFloatingPoint = 0x2005U; // Payload: 3 double-precision floats
+        static const uint16_t CGraphPayloadTypeFSMAdcs = 0x2003U;              // Payload: 3 AdcAcumulators
+        static const uint16_t CGraphPayloadTypeFSMAdcsFloatingPoint = 0x2004U; // Payload: 3 double-precision floats
+        static const uint16_t CGraphPayloadTypeFSMDacsFloatingPoint = 0x2005U; // Payload: 3 double-precision floats
         static const uint16_t CGraphPayloadTypeFSMTelemetry = 0x2006U;
+        static const uint16_t CGraphPayloadTypeFSMHardwareConfigRegister = 0x2007U;
+        static const uint16_t CGraphPayloadTypeFSMAdcConfigRegister = 0x2008U;
+        static const uint16_t CGraphPayloadTypeFSMAccumulatorConfigRegister = 0x2009U;
+        static const uint16_t CGraphPayloadTypeFSMDacConfigRegister = 0x200AU;
 
         /**
          * @brief Structure for the response payload of the Telemetry command
@@ -98,26 +102,30 @@ namespace MagAOX
         /**
          * @brief Structure for the response payload of the ADC query command
          *
-         * Matches the firmware's AdcAccumulator (include/cgraph/CGraphCommon.hpp &
+         * Process CGraphPayloadTypeFSMAdcs request (as defined in firmware include/cgraph/CGraphCommon.hpp and
          * FineSteeringMirrorController/processor/CmdHandlersBinary.cpp):
-         * - bits 0-31 hold the sum of NumAccums ADC readings
-         * - bits 32-47 are reserved
-         * - bits 48-63 hold NumAccums.
          */
         union AdcAccumulator
         {
             uint64_t all;
             struct
             {
-                int64_t Samples : 32;    ///< Sum of NumAccums ADC readings.
-                int64_t reserved : 16;   ///< Bits 32-47; ignored.
-                uint64_t NumAccums : 16; ///< Number of ADC readings in the sum.
+                int64_t Samples : 32;    ///< Bits 0-31 of the sum of NumAccums ADC readings.
+                int64_t reserved : 16;   ///< Bits 32-47 of the sum (named "reserved" in the firmware).
+                uint64_t NumAccums : 16; ///< Number of ADC readings in the sum. 0 means no new readings since the last read.
 
             } __attribute__((__packed__));
 
             AdcAccumulator() { all = 0; }
 
-            /// The average ADC reading in volts: Samples / NumAccums, scaled by 4.096 / 2^23 (from processor/CmdHandlersBinary.cpp).
+            /// The full signed 48-bit sum of ADC readings (Samples plus reserved as the high bits).
+            int64_t Sum() const
+            {
+                // Shift bit 47 up to the sign bit to drop NumAccums, then shift back to extend the sign.
+                return static_cast<int64_t>(all << 16) >> 16;
+            }
+
+            /// The average ADC reading in volts: Sum / NumAccums, scaled by 4.096 / 2^23 (from processor/CmdHandlersBinary.cpp).
             /**
              * \returns NaN if NumAccums is 0
              */
@@ -127,17 +135,17 @@ namespace MagAOX
                 {
                     return std::numeric_limits<double>::quiet_NaN();
                 }
-                return (4.096 * (static_cast<double>(Samples) / static_cast<double>(NumAccums))) / 8388608.0;
+                return (4.096 * (static_cast<double>(Sum()) / static_cast<double>(NumAccums))) / 8388608.0;
             }
 
-            /// Log the decoded value, then the raw 8 bytes as NumAccums | reserved | sum.
+            /// Log the decoded value, then the raw 8 bytes as NumAccums | sum bits 47-32 | sum bits 31-0.
             void log() const
             {
                 std::ostringstream oss;
                 oss << "AdcAccumulator: " << std::scientific << std::setprecision(3) << Volts() << " V (avg " << std::fixed << std::setprecision(2)
-                    << (NumAccums == 0 ? 0.0 : static_cast<double>(Samples) / static_cast<double>(NumAccums)) << " ADC units = "
-                    << static_cast<int64_t>(Samples) << " / " << static_cast<unsigned>(NumAccums) << " readings); raw " << std::hex << std::setfill('0')
-                    << std::setw(4) << ((all >> 48) & 0xFFFF) << "|" << std::setw(4) << ((all >> 32) & 0xFFFF) << "|" << std::setw(8) << (all & 0xFFFFFFFF);
+                    << (NumAccums == 0 ? 0.0 : static_cast<double>(Sum()) / static_cast<double>(NumAccums)) << " ADC units = " << Sum() << " / "
+                    << static_cast<unsigned>(NumAccums) << " readings); raw " << std::hex << std::setfill('0') << std::setw(4) << ((all >> 48) & 0xFFFF)
+                    << "|" << std::setw(4) << ((all >> 32) & 0xFFFF) << "|" << std::setw(8) << (all & 0xFFFFFFFF);
                 MagAOXAppT::log<text_log>(oss.str());
             }
 

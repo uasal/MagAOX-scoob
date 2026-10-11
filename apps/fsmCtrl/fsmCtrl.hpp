@@ -155,6 +155,8 @@ namespace MagAOX
       uint64_t m_adcOnTime{0}; ///< Replies received within ADC_REPLY_TIMEOUT.
       uint64_t m_adcTimeouts{0}; ///< Requests with no reply within ADC_REPLY_TIMEOUT.
       uint64_t m_adcLate{0}; ///< Replies that arrived after their request timed out (or were unexpected).
+      uint64_t m_adcNewData{0}; ///< Replies with NumAccums > 0 (i.e. new readings) are written to the shmim.
+      uint64_t m_adcNoData{0}; ///< Replies with no new readings (NumAccums = 0) are not written.
       double m_adcRttMinMs{0}; ///< Shortest on-time reply time [ms].
       double m_adcRttMaxMs{0}; ///< Longest on-time reply time [ms].
       double m_adcRttSumMs{0}; ///< Sum of on-time reply times [ms].
@@ -932,9 +934,9 @@ namespace MagAOX
     {
       AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
 
-      double samples1 = static_cast<double>(castAdcsQuery->AdcVals[0].Samples);
-      double samples2 = static_cast<double>(castAdcsQuery->AdcVals[1].Samples);
-      double samples3 = static_cast<double>(castAdcsQuery->AdcVals[2].Samples);
+      double samples1 = static_cast<double>(castAdcsQuery->AdcVals[0].Sum());
+      double samples2 = static_cast<double>(castAdcsQuery->AdcVals[1].Sum());
+      double samples3 = static_cast<double>(castAdcsQuery->AdcVals[2].Sum());
 
       double numAccums1 = static_cast<double>(castAdcsQuery->AdcVals[0].NumAccums);
       double numAccums2 = static_cast<double>(castAdcsQuery->AdcVals[1].NumAccums);
@@ -1395,6 +1397,8 @@ namespace MagAOX
       m_adcOnTime = 0;
       m_adcTimeouts = 0;
       m_adcLate = 0;
+      m_adcNewData = 0;
+      m_adcNoData = 0;
       m_adcRttMinMs = 0;
       m_adcRttMaxMs = 0;
       m_adcRttSumMs = 0;
@@ -1411,8 +1415,9 @@ namespace MagAOX
       }
 
       std::ostringstream oss;
-      oss << "ADC stream (last " << std::fixed << std::setprecision(1) << elapsed << " s): " << m_adcPolls << " polls, " << m_adcOnTime << " on time, "
-          << m_adcTimeouts << " timed out, " << m_adcLate << " late replies; achieved " << m_adcOnTime / elapsed << " Hz";
+      oss << "ADC stream (last " << std::fixed << std::setprecision(1) << elapsed << " s): " << m_adcPolls << " polls, " << m_adcOnTime << " on time ("
+          << m_adcNewData << " new data, " << m_adcNoData << " no new data), " << m_adcTimeouts << " timed out, " << m_adcLate
+          << " late replies; achieved " << m_adcNewData / elapsed << " Hz";
 
       if (m_adcOnTime > 0)
       {
@@ -1531,6 +1536,14 @@ namespace MagAOX
         std::copy(castAdcsQuery->AdcVals, castAdcsQuery->AdcVals + 3, vals);
       }
 
+      // If no new readings since the last read, count the frame, but don't write it
+      if (vals[0].NumAccums == 0 && vals[1].NumAccums == 0 && vals[2].NumAccums == 0)
+      {
+        ++m_adcNoData;
+        return 0;
+      }
+      ++m_adcNewData;
+
       float volts[3];
       for (int i = 0; i < 3; ++i)
       {
@@ -1603,6 +1616,7 @@ namespace MagAOX
 
         return setDacs(dacs);
       }
+      return 0;
     }
 
     // callback from setting m_indiP_val2
@@ -1663,6 +1677,7 @@ namespace MagAOX
 
         return setDacs(dacs);
       }
+      return 0;
     }
 
     // callback from setting m_indiP_val3
@@ -1723,6 +1738,7 @@ namespace MagAOX
 
         return setDacs(dacs);
       }
+      return 0;
     }
 
     // callback from setting conversion_factors
@@ -1763,6 +1779,7 @@ namespace MagAOX
       std::ostringstream oss;
       oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;
       log<text_log>(oss.str());
+      return 0;
     }
 
     // callback from setting m_indiP_input (dacs, voltages, ttp)
@@ -1817,6 +1834,7 @@ namespace MagAOX
         oss << "INDI input toggle: " << m_inputToggle;
         log<text_log>(oss.str());
       }
+      return 0;
     }
 
     // callback from setting m_indiP_dac1 (min, max)
@@ -1842,7 +1860,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
-
+      return 0;
     }
 
     // callback from setting m_indiP_dac2 (min, max)
@@ -1868,6 +1886,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
+      return 0;
     }
 
     // callback from setting m_indiP_dac3 (min, max)
@@ -1893,6 +1912,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
+      return 0;
     }
 
     // // callback from setting m_indiP_adc1 - not a settable param
@@ -1946,6 +1966,7 @@ namespace MagAOX
           updateIfChanged(m_indiP_query, "query", "none");
         }
       }
+      return 0;
     }
 
     // callback from setting m_indiP_adcStreamRate - set the ADC stream rate
