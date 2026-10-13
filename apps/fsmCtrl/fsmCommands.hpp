@@ -12,6 +12,7 @@
 #include <atomic>  // for std::atomic
 #include <iomanip> // for std::setw, std::setfill
 #include <limits>  // for std::numeric_limits
+#include <cstring> // for memcpy
 using namespace std;
 
 namespace MagAOX
@@ -276,7 +277,7 @@ namespace MagAOX
             const AdcAccumulator *ParamsPtr = nullptr;
             AdcAccumulator AdcVals[3];
 
-            /// Number of valid ADC replies processed so far, so pollers can detect a new reply.
+            /// Number of valid ADC replies processed so far.
             std::atomic<uint64_t> m_replyCount{0};
 
             /// If false, logReply does nothing. Cleared by fsmCtrl while the ADC stream is polling, so replies aren't logged at the poll rate.
@@ -391,6 +392,87 @@ namespace MagAOX
                 MagAOXAppT::log<text_log>(oss.str());
             }
         };
+
+        /**
+         * @brief Child query class that handles querying the fsm's configuration register
+         */
+        class ConfigRegisterQuery : public dev::sdevQuery
+        {
+        public:
+            ConfigRegisterQuery(uint16_t payloadType /**< [in] the payload type of the register */,
+                                const std::string &name /**< [in] the register name */)
+                : m_name(name)
+            {
+                PayloadType = payloadType;
+                startLog = m_name + ": Querying.";
+                endLog = m_name + ": Finished querying.";
+            }
+
+            uint32_t Value{0}; ///< The register value from the last reply.
+
+            /// Number of valid replies processed so far.
+            std::atomic<uint64_t> m_replyCount{0};
+
+            virtual void setPayload(const void *data /**< [in] the 4-byte register value to write */,
+                                    uint16_t len /**< [in] the payload length */)
+            {
+                PayloadData = const_cast<void *>(data);
+                PayloadLen = len;
+            }
+
+            void processReply(char const *Params, const size_t ParamsLen) override
+            {
+                if ((NULL != Params) && (ParamsLen >= sizeof(uint32_t)))
+                {
+                    memcpy(&Value, Params, sizeof(uint32_t));
+                    ++m_replyCount;
+                }
+                else
+                {
+                    errorLogString(ParamsLen);
+                }
+            }
+
+            void errorLogString(const size_t ParamsLen) override
+            {
+                std::ostringstream oss;
+                oss << m_name << ": Short packet: " << ParamsLen << " (expected " << sizeof(uint32_t) << " bytes): ";
+                MagAOXAppT::log<software_error>({__FILE__, __LINE__, oss.str()});
+            }
+
+            void logReply() override
+            {
+                std::ostringstream oss;
+                oss << m_name << ": 0x" << std::hex << std::setfill('0') << std::setw(8) << Value << std::dec << " (low " << (Value & 0xFFFF)
+                    << ", high " << (Value >> 16) << ")";
+                MagAOXAppT::log<text_log>(oss.str());
+            }
+
+        protected:
+            std::string m_name; ///< The register name.
+        };
+
+        /// One named bit of the fsm hardware control register.
+        struct HardwareControlBit
+        {
+            uint8_t bit;      ///< Bit position.
+            const char *name; ///< Name, as in the firmware.
+        };
+
+        /// Named bits of the fsm hardware control register.
+        /** CGraphPayloadTypeFSMHardwareConfigRegister, from include/cgraph/CGraphFSMHardwareInterface.hpp
+         * The reserved bits 21 and 23 are omitted.
+         */
+        static const HardwareControlBit HardwareControlBits[] = {
+            {0, "FaultNegV"}, {1, "Fault1V"}, {2, "Fault2VA"}, {3, "Fault2VD"}, {4, "Fault3VA"}, {5, "Fault3VD"},
+            {6, "Fault43V"}, {7, "Fault5V"}, {8, "FaultHV"}, {9, "nHVFaultA"}, {10, "nHVFaultB"}, {11, "nHVFaultC"},
+            {12, "nHVFaultD"}, {13, "PowerCycdAndClr"}, {14, "PowernEn"}, {15, "ChopEn"}, {16, "Uart0OE"}, {17, "Uart1OE"},
+            {18, "Uart2OE"}, {19, "Uart3OE"}, {20, "Ux1SelJmp"}, {22, "PPSDetectedAndRst"}, {24, "PowernEnHV"}, {25, "HVEn1"},
+            {26, "HVEn2"}, {27, "DacSelectMaxti"}, {28, "GlobalFaultInhibit"}, {29, "nFaultsClr"}, {30, "ChopRefState"},
+            {31, "ChopAdcState"}};
+
+        /// Bits 0-12 of the hardware control register are the fault flags.
+        static const uint32_t HardwareControlFaultMask = 0x00001FFF;
 
     } // namespace app
 } // namespace MagAOX

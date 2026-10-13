@@ -83,6 +83,7 @@ namespace MagAOX
       const std::string USB0 = "/dev/ttyUSB0";
       const double ADC_MAX_RATE = 500.0;     ///< Hard upper limit on the ADC stream polling rate [Hz]
       const double ADC_REPLY_TIMEOUT = 0.050; ///< Time to wait for an ADC reply before skipping the frame [s]
+      const double CONFIG_REPLY_TIMEOUT = 0.200; ///< Time to wait for a configuration register reply [s]
       ///@}
 
       /** \name Configurable Parameters
@@ -180,7 +181,55 @@ namespace MagAOX
       dev::sdevQuery *telemetryQuery = new TelemetryQuery();
       dev::sdevQuery *adcsQuery = new AdcsQuery();
       dev::sdevQuery *dacsQuery = new DacsQuery();
-      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, adcsQuery, dacsQuery };
+      ConfigRegisterQuery *adcConfigQuery = new ConfigRegisterQuery(CGraphPayloadTypeFSMAdcConfigRegister, "AdcConfigRegister");
+      ConfigRegisterQuery *accumConfigQuery = new ConfigRegisterQuery(CGraphPayloadTypeFSMAccumulatorConfigRegister, "AccumulatorConfigRegister");
+      ConfigRegisterQuery *hwConfigQuery = new ConfigRegisterQuery(CGraphPayloadTypeFSMHardwareConfigRegister, "HardwareControlRegister");
+      std::vector<dev::sdevQuery*> customQueries = { telemetryQuery, adcsQuery, dacsQuery, adcConfigQuery, accumConfigQuery, hwConfigQuery };
+
+    protected:
+      /** \name Configuration Registers
+       *@{
+       */
+
+      /** Layouts from firmware include/cgraph/CGraphCommon.hpp (AdcConfigRegister, AccumulatorConfigRegister) and
+       * include/cgraph/CGraphFSMHardwareInterface.hpp (CGraphFSMHardwareControlRegister).
+       */
+      struct ConfigField
+      {
+        std::string configKey;      ///< Key in the [fsm] config section.
+        std::string indiName;       ///< INDI name.
+        ConfigRegisterQuery *query; ///< The register this setting is from.
+        uint8_t shift;              ///< Position of the setting's lowest bit in the register.
+        uint8_t width;              ///< Number of bits in the setting (at most 16).
+        uint16_t min;               ///< Lower bound.
+        uint16_t max;               ///< Upper bound.
+        pcf::IndiProperty *indiP;   ///< INDI property showing the setting.
+        bool toggle;                ///< True if shown as an INDI on/off toggle switch, false if as a current/target number.
+        int configValue{-1};        ///< Value from the config file. -1 if not set.
+        int currentValue{-1};       ///< Last value reported by the fsm. -1 until read.
+      };
+
+      /// A/D clock divider: A/D rate = 102 MHz / (divider + 1). For now, data is garbage below ~203.
+      ConfigField m_adcClkDivider{"adcClkDivider", "adc_clk_divider", adcConfigQuery, 0, 16, 203, 65535, &m_indiP_adcClkDivider, false};
+
+      /// Number of samples the A/D averages internally per result.
+      ConfigField m_adcSamplesToAverage{"adcSamplesToAverage", "adc_samples_to_average", adcConfigQuery, 16, 16, 1, 65535, &m_indiP_adcSamplesToAverage, false};
+
+      /// Maximum A/D results the FPGA accumulates between reads (ControlAdcMaxAccums).
+      /// The upper half (MonitorAdcMaxAccums, for the telemetry A/D) is preserved on write.
+      ConfigField m_adcMaxAccums{"adcMaxAccums", "adc_max_accums", accumConfigQuery, 0, 16, 1, 65535, &m_indiP_adcMaxAccums, false};
+
+      /// A/D chopping (ChopEn, bit 15 of the hardware control register).
+      ConfigField m_chop{"chop", "chop", hwConfigQuery, 15, 1, 0, 1, &m_indiP_chop, true};
+
+      std::vector<ConfigField *> m_configFields{&m_adcClkDivider, &m_adcSamplesToAverage, &m_adcMaxAccums, &m_chop};
+
+      uint32_t m_hwStatus{0};     ///< Last hardware control register value read from the fsm.
+      bool m_hwStatusValid{false}; ///< True once m_hwStatus has been read since connecting.
+
+      /// Protects m_hwStatus and m_hwStatusValid
+      std::mutex m_hwStatusMutex;
+      ///@}
 
     protected:
       // INDI properties
@@ -198,6 +247,11 @@ namespace MagAOX
       pcf::IndiProperty m_indiP_query;
       pcf::IndiProperty m_indiP_adcStreamRate; ///< ADC stream polling rate [Hz]. 0 is off.
       pcf::IndiProperty m_indiP_adcStreamName; ///< Read-only name of the ADC shmim.
+      pcf::IndiProperty m_indiP_adcClkDivider; ///< A/D clock divider.
+      pcf::IndiProperty m_indiP_adcSamplesToAverage; ///< A/D samples averaged per result.
+      pcf::IndiProperty m_indiP_adcMaxAccums; ///< Max A/D results accumulated between reads.
+      pcf::IndiProperty m_indiP_chop; ///< A/D chopping on/off (toggle).
+      pcf::IndiProperty m_indiP_hwStatus; ///< Read-only: the named bits of the hardware control register.
 
     public:
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val1);
@@ -213,6 +267,10 @@ namespace MagAOX
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_input);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_query);
       INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adcStreamRate);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adcClkDivider);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adcSamplesToAverage);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_adcMaxAccums);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_chop);
 
     public:
       /// Default c'tor.
@@ -346,6 +404,17 @@ namespace MagAOX
        * Does not update INDI or the m_adc and m_dac members.
        */
       void lockedRawReceive();
+
+      /// Wait for a reply to a query, processing input until the query's reply counter changes.
+      /** The serial lock is only held while processing input, not while waiting between checks.
+       *
+       * \returns 0 if a reply arrived
+       * \returns 1 on timeout
+       * \returns -1 if the app is shutting down
+       */
+      int waitForReply(const std::atomic<uint64_t> &counter /**< [in] the query's reply counter */,
+                       uint64_t startCount /**< [in] the counter value before the request was sent */,
+                       double timeout /**< [in] how long to wait [s] */);
       ///@}
 
       /** \name ADC Stream
@@ -403,6 +472,84 @@ namespace MagAOX
       /** By default logged as info, but logged as a warning if any requests timed out or any replies were late.
        */
       void reportAdcStats();
+      ///@}
+
+      /** \name Configuration Registers
+       *
+       * Read and set settings in the configuration registers.
+       * @{
+       */
+
+      /// Read or write a configuration register.
+      /**
+       * \returns 0 on success, with the register value in readback
+       * \returns -1 if no reply arrived within CONFIG_REPLY_TIMEOUT
+       */
+      int configTransaction(ConfigRegisterQuery *query /**< [in] the register's query */,
+                            const uint32_t *writeValue /**< [in] the value to write, or nullptr to only read */,
+                            uint32_t &readback /**< [out] the register value reported by the fsm */);
+
+      /// Extract a setting's bit field from a register value.
+      /**
+       * \returns the setting's value
+       */
+      static uint16_t configFieldValue(const ConfigField &f /**< [in] the setting */,
+                                       uint32_t reg /**< [in] the register value */);
+
+      /// Replace a setting's bit field in a register value, keeping all other bits.
+      /**
+       * \returns the new register value
+       */
+      static uint32_t configFieldReplace(const ConfigField &f /**< [in] the setting */,
+                                         uint32_t reg /**< [in] the current register value */,
+                                         uint16_t value /**< [in] the new value for the setting */);
+
+      /// Read a setting.
+      /**
+       * \returns 0 on success
+       * \returns -1 on error
+       */
+      int readConfigField(const ConfigField &f /**< [in] the setting */,
+                          uint16_t &value /**< [out] the value reported by the fsm */);
+
+      /// Write a setting to the fsm: read the register, replace the setting's bits, write, and check the readback.
+      /**
+       * \returns 0 on success
+       * \returns -1 on error
+       */
+      int writeConfigField(const ConfigField &f /**< [in] the setting */,
+                           uint16_t value /**< [in] the value to write */,
+                           uint16_t &readback /**< [out] the value reported after the write */);
+
+      /// Apply any configured settings, read all of them back into INDI, and read the hardware status. Called on connect.
+      void initConfigFields();
+
+      /// Record a reported setting's value and publish it to INDI.
+      void updateConfigFieldIndi(ConfigField &f /**< [in] the setting */,
+                                 uint16_t value /**< [in] the value reported */);
+
+      /// Create and register a setting's INDI property.
+      /**
+       * \returns 0 on success
+       * \returns -1 on error (logged)
+       */
+      int registerConfigFieldIndi(ConfigField &f /**< [in] the setting */,
+                                  int (*callback)(void *, const pcf::IndiProperty &) /**< [in] the property's INDI callback */);
+
+      /// Shared handler for the setting INDI callbacks: validate the request, write it, and publish the readback.
+      /**
+       * \returns 0 on success
+       * \returns -1 on error (logged)
+       */
+      int newCallBack_configField(ConfigField &f /**< [in] the setting */,
+                                  const pcf::IndiProperty &ipRecv /**< [in] the INDI property received */);
+
+      /// Read the hardware control register, publish its named bits to INDI and log a warning if a fault bit changed.
+      /**
+       * \returns 0 on success
+       * \returns -1 on error
+       */
+      int refreshHwStatus();
       ///@}
 
       /** \name Telemeter Interface
@@ -534,6 +681,10 @@ namespace MagAOX
       config.add("fsm.dac3_max", "", "fsm.dac3_max", argType::Optional, "fsm", "dac3_max", false, "double", "Max safe value for dac3. Defaults to voltage max conversion.");
       config.add("fsm.voltage_max", "", "fsm.voltage_max", argType::Optional, "fsm", "voltage_max", false, "double", "Max voltage safe value in volts. Defaults to 100.");
       config.add("fsm.stroke_max", "", "fsm.stroke_max", argType::Optional, "fsm", "stroke_max", false, "double", "Max stroke value in micrometers. Defaults to 10.");
+      config.add("fsm.adcClkDivider", "", "fsm.adcClkDivider", argType::Optional, "fsm", "adcClkDivider", false, "int", "A/D clock divider: A/D rate = 102 MHz / (adcClkDivider + 1). Range 203-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_clk_divider.");
+      config.add("fsm.adcSamplesToAverage", "", "fsm.adcSamplesToAverage", argType::Optional, "fsm", "adcSamplesToAverage", false, "int", "Number of samples the A/D averages internally per result; lower is faster but noisier. Range 1-65535 (fsm default 65535). If set, applied at every connect. Can be updated via INDI adc_samples_to_average.");
+      config.add("fsm.adcMaxAccums", "", "fsm.adcMaxAccums", argType::Optional, "fsm", "adcMaxAccums", false, "int", "Maximum A/D results the fsm accumulates between reads. Range 1-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_max_accums.");
+      config.add("fsm.chop", "", "fsm.chop", argType::Optional, "fsm", "chop", false, "int", "A/D chopping: 1 = on, 0 = off (fsm default on). If set, applied at every connect. Can be updated via INDI chop.");
 
       // shmim parameters
       config.add("shmimMonitor.shmimName", "", "shmimMonitor.shmimName", argType::Required, "shmimMonitor", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /tmp/<shmimName>.im.shm. Default is fsm");
@@ -635,6 +786,27 @@ namespace MagAOX
         adcRate = 0;
       }
       m_adcStreamRate = adcRate;
+
+      /// FSM CONFIGURATION REGISTER PARAMETERS ///
+      for (ConfigField *f : m_configFields)
+      {
+        int value = -1;
+        _config(value, "fsm." + f->configKey);
+        if (value == -1) // not set
+        {
+          continue;
+        }
+
+        if (value < f->min || value > f->max)
+        {
+          std::ostringstream oss;
+          oss << "fsm." << f->configKey << " " << value << " is invalid (must be " << f->min << " to " << f->max << "). Leaving the fsm's setting unchanged.";
+          log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+          continue;
+        }
+
+        f->configValue = value;
+      }
 
       return 0;
     }
@@ -780,6 +952,23 @@ namespace MagAOX
       m_indiP_adcStreamName.add(pcf::IndiElement("name"));
       m_indiP_adcStreamName["name"] = m_adcStreamAvailable ? m_adcShmimName : std::string("");
 
+      // Configuration register settings; values are read from the fsm on connect
+      if (registerConfigFieldIndi(m_adcClkDivider, INDI_NEWCALLBACK(m_indiP_adcClkDivider)) < 0 ||
+          registerConfigFieldIndi(m_adcSamplesToAverage, INDI_NEWCALLBACK(m_indiP_adcSamplesToAverage)) < 0 ||
+          registerConfigFieldIndi(m_adcMaxAccums, INDI_NEWCALLBACK(m_indiP_adcMaxAccums)) < 0 ||
+          registerConfigFieldIndi(m_chop, INDI_NEWCALLBACK(m_indiP_chop)) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      // Hardware control register bits, read-only, -1 until read from fsm
+      registerIndiPropertyReadOnly(m_indiP_hwStatus, "hw_status", pcf::IndiProperty::Number, pcf::IndiProperty::ReadOnly, pcf::IndiProperty::Idle);
+      for (const HardwareControlBit &b : HardwareControlBits)
+      {
+        m_indiP_hwStatus.add(pcf::IndiElement(b.name));
+        m_indiP_hwStatus[b.name] = -1;
+      }
+
       // Start ADC thread
       if (threadStart(m_adcThread, m_adcThreadInit, m_adcThreadID, m_adcThreadProp, 0, "", "adcStream", this, adcThreadStart) < 0)
       {
@@ -843,6 +1032,9 @@ namespace MagAOX
 
         // Get telemetry
         // queryTelemetry();
+
+        // Apply configured A/D settings
+        initConfigFields();
 
         if (m_inputToggle == SHMIM)
         {
@@ -923,6 +1115,33 @@ namespace MagAOX
     {
       std::lock_guard<std::mutex> lock(m_serialMutex);
       dev::summerDevice<fsmCtrl>::receive();
+    }
+
+    int fsmCtrl::waitForReply(const std::atomic<uint64_t> &counter, uint64_t startCount, double timeout)
+    {
+      auto deadline = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(timeout));
+
+      while (true)
+      {
+        lockedRawReceive();
+
+        if (counter.load() != startCount)
+        {
+          return 0;
+        }
+
+        if (m_shutdown)
+        {
+          return -1;
+        }
+
+        if (std::chrono::steady_clock::now() > deadline)
+        {
+          return 1;
+        }
+
+        std::this_thread::sleep_for(std::chrono::microseconds(150));
+      }
     }
 
     //////////////
@@ -1037,6 +1256,10 @@ namespace MagAOX
 
       lockedRawReceive();
       telemetryQuery->logReply();
+
+      // Refresh the hardware control register bits too
+      // TODO: add them as actual telemetry logs (requires libMagAOX update)
+      refreshHwStatus();
 
       return recordFsm(true);
     }
@@ -1448,7 +1671,6 @@ namespace MagAOX
       AdcsQuery *castAdcsQuery = dynamic_cast<AdcsQuery *>(adcsQuery);
 
       using clock = std::chrono::steady_clock;
-      const auto timeout = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(ADC_REPLY_TIMEOUT));
 
       // Drain pending input first; count any unexpected reply as late.
       lockedRawReceive();
@@ -1463,72 +1685,53 @@ namespace MagAOX
       lockedQuery(adcsQuery, false);
       ++m_adcPolls;
 
-      // Wait for the reply; release the lock between checks
-      timespec recvTime;
-      auto deadline = sendSteady + timeout;
-      while (true)
+      // Wait for the reply; the lock is released between checks
+      int rv = waitForReply(castAdcsQuery->m_replyCount, startCount, ADC_REPLY_TIMEOUT);
+      if (rv < 0) // shutting down
       {
-        lockedRawReceive();
-
-        uint64_t count = castAdcsQuery->m_replyCount.load();
-        if (count != startCount)
-        {
-          clock_gettime(CLOCK_REALTIME, &recvTime);
-
-          double rttMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
-          if (m_adcOnTime == 0 || rttMs < m_adcRttMinMs)
-          {
-            m_adcRttMinMs = rttMs;
-          }
-          if (rttMs > m_adcRttMaxMs)
-          {
-            m_adcRttMaxMs = rttMs;
-          }
-          m_adcRttSumMs += rttMs;
-          ++m_adcOnTime;
-
-          // More than one reply means an earlier late one arrived in the same read
-          m_adcLate += count - startCount - 1;
-          m_adcLastSeenCount = count;
-          break;
-        }
-
-        if (m_shutdown)
-        {
-          return 0;
-        }
-
-        if (clock::now() > deadline)
-        {
-          // Skip this frame, then wait up to one more timeout for the late reply and drain it.
-          ++m_adcTimeouts;
-
-          auto settleDeadline = deadline + timeout;
-          while (m_shutdown == 0 && clock::now() < settleDeadline)
-          {
-            lockedRawReceive();
-
-            uint64_t settleCount = castAdcsQuery->m_replyCount.load();
-            if (settleCount != startCount)
-            {
-              double lateMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
-              if (lateMs > m_adcLateMaxMs)
-              {
-                m_adcLateMaxMs = lateMs;
-              }
-              m_adcLate += settleCount - startCount;
-              m_adcLastSeenCount = settleCount;
-              break;
-            }
-
-            std::this_thread::sleep_for(std::chrono::microseconds(150));
-          }
-
-          return 1;
-        }
-
-        std::this_thread::sleep_for(std::chrono::microseconds(150));
+        return 0;
       }
+
+      if (rv > 0)
+      {
+        // Skip this frame, then wait up to one more timeout for the late reply and drain it.
+        ++m_adcTimeouts;
+
+        if (waitForReply(castAdcsQuery->m_replyCount, startCount, ADC_REPLY_TIMEOUT) == 0)
+        {
+          double lateMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
+          if (lateMs > m_adcLateMaxMs)
+          {
+            m_adcLateMaxMs = lateMs;
+          }
+        }
+
+        uint64_t settleCount = castAdcsQuery->m_replyCount.load();
+        m_adcLate += settleCount - startCount;
+        m_adcLastSeenCount = settleCount;
+
+        return 1;
+      }
+
+      timespec recvTime;
+      clock_gettime(CLOCK_REALTIME, &recvTime);
+
+      double rttMs = std::chrono::duration<double, std::milli>(clock::now() - sendSteady).count();
+      if (m_adcOnTime == 0 || rttMs < m_adcRttMinMs)
+      {
+        m_adcRttMinMs = rttMs;
+      }
+      if (rttMs > m_adcRttMaxMs)
+      {
+        m_adcRttMaxMs = rttMs;
+      }
+      m_adcRttSumMs += rttMs;
+      ++m_adcOnTime;
+
+      // More than one reply means an even more delayed one arrived in the same read
+      uint64_t count = castAdcsQuery->m_replyCount.load();
+      m_adcLate += count - startCount - 1;
+      m_adcLastSeenCount = count;
 
       AdcAccumulator vals[3];
       { // Copy the reply under lock
@@ -1551,6 +1754,257 @@ namespace MagAOX
       }
 
       writeAdcStream(volts, sendTime, recvTime);
+
+      return 0;
+    }
+
+    /////////////////////////
+    // CONFIGURATION REGISTERS
+    /////////////////////////
+
+    int fsmCtrl::configTransaction(ConfigRegisterQuery *query, const uint32_t *writeValue, uint32_t &readback)
+    {
+      uint64_t startCount = query->m_replyCount.load();
+
+      {
+        // The payload is set and reset under the serial lock, as in setDacs
+        std::lock_guard<std::mutex> lock(m_serialMutex);
+
+        if (writeValue != nullptr)
+        {
+          query->setPayload(writeValue, sizeof(uint32_t));
+        }
+        dev::summerDevice<fsmCtrl>::query(query);
+        query->resetPayload();
+      }
+
+      if (waitForReply(query->m_replyCount, startCount, CONFIG_REPLY_TIMEOUT) != 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "no reply from the fsm to a configuration register request"});
+      }
+
+      {
+        // Process replies under the serial lock
+        std::lock_guard<std::mutex> lock(m_serialMutex);
+        readback = query->Value;
+      }
+
+      return 0;
+    }
+
+    uint16_t fsmCtrl::configFieldValue(const ConfigField &f, uint32_t reg)
+    {
+      uint32_t mask = (1u << f.width) - 1;
+      return static_cast<uint16_t>((reg >> f.shift) & mask);
+    }
+
+    uint32_t fsmCtrl::configFieldReplace(const ConfigField &f, uint32_t reg, uint16_t value)
+    {
+      uint32_t mask = ((1u << f.width) - 1) << f.shift;
+      return (reg & ~mask) | ((static_cast<uint32_t>(value) << f.shift) & mask);
+    }
+
+    int fsmCtrl::readConfigField(const ConfigField &f, uint16_t &value)
+    {
+      uint32_t reg;
+      if (configTransaction(f.query, nullptr, reg) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.indiName});
+      }
+
+      value = configFieldValue(f, reg);
+      return 0;
+    }
+
+    int fsmCtrl::writeConfigField(const ConfigField &f, uint16_t value, uint16_t &readback)
+    {
+      // Read the whole register first, so all other bits are written back unchanged
+      uint32_t reg;
+      if (configTransaction(f.query, nullptr, reg) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.indiName + " before writing it"});
+      }
+
+      uint32_t newReg = configFieldReplace(f, reg, value);
+      if (configTransaction(f.query, &newReg, reg) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error writing " + f.indiName});
+      }
+
+      readback = configFieldValue(f, reg);
+      if (readback != value)
+      {
+        std::ostringstream oss;
+        oss << f.indiName << ": wrote " << value << " but the fsm reports " << readback;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+      }
+
+      return 0;
+    }
+
+    void fsmCtrl::initConfigFields()
+    {
+      for (ConfigField *f : m_configFields)
+      {
+        uint16_t value;
+        int rv;
+        if (f->configValue >= 0)
+        {
+          rv = writeConfigField(*f, static_cast<uint16_t>(f->configValue), value);
+        }
+        else
+        {
+          rv = readConfigField(*f, value);
+        }
+
+        if (rv < 0)
+        {
+          continue;
+        }
+
+        updateConfigFieldIndi(*f, value);
+      }
+
+      // The first read after connecting doesn't report fault changes
+      {
+        std::lock_guard<std::mutex> lock(m_hwStatusMutex);
+        m_hwStatusValid = false;
+      }
+      refreshHwStatus();
+    }
+
+    void fsmCtrl::updateConfigFieldIndi(ConfigField &f, uint16_t value)
+    {
+      f.currentValue = value;
+
+      if (f.toggle)
+      {
+        updateSwitchIfChanged(*f.indiP, "toggle", value ? pcf::IndiElement::On : pcf::IndiElement::Off, INDI_IDLE);
+      }
+      else
+      {
+        updateIfChanged(*f.indiP, "current", value);
+        updateIfChanged(*f.indiP, "target", value);
+      }
+    }
+
+    int fsmCtrl::registerConfigFieldIndi(ConfigField &f, int (*callback)(void *, const pcf::IndiProperty &))
+    {
+      if (f.toggle)
+      {
+        // Off until read from the fsm on connect
+        createStandardIndiToggleSw(*f.indiP, f.indiName);
+      }
+      else
+      {
+        createStandardIndiNumber<int>(*f.indiP, f.indiName, f.min, f.max, 1, "%d");
+
+        // Unknown until read from the fsm on connect
+        (*f.indiP)["current"] = -1;
+        (*f.indiP)["target"] = -1;
+      }
+
+      if (registerIndiPropertyNew(*f.indiP, callback) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "failed to register " + f.indiName});
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::newCallBack_configField(ConfigField &f, const pcf::IndiProperty &ipRecv)
+    {
+      // Never takes m_indiMutex while holding m_serialMutex, so holding it here respects the lock order
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+
+      int target;
+      if (f.toggle)
+      {
+        if (!ipRecv.find("toggle"))
+        {
+          return 0;
+        }
+        target = (ipRecv["toggle"].getSwitchState() == pcf::IndiElement::On) ? 1 : 0;
+      }
+      else if (indiTargetUpdate(*f.indiP, target, ipRecv, false) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      std::ostringstream oss;
+      if (state() != stateCodes::OPERATING && state() != stateCodes::READY)
+      {
+        oss << "Rejected " << f.indiName << " " << target << ": fsm not connected";
+      }
+      else if (target < f.min || target > f.max)
+      {
+        oss << "Rejected " << f.indiName << " " << target << " (must be " << f.min << " to " << f.max << ")";
+      }
+
+      uint16_t readback;
+      if (oss.str().empty() && writeConfigField(f, static_cast<uint16_t>(target), readback) < 0)
+      {
+        oss << "Error writing " << f.indiName << " " << target;
+      }
+
+      if (!oss.str().empty())
+      {
+        log<software_error>({__FILE__, __LINE__, errno, oss.str()});
+
+        // Put the INDI property back to the value in use
+        if (f.currentValue >= 0)
+        {
+          updateConfigFieldIndi(f, static_cast<uint16_t>(f.currentValue));
+        }
+        return -1;
+      }
+
+      updateConfigFieldIndi(f, readback);
+
+      // Writing the hardware control register can change other status bits too
+      if (f.query == hwConfigQuery)
+      {
+        refreshHwStatus();
+      }
+
+      oss << f.indiName << " set to " << readback;
+      log<software_info>({__FILE__, __LINE__, errno, oss.str()});
+
+      return 0;
+    }
+
+    int fsmCtrl::refreshHwStatus()
+    {
+      uint32_t reg;
+      if (configTransaction(hwConfigQuery, nullptr, reg) < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__, "error reading the hardware control register"});
+      }
+
+      std::lock_guard<std::mutex> lock(m_hwStatusMutex);
+
+      uint32_t changedFaults = m_hwStatusValid ? ((reg ^ m_hwStatus) & HardwareControlFaultMask) : 0;
+      if (changedFaults)
+      {
+        std::ostringstream oss;
+        oss << "fsm fault bits changed:";
+        for (const HardwareControlBit &b : HardwareControlBits)
+        {
+          if (changedFaults & (1u << b.bit))
+          {
+            oss << " " << b.name << " " << ((m_hwStatus >> b.bit) & 1) << "->" << ((reg >> b.bit) & 1);
+          }
+        }
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+      }
+
+      m_hwStatus = reg;
+      m_hwStatusValid = true;
+
+      for (const HardwareControlBit &b : HardwareControlBits)
+      {
+        updateIfChanged(m_indiP_hwStatus, b.name, static_cast<int>((reg >> b.bit) & 1));
+      }
 
       return 0;
     }
@@ -2011,6 +2465,38 @@ namespace MagAOX
       log<software_info>({__FILE__, __LINE__, errno, oss.str()});
 
       return 0;
+    }
+
+    // callback from setting m_indiP_adcClkDivider - set the A/D clock divider
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adcClkDivider)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_adcClkDivider, ipRecv);
+      return newCallBack_configField(m_adcClkDivider, ipRecv);
+    }
+
+    // callback from setting m_indiP_adcSamplesToAverage - set the A/D samples averaged per result
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adcSamplesToAverage)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_adcSamplesToAverage, ipRecv);
+      return newCallBack_configField(m_adcSamplesToAverage, ipRecv);
+    }
+
+    // callback from setting m_indiP_adcMaxAccums - set the max A/D results accumulated between reads
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_adcMaxAccums)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_adcMaxAccums, ipRecv);
+      return newCallBack_configField(m_adcMaxAccums, ipRecv);
+    }
+
+    // callback from setting m_indiP_chop - turn A/D chopping on or off
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_chop)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_chop, ipRecv);
+      return newCallBack_configField(m_chop, ipRecv);
     }
 
     /////////
