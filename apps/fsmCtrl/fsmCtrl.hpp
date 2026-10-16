@@ -196,8 +196,7 @@ namespace MagAOX
        */
       struct ConfigField
       {
-        std::string configKey;      ///< Key in the [fsm] config section.
-        std::string indiName;       ///< INDI name.
+        std::string name;           ///< Name of the setting, used as both the [fsm] config key and the INDI property name.
         ConfigRegisterQuery *query; ///< The register this setting is from.
         uint8_t shift;              ///< Position of the setting's lowest bit in the register.
         uint8_t width;              ///< Number of bits in the setting (at most 16).
@@ -210,17 +209,17 @@ namespace MagAOX
       };
 
       /// A/D clock divider: A/D rate = 102 MHz / (divider + 1). For now, data is garbage below ~203.
-      ConfigField m_adcClkDivider{"adcClkDivider", "adc_clk_divider", adcConfigQuery, 0, 16, 203, 65535, &m_indiP_adcClkDivider, false};
+      ConfigField m_adcClkDivider{"adc_clk_divider", adcConfigQuery, 0, 16, 203, 65535, &m_indiP_adcClkDivider, false};
 
       /// Number of samples the A/D averages internally per result.
-      ConfigField m_adcSamplesToAverage{"adcSamplesToAverage", "adc_samples_to_average", adcConfigQuery, 16, 16, 1, 65535, &m_indiP_adcSamplesToAverage, false};
+      ConfigField m_adcSamplesToAverage{"adc_samples_to_average", adcConfigQuery, 16, 16, 1, 65535, &m_indiP_adcSamplesToAverage, false};
 
       /// Maximum A/D results the FPGA accumulates between reads (ControlAdcMaxAccums).
       /// The upper half (MonitorAdcMaxAccums, for the telemetry A/D) is preserved on write.
-      ConfigField m_adcMaxAccums{"adcMaxAccums", "adc_max_accums", accumConfigQuery, 0, 16, 1, 65535, &m_indiP_adcMaxAccums, false};
+      ConfigField m_adcMaxAccums{"adc_max_accums", accumConfigQuery, 0, 16, 1, 65535, &m_indiP_adcMaxAccums, false};
 
       /// A/D chopping (ChopEn, bit 15 of the hardware control register).
-      ConfigField m_chop{"chop", "chop", hwConfigQuery, 15, 1, 0, 1, &m_indiP_chop, true};
+      ConfigField m_chop{"chop", hwConfigQuery, 15, 1, 0, 1, &m_indiP_chop, true};
 
       std::vector<ConfigField *> m_configFields{&m_adcClkDivider, &m_adcSamplesToAverage, &m_adcMaxAccums, &m_chop};
 
@@ -360,6 +359,12 @@ namespace MagAOX
        */
       int setDacs(uint32_t *);
 
+      /** @brief Set the fsm's DACs from an INDI command, then publish the new values to the INDI val properties.
+       *
+       *  \returns the result of setDacs()
+       */
+      int setDacsFromIndi(uint32_t *dacs /**< [in] the three DAC values to set */);
+
       // /**
       //  * @brief Query interface for the fsm
       //  *
@@ -468,8 +473,7 @@ namespace MagAOX
       /// Reset the ADC statistics and start a new reporting interval.
       void resetAdcStats();
 
-      /// Log a summary of the ADC statistics if the reporting interval (5 s) has ended, then reset them.
-      /** By default logged as info, but logged as a warning if any requests timed out or any replies were late.
+      /** @brief Log a summary of the ADC statistics if the reporting interval (5 s) has ended, then reset them.
        */
       void reportAdcStats();
       ///@}
@@ -681,9 +685,9 @@ namespace MagAOX
       config.add("fsm.dac3_max", "", "fsm.dac3_max", argType::Optional, "fsm", "dac3_max", false, "double", "Max safe value for dac3. Defaults to voltage max conversion.");
       config.add("fsm.voltage_max", "", "fsm.voltage_max", argType::Optional, "fsm", "voltage_max", false, "double", "Max voltage safe value in volts. Defaults to 100.");
       config.add("fsm.stroke_max", "", "fsm.stroke_max", argType::Optional, "fsm", "stroke_max", false, "double", "Max stroke value in micrometers. Defaults to 10.");
-      config.add("fsm.adcClkDivider", "", "fsm.adcClkDivider", argType::Optional, "fsm", "adcClkDivider", false, "int", "A/D clock divider: A/D rate = 102 MHz / (adcClkDivider + 1). Range 203-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_clk_divider.");
-      config.add("fsm.adcSamplesToAverage", "", "fsm.adcSamplesToAverage", argType::Optional, "fsm", "adcSamplesToAverage", false, "int", "Number of samples the A/D averages internally per result; lower is faster but noisier. Range 1-65535 (fsm default 65535). If set, applied at every connect. Can be updated via INDI adc_samples_to_average.");
-      config.add("fsm.adcMaxAccums", "", "fsm.adcMaxAccums", argType::Optional, "fsm", "adcMaxAccums", false, "int", "Maximum A/D results the fsm accumulates between reads. Range 1-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_max_accums.");
+      config.add("fsm.adc_clk_divider", "", "fsm.adc_clk_divider", argType::Optional, "fsm", "adc_clk_divider", false, "int", "A/D clock divider: A/D rate = 102 MHz / (adc_clk_divider + 1). Range 203-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_clk_divider.");
+      config.add("fsm.adc_samples_to_average", "", "fsm.adc_samples_to_average", argType::Optional, "fsm", "adc_samples_to_average", false, "int", "Number of samples the A/D averages internally per result; lower is faster but noisier. Range 1-65535 (fsm default 65535). If set, applied at every connect. Can be updated via INDI adc_samples_to_average.");
+      config.add("fsm.adc_max_accums", "", "fsm.adc_max_accums", argType::Optional, "fsm", "adc_max_accums", false, "int", "Maximum A/D results the fsm accumulates between reads. Range 1-65535 (fsm default 255). If set, applied at every connect. Can be updated via INDI adc_max_accums.");
       config.add("fsm.chop", "", "fsm.chop", argType::Optional, "fsm", "chop", false, "int", "A/D chopping: 1 = on, 0 = off (fsm default on). If set, applied at every connect. Can be updated via INDI chop.");
 
       // shmim parameters
@@ -791,7 +795,7 @@ namespace MagAOX
       for (ConfigField *f : m_configFields)
       {
         int value = -1;
-        _config(value, "fsm." + f->configKey);
+        _config(value, "fsm." + f->name);
         if (value == -1) // not set
         {
           continue;
@@ -800,7 +804,7 @@ namespace MagAOX
         if (value < f->min || value > f->max)
         {
           std::ostringstream oss;
-          oss << "fsm." << f->configKey << " " << value << " is invalid (must be " << f->min << " to " << f->max << "). Leaving the fsm's setting unchanged.";
+          oss << "fsm." << f->name << " " << value << " is invalid (must be " << f->min << " to " << f->max << "). Leaving the fsm's setting unchanged.";
           log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
           continue;
         }
@@ -1231,14 +1235,24 @@ namespace MagAOX
         castDacsQuery->resetPayload();
       }
 
-      // m_dac1 = castDacsQuery->DacSetpoints[0];
-      // m_dac2 = castDacsQuery->DacSetpoints[1];
-      // m_dac3 = castDacsQuery->DacSetpoints[2];
-      // updateINDICurrentParams();
+      // Record the commanded values.
+      m_dac1 = Setpoints[0];
+      m_dac2 = Setpoints[1];
+      m_dac3 = Setpoints[2];
 
       // dev::summerDevice<fsmCtrl>::query(dacsQuery);
       // dev::summerDevice<fsmCtrl>::query(adcsQuery);
       return 0;
+    }
+
+    int fsmCtrl::setDacsFromIndi(uint32_t *dacs)
+    {
+      int rv = setDacs(dacs);
+      if (rv == 0)
+      {
+        updateINDICurrentParams();
+      }
+      return rv;
     }
 
     /////////////////////////
@@ -1654,14 +1668,7 @@ namespace MagAOX
 
       oss << " (timeout " << std::setprecision(0) << ADC_REPLY_TIMEOUT * 1000 << " ms)";
 
-      if (m_adcTimeouts > 0 || m_adcLate > 0)
-      {
-        log<software_warning>({__FILE__, __LINE__, oss.str()});
-      }
-      else
-      {
-        log<software_info>({__FILE__, __LINE__, oss.str()});
-      }
+      log<software_debug>({__FILE__, __LINE__, oss.str()});
 
       resetAdcStats();
     }
@@ -1809,7 +1816,7 @@ namespace MagAOX
       uint32_t reg;
       if (configTransaction(f.query, nullptr, reg) < 0)
       {
-        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.indiName});
+        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.name});
       }
 
       value = configFieldValue(f, reg);
@@ -1822,20 +1829,20 @@ namespace MagAOX
       uint32_t reg;
       if (configTransaction(f.query, nullptr, reg) < 0)
       {
-        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.indiName + " before writing it"});
+        return log<software_error, -1>({__FILE__, __LINE__, "error reading " + f.name + " before writing it"});
       }
 
       uint32_t newReg = configFieldReplace(f, reg, value);
       if (configTransaction(f.query, &newReg, reg) < 0)
       {
-        return log<software_error, -1>({__FILE__, __LINE__, "error writing " + f.indiName});
+        return log<software_error, -1>({__FILE__, __LINE__, "error writing " + f.name});
       }
 
       readback = configFieldValue(f, reg);
       if (readback != value)
       {
         std::ostringstream oss;
-        oss << f.indiName << ": wrote " << value << " but the fsm reports " << readback;
+        oss << f.name << ": wrote " << value << " but the fsm reports " << readback;
         log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
       }
 
@@ -1893,11 +1900,11 @@ namespace MagAOX
       if (f.toggle)
       {
         // Off until read from the fsm on connect
-        createStandardIndiToggleSw(*f.indiP, f.indiName);
+        createStandardIndiToggleSw(*f.indiP, f.name);
       }
       else
       {
-        createStandardIndiNumber<int>(*f.indiP, f.indiName, f.min, f.max, 1, "%d");
+        createStandardIndiNumber<int>(*f.indiP, f.name, f.min, f.max, 1, "%d");
 
         // Unknown until read from the fsm on connect
         (*f.indiP)["current"] = -1;
@@ -1906,7 +1913,7 @@ namespace MagAOX
 
       if (registerIndiPropertyNew(*f.indiP, callback) < 0)
       {
-        return log<software_error, -1>({__FILE__, __LINE__, "failed to register " + f.indiName});
+        return log<software_error, -1>({__FILE__, __LINE__, "failed to register " + f.name});
       }
 
       return 0;
@@ -1934,17 +1941,17 @@ namespace MagAOX
       std::ostringstream oss;
       if (state() != stateCodes::OPERATING && state() != stateCodes::READY)
       {
-        oss << "Rejected " << f.indiName << " " << target << ": fsm not connected";
+        oss << "Rejected " << f.name << " " << target << ": fsm not connected";
       }
       else if (target < f.min || target > f.max)
       {
-        oss << "Rejected " << f.indiName << " " << target << " (must be " << f.min << " to " << f.max << ")";
+        oss << "Rejected " << f.name << " " << target << " (must be " << f.min << " to " << f.max << ")";
       }
 
       uint16_t readback;
       if (oss.str().empty() && writeConfigField(f, static_cast<uint16_t>(target), readback) < 0)
       {
-        oss << "Error writing " << f.indiName << " " << target;
+        oss << "Error writing " << f.name << " " << target;
       }
 
       if (!oss.str().empty())
@@ -1967,7 +1974,7 @@ namespace MagAOX
         refreshHwStatus();
       }
 
-      oss << f.indiName << " set to " << readback;
+      oss << f.name << " set to " << readback;
       log<software_info>({__FILE__, __LINE__, errno, oss.str()});
 
       return 0;
@@ -2068,7 +2075,7 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<text_log>(oss.str());
 
-        return setDacs(dacs);
+        return setDacsFromIndi(dacs);
       }
       return 0;
     }
@@ -2129,7 +2136,7 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<text_log>(oss.str());
 
-        return setDacs(dacs);
+        return setDacsFromIndi(dacs);
       }
       return 0;
     }
@@ -2190,7 +2197,7 @@ namespace MagAOX
         oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
         log<text_log>(oss.str());
 
-        return setDacs(dacs);
+        return setDacsFromIndi(dacs);
       }
       return 0;
     }
@@ -2282,6 +2289,12 @@ namespace MagAOX
         {
           state(stateCodes::READY);
           updateIfChanged(m_indiP_input, "toggle", toggle);
+
+          {
+            // Start INDI from the last values commanded
+            std::lock_guard<std::mutex> lock(m_indiMutex);
+            updateINDICurrentParams();
+          }
         }
 
         std::ostringstream oss;
