@@ -1,6 +1,10 @@
 /** \file centroidCtrl.hpp
  * \brief MagAO-X app for PSF centroiding from a camera shmim.
  *
+ * All intensity cutoffs are raw image ADUs, not multiples of noise sigma.
+ * bit_depth describes the numeric codes in the stream, independent of storage type.
+ * Old detect_sigma/noise_floor/ignore_sigma settings have been removed.
+ *
  * \ingroup centroidCtrl_files
  */
 
@@ -90,15 +94,14 @@ class centroidCtrl : public MagAOXApp<true>, public dev::shmimMonitor<centroidCt
         double psf_sigma{1.5};      ///< Gaussian template sigma in pixels (FWHM = 2.355 sigma)
         double plate_scale_mas{10}; ///< Milliarcseconds per pixel in the CURRENT stream/ROI
         double fwhm_mas{0};         ///< Angular PSF FWHM; 0 = use psf_sigma directly
-        double detect_sigma{5};     ///< Threshold in filtered background-noise standard deviations
-        double noise_floor{1};      ///< Minimum background-noise estimate, in input ADU
-        double ignore_sigma{2};     ///< COM/support pixel threshold in background sigma
-        double ignore_adu{0};       ///< Additional COM/support threshold above background, ADU
-        double min_peak{0};         ///< Minimum peak above background, ADU
-        double min_flux{0};         ///< Minimum thresholded window flux, ADU
+        double bit_depth{16};       ///< Effective unsigned stream depth, integer 8..16; not storage width
+        double background_adu{-1};  ///< -1: subtract frame median; otherwise subtract this raw ADU level
+        double detect_adu{400};     ///< Minimum RAW pixel peak in the candidate's central 3x3
+        double ignore_adu{350};     ///< Discard raw pixels <= this absolute ADU cutoff
+        double min_flux_adu{0};     ///< Minimum retained background-subtracted box sum, ADU
         double min_pixels{3};       ///< Minimum above-threshold raw pixels in the seed's 3x3 core
         double separation{8};       ///< Suppress weaker candidates within this many pixels
-        double saturation{0};       ///< Raw ADU ceiling; 0 = disabled; reject affected windows
+        double saturation_adu{0};   ///< 0: full-scale code; -1: disable; >0: explicit raw ADU ceiling
     };
 
     struct Parameter
@@ -109,9 +112,11 @@ class centroidCtrl : public MagAOXApp<true>, public dev::shmimMonitor<centroidCt
         bool integer;
         const char *description;
     };
-    static const size_t nParameters = 18;
+    static const size_t nParameters = 17;
     static const std::array<Parameter, nParameters> &parameters();
     static double effectiveSigma(const Settings &s);
+    static double fullScale(const Settings &s);
+    static double saturationLimit(const Settings &s);
     static bool validSettings(const Settings &s);
     Settings m_settings;
     std::mutex m_settingsMutex; ///< Never held while publishing INDI
@@ -124,11 +129,13 @@ class centroidCtrl : public MagAOXApp<true>, public dev::shmimMonitor<centroidCt
     struct Measurement
     {
         double background{0}, noise{0}, flux{0}, peak{0}, snr{0};
+        double image_min{0}, image_max{0}, filtered_peak{0};
+        bool range_valid{false};
         double seed_x{-1}, seed_y{-1};
         size_t candidates{0};
     };
     Measurement m_measurement; ///< Owned by the shmim processing thread
-    pcf::IndiProperty m_indiP_detection; ///< valid, candidates, background, noise, flux, peak, snr, seed_x/y
+    pcf::IndiProperty m_indiP_detection; ///< Coherent position, validity, and explicitly named ADU diagnostics
 
     struct Candidate { int x, y; double score, flux, peak; };
     // Reused scratch storage; calculateCentroid must have only one caller at a time.
@@ -222,15 +229,14 @@ inline const std::array<centroidCtrl::Parameter, centroidCtrl::nParameters> &cen
         {"psf_sigma", &Settings::psf_sigma, 0.5, 10, false, "Gaussian template sigma in pixels"},
         {"plate_scale_mas", &Settings::plate_scale_mas, 0.000001, 1000000, false, "Current stream plate scale in mas per pixel"},
         {"fwhm_mas", &Settings::fwhm_mas, 0, 1000000, false, "Angular PSF FWHM in mas; 0: use psf_sigma"},
-        {"detect_sigma", &Settings::detect_sigma, 1, 1000, false, "Detection threshold in filtered noise sigma"},
-        {"noise_floor", &Settings::noise_floor, 0.000001, 1000000000, false, "Minimum background noise sigma in ADU"},
-        {"ignore_sigma", &Settings::ignore_sigma, 0, 1000, false, "COM/support pixel threshold in background sigma"},
-        {"ignore_adu", &Settings::ignore_adu, 0, 1000000000000.0, false, "COM/support threshold above background in ADU"},
-        {"min_peak", &Settings::min_peak, 0, 1000000000000.0, false, "Minimum window peak above background in ADU"},
-        {"min_flux", &Settings::min_flux, 0, 1000000000000000.0, false, "Minimum thresholded window flux in ADU"},
+        {"bit_depth", &Settings::bit_depth, 8, 16, true, "Effective unsigned stream bit depth (8..16)"},
+        {"background_adu", &Settings::background_adu, -1, 65535, false, "Background raw ADU to subtract; -1: frame median"},
+        {"detect_adu", &Settings::detect_adu, 0, 65535, false, "Minimum raw peak ADU in candidate central 3x3"},
+        {"ignore_adu", &Settings::ignore_adu, 0, 65535, false, "Reject raw pixels at or below this absolute ADU cutoff"},
+        {"min_flux_adu", &Settings::min_flux_adu, 0, 1000000000000000.0, false, "Minimum retained background-subtracted box sum in ADU"},
         {"min_pixels", &Settings::min_pixels, 1, 9, true, "Minimum above-threshold raw pixels in the seed 3x3 core"},
         {"separation", &Settings::separation, 1, 1000000, false, "Minimum separation of candidate peaks in pixels"},
-        {"saturation", &Settings::saturation, 0, 1000000000000.0, false, "Reject windows at or above this raw ADU; 0: disabled"}
+        {"saturation_adu", &Settings::saturation_adu, -1, 65535, false, "Raw saturation ceiling: 0 full-scale, -1 disabled, positive explicit"}
     }};
     return p;
 }
@@ -238,6 +244,16 @@ inline const std::array<centroidCtrl::Parameter, centroidCtrl::nParameters> &cen
 inline double centroidCtrl::effectiveSigma(const Settings &s)
 {
     return s.fwhm_mas > 0 ? s.fwhm_mas / (2.3548200450309493 * s.plate_scale_mas) : s.psf_sigma;
+}
+
+inline double centroidCtrl::fullScale(const Settings &s)
+{
+    return std::ldexp(1.0, static_cast<int>(s.bit_depth)) - 1.0;
+}
+
+inline double centroidCtrl::saturationLimit(const Settings &s)
+{
+    return s.saturation_adu == 0 ? fullScale(s) : s.saturation_adu;
 }
 
 inline bool centroidCtrl::validSettings(const Settings &s)
@@ -251,7 +267,12 @@ inline bool centroidCtrl::validSettings(const Settings &s)
     // Leave the complete Gaussian footprint plus one pixel on either side
     // inside the centroid window for the subpixel correlation interpolation.
     const double sigma = effectiveSigma(s);
-    return sigma >= 0.5 && sigma <= 10 &&
+    const double maximum = fullScale(s);
+    return (s.background_adu == -1 || s.background_adu >= 0) &&
+           (s.saturation_adu == -1 || s.saturation_adu >= 0) &&
+           s.background_adu <= maximum && s.detect_adu <= maximum &&
+           s.ignore_adu <= maximum && s.saturation_adu <= maximum &&
+           sigma >= 0.5 && sigma <= 10 &&
            s.window >= 2 * (std::ceil(3 * sigma) + 1) + 1 &&
            s.min_pixels <= s.window * s.window &&
            (s.expected_x == -1 || s.expected_x >= 0) &&
@@ -374,7 +395,7 @@ inline void centroidCtrl::loadConfig()
     if(loadConfigImpl(config) < 0)
     {
         m_configValid = false;
-        log<software_error>({__FILE__, __LINE__, "Invalid centroid settings (check ranges and window/psf_sigma)"});
+        log<software_error>({__FILE__, __LINE__, "Invalid centroid settings (check ADUs against bit_depth and window against PSF width)"});
     }
 }
 
@@ -389,7 +410,9 @@ inline int centroidCtrl::appStartup()
     m_indiP_y.add( pcf::IndiElement( "current", 0 ) );
 
     CREATE_REG_INDI_RO_NUMBER(m_indiP_detection, "detection", "Star detection", "Centroid");
-    for(const char *name : {"valid", "candidates", "background", "noise", "flux", "peak", "snr",
+    for(const char *name : {"valid", "candidates", "background_adu", "noise_adu", "flux_adu", "peak_adu",
+                            "filtered_peak_adu", "image_min_adu", "image_max_adu", "range_valid",
+                            "full_scale_adu", "saturation_adu", "ignore_adu", "detect_adu", "snr",
                             "seed_x", "seed_y", "x", "y"})
         m_indiP_detection.add(pcf::IndiElement(name, 0));
 
@@ -481,7 +504,9 @@ inline int centroidCtrl::processImage( void *curr_src, const dev::shmimT &dummy 
     const size_t   npix   = static_cast<size_t>( width ) * static_cast<size_t>( height );
 
     // Copy / convert the shared-memory frame into a float working buffer.
-    // Bit depth comes from the ImageStreamIO datatype of the connected stream.
+    // Storage type comes from ImageStreamIO. Effective code range comes from
+    // bit_depth: an 11/12-bit camera may still arrive in a uint16_t container.
+    // No rescaling, shifting, masking, or clipping of pixel values is performed.
     if( m_dataType == _DATATYPE_UINT16 )
     {
         uint16_t *src = reinterpret_cast<uint16_t *>( curr_src );
@@ -545,11 +570,15 @@ inline int centroidCtrl::processImage( void *curr_src, const dev::shmimT &dummy 
     updateIfChanged(m_indiP_x, "current", m_x, status);
     updateIfChanged(m_indiP_y, "current", m_y, status);
     // Publish the complete detection record in one SetProperty message.
-    static const std::vector<std::string> elements = {"valid", "candidates", "background", "noise",
-                                                    "flux", "peak", "snr", "seed_x", "seed_y", "x", "y"};
+    static const std::vector<std::string> elements = {"valid", "candidates", "background_adu", "noise_adu",
+        "flux_adu", "peak_adu", "filtered_peak_adu", "image_min_adu", "image_max_adu", "range_valid",
+        "full_scale_adu", "saturation_adu", "ignore_adu", "detect_adu", "snr", "seed_x", "seed_y", "x", "y"};
     updateIfChanged(m_indiP_detection, elements, std::vector<double>{
         valid ? 1.0 : 0.0, static_cast<double>(m_measurement.candidates),
         m_measurement.background, m_measurement.noise, m_measurement.flux, m_measurement.peak,
+        m_measurement.filtered_peak, m_measurement.image_min, m_measurement.image_max,
+        m_measurement.range_valid ? 1.0 : 0.0,
+        fullScale(settings), saturationLimit(settings), settings.ignore_adu, settings.detect_adu,
         m_measurement.snr, m_measurement.seed_x, m_measurement.seed_y,
         static_cast<double>(m_x), static_cast<double>(m_y)}, status);
     return 0;
@@ -587,17 +616,29 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
     const int w = static_cast<int>(width), h = static_cast<int>(height);
     const size_t count = static_cast<size_t>(width) * height;
 
-    // Robust scalar background and noise: appropriate for sparse star fields
-    // with a roughly uniform background. Reject frames containing NaN/Inf.
+    // Input is raw unsigned image ADU, including float streams of raw counts.
+    // Range errors indicate e.g. a wrong bit_depth or left-shifted camera codes.
+    // Reject rather than silently clipping, wrapping, or normalizing such frames.
     m_work.resize(count);
+    double minimum = std::numeric_limits<double>::infinity();
+    double maximum = -std::numeric_limits<double>::infinity();
     for(size_t i = 0; i < count; ++i)
     {
         if(!std::isfinite(image[i])) return -1;
         m_work[i] = image[i];
+        minimum = std::min(minimum, m_work[i]);
+        maximum = std::max(maximum, m_work[i]);
     }
-    const double background = median(m_work);
-    for(size_t i = 0; i < count; ++i) m_work[i] = std::abs(image[i] - background);
-    const double noise = std::max(s.noise_floor, 1.482602218505602 * median(m_work));
+    m_measurement.image_min = minimum;
+    m_measurement.image_max = maximum;
+    m_measurement.range_valid = minimum >= 0 && maximum <= fullScale(s);
+    if(!m_measurement.range_valid) return -1;
+    const double measuredMedian = median(m_work);
+    const double background = s.background_adu < 0 ? measuredMedian : s.background_adu;
+    for(size_t i = 0; i < count; ++i) m_work[i] = std::abs(image[i] - measuredMedian);
+    // Diagnostic only: no noise/sigma multiplier gates detection or COM.
+    // The tiny floor only prevents division by zero in the reported SNR.
+    const double noise = std::max(1e-6, 1.482602218505602 * median(m_work));
     m_measurement.background = background;
     m_measurement.noise = noise;
 
@@ -613,12 +654,13 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
     // Keeping negative noise samples avoids a positive clipping bias in detection.
     // Only use complete template footprints; no padding-induced edge peaks.
     m_kernel.resize(2 * radius + 1);
-    double kernelSquaredSum = 0;
+    double kernelSquaredSum = 0, kernelSum = 0;
     for(int d = -radius; d <= radius; ++d)
     {
         const double k = std::exp(-0.5 * d * d / (sigma * sigma));
         m_kernel[d + radius] = k;
         kernelSquaredSum += k * k;
+        kernelSum += k;
     }
     m_horizontal.assign(count, 0);
     m_correlation.assign(count, 0);
@@ -641,7 +683,7 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
     // sqrt(sum of squared 2D Gaussian weights) = sum of squared 1D weights.
     // This is background-only significance, not total source photon-noise SNR.
     const double filteredNoise = noise * kernelSquaredSum;
-    const double threshold = std::max(s.ignore_adu, s.ignore_sigma * noise);
+    const double saturation = saturationLimit(s);
     const double expectedX = s.expected_x < 0 ? 0.5 * (w - 1) : s.expected_x;
     const double expectedY = s.expected_y < 0 ? 0.5 * (h - 1) : s.expected_y;
     const auto distanceSquared = [&](int ix, int iy)
@@ -656,8 +698,20 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
             if(s.search_radius > 0 && distanceSquared(ix, iy) > s.search_radius * s.search_radius)
                 continue;
             const size_t index = static_cast<size_t>(iy) * w + ix;
-            const double score = m_correlation[index] / filteredNoise;
-            if(score < s.detect_sigma) continue;
+            const double score = m_correlation[index];
+            if(score <= 0) continue; // Flat background is not a candidate.
+            // RAW peak and RAW support tests near this peak, before inspecting
+            // the full box. A different star elsewhere in the box cannot satisfy them.
+            double peak = 0;
+            int support = 0;
+            for(int dy = -1; dy <= 1; ++dy)
+                for(int dx = -1; dx <= 1; ++dx)
+                {
+                    const double raw = image[static_cast<size_t>(iy + dy) * w + ix + dx];
+                    peak = std::max(peak, raw);
+                    if(raw > s.ignore_adu && raw > background) ++support;
+                }
+            if(peak < s.detect_adu || support < s.min_pixels) continue;
             bool maximum = true;
             for(int dy = -1; dy <= 1 && maximum; ++dy)
                 for(int dx = -1; dx <= 1; ++dx)
@@ -670,23 +724,17 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
                 }
             if(!maximum) continue;
 
-            double flux = 0, peak = 0;
-            int support = 0;
+            double flux = 0;
             bool saturated = false;
             for(int wy = iy - left; wy <= iy + right; ++wy)
                 for(int wx = ix - left; wx <= ix + right; ++wx)
                 {
                     const double raw = image[static_cast<size_t>(wy) * w + wx];
-                    if(s.saturation > 0 && raw >= s.saturation) saturated = true;
+                    if(saturation >= 0 && raw >= saturation) saturated = true;
                     const double signal = raw - background;
-                    peak = std::max(peak, signal);
-                    if(signal > threshold)
-                    {
-                        flux += signal;
-                        if(std::abs(wx - ix) <= 1 && std::abs(wy - iy) <= 1) ++support;
-                    }
+                    if(raw > s.ignore_adu && signal > 0) flux += signal;
                 }
-            if(saturated || support < s.min_pixels || flux <= 0 || flux < s.min_flux || peak < s.min_peak)
+            if(saturated || flux <= 0 || flux < s.min_flux_adu)
                 continue;
             m_candidates.push_back(Candidate{ix, iy, score, flux, peak});
         }
@@ -722,8 +770,9 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
         for(int iy = sy - left; iy <= sy + right; ++iy)
             for(int ix = sx - left; ix <= sx + right; ++ix)
             {
-                const double signal = image[static_cast<size_t>(iy) * w + ix] - background;
-                if(signal > threshold) { sumX += signal * ix; sumY += signal * iy; }
+                const double raw = image[static_cast<size_t>(iy) * w + ix];
+                const double signal = raw - background;
+                if(raw > s.ignore_adu && signal > 0) { sumX += signal * ix; sumY += signal * iy; }
             }
         resultX = sumX / selected->flux;
         resultY = sumY / selected->flux;
@@ -747,7 +796,8 @@ inline int centroidCtrl::measure(realT &x, realT &y, const realT *image,
     y = static_cast<realT>(resultY);
     m_measurement.flux = selected->flux;
     m_measurement.peak = selected->peak;
-    m_measurement.snr = selected->score;
+    m_measurement.snr = selected->score / filteredNoise;
+    m_measurement.filtered_peak = background + selected->score / (kernelSum * kernelSum);
     m_measurement.seed_x = sx;
     m_measurement.seed_y = sy;
     return 0;
