@@ -4,8 +4,11 @@
   * \ingroup fsmCtrl_files
   */
 
+#ifndef XWC_SIM_MODE
 #include "fsmCtrl.hpp"
-
+#else
+#include "fsmCtrl_simulator.hpp"
+#endif
 
 int main(int argc, char **argv)
 {

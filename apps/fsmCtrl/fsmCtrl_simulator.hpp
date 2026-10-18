@@ -1,0 +1,1221 @@
+/** \file fsmCtrl.hpp
+ * \brief The MagAO-X XXXXXX header file
+ *
+ * \ingroup fsmCtrl_files
+ */
+
+#pragma once
+
+#include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
+#include "../../magaox_git_version.h"
+
+#include <string.h>
+#include <stdio.h>
+#include <cmath>  // For pow(), cos() and M_PI
+
+#include <iostream>
+using namespace std;
+
+#include <pthread.h>
+
+typedef MagAOX::app::MagAOXApp<true> MagAOXAppT; // This needs to be before the other header files for logging to work in other headers
+
+#include "conversion.hpp"
+#include "fsmCommands.hpp"
+
+
+/** \defgroup fsmCtrl
+ * \brief Application to interface simulate commanding fsm
+ *
+ * <a href="../handbook/operating/software/apps/XXXXXX.html">Application Documentation</a>
+ *
+ * \ingroup apps
+ *
+ */
+
+/** \defgroup fsmCtrl_files
+ * \ingroup fsmCtrl
+ */
+
+namespace MagAOX
+{
+  namespace app
+  {
+
+    /// The MagAO-X ESC FSM interface
+    /**
+     * \ingroup fsmCtrl
+     */
+    class fsmCtrl : public MagAOXApp<true>, public dev::shmimMonitor<fsmCtrl>
+    {
+
+      // Give the test harness access.
+      friend class fsmCtrl_test;
+
+      friend class dev::shmimMonitor<fsmCtrl>;
+
+    protected:
+      /** \name Constants
+       *@{
+       */
+      const std::string DACS = "dacs";
+      const std::string VOLTAGES = "voltages";
+      const std::string TTP = "ttp";
+      const std::string SHMIM = "shmim";
+      const std::string INDI = "indi";
+      ///@}
+
+      /** \name Configurable Parameters
+       *@{
+       */
+
+      // Safe operating range parameters
+      double m_dac1_min;
+      double m_dac1_max;
+      double m_dac2_min;
+      double m_dac2_max;
+      double m_dac3_min;
+      double m_dac3_max;
+
+      // Conversion parameters
+      double D_per_V;
+      double m_B;
+      double m_L;      
+      double m_voltage_max = 100.0; // in volts
+      double m_stroke_max = 10.0; // in micrometers
+      double m_v = (4.096 / (std::pow(2.0, 24))) * 60;
+      double d_piston = 0.0; // in micrometers 
+
+      // Shmim size
+      double width = 1; // shm size
+      double height = 3; // shm size
+
+      // input parameters
+      std::string kw_name = "inputType";
+      std::string m_inputType;
+      std::string m_inputToggle;
+
+      // here add parameters which will be config-able at runtime
+      ///@}
+
+      uint32_t targetSetpoints[3];
+
+      double m_dac1{0};
+      double m_dac2{0};
+      double m_dac3{0};
+
+      // Ideal tip/tilt/piston state (sim ttp mode passes these straight to the
+      // shmim, bypassing the arcsec/integer-DAC conversion).
+      double m_tip{0};
+      double m_tilt{0};
+      double m_piston{0};
+
+      // Commands received while not READY are dropped; warn once until the
+      // next accepted command so a misbehaving sender can't flood the log.
+      bool m_cmdDropWarned{false};
+
+      double m_adc1{0};
+      double m_adc2{0};
+      double m_adc3{0};
+
+    protected:
+      // INDI properties
+      pcf::IndiProperty m_indiP_val1;
+      pcf::IndiProperty m_indiP_val2;
+      pcf::IndiProperty m_indiP_val3;
+      pcf::IndiProperty m_indiP_dac1;
+      pcf::IndiProperty m_indiP_dac2;
+      pcf::IndiProperty m_indiP_dac3;
+      pcf::IndiProperty m_indiP_adc1;
+      pcf::IndiProperty m_indiP_adc2;
+      pcf::IndiProperty m_indiP_adc3;
+      pcf::IndiProperty m_indiP_conversion_factors;
+      pcf::IndiProperty m_indiP_input;
+      pcf::IndiProperty m_indiP_query;
+
+    public:
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val1);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val2);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_val3);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac1);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac2);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_dac3);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_conversion_factors);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_input);
+      INDI_NEWCALLBACK_DECL(fsmCtrl, m_indiP_query);
+
+    public:
+      /// Default c'tor.
+      fsmCtrl();
+
+      /// D'tor, declared and defined for noexcept.
+      ~fsmCtrl() noexcept
+      {
+      }
+
+      virtual void setupConfig();
+
+      /// Implementation of loadConfig logic, separated for testing.
+      /** This is called by loadConfig().
+       */
+      int loadConfigImpl(mx::app::appConfigurator &_config /**< [in] an application configuration from which to load values*/);
+
+      virtual void loadConfig();
+
+      /// Startup function
+      /** Set up INDI props & other startup prep
+       *
+       */
+      virtual int appStartup();
+
+      /// Implementation of the logic for fsmCtrl.
+      /**
+       * \returns 0 on no critical error
+       * \returns -1 on an error requiring shutdown
+       */
+      virtual int appLogic();
+
+      /// Shutdown the app.
+      /**
+       *
+       */
+      virtual int appShutdown();
+
+      /**
+       * @brief Set fsm's DACs values to those in the argument.
+       *
+       * Wrapper that calls query() with instance of DacsQuery and
+       * three new values for the DACs.
+       * Response is stored in instance's DacSetpoints member.
+       * Response is also logged in /opt/tele/fsmCtrl_xxxxxx.binlog
+       *
+       * @param Setpoints pointer to an array of three uint32_t values
+       */
+      int setDacs(uint32_t *);
+
+      // /**
+      //  * @brief Query interface for the fsm
+      //  *
+      //  * Function that sends a command packet to the fsm.
+      //  *
+      //  * @param pztQuery pointer to a class inheriting from PZTQuery (see fsmCommands.hpp)
+      //  */
+      // void query(PZTQuery *);
+
+
+      /**
+       * @brief Utility function that sets 'current' INDI values, if updated
+       *
+       * Function that takes the values in m_dac1, m_dac2 and m_dac3, transforms them
+       * (if necessary) to the type specified by m_inputType and updates the corresponding
+       * INDI parameter's 'current' value.
+       */
+      void updateINDICurrentParams();
+
+
+      /** \name shmim Monitor Interface
+       *
+       * @{
+       */
+
+      /**
+       * @brief Required by smimMonitor Interface
+       * Called after shmimMonitor connects to the fsm stream.
+       *
+       * \returns 0 on success
+       * \returns -1 if incorrect size or data type in stream.
+       */
+      int allocate(const dev::shmimT &sp);
+
+      /**
+       * @brief Required by smimMonitor Interface
+       * Called by shmimMonitor when a new fsm command is available.
+       *
+       * \returns 0 on success
+       * \returns -1 if incorrect size or data type in stream.
+       */
+      int processImage(void *curr_src,
+                       const dev::shmimT &sp);
+
+      /**
+       * @brief Send to fsm new DAC values from shmim
+       *
+       * Called as part of processImage.
+       * Checks shmim has an inputType keyword and that its value is 'dacs', 'voltages' or 'ttp'.
+       * Updates INDI input.type property, if different.
+       * Updates corresponding INDI 'target' values with shmim values.
+       * Converts shmim values from specified inputType to DACs.
+       * Calls setDacs function with new DAC values.
+       *
+       * \returns 0 on success
+       * \returns -1 if incorrect size or data type in stream.
+       */
+      int commandFSM(void *curr_src);
+
+      /**
+       * @brief Checks if shmim exists
+       *
+       * \returns true if shmim exists
+       * \returns false otherwise
+       */
+      bool streamExists();
+
+      /**
+       * @brief Checks if shmim has expected size & keyword. If it doesn't deletes it.
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int validateStream();
+
+      /**
+       * @brief Create shmim if it doesn't exist
+       *
+       * \returns 0 on success
+       * \returns -1 on failure
+       */
+      int createStream();
+      ///@}
+    };
+
+    fsmCtrl::fsmCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
+    {
+      m_powerMgtEnabled = true;
+      m_getExistingFirst = true; // get existing shmim (??? should or shouldn't)
+      return;
+    }
+
+    void fsmCtrl::setupConfig()
+    {
+      shmimMonitor::setupConfig(config);
+
+      config.add("fsm.B", "", "fsm.B", argType::Optional, "fsm", "B", false, "double", "Baseline distance of the three piezos. Defaults to (L * cos(30deg)).");
+      config.add("fsm.L", "", "fsm.L", argType::Optional, "fsm", "L", false, "double", "Distance between FSM piezo actuators. In units of micrometers. Defaults to 12000 micrometers.");
+      config.add("fsm.v", "", "fsm.v", argType::Required, "fsm", "v", false, "double", "Conversion factor for converting from voltages to dacs.");
+      config.add("fsm.dac1_min", "", "fsm.dac1_min", argType::Optional, "fsm", "dac1_min", false, "double", "Min safe value for dac1. Defaults to 0.");
+      config.add("fsm.dac1_max", "", "fsm.dac1_max", argType::Optional, "fsm", "dac1_max", false, "double", "Max safe value for dac1. Defaults to voltage max conversion.");
+      config.add("fsm.dac2_min", "", "fsm.dac2_min", argType::Optional, "fsm", "dac2_min", false, "double", "Min safe value for dac2. Defaults to 0.");
+      config.add("fsm.dac2_max", "", "fsm.dac2_max", argType::Optional, "fsm", "dac2_max", false, "double", "Max safe value for dac2. Defaults to voltage max conversion.");
+      config.add("fsm.dac3_min", "", "fsm.dac3_min", argType::Optional, "fsm", "dac3_min", false, "double", "Min safe value for dac3. Defaults to 0.");
+      config.add("fsm.dac3_max", "", "fsm.dac3_max", argType::Optional, "fsm", "dac3_max", false, "double", "Max safe value for dac3. Defaults to voltage max conversion.");
+      config.add("fsm.voltage_max", "", "fsm.voltage_max", argType::Optional, "fsm", "voltage_max", false, "double", "Max voltage safe value in volts. Defaults to 100.");
+      config.add("fsm.stroke_max", "", "fsm.stroke_max", argType::Optional, "fsm", "stroke_max", false, "double", "Max stroke value in micrometers. Defaults to 10.");
+
+      // shmim parameters
+      config.add("shmimMonitor.shmimName", "", "shmimMonitor.shmimName", argType::Required, "shmimMonitor", "shmimName", false, "string", "The name of the ImageStreamIO shared memory image. Will be used as /tmp/<shmimName>.im.shm. Default is fsm");
+
+      config.add("shmimMonitor.width", "", "shmimMonitor.width", argType::Required, "shmimMonitor", "width", false, "string", "The width of the FSM in actuators.");
+      config.add("shmimMonitor.height", "", "shmimMonitor.height", argType::Required, "shmimMonitor", "height", false, "string", "The height of the FSM in actuators.");
+
+      config.add("input.type", "", "input.type", argType::Optional, "input", "type", false, "string", "The type of values that the shmim contains. Can be 'dacs', 'voltages' or 'ttp'. Defaults to voltages.");
+      config.add("input.toggle", "", "input.toggle", argType::Optional, "input", "toggle", false, "string", "Where the input comes from. Can be 'shmim', 'indi'. Defaults to shmim.");
+    }
+
+    int fsmCtrl::loadConfigImpl(mx::app::appConfigurator &_config)
+    {
+      log<text_log>("Loading config");
+
+      /// CONVERSTION PARAMETERS ///
+      _config(m_L, "fsm.L");
+      m_B = m_L * cos(30 * (M_PI / 180.0));
+      _config(m_B, "fsm.B");
+
+      _config(m_v, "fsm.v");
+      _config(m_voltage_max, "fsm.voltage_max");
+      _config(m_stroke_max, "fsm.stroke_max");
+
+      D_per_V = m_stroke_max / m_voltage_max;
+      m_dac1_min = m_dac2_min = m_dac3_min = 0;
+      m_dac1_max = m_dac2_max = m_dac3_max = vi_to_daci(m_voltage_max, m_v);
+
+      /// DAC RANGE PARAMETERS ///
+      _config(m_dac1_min, "fsm.dac1_min");
+      _config(m_dac1_max, "fsm.dac1_max");
+      _config(m_dac2_min, "fsm.dac2_min");
+      _config(m_dac2_max, "fsm.dac2_max");
+      _config(m_dac3_min, "fsm.dac3_min");
+      _config(m_dac3_max, "fsm.dac3_max");
+
+      /// SHMIM PARAMETERS ///
+      _config(width, "shmimMonitor.width");
+      _config(height, "shmimMonitor.height");
+
+      /// COMMAND INPUT PARAMETERS ///
+      m_inputType = VOLTAGES;
+      _config(m_inputType, "input.type");
+      if (!(m_inputType == DACS || m_inputType == VOLTAGES || m_inputType == TTP))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets inputType to a value other than 'dacs', 'voltages', or 'ttp': " << m_inputType;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }
+
+      m_inputToggle = SHMIM;
+      _config(m_inputToggle, "input.toggle");
+      if (!(m_inputToggle == SHMIM || m_inputToggle == INDI))
+      {
+        std::ostringstream oss;
+        oss << "Config file sets m_inputToggle to a value other than 'shmim', or 'indi': " << m_inputToggle;
+        log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+        return -1;
+      }      
+      return 0;
+    }
+
+    void fsmCtrl::loadConfig()
+    {
+      if (loadConfigImpl(config) < 0)
+      {
+        log<text_log>("Error during config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
+      if (shmimMonitor::loadConfig(config) < 0)
+      {
+        log<text_log>("Error during telemeter config", logPrio::LOG_CRITICAL);
+        m_shutdown = true;
+      }
+
+    }
+
+    int fsmCtrl::appStartup()
+    {
+      if (shmimMonitor::appStartup() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      // set up the  INDI properties
+      // dac boundaries
+      REG_INDI_NEWPROP(m_indiP_dac1, "dac_1", pcf::IndiProperty::Number);
+      m_indiP_dac1.add(pcf::IndiElement("min"));
+      m_indiP_dac1.add(pcf::IndiElement("max"));
+      m_indiP_dac1["min"] = m_dac1_min;
+      m_indiP_dac1["max"] = m_dac1_max;
+      REG_INDI_NEWPROP(m_indiP_dac2, "dac_2", pcf::IndiProperty::Number);
+      m_indiP_dac2.add(pcf::IndiElement("min"));
+      m_indiP_dac2.add(pcf::IndiElement("max"));
+      m_indiP_dac2["min"] = m_dac2_min;
+      m_indiP_dac2["max"] = m_dac2_max;
+      REG_INDI_NEWPROP(m_indiP_dac3, "dac_3", pcf::IndiProperty::Number);
+      m_indiP_dac3.add(pcf::IndiElement("min"));
+      m_indiP_dac3.add(pcf::IndiElement("max"));
+      m_indiP_dac3["min"] = m_dac3_min;
+      m_indiP_dac3["max"] = m_dac3_max;
+
+      // vals
+      REG_INDI_NEWPROP(m_indiP_val1, "val_1", pcf::IndiProperty::Number);
+      m_indiP_val1.add(pcf::IndiElement("current"));
+      m_indiP_val1.add(pcf::IndiElement("target"));
+      m_indiP_val1["current"] = 0;
+      m_indiP_val1["target"] = 0;
+      REG_INDI_NEWPROP(m_indiP_val2, "val_2", pcf::IndiProperty::Number);
+      m_indiP_val2.add(pcf::IndiElement("current"));
+      m_indiP_val2.add(pcf::IndiElement("target"));
+      m_indiP_val2["current"] = 0;
+      m_indiP_val2["target"] = 0;
+      REG_INDI_NEWPROP(m_indiP_val3, "val_3", pcf::IndiProperty::Number);
+      m_indiP_val3.add(pcf::IndiElement("current"));
+      m_indiP_val3.add(pcf::IndiElement("target"));
+      m_indiP_val3["current"] = 0;
+      m_indiP_val3["target"] = 0;
+
+      // adcs
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc1, "adc_1", pcf::IndiProperty::Number);
+      m_indiP_adc1.add(pcf::IndiElement("current"));
+      m_indiP_adc1["current"] = 0;
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc2, "adc_2", pcf::IndiProperty::Number);
+      m_indiP_adc2.add(pcf::IndiElement("current"));
+      m_indiP_adc2["current"] = 0;
+      REG_INDI_NEWPROP_NOCB(m_indiP_adc3, "adc_3", pcf::IndiProperty::Number);
+      m_indiP_adc3.add(pcf::IndiElement("current"));
+      m_indiP_adc3["current"] = 0;
+
+      // conversion_factors
+      REG_INDI_NEWPROP(m_indiP_conversion_factors, "conversion_factors", pcf::IndiProperty::Number);
+      m_indiP_conversion_factors.add(pcf::IndiElement("B"));
+      m_indiP_conversion_factors["B"] = m_B;
+      m_indiP_conversion_factors.add(pcf::IndiElement("L"));
+      m_indiP_conversion_factors["L"] = m_L;
+      m_indiP_conversion_factors.add(pcf::IndiElement("v"));
+      m_indiP_conversion_factors["v"] = m_v;
+      m_indiP_conversion_factors.add(pcf::IndiElement("voltage_max"));
+      m_indiP_conversion_factors["voltage_max"] = m_voltage_max;
+      m_indiP_conversion_factors.add(pcf::IndiElement("stroke_max"));
+      m_indiP_conversion_factors["stroke_max"] = m_stroke_max;
+
+      // input
+      REG_INDI_NEWPROP(m_indiP_input, "input", pcf::IndiProperty::Text);
+      m_indiP_input.add(pcf::IndiElement("toggle"));
+      m_indiP_input["toggle"] = m_inputToggle;
+      m_indiP_input.add(pcf::IndiElement("type"));
+      m_indiP_input["type"] = m_inputType;
+
+
+      if(!streamExists()) {
+        if (createStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+      }
+      else {
+        if (ImageStreamIO_openIm(&m_imageStream, m_shmimName.c_str()) != 0) {
+          log<software_error>({__FILE__, __LINE__, "failed to open existing shmim " + m_shmimName});
+          return -1;
+        }
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::appLogic()
+    {
+      if (shmimMonitor::appLogic() < 0)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__});
+      }
+
+      // Set the INDI name, width & heigh properties to those of the shmim
+      if (shmimMonitor::updateINDI() < 0)
+      {
+        log<software_error>({__FILE__, __LINE__});
+      }
+
+      if (state() == stateCodes::POWERON)
+      {
+        if (!powerOnWaitElapsed())
+        {
+          return 0;
+        }
+        state(stateCodes::NOTCONNECTED);
+      }
+
+      if (state() == stateCodes::NOTCONNECTED)
+      {
+        int rv;
+
+        rv = 0;
+
+        if (rv == 0)
+        {
+          state(stateCodes::CONNECTED);
+        }
+      }
+
+      if (state() == stateCodes::CONNECTED)
+      {
+        if (m_inputToggle == SHMIM)
+        {
+          state(stateCodes::OPERATING);
+        }
+        if (m_inputToggle == INDI)
+        {
+          state(stateCodes::READY);
+        }
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::appShutdown()
+    {
+      shmimMonitor<fsmCtrl>::appShutdown();
+
+      return 0;
+    }
+
+
+    //////////////
+    // FSM QUERIES
+    //////////////
+
+    // Function to set fsm DACs
+    int fsmCtrl::setDacs(uint32_t *Setpoints)
+    {
+      if (Setpoints[0] < m_dac1_min || Setpoints[0] > m_dac1_max)
+      {
+        std::ostringstream oss;
+        oss << "Requested dac1 out of range; (min|dac1|max) : (" << m_dac1_min << "|" << Setpoints[0] << "|" << m_dac1_max << ");";
+        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        return -1;
+      }
+
+      if (Setpoints[1] < m_dac2_min || Setpoints[1] > m_dac2_max)
+      {
+        std::ostringstream oss;
+        oss << "Requested dac2 out of range; (min|dac2|max) : (" << m_dac2_min << "|" << Setpoints[1] << "|" << m_dac2_max << ");";
+        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        return -1;
+      }
+
+      if (Setpoints[2] < m_dac3_min || Setpoints[2] > m_dac3_max)
+      {
+        std::ostringstream oss;
+        oss << "Requested dac3 out of range; (min|dac3|max) : (" << m_dac3_min << "|" << Setpoints[2] << "|" << m_dac3_max << ");";
+        log<text_log>(oss.str(), logPrio::LOG_ERROR);
+        return -1;
+      }
+
+      std::ostringstream oss;
+      oss << "SETDACS: " << Setpoints[0] << " | " << Setpoints[1] << " | " << Setpoints[2];
+      log<text_log>(oss.str());
+
+      m_dac1 = Setpoints[0];
+      m_dac2 = Setpoints[1];
+      m_dac3 = Setpoints[2];
+
+      // The output channel is owned by the AO sim; (re)bind if our handle was
+      // lost (e.g. destroyed/recreated) so we never dereference a null md.
+      if (m_imageStream.md == nullptr)
+      {
+        if (!streamExists() || ImageStreamIO_openIm(&m_imageStream, m_shmimName.c_str()) != 0 || m_imageStream.md == nullptr)
+        {
+          return log<software_error, -1>({__FILE__, __LINE__,
+            "output shmim '" + m_shmimName + "' not available; is the AO sim running?"});
+        }
+      }
+
+      // Write to shmim so the simulation picks up the new values.
+      // (assume it expects tip, tilt, piston).
+      m_imageStream.md->write = 1;
+      float *dest = (float *)m_imageStream.array.raw;
+      if (m_inputType == DACS)
+      {
+        dest[0] = Setpoints[0];
+        dest[1] = Setpoints[1];
+        dest[2] = Setpoints[2];
+      }
+      else if (m_inputType == VOLTAGES)
+      {
+        dest[0] = daci_to_vi(Setpoints[0], m_v);
+        dest[1] = daci_to_vi(Setpoints[1], m_v);
+        dest[2] = daci_to_vi(Setpoints[2], m_v);
+      }
+      else // TTP: write the ideal tip/tilt/piston the AO sim expects
+      {
+        dest[0] = m_tip;
+        dest[1] = m_tilt;
+        dest[2] = m_piston;
+      }
+      m_imageStream.md->write = 0;
+      m_imageStream.md->cnt0++;
+      ImageStreamIO_sempost(&m_imageStream, -1);
+      
+      updateINDICurrentParams();
+
+      return 0;
+    }
+
+
+    /////////////////////////
+    // SHMIMMONITOR INTERFACE
+    /////////////////////////
+
+    int fsmCtrl::allocate(const dev::shmimT &sp)
+    {
+      static_cast<void>(sp); // be unused
+
+      // validateStream will delete & recreate stream if it doesn't match size & kw requirements
+      if (streamExists()) {
+        if (validateStream() < 0) {
+          log<software_error>({__FILE__, __LINE__});
+          return -1;
+        }
+      }   
+
+      return 0;
+    }
+
+    int fsmCtrl::processImage(void *curr_src,
+                              const dev::shmimT &sp)
+    {
+      static_cast<void>(sp); // be unused
+
+      int rv = commandFSM(curr_src);
+
+      if (rv < 0)
+      {
+        log<software_critical>({__FILE__, __LINE__, errno, rv, "Error from commandFSM"});
+        return rv;
+      }
+
+      return rv;
+    }
+
+    int fsmCtrl::commandFSM(void *curr_src)
+    {
+      uint32_t dacs[3] = {0, 0, 0};
+
+      // Only drive the FSM from the monitored shmim in SHMIM-input mode.
+      // In INDI-input mode commands received in INDI are written to this shmim, so
+      // processing them here would create a write->monitor->command feedback loop.
+      if(m_inputToggle != SHMIM) return 0;
+
+      float val1, val2, val3;
+      val1 = ((float *)curr_src)[0];
+      val2 = ((float *)curr_src)[1];
+      
+      if (m_inputType == TTP) {
+        val3 = d_piston;
+      } else {
+        val3 = ((float *)curr_src)[2];
+      }
+
+      updateIfChanged(m_indiP_val1, "target", val1);
+      updateIfChanged(m_indiP_val2, "target", val2);
+      updateIfChanged(m_indiP_val3, "target", val3);
+
+      if (m_inputType == DACS)
+      {
+        dacs[0] = val1;
+        dacs[1] = val2;
+        dacs[2] = val3;
+      }
+      else if (m_inputType == VOLTAGES)
+      {
+        dacs[0] = vi_to_daci(val1, m_v);
+        dacs[1] = vi_to_daci(val2, m_v);
+        dacs[2] = vi_to_daci(val3, m_v);
+      }
+      else if (m_inputType == TTP)
+      {
+        dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
+        dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+        dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
+      }
+
+      std::ostringstream oss;
+      oss << "SHMIM dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+      log<text_log>(oss.str());
+
+      std::unique_lock<std::mutex> lock(m_indiMutex);
+
+      return setDacs(dacs);
+    }
+
+    bool fsmCtrl::streamExists() { 
+      // Check if ImageStream exists.
+      // From shmimMonitor::smThreadExec.
+      int SM_fd;
+      char SM_fname[200];
+      ImageStreamIO_filename(SM_fname, sizeof(SM_fname), m_shmimName.c_str());
+      SM_fd = open(SM_fname, O_RDWR);
+      if (SM_fd == -1)
+      {
+          close(SM_fd);
+          return false;
+      } else {
+        return true;
+      }
+    }
+
+    int fsmCtrl::validateStream() { 
+      std::string inputType = "";
+
+      // This channel is owned by the AO sim; never destroy/recreate it.
+      // Guard against an unopened handle, and only warn on a shape mismatch.
+      if(m_imageStream.md == nullptr)
+      {
+        return log<software_error, -1>({__FILE__, __LINE__,
+          "shmim '" + shmimMonitor::m_shmimName + "' is not open"});
+      }
+
+      if(m_imageStream.md->size[0] != width || m_imageStream.md->size[1] != height)
+      {
+        std::ostringstream oss;
+        oss << "Shmim '" << shmimMonitor::m_shmimName << "' has shape (" << m_imageStream.md->size[0]
+            << "," << m_imageStream.md->size[1] << ") which differs from the configured ("
+            << width << "," << height << "); leaving it as-is (AO sim owns it).";
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});
+        return 0;
+      }
+
+      // Check if shmim has inputType keyword
+      int kwn = 0;
+      bool kw_found = false;
+      while ((m_imageStream.kw[kwn].type != 'N') && (kwn < m_imageStream.md->NBkw))
+      {
+        // std::string name(m_imageStream.kw[kwn].name);
+        // if (name == kw_name)
+        if (std::string(m_imageStream.kw[kwn].name) == kw_name)
+        {
+          kw_found = true;
+          inputType = std::string(m_imageStream.kw[kwn].value.valstr);
+          if (!(inputType == DACS || inputType == VOLTAGES || inputType == TTP))
+          {
+            std::ostringstream oss;
+            oss << "Shmim '" << shmimMonitor::m_shmimName << "' has an inputType keyword with a value other than 'dacs', 'voltages', or 'ttp': " << inputType;
+            log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+            return -1;
+          }
+
+          // If keyword exists, it takes precedence
+          m_inputType = inputType;
+          updateIfChanged(m_indiP_input, "type", m_inputType);
+        }
+        kwn++;
+      }
+
+      if(!kw_found) 
+      {
+        // // If imageStream doesn't have an inputType keyword, destroy it        
+        // std::ostringstream oss;
+        // oss << "Shmim '" << shmimMonitor::m_shmimName << "' doesn't have an inputType keyword specifying its data type. Destroying it." << std::endl;
+        // log<software_warning>({__FILE__, __LINE__, errno, oss.str()});      
+
+        // ImageStreamIO_destroyIm(&m_imageStream);
+        
+        // if (createStream() < 0) {
+        //   log<software_error>({__FILE__, __LINE__});
+        //   return -1;
+        // }
+
+        std::ostringstream oss;
+        oss << "No inputType keyword found for shmim '" << shmimMonitor::m_shmimName << ". Defaulting to pre-set input type: " << m_inputType << std::endl;
+        log<software_warning>({__FILE__, __LINE__, errno, oss.str()});           
+      }
+
+      return 0;
+    }
+
+    int fsmCtrl::createStream() { 
+      uint32_t imsize[3] = {width, height, 0};
+
+      // Not found, create it
+      // _DATATYPE_FLOAT = 9
+      // MATH_DATA = 2
+      ImageStreamIO_createIm_gpu(&m_imageStream, m_shmimName.c_str(), 2, imsize, _DATATYPE_FLOAT, -1, 1, IMAGE_NB_SEMAPHORE, 1, MATH_DATA, 0);
+
+      // Set name of first keyword is 'inputType'
+      strncpy(m_imageStream.kw[0].name, kw_name.c_str(), sizeof(m_imageStream.kw[0].name));
+      // Ensure null termination
+      m_imageStream.kw[0].name[sizeof(m_imageStream.kw[0].name) - 1] = '\0';
+      // Set type
+      m_imageStream.kw[0].type = 'S';
+      // Set keyword value
+      strncpy(m_imageStream.kw[0].value.valstr, m_inputType.c_str(), sizeof(m_imageStream.kw[0].value.valstr));
+      // Ensure null termination
+      m_imageStream.kw[0].value.valstr[sizeof(m_imageStream.kw[0].value.valstr) - 1] = '\0';
+
+      std::ostringstream oss;
+      oss << "Created: " << m_shmimName << std::endl;
+      log<text_log>(oss.str());
+
+      return 0;
+    }
+
+    ////////////////////
+    // INDI CALLBACKS
+    ////////////////////
+
+    // callback from setting m_indiP_val1
+    // only 'target' is editable ('current' should be updated by code)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val1)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val1, ipRecv);
+
+      // Keyed on element presence, not value: an explicit command of 0 is a
+      // legitimate setpoint and must be applied, not dropped.
+      float target;
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<float>();
+      }
+      else if (ipRecv.find("current"))
+      {
+        target = ipRecv["current"].get<float>();
+      }
+      else
+      {
+        return 0;
+      }
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        m_cmdDropWarned = false;
+
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val1, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+
+        if (m_inputType == DACS)
+        {
+          dacs[0] = target;
+          dacs[1] = m_dac2;
+          dacs[2] = m_dac3;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[0] = vi_to_daci(target, m_v);
+          dacs[1] = m_dac2;
+          dacs[2] = m_dac3;
+        }
+        else if (m_inputType == TTP)
+        {
+          // Sim: the AO sim reads ideal tip/tilt/piston, so pass the command
+          // straight through (no arcsec/integer-DAC round-trip). setDacs writes
+          // (m_tip, m_tilt, m_piston) to the shmim; dacs stay 0 here.
+          m_tip = target;
+        }
+
+        std::ostringstream oss;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
+
+      if (!m_cmdDropWarned)
+      {
+        m_cmdDropWarned = true;
+        log<software_warning>({__FILE__, __LINE__, "val_1 command dropped: FSM state not READY"});
+      }
+      return 0;
+    }
+
+    // callback from setting m_indiP_val2
+    // only 'target' is editable ('current' should be updated by code)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val2)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val2, ipRecv);
+
+      // Keyed on element presence, not value: an explicit command of 0 is a
+      // legitimate setpoint and must be applied, not dropped.
+      float target;
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<float>();
+      }
+      else if (ipRecv.find("current"))
+      {
+        target = ipRecv["current"].get<float>();
+      }
+      else
+      {
+        return 0;
+      }
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        m_cmdDropWarned = false;
+
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val2, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+
+        if (m_inputType == DACS)
+        {
+          dacs[0] = m_dac1;
+          dacs[1] = target;
+          dacs[2] = m_dac3;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[0] = m_dac1;
+          dacs[1] = vi_to_daci(target, m_v);
+          dacs[2] = m_dac3;
+        }
+        else if (m_inputType == TTP)
+        {
+          // Sim: pass tilt straight through (see val_1 note).
+          m_tilt = target;
+        }
+
+        std::ostringstream oss;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
+
+      if (!m_cmdDropWarned)
+      {
+        m_cmdDropWarned = true;
+        log<software_warning>({__FILE__, __LINE__, "val_2 command dropped: FSM state not READY"});
+      }
+      return 0;
+    }
+
+    // callback from setting m_indiP_val3
+    // only 'target' is editable ('current' should be updated by code)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_val3)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_val3, ipRecv);
+
+      // Keyed on element presence, not value: an explicit command of 0 is a
+      // legitimate setpoint and must be applied, not dropped.
+      float target;
+      if (ipRecv.find("target"))
+      {
+        target = ipRecv["target"].get<float>();
+      }
+      else if (ipRecv.find("current"))
+      {
+        target = ipRecv["current"].get<float>();
+      }
+      else
+      {
+        return 0;
+      }
+
+      // Value only settable via INDI if FSM in READY state
+      if (state() == stateCodes::READY)
+      {
+        m_cmdDropWarned = false;
+
+        // Lock the mutex, waiting if necessary
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        updateIfChanged(m_indiP_val3, "target", target);
+
+        uint32_t dacs[3] = {0, 0, 0};
+
+        if (m_inputType == DACS)
+        {
+          dacs[0] = m_dac1;
+          dacs[1] = m_dac2;
+          dacs[2] = target;
+        }
+        else if (m_inputType == VOLTAGES)
+        {
+          dacs[0] = m_dac1;
+          dacs[1] = m_dac2;
+          dacs[2] = vi_to_daci(target, m_v);
+        }
+        else if (m_inputType == TTP)
+        {
+          // Sim: pass piston straight through (see val_1 note).
+          m_piston = target;
+        }
+
+        std::ostringstream oss;
+        oss << "INDI dacs callback: " << dacs[0] << " | " << dacs[1] << " | " << dacs[2];
+        log<text_log>(oss.str());
+
+        return setDacs(dacs);
+      }
+
+      if (!m_cmdDropWarned)
+      {
+        m_cmdDropWarned = true;
+        log<software_warning>({__FILE__, __LINE__, "val_3 command dropped: FSM state not READY"});
+      }
+      return 0;
+    }
+
+    // callback from setting conversion_factors
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_conversion_factors)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_conversion_factors, ipRecv);
+      if (ipRecv.find("B"))
+      {
+        m_B = ipRecv["B"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "B", m_B);
+      }
+
+      if (ipRecv.find("L"))
+      {
+        m_L = ipRecv["L"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "L", m_L);
+      }
+
+      if (ipRecv.find("v"))
+      {
+        m_v = ipRecv["v"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "v", m_v);
+      }
+
+      if (ipRecv.find("voltage_max"))
+      {
+        m_v = ipRecv["voltage_max"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "voltage_max", m_voltage_max);
+      }
+
+      if (ipRecv.find("stroke_max"))
+      {
+        m_v = ipRecv["stroke_max"].get<float>();
+        updateIfChanged(m_indiP_conversion_factors, "stroke_max", m_stroke_max);
+      }
+
+      std::ostringstream oss;
+      oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;
+      log<text_log>(oss.str());
+    }
+
+    // callback from setting m_indiP_input (dacs, voltages, ttp)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_input)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_input, ipRecv);
+      if (ipRecv.find("type"))
+      {
+        std::string type = ipRecv["type"].get<std::string>();
+        if (!(type == DACS || type == VOLTAGES || type == TTP))
+        {
+          std::ostringstream oss;
+          oss << "input.type '" << type << "' not dacs, voltages or ttp";
+          log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+          return -1;
+        }
+
+        m_inputType = type;
+        updateIfChanged(m_indiP_input, "type", m_inputType);
+
+        if (state() == stateCodes::READY)
+        {
+          // Reset target values
+          updateIfChanged(m_indiP_val1, "target", 0);
+          updateIfChanged(m_indiP_val2, "target", 0);
+          updateIfChanged(m_indiP_val3, "target", 0);
+          // Update current values
+          updateINDICurrentParams();
+        }
+
+        std::ostringstream oss;
+        oss << "INDI input type callback: " << m_inputType;
+        log<text_log>(oss.str());
+      }
+
+      if (ipRecv.find("toggle"))
+      {
+        std::string toggle = ipRecv["toggle"].get<std::string>();
+        if (toggle == SHMIM)
+        {
+          state(stateCodes::OPERATING);
+          updateIfChanged(m_indiP_input, "toggle", toggle);
+        }
+        if (toggle == INDI)
+        {
+          state(stateCodes::READY);
+          updateIfChanged(m_indiP_input, "toggle", toggle);
+        }
+
+        std::ostringstream oss;
+        oss << "INDI input toggle: " << m_inputToggle;
+        log<text_log>(oss.str());
+      }
+    }
+
+    // callback from setting m_indiP_dac1 (min, max)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac1)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac1, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
+      {
+        m_dac1_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac1 min callback: " << m_dac1_min;
+        updateIfChanged(m_indiP_dac1, "min", m_dac1_min);
+      }
+
+      if (ipRecv.find("max"))
+      {
+        m_dac1_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac1 max callback: " << m_dac1_max;
+        updateIfChanged(m_indiP_dac1, "max", m_dac1_max);
+      }
+
+      log<text_log>(oss.str());
+
+    }
+
+    // callback from setting m_indiP_dac2 (min, max)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac2)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac2, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
+      {
+        m_dac2_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac2 min callback: " << m_dac2_min;
+        updateIfChanged(m_indiP_dac2, "min", m_dac2_min);
+      }
+
+      if (ipRecv.find("max"))
+      {
+        m_dac2_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac2 max callback: " << m_dac2_max;
+        updateIfChanged(m_indiP_dac2, "max", m_dac2_max);
+      }
+
+      log<text_log>(oss.str());
+    }
+
+    // callback from setting m_indiP_dac3 (min, max)
+    INDI_NEWCALLBACK_DEFN(fsmCtrl, m_indiP_dac3)
+    (const pcf::IndiProperty &ipRecv)
+    {
+      INDI_VALIDATE_CALLBACK_PROPS(m_indiP_dac3, ipRecv);
+
+      std::ostringstream oss;
+
+      if (ipRecv.find("min"))
+      {
+        m_dac3_min = ipRecv["min"].get<uint32_t>();
+        oss << "INDI dac3 min callback: " << m_dac3_min;
+        updateIfChanged(m_indiP_dac3, "min", m_dac3_min);
+      }
+
+      if (ipRecv.find("max"))
+      {
+        m_dac3_max = ipRecv["max"].get<uint32_t>();
+        oss << "INDI dac3 max callback: " << m_dac3_max;
+        updateIfChanged(m_indiP_dac3, "max", m_dac3_max);
+      }
+
+      log<text_log>(oss.str());
+    }
+
+    /////////
+    // UTILS
+    /////////
+
+    void fsmCtrl::updateINDICurrentParams()
+    {
+      float val1, val2, val3;
+
+      if (m_inputType == DACS)
+      {
+        val1 = m_dac1;
+        val2 = m_dac2;
+        val3 = m_dac3;
+      }
+      else if (m_inputType == VOLTAGES)
+      {
+        val1 = daci_to_vi(m_dac1, m_v);
+        val2 = daci_to_vi(m_dac2, m_v);
+        val3 = daci_to_vi(m_dac3, m_v);
+      }
+      else if (m_inputType == TTP)
+      {
+        val1 = m_tip;
+        val2 = m_tilt;
+        val3 = m_piston;
+      }
+
+      updateIfChanged(m_indiP_val1, "current", val1);
+      updateIfChanged(m_indiP_val2, "current", val2);
+      updateIfChanged(m_indiP_val3, "current", val3);
+    }
+
+  } // namespace app
+} // namespace MagAOX

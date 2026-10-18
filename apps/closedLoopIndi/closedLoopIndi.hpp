@@ -64,9 +64,15 @@ class closedLoopIndi : public MagAOXApp<true>
 
     bool m_operatingOK{ false }; ///< If true then it's ok for the ctrl device to be OPERATING when a command is sent
 
+    float m_readbackTolerance {-1};   ///< Relative tolerance for the ctrl current elements to match the last sent targets before a new command is sent.  Negative (the default) disables readback gating entirely: commands are sent on every measurement update (legacy behavior).
+    float m_readbackTimeout {2.0};    ///< Seconds after which an unmatched readback triggers a warning and a resend.  0 disables the resend.  Only meaningful when readback gating is enabled.
+
     std::unordered_map<std::string, std::string> m_fsmStates; ///< The FSM states of the control devices.
 
     std::vector<float> m_currents; ///< The current commands
+
+    std::vector<float> m_lastSentTargets; ///< The targets of the most recent send.  NaN entries mean nothing is pending readback.
+    double m_lastSendTime {0};            ///< Time of the most recent command send, seconds.
 
     mx::improc::eigenImage<float> m_intMat; ///< The interaction matrix.  Default is [1 0][0 1].
 
@@ -279,6 +285,24 @@ void closedLoopIndi::setupConfig()
                 false,
                 "bool",
                 "If true then it's ok for the ctrl device to be OPERATING when a command is sent. Default is false." );
+    config.add( "ctrl.readbackTolerance",
+                "",
+                "ctrl.readbackTolerance",
+                argType::Required,
+                "ctrl",
+                "readbackTolerance",
+                false,
+                "float",
+                "Relative tolerance for the current elements to match the last sent targets before the next command is sent. Negative disables readback gating (legacy behavior: send on every measurement). Default is -1 (disabled)." );
+    config.add( "ctrl.readbackTimeout",
+                "",
+                "ctrl.readbackTimeout",
+                argType::Required,
+                "ctrl",
+                "readbackTimeout",
+                false,
+                "float",
+                "Seconds after which a command is resent if the readback never matched (e.g. a lost message). 0 disables the resend. Only used when readback gating is enabled. Default is 2." );
 
     config.add( "loop.intMat00",
                 "",
@@ -400,6 +424,8 @@ int closedLoopIndi::loadConfigImpl( mx::app::appConfigurator &_config )
     _config( m_ctrlCurrents, "ctrl.currents" );
     _config( m_ctrlTargets, "ctrl.targets" );
     _config( m_operatingOK, "ctrl.operatingOK" );
+    _config(m_readbackTolerance, "ctrl.readbackTolerance");
+    _config(m_readbackTimeout, "ctrl.readbackTimeout");
 
     if( m_ctrlDevices.size() == 1 )
     {
@@ -486,6 +512,10 @@ int closedLoopIndi::appStartup()
 
     if( m_ctrlTargets.size() != m_defaultGains.size() )
     {
+	    std::ostringstream oss;
+        oss << "Size of ctrl.targets (" << m_ctrlTargets.size() << ") must match size of loop.gains (" << m_defaultGains.size() << ")";
+        log<software_warning>({__FILE__, __LINE__, oss.str()});
+
         if( m_defaultGains.size() == 1 )
         {
             m_defaultGains.push_back( m_defaultGains[0] );
@@ -514,6 +544,8 @@ int closedLoopIndi::appStartup()
     m_measurements.setZero();
 
     m_currents.resize( m_ctrlDevices.size(), -1e15 );
+
+    m_lastSentTargets.assign(m_ctrlDevices.size(), std::numeric_limits<float>::quiet_NaN());
 
     REG_INDI_SETPROP( m_indiP_ctrl0_fsm, m_ctrlDevices[0], "fsm" );
 
@@ -562,6 +594,11 @@ int closedLoopIndi::toggleLoop( bool onoff )
     if( !m_loopClosed && onoff ) // not enabled so change
     {
         m_loopClosed = true;
+
+        // Fresh close: forget any previous readback state so the first command
+        // is sent immediately rather than waiting out a stale mismatch.
+        m_lastSentTargets.assign(m_lastSentTargets.size(), std::numeric_limits<float>::quiet_NaN());
+
         log<loop_closed>();
         updateSwitchIfChanged( m_indiP_ctrlEnabled, "toggle", pcf::IndiElement::On, INDI_OK );
         return 0;
@@ -624,16 +661,87 @@ inline int closedLoopIndi::updateLoop()
         commands[cc] = m_currents[cc] - m_ggain * m_gains[cc] * m_commands( cc, 0 );
     }
 
-    // And send commands.
-    int rv;
-    if( m_loopClosed )
+    // Readback gate (enabled by ctrl.readbackTolerance >= 0): send the next
+    // command only once the controller's current elements match the targets
+    // of the previous send, i.e. the device has demonstrably caught up.  This
+    // paces the loop to the device's real command bandwidth so commands can
+    // never accumulate in the INDI chain -- a queued backlog means the device
+    // executes stale commands, which destabilizes the loop.  NaN entries mean
+    // nothing is pending.  The tolerance is relative because INDI transports
+    // numbers as text with ~6 significant digits.
+    bool caughtUp = true;
+    if(m_readbackTolerance >= 0)
     {
-        rv = sendCommands( commands );
+        for(size_t cc = 0; cc < m_lastSentTargets.size(); ++cc)
+        {
+            if(std::isnan(m_lastSentTargets[cc])) continue;
+
+            if( std::fabs(m_currents[cc] - m_lastSentTargets[cc]) >
+                                 m_readbackTolerance * std::fabs(m_lastSentTargets[cc]) )
+            {
+                caughtUp = false;
+                break;
+            }
+        }
     }
-    else
+
+    int rv = 0;
+    bool sent = false;
+    if(m_loopClosed)
     {
-        rv = 0;
+        double tNow = mx::sys::get_curr_time();
+
+        // INDI does not guarantee delivery: a lost command or lost readback
+        // would otherwise hold the loop forever.  After the timeout, resend
+        // the (freshly computed) command and warn.
+        if(!caughtUp && m_readbackTimeout > 0 && tNow - m_lastSendTime > m_readbackTimeout)
+        {
+            log<software_warning>({__FILE__, __LINE__,
+               "ctrl readback has not matched the last sent target within " +
+               std::to_string(m_readbackTimeout) + " sec, resending"});
+            caughtUp = true;
+        }
+
+        if(caughtUp)
+        {
+            rv = sendCommands(commands);
+            if(rv == 0)
+            {
+                for(size_t cc = 0; cc < m_lastSentTargets.size(); ++cc)
+                {
+                    m_lastSentTargets[cc] = commands[cc];
+                }
+                m_lastSendTime = tNow;
+                sent = true;
+            }
+        }
     }
+
+    //---- DIAGNOSTIC (remove after debugging) ----
+    {
+        static int dbgS = 0;
+        if(dbgS++ % 20 == 0)
+        {
+            std::ostringstream dbg;
+            dbg << "updateLoop send: ggain=" << m_ggain
+                << " gains=(" << m_gains[0] << "," << m_gains[1] << ")"
+                << " cmd=(" << commands[0] << "," << commands[1] << ")"
+                << (!m_loopClosed ? " [loop open]" : (sent ? " [sent]" : " [held: awaiting readback]"));
+            log<text_log>(dbg.str());
+        }
+    }
+    //---- END DIAGNOSTIC ----
+
+    // // And send commands.
+    // int rv;
+    // if( m_loopClosed )
+    // {
+    //     rv = sendCommands( commands );
+    // }
+    // else
+    // {
+    //     rv = 0;
+    // }
 
     updateIfChanged( m_indiP_deltas,
                      std::vector<std::string>( { "delta0", "delta1" } ),
