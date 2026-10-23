@@ -2227,15 +2227,18 @@ namespace MagAOX
 
       if (ipRecv.find("voltage_max"))
       {
-        m_v = ipRecv["voltage_max"].get<float>();
+        m_voltage_max = ipRecv["voltage_max"].get<float>();
         updateIfChanged(m_indiP_conversion_factors, "voltage_max", m_voltage_max);
       }
 
       if (ipRecv.find("stroke_max"))
       {
-        m_v = ipRecv["stroke_max"].get<float>();
+        m_stroke_max = ipRecv["stroke_max"].get<float>();
         updateIfChanged(m_indiP_conversion_factors, "stroke_max", m_stroke_max);
       }
+
+      // Derived from voltage_max and stroke_max, as in loadConfigImpl
+      D_per_V = m_stroke_max / m_voltage_max;
 
       std::ostringstream oss;
       oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;

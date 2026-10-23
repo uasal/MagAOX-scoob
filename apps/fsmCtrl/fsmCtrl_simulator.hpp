@@ -1,5 +1,20 @@
-/** \file fsmCtrl.hpp
- * \brief The MagAO-X XXXXXX header file
+/** \file fsmCtrl_simulator.hpp
+ * \brief The MagAO-X FSM controller simulator header file
+ *
+ * Built instead of fsmCtrl.hpp by `make sim` (XWC_SIM_MODE). No hardware is
+ * commanded; the optical simulator (e.g. llowfscSimCpp) follows the
+ * val_1/val_2 'current' INDI elements.
+ *
+ * Differences from the main fsmCtrl app in 'ttp' input mode:
+ *  - Commanded tip/tilt values, from INDI or the shmim, are passed through
+ *    unmodified to val_1/val_2 'current', in the units the optical simulator
+ *    expects (nm for llowfscSimCpp), not hardware arcsec.
+ *  - Piston is always d_piston, on both the INDI and shmim paths; INDI val_3
+ *    commands are ignored (the main app applies the val_3 target from INDI).
+ *  - Tip/tilt/piston are not converted to DACs and not checked
+ *    against the dac_* min/max limits.
+ *
+ * The input shmim is only read and is not created if missing.
  *
  * \ingroup fsmCtrl_files
  */
@@ -193,6 +208,17 @@ namespace MagAOX
        */
       int setDacs(uint32_t *);
 
+      /// Apply an ideal tip/tilt/piston command (sim TTP mode).
+      /** The optical simulator consumes tip/tilt directly from the INDI
+       * val_1/val_2 'current' elements (nm for llowfscSimCpp), so TTP commands
+       * bypass the DAC conversion and range checks. Caller must hold m_indiMutex.
+       *
+       * \returns 0 on success
+       */
+      int applyTtp(double tip /**< [in] tip, in the simulator's units */,
+                   double tilt /**< [in] tilt, in the simulator's units */,
+                   double piston /**< [in] piston, in the simulator's units */);
+
       // /**
       //  * @brief Query interface for the fsm
       //  *
@@ -240,12 +266,10 @@ namespace MagAOX
       /**
        * @brief Send to fsm new DAC values from shmim
        *
-       * Called as part of processImage.
-       * Checks shmim has an inputType keyword and that its value is 'dacs', 'voltages' or 'ttp'.
-       * Updates INDI input.type property, if different.
+       * Called as part of processImage. Ignored unless in shmim-input mode (OPERATING).
        * Updates corresponding INDI 'target' values with shmim values.
-       * Converts shmim values from specified inputType to DACs.
-       * Calls setDacs function with new DAC values.
+       * For 'dacs' and 'voltages', converts shmim values to DACs and calls setDacs.
+       * For 'ttp', passes tip/tilt straight through via applyTtp.
        *
        * \returns 0 on success
        * \returns -1 if incorrect size or data type in stream.
@@ -453,18 +477,14 @@ namespace MagAOX
       m_indiP_input["type"] = m_inputType;
 
 
-      if(!streamExists()) {
-        if (createStream() < 0) {
-          log<software_error>({__FILE__, __LINE__});
-          return -1;
-        }
-      }
-      else {
-        if (ImageStreamIO_openIm(&m_imageStream, m_shmimName.c_str()) != 0) {
-          log<software_error>({__FILE__, __LINE__, "failed to open existing shmim " + m_shmimName});
-          return -1;
-        }
-      }
+      // Sim: do not create the input shmim if it is missing; shmimMonitor
+      // connects once it exists. Creation kept for reference:
+      // if(!streamExists()) {
+      //   if (createStream() < 0) {
+      //     log<software_error>({__FILE__, __LINE__});
+      //     return -1;
+      //   }
+      // }
 
       return 0;
     }
@@ -565,43 +585,21 @@ namespace MagAOX
       m_dac2 = Setpoints[1];
       m_dac3 = Setpoints[2];
 
-      // The output channel is owned by the AO sim; (re)bind if our handle was
-      // lost (e.g. destroyed/recreated) so we never dereference a null md.
-      if (m_imageStream.md == nullptr)
-      {
-        if (!streamExists() || ImageStreamIO_openIm(&m_imageStream, m_shmimName.c_str()) != 0 || m_imageStream.md == nullptr)
-        {
-          return log<software_error, -1>({__FILE__, __LINE__,
-            "output shmim '" + m_shmimName + "' not available; is the AO sim running?"});
-        }
-      }
+      updateINDICurrentParams();
 
-      // Write to shmim so the simulation picks up the new values.
-      // (assume it expects tip, tilt, piston).
-      m_imageStream.md->write = 1;
-      float *dest = (float *)m_imageStream.array.raw;
-      if (m_inputType == DACS)
-      {
-        dest[0] = Setpoints[0];
-        dest[1] = Setpoints[1];
-        dest[2] = Setpoints[2];
-      }
-      else if (m_inputType == VOLTAGES)
-      {
-        dest[0] = daci_to_vi(Setpoints[0], m_v);
-        dest[1] = daci_to_vi(Setpoints[1], m_v);
-        dest[2] = daci_to_vi(Setpoints[2], m_v);
-      }
-      else // TTP: write the ideal tip/tilt/piston the AO sim expects
-      {
-        dest[0] = m_tip;
-        dest[1] = m_tilt;
-        dest[2] = m_piston;
-      }
-      m_imageStream.md->write = 0;
-      m_imageStream.md->cnt0++;
-      ImageStreamIO_sempost(&m_imageStream, -1);
-      
+      return 0;
+    }
+
+    int fsmCtrl::applyTtp(double tip, double tilt, double piston)
+    {
+      m_tip = tip;
+      m_tilt = tilt;
+      m_piston = piston;
+
+      std::ostringstream oss;
+      oss << "SETTTP: " << m_tip << " | " << m_tilt << " | " << m_piston;
+      log<text_log>(oss.str());
+
       updateINDICurrentParams();
 
       return 0;
@@ -647,15 +645,14 @@ namespace MagAOX
     {
       uint32_t dacs[3] = {0, 0, 0};
 
-      // Only drive the FSM from the monitored shmim in SHMIM-input mode.
-      // In INDI-input mode commands received in INDI are written to this shmim, so
-      // processing them here would create a write->monitor->command feedback loop.
-      if(m_inputToggle != SHMIM) return 0;
+      // Only drive the FSM from the monitored shmim in shmim-input mode (OPERATING).
+      // In INDI-input mode (READY) shmim updates are ignored.
+      if (state() != stateCodes::OPERATING) return 0;
 
       float val1, val2, val3;
       val1 = ((float *)curr_src)[0];
       val2 = ((float *)curr_src)[1];
-      
+
       if (m_inputType == TTP) {
         val3 = d_piston;
       } else {
@@ -665,6 +662,15 @@ namespace MagAOX
       updateIfChanged(m_indiP_val1, "target", val1);
       updateIfChanged(m_indiP_val2, "target", val2);
       updateIfChanged(m_indiP_val3, "target", val3);
+
+      if (m_inputType == TTP)
+      {
+        // Sim: the optical simulator reads ideal tip/tilt, so pass the values
+        // straight through (no DAC conversion), as in the INDI path.
+        std::unique_lock<std::mutex> lock(m_indiMutex);
+
+        return applyTtp(val1, val2, val3);
+      }
 
       if (m_inputType == DACS)
       {
@@ -677,12 +683,6 @@ namespace MagAOX
         dacs[0] = vi_to_daci(val1, m_v);
         dacs[1] = vi_to_daci(val2, m_v);
         dacs[2] = vi_to_daci(val3, m_v);
-      }
-      else if (m_inputType == TTP)
-      {
-        dacs[0] = ttp_to_dac1(val1, d_piston, m_B, D_per_V, m_v);
-        dacs[1] = ttp_to_dac2(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
-        dacs[2] = ttp_to_dac3(val1, val2, d_piston, m_B, m_L, D_per_V, m_v);
       }
 
       std::ostringstream oss;
@@ -858,10 +858,9 @@ namespace MagAOX
         }
         else if (m_inputType == TTP)
         {
-          // Sim: the AO sim reads ideal tip/tilt/piston, so pass the command
-          // straight through (no arcsec/integer-DAC round-trip). setDacs writes
-          // (m_tip, m_tilt, m_piston) to the shmim; dacs stay 0 here.
-          m_tip = target;
+          // Sim: the optical simulator reads ideal tip/tilt from val_*.current,
+          // so pass the command straight through (no DAC conversion).
+          return applyTtp(target, m_tilt, d_piston);
         }
 
         std::ostringstream oss;
@@ -929,7 +928,7 @@ namespace MagAOX
         else if (m_inputType == TTP)
         {
           // Sim: pass tilt straight through (see val_1 note).
-          m_tilt = target;
+          return applyTtp(m_tip, target, d_piston);
         }
 
         std::ostringstream oss;
@@ -996,8 +995,9 @@ namespace MagAOX
         }
         else if (m_inputType == TTP)
         {
-          // Sim: pass piston straight through (see val_1 note).
-          m_piston = target;
+          // Sim: piston is fixed at d_piston in ttp mode; the commanded value is not applied.
+          log<text_log>("val_3 command ignored in ttp mode: piston fixed at d_piston", logPrio::LOG_WARNING);
+          return applyTtp(m_tip, m_tilt, d_piston);
         }
 
         std::ostringstream oss;
@@ -1040,19 +1040,23 @@ namespace MagAOX
 
       if (ipRecv.find("voltage_max"))
       {
-        m_v = ipRecv["voltage_max"].get<float>();
+        m_voltage_max = ipRecv["voltage_max"].get<float>();
         updateIfChanged(m_indiP_conversion_factors, "voltage_max", m_voltage_max);
       }
 
       if (ipRecv.find("stroke_max"))
       {
-        m_v = ipRecv["stroke_max"].get<float>();
+        m_stroke_max = ipRecv["stroke_max"].get<float>();
         updateIfChanged(m_indiP_conversion_factors, "stroke_max", m_stroke_max);
       }
+
+      // Derived from voltage_max and stroke_max, as in loadConfigImpl
+      D_per_V = m_stroke_max / m_voltage_max;
 
       std::ostringstream oss;
       oss << "INDI conversion_factors callback: " << m_B << " | " << m_L << " | " << m_v << " | " << m_voltage_max << " | " << m_stroke_max;
       log<text_log>(oss.str());
+      return 0;
     }
 
     // callback from setting m_indiP_input (dacs, voltages, ttp)
@@ -1092,6 +1096,16 @@ namespace MagAOX
       if (ipRecv.find("toggle"))
       {
         std::string toggle = ipRecv["toggle"].get<std::string>();
+        if (!(toggle == SHMIM || toggle == INDI))
+        {
+          std::ostringstream oss;
+          oss << "input.toggle '" << toggle << "' not shmim or indi";
+          log<software_critical>({__FILE__, __LINE__, errno, oss.str()});
+          return -1;
+        }
+
+        m_inputToggle = toggle;
+
         if (toggle == SHMIM)
         {
           state(stateCodes::OPERATING);
@@ -1101,12 +1115,19 @@ namespace MagAOX
         {
           state(stateCodes::READY);
           updateIfChanged(m_indiP_input, "toggle", toggle);
+
+          { //mutex scope
+            // Start INDI from the last values commanded
+            std::lock_guard<std::mutex> lock(m_indiMutex);
+            updateINDICurrentParams();
+          }
         }
 
         std::ostringstream oss;
         oss << "INDI input toggle: " << m_inputToggle;
         log<text_log>(oss.str());
       }
+      return 0;
     }
 
     // callback from setting m_indiP_dac1 (min, max)
@@ -1132,7 +1153,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
-
+      return 0;
     }
 
     // callback from setting m_indiP_dac2 (min, max)
@@ -1158,6 +1179,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
+      return 0;
     }
 
     // callback from setting m_indiP_dac3 (min, max)
@@ -1183,6 +1205,7 @@ namespace MagAOX
       }
 
       log<text_log>(oss.str());
+      return 0;
     }
 
     /////////
