@@ -1,5 +1,5 @@
 /** \file asiCtrl.hpp
-  * \brief The MagAO-X Princeton Instruments EMCCD camera controller.
+  * \brief The MagAO-X ZWO ASI camera controller.
   *
   * \author Jared R. Males (jaredmales@gmail.com)
   *
@@ -9,22 +9,15 @@
 #ifndef asiCtrl_hpp
 #define asiCtrl_hpp
 
+#include <chrono>
+#include <sstream>
 
-//#include <ImageStruct.h>
 #include <ImageStreamIO/ImageStreamIO.h>
 
 #include "ASICamera2.h"
 
 #include "../../libMagAOX/libMagAOX.hpp" //Note this is included on command line to trigger pch
 #include "../../magaox_git_version.h"
-
-#define DEBUG
-
-#ifdef DEBUG
-#define BREADCRUMB  std::cerr << __FILE__ << " " << __LINE__ << "\n";
-#else
-#define BREADCRUMB
-#endif
 
 typedef int16_t pixelT;
 
@@ -47,6 +40,11 @@ namespace app
   */
 
 /** MagAO-X/SCOOB application to control a ZWO ASI Camera
+  *
+  * Verbose traces use `log<software_debug>` and `log<text_log>` at `logPrio::LOG_DEBUG`.
+  * Those entries are recorded only when `logger.logLevel` is DBG or more verbose
+  * (for example `--logLevel=DBG`). SDK rejections, ROI rounding, dropped frames, and
+  * video timeouts are logged at warning or error without that flag.
   *
   * \ingroup asiCtrl
   *
@@ -107,19 +105,42 @@ protected:
      */
 
    std::string m_serialNumber; ///< The camera's identifying serial number (supports either 16-hex chars or decimal uint64 string)
-   ASI_CAMERA_INFO m_camInfo;
+
+   ASI_CAMERA_INFO m_camInfo {}; ///< SDK identity of the opened camera. Valid after a successful connect.
 
    // - m_camIndex is only for enumeration/logging (0..N-1)
    // - m_camID is the identifier to use for ALL ASI API calls (CameraID from ASI_CAMERA_INFO)
-   int m_camID   = -1;
-   int m_camIndex = -1;
-   bool m_running;
-   std::string m_camName;
+   int m_camID = -1; ///< SDK CameraID for ASI API calls. -1 when the camera is closed.
+
+   int m_camIndex = -1; ///< Enumeration index passed to ASIGetCameraProperty. Not the CameraID.
+
+   bool m_running {false}; ///< True while video capture is started.
+
+   std::string m_camName; ///< Configured camera.cameraName, matched against ASI_CAMERA_INFO::Name.
 
    ///@}
 
-   int m_bits {14};
-   pixelT m_bfactor;
+   int m_bits {14}; ///< Bit depth implied by the current binning (12 at bin 1, otherwise 14).
+
+   pixelT m_bfactor; ///< Scale from sensor bits into the uint16 image stream.
+
+   /// Last ASIGetDroppedFrames count for this capture. The SDK resets it when capture stops.
+   int m_lastDroppedFrames {0};
+
+   /// ASIGetVideoData timeouts in a row. Cleared when a frame arrives.
+   int m_consecutiveTimeouts {0};
+
+   /// When the last dropped-frame warning was logged.
+   std::chrono::steady_clock::time_point m_lastDropLog {};
+
+   /// When ASIGetDroppedFrames was last sampled.
+   std::chrono::steady_clock::time_point m_lastDropSample {};
+
+   /// Shortest ASIGetVideoData wait [ms]. Covers USB delivery on short exposures.
+   static constexpr int c_minVideoWait_ms = 2000;
+
+   /// Longest ASIGetVideoData wait [ms]. Matches the previous fixed wait so a bad exposure cannot block longer than that.
+   static constexpr int c_maxVideoWait_ms = 6000000;
    
    //piint m_timeStampMask {PicamTimeStampsMask_ExposureStarted}; // time stamp at end of exposure
    //pi64s m_tsRes; // time stamp resolution
@@ -134,8 +155,9 @@ protected:
    //PicamAcquisitionBuffer m_acqBuff;
    //PicamAvailableData m_available;
 
-   long m_imgSize = 0;
-   unsigned char* m_imgBuff = nullptr;
+   long m_imgSize = 0; ///< Byte length of m_imgBuff. RAW16 is width * height * 2.
+
+   unsigned char* m_imgBuff = nullptr; ///< Frame buffer owned by this app. Sized from the ROI the driver accepted.
    //float m_blacklevel;
    //std::string m_cameraName;
    //std::string m_cameraModel;
@@ -162,7 +184,7 @@ public:
      */
    virtual int appStartup();
 
-   /// Implementation of the FSM for the Siglent SDG
+   /// Main FSM loop. Reconnects the camera and refreshes temperature, acquisition state, and telemetry.
    virtual int appLogic();
 
    /// Implementation of the on-power-off FSM logic
@@ -175,18 +197,58 @@ public:
    virtual int appShutdown();
 
 protected:
-   int getASIParameter(long & value,
-                        ASI_CONTROL_TYPE parameter
-                        );
 
-   int setASIParameter(ASI_CONTROL_TYPE parameter,
-                        long value,
-                        bool commit);
+   /// Text name of an ASI_ERROR_CODE.
+   static const char * asiErrorString( ASI_ERROR_CODE code /**< [in] SDK status */ );
 
+   /// Text name of an ASI_CONTROL_TYPE this app sets or reads.
+   static const char * asiControlName( ASI_CONTROL_TYPE control /**< [in] SDK control */ );
+
+   /// Log an ASI command the driver rejected.
+   /** The numeric SDK code is stored in the software_error `code_other` field.
+     */
+   void logASIRejection( ASI_ERROR_CODE code, /**< [in] SDK status */
+                         const std::string & what /**< [in] command that failed */ );
+
+   /// Verbose trace, recorded only at logger log level DBG or DEBUG2.
+   void logASIDebug( const std::string & what /**< [in] trace text */ );
+
+   /// Snap the next ROI onto the alignment ASISetROIFormat requires.
+   /** Width must be a multiple of 8 and height a multiple of 2. The SDK has one binning value.
+     */
+   void alignNextROI();
+
+   /// ASIGetVideoData wait for the current exposure, in milliseconds.
+   int videoWaitMs();
+
+   /// Sample ASIGetDroppedFrames and warn when USB transfer is falling behind.
+   /** Success-path samples are limited to about 1 Hz. Timeouts sample immediately.
+     */
+   void noteDroppedFrames( const char * context, /**< [in] why this sample was taken */
+                           bool force /**< [in] sample even if the 1 Hz interval has not elapsed */ );
+
+   /// Delete the SDK frame buffer.
+   void freeImageBuffer();
+
+   /// Read one ASI control. Logs a software_error when the driver rejects the read.
+   int getASIParameter( long & value, /**< [out] value returned by the SDK */
+                        ASI_CONTROL_TYPE parameter /**< [in] control to read */ );
+
+   /// Write one ASI control. Logs a software_error when the driver rejects the write.
+   /** \returns 0 on ASI_SUCCESS
+     * \returns -1 when the driver rejects the value
+     */
+   int setASIParameter( ASI_CONTROL_TYPE parameter, /**< [in] control to write */
+                        long value, /**< [in] value to write */
+                        bool commit /**< [in] unused; the SDK applies the value immediately */ );
+
+   /// Open the configured camera by name and serial number.
    int connect();
 
+   /// Publish OPERATING while capture is running, otherwise READY.
    int getAcquisitionState();
 
+   /// Read ASI_TEMPERATURE into m_ccdTemp. Keeps the previous value if the read is rejected.
    int getTemp();
 
    // stdCamera interface:
@@ -195,16 +257,32 @@ protected:
    /* -- m_ccdTempSetpt
     * -- m_currentROI 
     */
+   /// Set the power-on ROI and EM gain defaults.
    int powerOnDefaults();
-   
+
+   /// Enable or disable the cooler from m_tempControlStatusSet.
    int setTempControl();
+
+   /// Write m_ccdTempSetpt to ASI_TARGET_TEMP.
    int setTempSetPt();
+
+   /// No readout-speed control on this camera.
    int setReadoutSpeed();
+
    //int setVShiftSpeed();
+   /// Read ASI_GAIN into m_emGain.
    int getEMGain();
+
+   /// Write m_emGainSet and warn if the driver rounds it.
    int setEMGain();
+
+   /// Write m_expTimeSet, in microseconds, and warn if the driver rounds it.
    int setExpTime();
+
+   /// Read ASI_OFFSET into m_blacklevel.
    int getBlacklevel();
+
+   /// Write m_blacklevelSet and warn if the driver rounds it.
    int setBlacklevel();
 
    //int capExpTime(piflt& exptime);
@@ -218,15 +296,27 @@ protected:
      */
    int checkNextROI();
 
+   /// Request a frame-grabber reconfigure for m_nextROI. Trace is software_debug.
    int setNextROI();
-   //int setShutter(int sh);
-   
+
    //Framegrabber interface:
+
+   /// Stop capture, apply the ROI, and allocate the frame buffer from the driver's readback.
    int configureAcquisition();
+
+   /// Frame rate reported to frameGrabber.
    float fps();
+
+   /// Start video capture and reset dropped-frame tracking.
    int startAcquisition();
+
+   /// Wait for one frame. 0 on a frame, 1 on timeout, -1 when capture has stopped.
    int acquireAndCheckValid();
-   int loadImageIntoStream(void * dest);
+
+   /// Copy the latest RAW16 frame into the image stream.
+   int loadImageIntoStream( void * dest /**< [out] destination frame in the image stream */ );
+
+   /// Stop video capture so the frame grabber can reconfigure.
    int reconfig();
 
 
@@ -288,11 +378,7 @@ asiCtrl::asiCtrl() : MagAOXApp(MAGAOX_CURRENT_SHA1, MAGAOX_REPO_MODIFIED)
 inline
 asiCtrl::~asiCtrl() noexcept
 {
-   if (m_imgBuff) 
-   {
-      delete[] m_imgBuff;
-      m_imgBuff = nullptr;
-   }
+   freeImageBuffer();
 
    return;
 }
@@ -560,36 +646,264 @@ int asiCtrl::appShutdown()
 }
 
 inline
+const char * asiCtrl::asiErrorString( ASI_ERROR_CODE code )
+{
+   switch( code )
+   {
+      case ASI_SUCCESS:
+         return "ASI_SUCCESS";
+      case ASI_ERROR_INVALID_INDEX:
+         return "ASI_ERROR_INVALID_INDEX";
+      case ASI_ERROR_INVALID_ID:
+         return "ASI_ERROR_INVALID_ID";
+      case ASI_ERROR_INVALID_CONTROL_TYPE:
+         return "ASI_ERROR_INVALID_CONTROL_TYPE";
+      case ASI_ERROR_CAMERA_CLOSED:
+         return "ASI_ERROR_CAMERA_CLOSED";
+      case ASI_ERROR_CAMERA_REMOVED:
+         return "ASI_ERROR_CAMERA_REMOVED";
+      case ASI_ERROR_INVALID_PATH:
+         return "ASI_ERROR_INVALID_PATH";
+      case ASI_ERROR_INVALID_FILEFORMAT:
+         return "ASI_ERROR_INVALID_FILEFORMAT";
+      case ASI_ERROR_INVALID_SIZE:
+         return "ASI_ERROR_INVALID_SIZE";
+      case ASI_ERROR_INVALID_IMGTYPE:
+         return "ASI_ERROR_INVALID_IMGTYPE";
+      case ASI_ERROR_OUTOF_BOUNDARY:
+         return "ASI_ERROR_OUTOF_BOUNDARY";
+      case ASI_ERROR_TIMEOUT:
+         return "ASI_ERROR_TIMEOUT";
+      case ASI_ERROR_INVALID_SEQUENCE:
+         return "ASI_ERROR_INVALID_SEQUENCE";
+      case ASI_ERROR_BUFFER_TOO_SMALL:
+         return "ASI_ERROR_BUFFER_TOO_SMALL";
+      case ASI_ERROR_VIDEO_MODE_ACTIVE:
+         return "ASI_ERROR_VIDEO_MODE_ACTIVE";
+      case ASI_ERROR_EXPOSURE_IN_PROGRESS:
+         return "ASI_ERROR_EXPOSURE_IN_PROGRESS";
+      case ASI_ERROR_GENERAL_ERROR:
+         return "ASI_ERROR_GENERAL_ERROR";
+      case ASI_ERROR_INVALID_MODE:
+         return "ASI_ERROR_INVALID_MODE";
+      case ASI_ERROR_END:
+         return "ASI_ERROR_END";
+      default:
+         return "ASI_ERROR_UNKNOWN";
+   }
+}
+
+inline
+const char * asiCtrl::asiControlName( ASI_CONTROL_TYPE control )
+{
+   switch( control )
+   {
+      case ASI_GAIN:
+         return "ASI_GAIN";
+      case ASI_EXPOSURE:
+         return "ASI_EXPOSURE";
+      case ASI_OFFSET:
+         return "ASI_OFFSET";
+      case ASI_BANDWIDTHOVERLOAD:
+         return "ASI_BANDWIDTHOVERLOAD";
+      case ASI_TEMPERATURE:
+         return "ASI_TEMPERATURE";
+      case ASI_HIGH_SPEED_MODE:
+         return "ASI_HIGH_SPEED_MODE";
+      case ASI_TARGET_TEMP:
+         return "ASI_TARGET_TEMP";
+      case ASI_COOLER_ON:
+         return "ASI_COOLER_ON";
+      default:
+         return "ASI_CONTROL";
+   }
+}
+
+inline
+void asiCtrl::logASIRejection( ASI_ERROR_CODE code,
+                               const std::string & what )
+{
+   std::ostringstream oss;
+   oss << what << " failed: " << asiErrorString( code ) << " (" << static_cast<int>( code ) << ")";
+   log<software_error>( { __FILE__, __LINE__, 0, static_cast<int>( code ), oss.str() } );
+}
+
+inline
+void asiCtrl::logASIDebug( const std::string & what )
+{
+   log<software_debug>( { __FILE__, __LINE__, what } );
+}
+
+inline
+void asiCtrl::freeImageBuffer()
+{
+   if( m_imgBuff )
+   {
+      delete[] m_imgBuff;
+      m_imgBuff = nullptr;
+   }
+
+   m_imgSize = 0;
+}
+
+inline
+void asiCtrl::alignNextROI()
+{
+   if( m_nextROI.bin_x < 1 )
+   {
+      log<text_log>( "ASI binning " + std::to_string( m_nextROI.bin_x ) + " is invalid; using 1",
+                    logPrio::LOG_WARNING );
+      m_nextROI.bin_x = 1;
+      m_nextROI.bin_y = 1;
+   }
+
+   if( m_nextROI.bin_y != m_nextROI.bin_x )
+   {
+      log<text_log>( "ASI ROI binning is a single value; using bin_x=" + std::to_string( m_nextROI.bin_x ) +
+                        " and ignoring bin_y=" + std::to_string( m_nextROI.bin_y ),
+                    logPrio::LOG_WARNING );
+      m_nextROI.bin_y = m_nextROI.bin_x;
+   }
+
+   int alignedW = m_nextROI.w;
+   int alignedH = m_nextROI.h;
+
+   if( alignedW < 8 )
+   {
+      alignedW = 8;
+   }
+   if( alignedH < 2 )
+   {
+      alignedH = 2;
+   }
+
+   alignedW -= alignedW % 8;
+   alignedH -= alignedH % 2;
+
+   if( alignedW != m_nextROI.w || alignedH != m_nextROI.h )
+   {
+      log<text_log>( "ASI ROI width must be a multiple of 8 and height a multiple of 2. Requested " +
+                        std::to_string( m_nextROI.w ) + "x" + std::to_string( m_nextROI.h ) + ", using " +
+                        std::to_string( alignedW ) + "x" + std::to_string( alignedH ),
+                    logPrio::LOG_WARNING );
+      m_nextROI.w = alignedW;
+      m_nextROI.h = alignedH;
+   }
+}
+
+inline
+int asiCtrl::videoWaitMs()
+{
+   // ASIGetVideoData's wait is milliseconds. The SDK recommends exposure*2 + 500 ms.
+   // A literal 6000000 is 100 minutes, so a stalled camera produced no log until then.
+   double expSec = m_expTime;
+   if( m_expTimeSet > expSec )
+   {
+      expSec = m_expTimeSet;
+   }
+
+   double waitMs = expSec * 2000.0 + 500.0;
+   if( waitMs < c_minVideoWait_ms )
+   {
+      waitMs = c_minVideoWait_ms;
+   }
+   if( waitMs > c_maxVideoWait_ms )
+   {
+      waitMs = c_maxVideoWait_ms;
+   }
+
+   return static_cast<int>( waitMs );
+}
+
+inline
+void asiCtrl::noteDroppedFrames( const char * context,
+                                 bool force )
+{
+   auto now = std::chrono::steady_clock::now();
+   if( !force && m_lastDropSample.time_since_epoch().count() != 0 &&
+       now - m_lastDropSample < std::chrono::seconds( 1 ) )
+   {
+      return;
+   }
+   m_lastDropSample = now;
+
+   int dropped = 0;
+   ASI_ERROR_CODE rv = ASIGetDroppedFrames( m_camID, &dropped );
+   if( rv != ASI_SUCCESS )
+   {
+      logASIDebug( std::string( "ASIGetDroppedFrames during " ) + context + " failed: " + asiErrorString( rv ) );
+      return;
+   }
+
+   if( dropped <= m_lastDroppedFrames )
+   {
+      return;
+   }
+
+   if( m_lastDropLog.time_since_epoch().count() != 0 && now - m_lastDropLog < std::chrono::seconds( 5 ) )
+   {
+      return;
+   }
+
+   int delta = dropped - m_lastDroppedFrames;
+   m_lastDroppedFrames = dropped;
+   m_lastDropLog = now;
+
+   long bandwidth = -1;
+   ASI_BOOL bAuto = ASI_FALSE;
+   ASIGetControlValue( m_camID, ASI_BANDWIDTHOVERLOAD, &bandwidth, &bAuto );
+
+   std::ostringstream oss;
+   oss << "ASI dropped " << delta << " frame(s) (" << dropped << " since capture start) during " << context
+       << ". The SDK reports drops when USB transfer or the host cannot keep up."
+       << " USB bandwidth setting (ASI_BANDWIDTHOVERLOAD)=" << bandwidth;
+   log<text_log>( oss.str(), logPrio::LOG_WARNING );
+}
+
+inline
 int asiCtrl::getASIParameter( long & value,
-                                  ASI_CONTROL_TYPE parameter
-                                )
+                              ASI_CONTROL_TYPE parameter )
 {
    ASI_BOOL bAuto;
-   ASI_ERROR_CODE rv = ASIGetControlValue(m_camID, parameter, &value, &bAuto);
+   ASI_ERROR_CODE rv = ASIGetControlValue( m_camID, parameter, &value, &bAuto );
 
-   if(rv != ASI_SUCCESS)
+   if( rv != ASI_SUCCESS )
    {
-      if(MagAOXAppT::m_powerState == 0) return -1;
+      if( MagAOXAppT::m_powerState == 0 )
+      {
+         return -1;
+      }
+
+      logASIRejection( rv, std::string( "ASIGetControlValue " ) + asiControlName( parameter ) );
       return -1;
    }
 
-   if(MagAOXAppT::m_powerState == 0) return -1; //Flag error but don't log
+   if( MagAOXAppT::m_powerState == 0 )
+   {
+      return -1; // Flag error but don't log
+   }
+
+   logASIDebug( std::string( "ASIGetControlValue " ) + asiControlName( parameter ) + "=" + std::to_string( value ) );
    return 0;
 }
 
 inline
 int asiCtrl::setASIParameter( ASI_CONTROL_TYPE parameter,
-                                  long value,
-                                  bool commit
-                                )
+                              long value,
+                              bool commit )
 {
-   ASI_ERROR_CODE rv = ASISetControlValue(m_camID, parameter, value, ASI_FALSE);
-   if(rv != ASI_SUCCESS)
+   static_cast<void>( commit ); // The SDK applies ASISetControlValue immediately.
+
+   ASI_ERROR_CODE rv = ASISetControlValue( m_camID, parameter, value, ASI_FALSE );
+   if( rv != ASI_SUCCESS )
    {
+      logASIRejection( rv,
+                       std::string( "ASISetControlValue " ) + asiControlName( parameter ) + "=" +
+                           std::to_string( value ) );
       return -1;
    }
 
-   if(!commit) return 0; // what is this?
+   logASIDebug( std::string( "ASISetControlValue " ) + asiControlName( parameter ) + "=" + std::to_string( value ) );
    return 0;
 }
 
@@ -604,37 +918,46 @@ int asiCtrl::connect()
     m_nextROI.bin_x = m_default_bin_x;
     m_nextROI.bin_y = m_default_bin_y;
 
-    if (m_imgBuff) {
-        std::cerr << "Clearing image buffer\n";
-        delete[] m_imgBuff;
-        m_imgBuff = nullptr;
+    if( m_imgBuff )
+    {
+        logASIDebug( "Clearing image buffer" );
+        freeImageBuffer();
     }
 
-    if (m_camID >= 0) {
-        ASIStopVideoCapture(m_camID);
-        ASICloseCamera(m_camID);
+    if( m_camID >= 0 )
+    {
+        ASI_ERROR_CODE stopRv = ASIStopVideoCapture( m_camID );
+        if( stopRv != ASI_SUCCESS )
+        {
+            logASIRejection( stopRv, "ASIStopVideoCapture before reconnect" );
+        }
+        ASI_ERROR_CODE closeRv = ASICloseCamera( m_camID );
+        if( closeRv != ASI_SUCCESS )
+        {
+            logASIRejection( closeRv, "ASICloseCamera before reconnect" );
+        }
         m_running = false;
         m_camID = -1;
         m_camIndex = -1;
     }
 
-    std::cout << "Looking for connected cameras\n";
+    log<text_log>( "Looking for connected cameras" );
 
     int numDevices = ASIGetNumOfConnectedCameras();
-    if (powerState() != 1 || powerStateTarget() != 1) return 0;
+    if( powerState() != 1 || powerStateTarget() != 1 ) return 0;
 
-    if (numDevices <= 0) {
-        state(stateCodes::NODEVICE);
-        if (!stateLogged()) {
-            log<text_log>("No ASI Cameras available.");
+    if( numDevices <= 0 )
+    {
+        state( stateCodes::NODEVICE );
+        if( !stateLogged() )
+        {
+            log<text_log>( "No ASI Cameras available." );
         }
         return 0;
-    } else {
-      log<text_log>(std::to_string(numDevices) + " ASI Cameras found. Attempting to connect");
     }
 
-    std::cout << numDevices << " cameras found." << "\n" << "Searching for: "
-              << m_camName << " w/ serial #: " << m_serialNumber << "\n";
+    log<text_log>( std::to_string( numDevices ) + " ASI cameras found. Searching for " + m_camName + " serial " +
+                   m_serialNumber );
 
     int matchingCamID = -1;
     int matchingIndex = -1;
@@ -671,93 +994,112 @@ int asiCtrl::connect()
 
     const bool cfgIsHex = looksHex16(m_serialNumber);
 
-    for (int i = 0; i < numDevices; ++i) {
+    for( int i = 0; i < numDevices; ++i )
+    {
         ASI_CAMERA_INFO camInfo{};
-        if(ASIGetCameraProperty(&camInfo, i) != ASI_SUCCESS) {
-            std::cerr << "ASIGetCameraProperty failed for index " << i << "\n";
+        ASI_ERROR_CODE propRv = ASIGetCameraProperty( &camInfo, i );
+        if( propRv != ASI_SUCCESS )
+        {
+            logASIRejection( propRv, "ASIGetCameraProperty index " + std::to_string( i ) );
             continue;
         }
 
         const int camID = camInfo.CameraID;
 
-        std::cout << "Camera index: " << i << "\n";
-        std::cout << "  Name: " << camInfo.Name << "\n";
-        std::cout << "  CameraID: " << camID << "\n";
+        log<text_log>( "Camera index " + std::to_string( i ) + " name " + camInfo.Name + " CameraID " +
+                          std::to_string( camID ),
+                      logPrio::LOG_DEBUG );
 
         // Open only (avoid init during discovery)
-        if (ASIOpenCamera(camID) != ASI_SUCCESS) {
-            std::cerr << "  Failed to open camera " << i << "\n";
+        ASI_ERROR_CODE openRv = ASIOpenCamera( camID );
+        if( openRv != ASI_SUCCESS )
+        {
+            logASIRejection( openRv, "ASIOpenCamera index " + std::to_string( i ) );
             continue;
         }
 
         ASI_SN sn{};
-        ASI_ERROR_CODE snrv = ASIGetSerialNumber(camID, &sn);
+        ASI_ERROR_CODE snrv = ASIGetSerialNumber( camID, &sn );
 
-        if (snrv == ASI_SUCCESS) {
-            std::string serialHex = snToHex(sn);
-            std::string serialDec = snToDec(sn);
+        if( snrv == ASI_SUCCESS )
+        {
+            std::string serialHex = snToHex( sn );
+            std::string serialDec = snToDec( sn );
 
-            std::cout << "  Serial Number (Hex): " << serialHex << std::endl;
-            std::cout << "  Serial Number (Dec): " << serialDec << std::endl;
+            log<text_log>( "Index: " + std::to_string( i ) + " Name: " + std::string( camInfo.Name ) +
+                           " SerialHex: " + serialHex + " SerialDec: " + serialDec );
 
-            log<text_log>("Index: " + std::to_string(i) +
-                          " Name: " + std::string(camInfo.Name) +
-                          " SerialHex: " + serialHex +
-                          " SerialDec: " + serialDec);
-
-            const bool nameMatch = (strcmp(camInfo.Name, m_camName.c_str()) == 0);
+            const bool nameMatch = ( strcmp( camInfo.Name, m_camName.c_str() ) == 0 );
 
             bool serialMatch = false;
-            if(cfgIsHex) {
-                serialMatch = (serialHex == m_serialNumber);
-            } else {
-                serialMatch = (serialDec == m_serialNumber);
+            if( cfgIsHex )
+            {
+                serialMatch = ( serialHex == m_serialNumber );
+            }
+            else
+            {
+                serialMatch = ( serialDec == m_serialNumber );
             }
 
-            if (nameMatch && serialMatch) {
-                std::cerr << "  --> Camera name and serial matched.\n";
+            if( nameMatch && serialMatch )
+            {
+                log<text_log>( "Camera name and serial matched at index " + std::to_string( i ) );
                 matchingCamID = camID;
                 matchingIndex = i;
-                ASICloseCamera(camID);
+                m_camInfo = camInfo;
+                ASICloseCamera( camID );
                 break;
             }
-        } else {
+        }
+        else
+        {
             // If serial cannot be read without init, do NOT init here to avoid stepping on another app.
-            std::cout << "  Serial Number not readable without init; skipping (discovery is non-invasive).\n";
+            log<text_log>( "Serial number not readable without init for index " + std::to_string( i ) + " (" +
+                              asiErrorString( snrv ) + "); skipping so discovery stays non-invasive",
+                          logPrio::LOG_DEBUG );
         }
 
-        ASICloseCamera(camID);
+        ASICloseCamera( camID );
 
-        if (powerState() != 1 || powerStateTarget() != 1) return 0;
+        if( powerState() != 1 || powerStateTarget() != 1 ) return 0;
     }
 
-    if (matchingCamID >= 0) {
-        std::cerr << "Connecting to matched camera CameraID: " << matchingCamID
-                  << " (index " << matchingIndex << ")\n";
+    if( matchingCamID >= 0 )
+    {
+        log<text_log>( "Connecting to matched camera CameraID " + std::to_string( matchingCamID ) + " (index " +
+                       std::to_string( matchingIndex ) + ")" );
 
         m_camID = matchingCamID;
         m_camIndex = matchingIndex;
 
-        if(ASIOpenCamera(m_camID) != ASI_SUCCESS) {
-            state(stateCodes::ERROR);
-            log<software_error>({__FILE__, __LINE__, "ASIOpenCamera failed on matched camera"});
+        ASI_ERROR_CODE openRv = ASIOpenCamera( m_camID );
+        if( openRv != ASI_SUCCESS )
+        {
+            state( stateCodes::ERROR );
+            logASIRejection( openRv, "ASIOpenCamera on matched camera" );
             m_camID = -1;
             m_camIndex = -1;
             return -1;
         }
 
         // Init ONLY the matched camera.
-        if(ASIInitCamera(m_camID) != ASI_SUCCESS) {
-            ASICloseCamera(m_camID);
-            state(stateCodes::ERROR);
-            log<software_error>({__FILE__, __LINE__, "ASIInitCamera failed on matched camera"});
+        ASI_ERROR_CODE initRv = ASIInitCamera( m_camID );
+        if( initRv != ASI_SUCCESS )
+        {
+            ASICloseCamera( m_camID );
+            state( stateCodes::ERROR );
+            logASIRejection( initRv, "ASIInitCamera on matched camera" );
             m_camID = -1;
             m_camIndex = -1;
             return -1;
         }
 
-        state(stateCodes::CONNECTED);
-    } else {
+        logASIDebug( "Opened " + std::string( m_camInfo.Name ) + " max " + std::to_string( m_camInfo.MaxWidth ) + "x" +
+                     std::to_string( m_camInfo.MaxHeight ) );
+        state( stateCodes::CONNECTED );
+    }
+    else
+    {
         state(stateCodes::NODEVICE);
         if (!stateLogged()) {
             log<text_log>("Camera not found in available devices (matched by name+serial).");
@@ -787,22 +1129,29 @@ int asiCtrl::powerOnDefaults()
 inline
 int asiCtrl::setEMGain()
 {
-   int rv = ASISetControlValue(m_camID, ASI_GAIN, m_emGainSet, ASI_FALSE);
-   if(rv < 0)
+   long requested = static_cast<long>( m_emGainSet );
+   if( setASIParameter( ASI_GAIN, requested, true ) < 0 )
    {
-      log<software_error>({__FILE__, __LINE__, "Error setting gain"});
       return -1;
    }
 
-   long gainReal;
-   ASI_BOOL bAuto;
-   ASIGetControlValue(m_camID, ASI_GAIN, &gainReal, &bAuto);
+   long gainReal = 0;
+   if( getASIParameter( gainReal, ASI_GAIN ) < 0 )
+   {
+      return -1;
+   }
+
+   if( gainReal != requested )
+   {
+      log<text_log>( "ASI rounded gain from " + std::to_string( requested ) + " to " + std::to_string( gainReal ),
+                    logPrio::LOG_WARNING );
+   }
 
    m_emGainSet = gainReal;
 
-   log<text_log>( "Set gain to: " + std::to_string(m_emGainSet));
+   log<text_log>( "Set gain to: " + std::to_string( m_emGainSet ) );
 
-   updateIfChanged(m_indiP_emGain, "current", m_emGainSet, INDI_IDLE);
+   updateIfChanged( m_indiP_emGain, "current", m_emGainSet, INDI_IDLE );
 
    return 0;
 }
@@ -810,11 +1159,13 @@ int asiCtrl::setEMGain()
 inline
 int asiCtrl::getEMGain()
 {
-   long gainReal;
-   ASI_BOOL bAuto;
-   ASIGetControlValue(m_camID, ASI_GAIN, &gainReal, &bAuto);
+   long gainReal = 0;
+   if( getASIParameter( gainReal, ASI_GAIN ) < 0 )
+   {
+      return -1;
+   }
 
-   log<text_log>( "Got gain of: " + std::to_string(gainReal));
+   log<text_log>( "Got gain of: " + std::to_string( gainReal ) );
 
    m_emGain = gainReal;
 
@@ -824,33 +1175,32 @@ int asiCtrl::getEMGain()
 inline
 int asiCtrl::setExpTime()
 {
-   /*
-   // check for min/max values
-   ASI_CONTROL_CAPS expCtrl;
-   ASIGetControlCaps(m_camNum, ASI_EXPOSURE, &expCtrl);
-   int expmin = expCtrl.MinValue;
-   int expmax = expCtrl.MaxValue;
-   std::cerr << "Got a min/max for exposure time of: " << expmin << " and " << expmax << "\n";
-   */
-
-   int rv = ASISetControlValue(m_camID, ASI_EXPOSURE, m_expTimeSet * 1e6, ASI_FALSE);
-   sleep(1);
-
-   if(rv < 0)
+   long requestedUs = static_cast<long>( m_expTimeSet * 1e6 );
+   if( setASIParameter( ASI_EXPOSURE, requestedUs, true ) < 0 )
    {
-      log<software_error>({__FILE__, __LINE__, "Error setting exposure time"});
       return -1;
    }
 
-   long expTimeReal;
-   ASI_BOOL bAuto;
-   ASIGetControlValue(m_camID, ASI_EXPOSURE, &expTimeReal, &bAuto);
+   sleep( 1 );
 
-   m_expTime = expTimeReal*1e-6;
+   long expTimeReal = 0;
+   if( getASIParameter( expTimeReal, ASI_EXPOSURE ) < 0 )
+   {
+      return -1;
+   }
 
-   log<text_log>( "Set exposure time to: " + std::to_string(m_expTime) + " sec");
+   if( expTimeReal != requestedUs )
+   {
+      log<text_log>( "ASI rounded exposure from " + std::to_string( requestedUs ) + " us to " +
+                        std::to_string( expTimeReal ) + " us",
+                    logPrio::LOG_WARNING );
+   }
 
-   updateIfChanged(m_indiP_exptime, "current", m_expTime, INDI_IDLE);
+   m_expTime = expTimeReal * 1e-6;
+
+   log<text_log>( "Set exposure time to: " + std::to_string( m_expTime ) + " sec" );
+
+   updateIfChanged( m_indiP_exptime, "current", m_expTime, INDI_IDLE );
 
    return 0;
 }
@@ -858,115 +1208,222 @@ int asiCtrl::setExpTime()
 inline
 int asiCtrl::checkNextROI()
 {
-   updateIfChanged( m_indiP_roi_x, "target", m_nextROI.x, INDI_OK);
-   updateIfChanged( m_indiP_roi_y, "target", m_nextROI.y, INDI_OK);
-   updateIfChanged( m_indiP_roi_w, "target", m_nextROI.w, INDI_OK);
-   updateIfChanged( m_indiP_roi_h, "target", m_nextROI.h, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_x, "target", m_nextROI.bin_x, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_y, "target", m_nextROI.bin_y, INDI_OK);
+   alignNextROI();
+
+   updateIfChanged( m_indiP_roi_x, "target", m_nextROI.x, INDI_OK );
+   updateIfChanged( m_indiP_roi_y, "target", m_nextROI.y, INDI_OK );
+   updateIfChanged( m_indiP_roi_w, "target", m_nextROI.w, INDI_OK );
+   updateIfChanged( m_indiP_roi_h, "target", m_nextROI.h, INDI_OK );
+   updateIfChanged( m_indiP_roi_bin_x, "target", m_nextROI.bin_x, INDI_OK );
+   updateIfChanged( m_indiP_roi_bin_y, "target", m_nextROI.bin_y, INDI_OK );
 
    return 0;
 }
 
-//Set ROI property to busy if accepted, set toggle to Off and Idlw either way.
-//Set ROI actual 
-//Update current values (including struct and indiP) and set to OK when done
-inline 
+//Set ROI property to busy if accepted, set toggle to Off and Idle either way.
+//The frame grabber applies the ROI in configureAcquisition.
+inline
 int asiCtrl::setNextROI()
 {
-   //debug:
-//    std::cerr << "setNextROI:\n";
-//    std::cerr << "  m_nextROI.x = " << m_nextROI.x << "\n";
-//    std::cerr << "  m_nextROI.y = " << m_nextROI.y << "\n";
-//    std::cerr << "  m_nextROI.w = " << m_nextROI.w << "\n";
-//    std::cerr << "  m_nextROI.h = " << m_nextROI.h << "\n";
-//    std::cerr << "  m_nextROI.bin_x = " << m_nextROI.bin_x << "\n";
-//    std::cerr << "  m_nextROI.bin_y = " << m_nextROI.bin_y << "\n";
-   
+   std::ostringstream oss;
+   oss << "setNextROI x=" << m_nextROI.x << " y=" << m_nextROI.y << " w=" << m_nextROI.w << " h=" << m_nextROI.h
+       << " bin=" << m_nextROI.bin_x << "x" << m_nextROI.bin_y;
+   logASIDebug( oss.str() );
+
    m_reconfig = true;
 
-   updateSwitchIfChanged(m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE);
-   updateSwitchIfChanged(m_indiP_roi_full, "request", pcf::IndiElement::Off, INDI_IDLE);
-   updateSwitchIfChanged(m_indiP_roi_last, "request", pcf::IndiElement::Off, INDI_IDLE);
-   updateSwitchIfChanged(m_indiP_roi_default, "request", pcf::IndiElement::Off, INDI_IDLE);
+   updateSwitchIfChanged( m_indiP_roi_set, "request", pcf::IndiElement::Off, INDI_IDLE );
+   updateSwitchIfChanged( m_indiP_roi_full, "request", pcf::IndiElement::Off, INDI_IDLE );
+   updateSwitchIfChanged( m_indiP_roi_last, "request", pcf::IndiElement::Off, INDI_IDLE );
+   updateSwitchIfChanged( m_indiP_roi_default, "request", pcf::IndiElement::Off, INDI_IDLE );
    return 0;
 }
 
 inline
 int asiCtrl::configureAcquisition()
 {
-   recordCamera(true);
-   ASIStopVideoCapture(m_camID);
+   recordCamera( true );
+
+   ASI_ERROR_CODE stopRv = ASIStopVideoCapture( m_camID );
+   if( stopRv != ASI_SUCCESS )
+   {
+      logASIRejection( stopRv, "ASIStopVideoCapture before ROI change" );
+   }
    m_running = false;
 
-   std::unique_lock<std::mutex> lock(m_indiMutex);
+   std::unique_lock<std::mutex> lock( m_indiMutex );
 
-   ASISetControlValue(m_camID, ASI_HIGH_SPEED_MODE, 0, ASI_FALSE);
+   alignNextROI();
 
-   ASI_ERROR_CODE error;
-   error = ASISetROIFormat( m_camID, m_nextROI.w, m_nextROI.h, m_nextROI.bin_x, ASI_IMG_RAW16);
-   if( error < 0 )
+   if( m_camInfo.SupportedBins[0] != 0 )
    {
-      state(stateCodes::ERROR);
+      bool binSupported = false;
+      for( int k = 0; k < 16 && m_camInfo.SupportedBins[k] != 0; ++k )
+      {
+         if( m_camInfo.SupportedBins[k] == m_nextROI.bin_x )
+         {
+            binSupported = true;
+         }
+      }
+
+      if( !binSupported )
+      {
+         log<text_log>( "Requested ASI bin " + std::to_string( m_nextROI.bin_x ) +
+                           " is not in the camera supported-bin list",
+                       logPrio::LOG_WARNING );
+      }
+   }
+
+   if( m_camInfo.MaxWidth > 0 &&
+       static_cast<long>( m_nextROI.w ) * m_nextROI.bin_x > m_camInfo.MaxWidth )
+   {
+      state( stateCodes::ERROR );
+      return log<software_error, -1>( { __FILE__,
+                                        __LINE__,
+                                        std::string( "ROI width " ) + std::to_string( m_nextROI.w ) + " at bin " +
+                                            std::to_string( m_nextROI.bin_x ) + " exceeds sensor width " +
+                                            std::to_string( m_camInfo.MaxWidth ) } );
+   }
+
+   if( m_camInfo.MaxHeight > 0 &&
+       static_cast<long>( m_nextROI.h ) * m_nextROI.bin_y > m_camInfo.MaxHeight )
+   {
+      state( stateCodes::ERROR );
+      return log<software_error, -1>( { __FILE__,
+                                        __LINE__,
+                                        std::string( "ROI height " ) + std::to_string( m_nextROI.h ) + " at bin " +
+                                            std::to_string( m_nextROI.bin_y ) + " exceeds sensor height " +
+                                            std::to_string( m_camInfo.MaxHeight ) } );
+   }
+
+   // Some bodies reject this control. Log it and still apply the ROI.
+   if( setASIParameter( ASI_HIGH_SPEED_MODE, 0, true ) < 0 )
+   {
+      log<text_log>( "ASI_HIGH_SPEED_MODE was rejected; continuing with the current mode", logPrio::LOG_WARNING );
+   }
+
+   std::ostringstream requested;
+   requested << "Applying ROI w=" << m_nextROI.w << " h=" << m_nextROI.h << " bin=" << m_nextROI.bin_x
+             << " center=" << m_nextROI.x << "," << m_nextROI.y;
+   logASIDebug( requested.str() );
+
+   ASI_ERROR_CODE error = ASISetROIFormat( m_camID, m_nextROI.w, m_nextROI.h, m_nextROI.bin_x, ASI_IMG_RAW16 );
+   if( error != ASI_SUCCESS )
+   {
+      logASIRejection( error,
+                       "ASISetROIFormat " + std::to_string( m_nextROI.w ) + "x" + std::to_string( m_nextROI.h ) +
+                           " bin " + std::to_string( m_nextROI.bin_x ) );
+      state( stateCodes::ERROR );
       return -1;
    }
 
-   int x0 = m_nextROI.x /  m_nextROI.bin_x - 0.5*(m_nextROI.w);
-   int y0 = m_nextROI.y /  m_nextROI.bin_x - 0.5*(m_nextROI.h);
-   error = ASISetStartPos(m_camID, x0, y0);
-   if( error < 0 )
+   // Width and height are already binned. The SDK start position is in that same binned frame.
+   int x0 = m_nextROI.x / m_nextROI.bin_x - 0.5 * ( m_nextROI.w );
+   int y0 = m_nextROI.y / m_nextROI.bin_y - 0.5 * ( m_nextROI.h );
+   error = ASISetStartPos( m_camID, x0, y0 );
+   if( error != ASI_SUCCESS )
    {
-      state(stateCodes::ERROR);
+      logASIRejection( error,
+                       "ASISetStartPos " + std::to_string( x0 ) + "," + std::to_string( y0 ) + " for ROI " +
+                           std::to_string( m_nextROI.w ) + "x" + std::to_string( m_nextROI.h ) );
+      state( stateCodes::ERROR );
       return -1;
    }
 
-   int piWidth;
-   int piHeight;
-   int piBin;
-   int piStartX;
-   int piStartY;
-   ASI_IMG_TYPE pImg_type;
-   ASIGetROIFormat(m_camID, &piWidth, &piHeight, &piBin, &pImg_type);
-   ASIGetStartPos(m_camID, &piStartX, &piStartY);
+   int piWidth = 0;
+   int piHeight = 0;
+   int piBin = 0;
+   int piStartX = 0;
+   int piStartY = 0;
+   ASI_IMG_TYPE pImg_type = ASI_IMG_END;
+   error = ASIGetROIFormat( m_camID, &piWidth, &piHeight, &piBin, &pImg_type );
+   if( error != ASI_SUCCESS )
+   {
+      logASIRejection( error, "ASIGetROIFormat" );
+      state( stateCodes::ERROR );
+      return -1;
+   }
 
-   m_currentROI.x = (piStartX + 0.5*piWidth) * piBin;
-   m_currentROI.y = (piStartY + 0.5*piHeight) * piBin;
+   error = ASIGetStartPos( m_camID, &piStartX, &piStartY );
+   if( error != ASI_SUCCESS )
+   {
+      logASIRejection( error, "ASIGetStartPos" );
+      state( stateCodes::ERROR );
+      return -1;
+   }
+
+   if( piWidth != m_nextROI.w || piHeight != m_nextROI.h || piBin != m_nextROI.bin_x )
+   {
+      log<text_log>( "ASI ROI format differs from the request. Requested " + std::to_string( m_nextROI.w ) + "x" +
+                        std::to_string( m_nextROI.h ) + " bin " + std::to_string( m_nextROI.bin_x ) + ", driver has " +
+                        std::to_string( piWidth ) + "x" + std::to_string( piHeight ) + " bin " + std::to_string( piBin ),
+                    logPrio::LOG_WARNING );
+   }
+
+   if( piStartX != x0 || piStartY != y0 )
+   {
+      log<text_log>( "ASI start position differs from the request. Requested " + std::to_string( x0 ) + "," +
+                        std::to_string( y0 ) + ", driver has " + std::to_string( piStartX ) + "," +
+                        std::to_string( piStartY ),
+                    logPrio::LOG_WARNING );
+   }
+
+   if( pImg_type != ASI_IMG_RAW16 )
+   {
+      log<text_log>( "ASI image type is " + std::to_string( static_cast<int>( pImg_type ) ) + " instead of RAW16",
+                    logPrio::LOG_WARNING );
+   }
+
+   m_currentROI.x = ( piStartX + 0.5 * piWidth ) * piBin;
+   m_currentROI.y = ( piStartY + 0.5 * piHeight ) * piBin;
    m_currentROI.w = piWidth;
    m_currentROI.h = piHeight;
    m_currentROI.bin_x = piBin;
    m_currentROI.bin_y = piBin;
 
-   m_width  = piWidth;
+   m_width = piWidth;
    m_height = piHeight;
 
-   if (piBin == 1){
+   if( piBin == 1 )
+   {
       m_bits = 12;
-   } else {
+   }
+   else
+   {
       m_bits = 14;
    }
-   m_bfactor = pow(2, 16-m_bits);
+   m_bfactor = pow( 2, 16 - m_bits );
 
-   std::cout << m_width << " " << m_height << "\n";
-   std::cout << m_nextROI.w << " " << m_nextROI.h << "\n";
+   log<text_log>( "ASI ROI applied " + std::to_string( m_width ) + "x" + std::to_string( m_height ) + " bin " +
+                  std::to_string( piBin ) + " start " + std::to_string( piStartX ) + "," + std::to_string( piStartY ) );
 
-   updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK);
-   updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK);
-   updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK);
-   updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK);
-   updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK);
+   updateIfChanged( m_indiP_roi_x, "current", m_currentROI.x, INDI_OK );
+   updateIfChanged( m_indiP_roi_y, "current", m_currentROI.y, INDI_OK );
+   updateIfChanged( m_indiP_roi_w, "current", m_currentROI.w, INDI_OK );
+   updateIfChanged( m_indiP_roi_h, "current", m_currentROI.h, INDI_OK );
+   updateIfChanged( m_indiP_roi_bin_x, "current", m_currentROI.bin_x, INDI_OK );
+   updateIfChanged( m_indiP_roi_bin_y, "current", m_currentROI.bin_y, INDI_OK );
 
-   m_imgSize = m_nextROI.w*m_nextROI.h*2;
+   if( piWidth <= 0 || piHeight <= 0 )
+   {
+      state( stateCodes::ERROR );
+      return log<software_error, -1>( { __FILE__, __LINE__, "ASI ROI readback has a non-positive size" } );
+   }
+
+   freeImageBuffer();
+   m_imgSize = static_cast<long>( piWidth ) * piHeight * 2;
    m_imgBuff = new unsigned char[m_imgSize];
 
    m_dataType = _DATATYPE_UINT16;
 
-   sleep(1);
-   setExpTime();
-   setEMGain();
-   setBlacklevel();
-   
-   recordCamera(true);
+   sleep( 1 );
+   if( setExpTime() < 0 || setEMGain() < 0 || setBlacklevel() < 0 )
+   {
+      state( stateCodes::ERROR );
+      return -1;
+   }
+
+   recordCamera( true );
 
    return 0;
 }
@@ -983,11 +1440,12 @@ int asiCtrl::getBlacklevel()
    long blReal = 0;
    ASI_BOOL bAuto;
    sleep(1);
-   int rv = ASIGetControlValue(m_camID, ASI_BRIGHTNESS, &blReal, &bAuto);
-   sleep(1);
+   ASI_ERROR_CODE rv = ASIGetControlValue( m_camID, ASI_BRIGHTNESS, &blReal, &bAuto );
+   sleep( 1 );
 
-   if (rv != ASI_SUCCESS) {
-      log<software_error>({__FILE__, __LINE__, "Error getting blacklevel"});
+   if( rv != ASI_SUCCESS )
+   {
+      logASIRejection( rv, "ASIGetControlValue ASI_OFFSET (blacklevel)" );
       return -1;
    }
 
@@ -999,29 +1457,44 @@ inline
 int asiCtrl::setBlacklevel()
 {
 
-   int blacklevel_to_set = m_blacklevelSet;
+   long blacklevel_to_set = static_cast<long>( m_blacklevelSet );
 
-   if(blacklevel_to_set < m_minBlacklevel)
+   if( blacklevel_to_set < m_minBlacklevel )
    {
-      blacklevel_to_set = m_minBlacklevel;
-      log<text_log>("Blacklevel limited to " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+      blacklevel_to_set = static_cast<long>( m_minBlacklevel );
+      log<text_log>( "Blacklevel limited to " + std::to_string( blacklevel_to_set ), logPrio::LOG_WARNING );
    }
 
-   if(blacklevel_to_set > m_maxBlacklevel)
+   if( blacklevel_to_set > m_maxBlacklevel )
    {
-      blacklevel_to_set = m_maxBlacklevel;
-      log<text_log>("Blacklevel limited to maxBlacklevel = " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+      blacklevel_to_set = static_cast<long>( m_maxBlacklevel );
+      log<text_log>( "Blacklevel limited to maxBlacklevel = " + std::to_string( blacklevel_to_set ),
+                    logPrio::LOG_WARNING );
    }
 
-   int rv = ASISetControlValue(m_camID, ASI_BRIGHTNESS, blacklevel_to_set, ASI_FALSE);
-
-   if(rv < 0)
+   if( setASIParameter( ASI_BRIGHTNESS, blacklevel_to_set, true ) < 0 )
    {
-      log<software_error>({__FILE__, __LINE__, "Error setting black level!"});
       return -1;
    }
 
-   log<text_log>("Set Blacklevel to: " + std::to_string(blacklevel_to_set), logPrio::LOG_WARNING);
+   long blReal = 0;
+   ASI_BOOL bAuto = ASI_FALSE;
+   ASI_ERROR_CODE readRv = ASIGetControlValue( m_camID, ASI_BRIGHTNESS, &blReal, &bAuto );
+   if( readRv == ASI_SUCCESS )
+   {
+      if( blReal != blacklevel_to_set )
+      {
+         log<text_log>( "ASI rounded blacklevel from " + std::to_string( blacklevel_to_set ) + " to " +
+                           std::to_string( blReal ),
+                       logPrio::LOG_WARNING );
+      }
+
+      m_blacklevel = blReal;
+      m_blacklevelSet = blReal;
+      blacklevel_to_set = blReal;
+   }
+
+   log<text_log>( "Set Blacklevel to: " + std::to_string( blacklevel_to_set ) );
 
    return 0;
 }
@@ -1029,17 +1502,34 @@ int asiCtrl::setBlacklevel()
 inline
 int asiCtrl::startAcquisition()
 {
-   log<text_log>("Starting video capture.");
-   ASIStartVideoCapture(m_camID);
+   ASI_ERROR_CODE rv = ASIStartVideoCapture( m_camID );
+   if( rv != ASI_SUCCESS )
+   {
+      m_running = false;
+      logASIRejection( rv, "ASIStartVideoCapture" );
+      return -1;
+   }
+
    m_running = true;
+   m_consecutiveTimeouts = 0;
+   m_lastDroppedFrames = 0;
+   m_lastDropLog = std::chrono::steady_clock::time_point{};
+   m_lastDropSample = std::chrono::steady_clock::time_point{};
+
+   log<text_log>( "Starting video capture. Frame wait is " + std::to_string( videoWaitMs() ) + " ms." );
    return 0;
 }
 
 inline
 int asiCtrl::getTemp()
 {
-   long asiTemp;
-   getASIParameter(asiTemp, ASI_TEMPERATURE);
+   long asiTemp = 0;
+   if( getASIParameter( asiTemp, ASI_TEMPERATURE ) < 0 )
+   {
+      // Keep the last temperature. appLogic treats a -1 from here as a lost camera.
+      return 0;
+   }
+
    m_ccdTemp = asiTemp / 10.0;
    return 0;
 }
@@ -1047,32 +1537,42 @@ int asiCtrl::getTemp()
 inline
 int asiCtrl::setTempSetPt()
 {
-   int rv = ASISetControlValue(m_camID, ASI_TARGET_TEMP, m_ccdTempSetpt , ASI_FALSE);
-   (void)rv;
+   long requested = static_cast<long>( m_ccdTempSetpt );
+   if( setASIParameter( ASI_TARGET_TEMP, requested, true ) < 0 )
+   {
+      return -1;
+   }
+
    return 0;
 }
 
 inline
 int asiCtrl::setTempControl()
 {
-   if(m_tempControlStatusSet)
+   if( m_tempControlStatusSet )
    {
-      int rv = ASISetControlValue(m_camID, ASI_COOLER_ON, ASI_TRUE , ASI_FALSE);
-      (void)rv;
+      if( setASIParameter( ASI_COOLER_ON, ASI_TRUE, true ) < 0 )
+      {
+         return -1;
+      }
+
       m_tempControlStatus = true;
       m_tempControlStatusStr = "COOLING";
       recordCamera();
-      log<text_log>("enabled temperature control");
+      log<text_log>( "enabled temperature control" );
       return 0;
    }
    else
    {
-      int rv = ASISetControlValue(m_camID, ASI_COOLER_ON, ASI_FALSE , ASI_FALSE);
-      (void)rv;
+      if( setASIParameter( ASI_COOLER_ON, ASI_FALSE, true ) < 0 )
+      {
+         return -1;
+      }
+
       m_tempControlStatus = false;
       m_tempControlStatusStr = "OFF";
       recordCamera();
-      log<text_log>("disabled temperature control");
+      log<text_log>( "disabled temperature control" );
       return 0;
    }
 }
@@ -1086,27 +1586,76 @@ int asiCtrl::setReadoutSpeed()
 inline
 int asiCtrl::acquireAndCheckValid()
 {
-   ASIGetVideoData(m_camID, m_imgBuff, m_imgSize, 6000000);
+   if( m_imgBuff == nullptr || m_imgSize <= 0 )
+   {
+      state( stateCodes::ERROR );
+      return log<software_error, -1>( { __FILE__, __LINE__, "no ASI image buffer allocated" } );
+   }
 
-   clock_gettime(CLOCK_REALTIME, &m_currImageTimestamp);
+   const int waitMs = videoWaitMs();
+   ASI_ERROR_CODE rv = ASIGetVideoData( m_camID, m_imgBuff, m_imgSize, waitMs );
 
-   return 0;
+   if( rv == ASI_SUCCESS )
+   {
+      if( m_consecutiveTimeouts > 0 )
+      {
+         log<text_log>( "ASI video capture resumed after " + std::to_string( m_consecutiveTimeouts ) +
+                        " consecutive timeout(s)" );
+         m_consecutiveTimeouts = 0;
+      }
 
+      noteDroppedFrames( "frame readout", false );
+      clock_gettime( CLOCK_REALTIME, &m_currImageTimestamp );
+      return 0;
+   }
+
+   if( rv == ASI_ERROR_TIMEOUT )
+   {
+      ++m_consecutiveTimeouts;
+      noteDroppedFrames( "video timeout", true );
+
+      std::ostringstream oss;
+      oss << "ASIGetVideoData timed out after " << waitMs << " ms (exposure " << m_expTime
+          << " s). No frame was delivered. Consecutive timeouts: " << m_consecutiveTimeouts
+          << ". The SDK returns this when readout does not finish in time (USB transfer too slow, a stalled camera, "
+             "or an exposure longer than the wait).";
+      log<software_error>( { __FILE__, __LINE__, 0, static_cast<int>( rv ), oss.str() } );
+
+      // >0 tells frameGrabber to keep capturing and skip this frame.
+      return 1;
+   }
+
+   std::ostringstream oss;
+   oss << "ASIGetVideoData failed (" << asiErrorString( rv ) << "). Capture stopped.";
+   log<software_error>( { __FILE__, __LINE__, 0, static_cast<int>( rv ), oss.str() } );
+
+   m_running = false;
+   if( rv == ASI_ERROR_CAMERA_REMOVED || rv == ASI_ERROR_CAMERA_CLOSED || rv == ASI_ERROR_INVALID_ID )
+   {
+      state( stateCodes::NOTCONNECTED );
+   }
+   else
+   {
+      state( stateCodes::ERROR );
+   }
+
+   return -1;
 }
 
 inline
-int asiCtrl::loadImageIntoStream(void * dest)
+int asiCtrl::loadImageIntoStream( void * dest )
 {
-   //std::cout << m_width << " " << m_height << "\n";
+   if( m_imgBuff == nullptr )
+   {
+      return log<software_error, -1>( { __FILE__, __LINE__, "ASI image buffer is null" } );
+   }
 
-   pixelT * src = nullptr;
-   src = (pixelT *) m_imgBuff;
+   pixelT * src = reinterpret_cast<pixelT *>( m_imgBuff );
 
-
-   //std::cout << src[300] << "\n";
-
-   if( frameGrabber<asiCtrl>::loadImageIntoStreamCopy(dest, src, m_width, m_height,  sizeof(pixelT)) == nullptr) return -1;
-
+   if( frameGrabber<asiCtrl>::loadImageIntoStreamCopy( dest, src, m_width, m_height, sizeof( pixelT ) ) == nullptr )
+   {
+      return -1;
+   }
 
    return 0;
 }
@@ -1114,8 +1663,12 @@ int asiCtrl::loadImageIntoStream(void * dest)
 inline
 int asiCtrl::reconfig()
 {
-   log<text_log>("Stopping video capture.");
-   ASIStopVideoCapture(m_camID);
+   log<text_log>( "Stopping video capture." );
+   ASI_ERROR_CODE rv = ASIStopVideoCapture( m_camID );
+   if( rv != ASI_SUCCESS )
+   {
+      logASIRejection( rv, "ASIStopVideoCapture" );
+   }
    m_running = false;
 
    return 0;
