@@ -733,6 +733,21 @@ class HamCam(XDevice):
         self.bitdepth = self._read_bitdepth_from_camera()
         self.frame_dtype = self._frame_dtype_for_bitdepth(self.bitdepth)
 
+	# Read the actual camera settings without changing them.
+	self.sensor_mode = self.cam.prop_getvalue(DCAM_IDPROP.SENSORMODE)
+	self.conversion_coeff = self.cam.prop_getvalue(DCAM_IDPROP.CONVERSIONFACTOR_COEFF)
+	self.conversion_offset = self.cam.prop_getvalue(DCAM_IDPROP.CONVERSIONFACTOR_OFFSET)
+	self.readout_time = self.cam.prop_getvalue(DCAM_IDPROP.TIMING_READOUTTIME)
+
+	# Report these values in the application log.
+	self.log.info(
+	    "DCAM readbacks: sensor_mode=%s, conversion_coeff=%s, "
+	    "conversion_offset=%s, readout_time=%s s",
+	    self.sensor_mode,
+	    self.conversion_coeff,
+	    self.conversion_offset,
+	    self.readout_time,
+	)
         self.log.info(
             "Camera state: exptime=%s hsize=%s vsize=%s hpos=%s vpos=%s binning=%s "
             "temp=%sC temp_status=%s frame_rate=%s width=%s height=%s defect=%s "
@@ -1065,6 +1080,41 @@ class HamCam(XDevice):
         self.add_property(nv)
 
         # Shmim Info ------------------------------------------------------------------------
+
+        # DCAM camera readbacks (read-only)
+        tv = properties.TextVector(
+            name="dcam_readbacks",
+            perm=constants.PropertyPerm.READ_ONLY
+        )
+
+        tv.add_element(DefText(
+            name="sensor_mode",
+            label="Sensor Mode",
+            _value=str(self.sensor_mode)
+        ))
+
+        tv.add_element(DefText(
+            name="conversion_coeff",
+            label="Conversion Coefficient",
+            _value=str(self.conversion_coeff)
+        ))
+
+        tv.add_element(DefText(
+            name="conversion_offset",
+            label="Conversion Offset",
+            _value=str(self.conversion_offset)
+        ))
+
+        tv.add_element(DefText(
+            name="readout_time",
+            label="Readout Time (s)",
+            _value=str(self.readout_time)
+        ))
+
+        self.add_property(tv)
+
+
+
         tv = properties.TextVector(name="fg_shmimName")
         tv.add_element(DefText(
             name='name', label='Shmim Name', _value=self.shmim_name,
